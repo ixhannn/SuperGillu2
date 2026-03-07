@@ -1,0 +1,7 @@
+{
+  "name": "Tulika",
+  "description": "A private, offline memory app for couples to store photos, notes, and special dates.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

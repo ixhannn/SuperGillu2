@@ -1,0 +1,564 @@
+/* ============================================
+   TULIKA — Advanced Animation System
+   GPU-composited, physics-based, 60fps
+   ============================================ */
+
+/* === SPRING TIMING FUNCTIONS === */
+:root {
+  --spring-smooth: cubic-bezier(0.23, 1, 0.32, 1);
+  --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring-snappy: cubic-bezier(0.22, 0.68, 0, 1.71);
+  --spring-gentle: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --elastic-out: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* === GPU ACCELERATION HELPERS === */
+.gpu-layer {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.will-change-transform {
+  will-change: transform, opacity;
+}
+
+/* === STAGGER DELAY SYSTEM === */
+.stagger-1  { animation-delay: calc(var(--stagger-base, 60ms) * 1) !important; }
+.stagger-2  { animation-delay: calc(var(--stagger-base, 60ms) * 2) !important; }
+.stagger-3  { animation-delay: calc(var(--stagger-base, 60ms) * 3) !important; }
+.stagger-4  { animation-delay: calc(var(--stagger-base, 60ms) * 4) !important; }
+.stagger-5  { animation-delay: calc(var(--stagger-base, 60ms) * 5) !important; }
+.stagger-6  { animation-delay: calc(var(--stagger-base, 60ms) * 6) !important; }
+.stagger-7  { animation-delay: calc(var(--stagger-base, 60ms) * 7) !important; }
+.stagger-8  { animation-delay: calc(var(--stagger-base, 60ms) * 8) !important; }
+.stagger-9  { animation-delay: calc(var(--stagger-base, 60ms) * 9) !important; }
+.stagger-10 { animation-delay: calc(var(--stagger-base, 60ms) * 10) !important; }
+.stagger-11 { animation-delay: calc(var(--stagger-base, 60ms) * 11) !important; }
+.stagger-12 { animation-delay: calc(var(--stagger-base, 60ms) * 12) !important; }
+
+/* === KEYFRAME ANIMATIONS === */
+
+/* Spring In — Element enters with spring overshoot */
+@keyframes spring-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0) scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: translate3d(0, -4px, 0) scale(1.02);
+  }
+  75% {
+    transform: translate3d(0, 2px, 0) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Spring Down — Header entrance bouncing from top */
+@keyframes spring-down {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -20px, 0) scale(0.96);
+  }
+  60% {
+    opacity: 1;
+    transform: translate3d(0, 3px, 0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Elastic Pop — Bouncy scale entrance */
+@keyframes elastic-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  65% {
+    transform: scale(0.96);
+  }
+  85% {
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Scale Bounce — Subtle pop for small elements */
+@keyframes scale-bounce {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  75% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Morph Blob — Background blob slow morphing drift */
+@keyframes morph-blob-1 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  }
+  25% {
+    transform: translate3d(5%, 3%, 0) scale(1.05) rotate(3deg);
+    border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%;
+  }
+  50% {
+    transform: translate3d(-3%, 6%, 0) scale(0.97) rotate(-2deg);
+    border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%;
+  }
+  75% {
+    transform: translate3d(4%, -2%, 0) scale(1.03) rotate(1deg);
+    border-radius: 30% 60% 40% 70% / 50% 40% 60% 50%;
+  }
+}
+
+@keyframes morph-blob-2 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%;
+  }
+  33% {
+    transform: translate3d(-4%, 5%, 0) scale(1.04) rotate(-3deg);
+    border-radius: 40% 60% 70% 30% / 60% 40% 50% 60%;
+  }
+  66% {
+    transform: translate3d(3%, -4%, 0) scale(0.96) rotate(2deg);
+    border-radius: 50% 30% 60% 40% / 40% 60% 30% 70%;
+  }
+}
+
+@keyframes morph-blob-3 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%;
+  }
+  50% {
+    transform: translate3d(-5%, -3%, 0) scale(1.06);
+    border-radius: 40% 50% 60% 50% / 50% 60% 40% 60%;
+  }
+}
+
+/* Shimmer Sweep — Glossy light sweep across element */
+@keyframes shimmer-sweep {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* Glow Pulse — Soft pulsing glow shadow */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(244, 63, 94, 0.15), 0 0 60px rgba(244, 63, 94, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(244, 63, 94, 0.3), 0 0 80px rgba(244, 63, 94, 0.1);
+  }
+}
+
+/* Ripple Expand — Concentric ring expanding outward */
+@keyframes ripple-expand {
+  0% {
+    transform: scale(0.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Tilt In — Card entrance with slight 3D tilt */
+@keyframes tilt-in {
+  0% {
+    opacity: 0;
+    transform: perspective(600px) rotateX(8deg) translate3d(0, 30px, -20px);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(600px) rotateX(0deg) translate3d(0, 0, 0);
+  }
+}
+
+/* Drift Float — Ambient floating particles */
+@keyframes drift-float {
+  0% {
+    transform: translate3d(0, 100vh, 0) rotate(0deg) scale(var(--particle-scale, 1));
+    opacity: 0;
+  }
+  8% {
+    opacity: var(--particle-opacity, 0.6);
+  }
+  70% {
+    opacity: var(--particle-opacity, 0.6);
+  }
+  100% {
+    transform: translate3d(var(--drift-x, 20px), -20vh, 0) rotate(var(--drift-rotate, 360deg)) scale(var(--particle-scale, 1));
+    opacity: 0;
+  }
+}
+
+/* Breathe Glow — Slow pulsing scale for ambient elements */
+@keyframes breathe-glow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+/* Number Roll — Counting number flip in */
+@keyframes number-roll {
+  0% {
+    transform: translate3d(0, 100%, 0);
+    opacity: 0;
+  }
+  60% {
+    transform: translate3d(0, -5%, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+/* Wiggle Spring — Springy wiggle for attention */
+@keyframes wiggle-spring {
+  0% { transform: rotate(0deg); }
+  20% { transform: rotate(-6deg); }
+  40% { transform: rotate(5deg); }
+  60% { transform: rotate(-3deg); }
+  80% { transform: rotate(2deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* Slide Fade In/Out — Page transitions */
+@keyframes slide-fade-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(30px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slide-fade-exit {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-20px, 0, 0);
+  }
+}
+
+@keyframes slide-fade-enter-back {
+  0% {
+    opacity: 0;
+    transform: translate3d(-30px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Modal Entrance */
+@keyframes modal-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.88) translate3d(0, 10px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+}
+
+@keyframes backdrop-enter {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+  }
+}
+
+/* Magnetic Hover — Subtle attracting pull */
+@keyframes magnetic-pull {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -3px, 0);
+  }
+}
+
+/* Confetti Burst — Celebration effect */
+@keyframes confetti-fall {
+  0% {
+    transform: translate3d(var(--confetti-x, 0), -20px, 0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--confetti-x, 0), 100vh, 0) rotate(var(--confetti-rotate, 720deg));
+    opacity: 0;
+  }
+}
+
+/* Spin Elastic — Enhanced wheel spin */
+@keyframes spin-elastic {
+  0% { transform: rotate(var(--spin-start, 0deg)); }
+  80% { transform: rotate(var(--spin-end, 1800deg)); }
+  90% { transform: rotate(calc(var(--spin-end, 1800deg) + 3deg)); }
+  95% { transform: rotate(calc(var(--spin-end, 1800deg) - 1.5deg)); }
+  100% { transform: rotate(var(--spin-end, 1800deg)); }
+}
+
+/* Parallax Drift — Background depth movement */
+@keyframes parallax-drift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(2%, 1%, 0);
+  }
+  50% {
+    transform: translate3d(-1%, 3%, 0);
+  }
+  75% {
+    transform: translate3d(-2%, -1%, 0);
+  }
+}
+
+/* Icon Spring — Nav icon interaction */
+@keyframes icon-spring {
+  0% { transform: scale(1) translateY(0); }
+  30% { transform: scale(0.8) translateY(2px); }
+  60% { transform: scale(1.15) translateY(-3px); }
+  80% { transform: scale(0.97) translateY(0); }
+  100% { transform: scale(1.1) translateY(-2px); }
+}
+
+/* Nav Dot Pop — Active nav indicator */
+@keyframes dot-spring {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.8); opacity: 1; }
+  75% { transform: scale(0.7); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* === ANIMATION UTILITY CLASSES === */
+.animate-spring-in {
+  animation: spring-in 0.6s var(--spring-smooth) both;
+}
+
+.animate-spring-down {
+  animation: spring-down 0.5s var(--spring-smooth) both;
+}
+
+.animate-elastic-pop {
+  animation: elastic-pop 0.7s var(--spring-bounce) both;
+}
+
+.animate-scale-bounce {
+  animation: scale-bounce 0.5s var(--spring-bounce) both;
+}
+
+.animate-tilt-in {
+  animation: tilt-in 0.6s var(--ease-out-expo) both;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    110deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 80%
+  );
+  background-size: 300% 100%;
+  animation: shimmer-sweep 3s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.animate-breathe-glow {
+  animation: breathe-glow 4s ease-in-out infinite;
+}
+
+.animate-number-roll {
+  animation: number-roll 0.8s var(--spring-smooth) both;
+}
+
+.animate-wiggle-spring {
+  animation: wiggle-spring 0.5s var(--spring-bounce);
+}
+
+.animate-modal-enter {
+  animation: modal-enter 0.4s var(--spring-smooth) both;
+}
+
+.animate-backdrop-enter {
+  animation: backdrop-enter 0.3s ease-out both;
+}
+
+.animate-icon-spring {
+  animation: icon-spring 0.5s var(--spring-bounce) both;
+}
+
+.animate-dot-spring {
+  animation: dot-spring 0.4s var(--spring-bounce) both;
+}
+
+.animate-magnetic-hover {
+  animation: magnetic-pull 2s ease-in-out infinite;
+}
+
+/* Morph Blob Animations */
+.animate-morph-1 {
+  animation: morph-blob-1 20s ease-in-out infinite;
+}
+
+.animate-morph-2 {
+  animation: morph-blob-2 25s ease-in-out infinite;
+}
+
+.animate-morph-3 {
+  animation: morph-blob-3 18s ease-in-out infinite;
+}
+
+/* Drift Float for particles */
+.animate-drift {
+  animation: drift-float var(--drift-duration, 8s) linear infinite;
+}
+
+/* Page transition classes */
+.page-enter {
+  animation: slide-fade-enter 0.35s var(--ease-out-expo) both;
+}
+
+.page-enter-back {
+  animation: slide-fade-enter-back 0.35s var(--ease-out-expo) both;
+}
+
+.page-exit {
+  animation: slide-fade-exit 0.25s ease-in both;
+}
+
+/* Ripple effect container */
+.ripple-ring {
+  animation: ripple-expand 0.8s var(--ease-out-expo) both;
+}
+
+/* === INTERACTIVE SPRING CLASSES === */
+
+/* Universal spring press for buttons */
+.spring-press {
+  transition: transform 0.35s var(--spring-bounce);
+}
+.spring-press:active {
+  transform: scale(0.92) !important;
+  transition: transform 0.1s ease-out;
+}
+
+/* Card hover with lift */
+.spring-hover {
+  transition: transform 0.4s var(--spring-smooth), box-shadow 0.4s ease;
+}
+.spring-hover:hover {
+  transform: translate3d(0, -3px, 0) scale(1.015);
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.12);
+}
+.spring-hover:active {
+  transform: scale(0.97);
+  transition: transform 0.12s ease-out;
+}
+
+/* Magnetic card — subtle tilt on hover */
+.magnetic-card {
+  transition: transform 0.5s var(--spring-smooth);
+}
+.magnetic-card:hover {
+  transform: perspective(800px) rotateX(-1deg) rotateY(1deg) translate3d(0, -2px, 0);
+}
+
+/* Active nav indicator morphing */
+.nav-pill-morph {
+  transition: all 0.5s var(--spring-bounce);
+}
+
+/* Tab pill glow trail */
+.tab-pill-glow {
+  transition: all 0.4s var(--spring-bounce);
+  box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+}
+.tab-pill-glow.active {
+  box-shadow: 0 0 20px 2px rgba(244, 63, 94, 0.15);
+}
+
+/* === SCROLL SMOOTHNESS === */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* === ACCESSIBILITY: REDUCED MOTION === */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .animate-drift,
+  .animate-morph-1,
+  .animate-morph-2,
+  .animate-morph-3,
+  .animate-shimmer,
+  .animate-glow-pulse,
+  .animate-breathe-glow,
+  .animate-magnetic-hover {
+    animation: none !important;
+  }
+}
