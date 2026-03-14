@@ -81,7 +81,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
                     layoutId="active-nav-pill"
                     className="absolute inset-y-1.5 inset-x-0 bg-gradient-to-b from-gray-50 to-gray-100/80 rounded-full -z-10"
                     style={{ boxShadow: '0 2px 12px -2px rgba(244, 63, 94, 0.12), inset 0 1px 0 rgba(255,255,255,0.8)' }}
-                    transition={{ type: "spring", stiffness: 300, damping: 25, mass: 0.8 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 25, mass: 0.8 }}
                   />
                 )}
 
@@ -92,7 +92,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       exit={{ scale: 0, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 25 }}
                       className="absolute bottom-1 w-1 h-1 bg-tulika-500 rounded-full"
                     />
                   )}

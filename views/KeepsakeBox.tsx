@@ -10,90 +10,97 @@ interface KeepsakeBoxProps {
     setView: (view: ViewState) => void;
 }
 
-const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, onHide: () => void, onClick: () => void }> = ({ keepsake, isMine, partnerName, onHide, onClick }) => {
+const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick }) => {
     const { src: mediaSrc } = useTulikaMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video);
 
     const formattedDate = new Date(keepsake.date).toLocaleDateString(undefined, {
-        year: 'numeric', month: 'long', day: 'numeric'
+        year: 'numeric', month: 'short', day: 'numeric'
     });
 
+    const displaySender = keepsake.senderId === 'Tulika' ? 'Tulika' : (keepsake.senderId === 'Ishan' ? 'Ishan' : (isMine ? 'Me' : partnerName));
+
     return (
-        <motion.div
-            layoutId={`keepsake-${keepsake.id}`}
-            onClick={onClick}
-            className="bg-[#fdfbf7] p-6 rounded-[2rem] shadow-sm border border-stone-100 mb-4 relative overflow-hidden group cursor-pointer animate-spring-in spring-hover magnetic-card"
-        >
-            {/* Paper Texture Overlay */}
-            <div className="absolute inset-0 opacity-40 pointer-events-none mix-blend-multiply"
-                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d6d3d1' fill-opacity='0.4' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='1'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E")` }}>
-            </div>
-
-            {/* Content */}
-            <div className="relative z-10">
-                <div className="flex justify-between items-start mb-3">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">
-                        {isMine ? 'You sent this' : `${partnerName} sent this`}
-                    </span>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onHide(); }}
-                        className="text-stone-300 hover:text-stone-500 transition-colors p-2 -m-2"
-                    >
-                        <EyeOff size={14} />
-                    </button>
-                </div>
-
-                {mediaSrc && (keepsake.type === 'photo' || keepsake.type === 'memory') && (
-                    <div className="rounded-2xl overflow-hidden mb-4 shadow-inner border-[6px] border-white bg-stone-100 rotate-1 transform transition-all duration-500 group-hover:rotate-0 group-hover:scale-[1.02]">
-                        <img src={mediaSrc} className="w-full h-auto" alt="Keepsake" />
+        <div className={`flex w-full mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}>
+            <motion.div
+                layoutId={`keepsake-${keepsake.id}`}
+                onClick={onClick}
+                className={`max-w-[85%] p-5 rounded-[2rem] shadow-sm border mb-1 relative overflow-hidden group cursor-pointer animate-spring-in ${
+                    isMine 
+                        ? 'bg-white border-stone-200 rounded-tr-none shadow-stone-200/50' 
+                        : 'bg-tulika-50/50 border-tulika-100 rounded-tl-none shadow-tulika-100/30'
+                }`}
+            >
+                {/* Content */}
+                <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-2">
+                        <span className={`text-[9px] font-bold uppercase tracking-widest ${isMine ? 'text-stone-400' : 'text-tulika-400'}`}>
+                            From {displaySender}
+                        </span>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onHide(); }}
+                            className="text-stone-300 hover:text-stone-500 transition-colors p-2 -m-2 opacity-0 group-hover:opacity-100"
+                        >
+                            <EyeOff size={12} />
+                        </button>
                     </div>
-                )}
 
-                {mediaSrc && keepsake.type === 'video' && (
-                    <div className="rounded-2xl overflow-hidden mb-4 shadow-inner border-[6px] border-white bg-black rotate-1 transform transition-all duration-500 group-hover:rotate-0 group-hover:scale-[1.02]">
-                        <video src={mediaSrc} controls className="w-full h-auto" />
-                    </div>
-                )}
-
-                {keepsake.title && (
-                    <h3 className="font-serif font-bold text-lg text-stone-800 mb-2 leading-tight">
-                        {keepsake.title}
-                    </h3>
-                )}
-
-                {keepsake.content && (
-                    <p className="font-serif text-stone-600 leading-relaxed whitespace-pre-wrap text-sm">
-                        {keepsake.content}
-                    </p>
-                )}
-
-                {keepsake.type === 'song' && keepsake.spotifyLink && (
-                    <div className="mt-4 p-3 bg-white rounded-xl border border-stone-100 flex items-center gap-3">
-                        <div className="bg-green-100 p-2 rounded-full text-green-600">
-                            <Music size={18} />
+                    {mediaSrc && (keepsake.type === 'photo' || keepsake.type === 'memory') && (
+                        <div className="rounded-xl overflow-hidden mb-3 shadow-inner border-4 border-white bg-stone-100 transform transition-all duration-500 group-hover:scale-[1.01]">
+                            <img src={mediaSrc} className="w-full h-auto" alt="Keepsake" />
                         </div>
-                        <div className="overflow-hidden">
-                            <p className="text-xs font-bold text-stone-700 truncate">Song Link</p>
-                            <a href={keepsake.spotifyLink} target="_blank" rel="noreferrer" className="text-[10px] text-tulika-500 underline truncate block">
-                                Open in Spotify
-                            </a>
-                        </div>
-                    </div>
-                )}
+                    )}
 
-                <div className="mt-6 pt-4 border-t border-stone-200/50 flex justify-between items-center">
-                    <span className="font-serif italic text-xs text-stone-400">
-                        {formattedDate}
-                    </span>
-                    <Gift size={16} className="text-stone-300" />
+                    {mediaSrc && keepsake.type === 'video' && (
+                        <div className="rounded-xl overflow-hidden mb-3 shadow-inner border-4 border-white bg-black transform transition-all duration-500 group-hover:scale-[1.01]">
+                            <div className="relative flex items-center justify-center">
+                                <video src={mediaSrc} className="w-full h-auto" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                    <PlayCircle size={32} className="text-white opacity-80" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {keepsake.title && (
+                        <h3 className={`font-serif font-bold text-base mb-1.5 leading-tight ${isMine ? 'text-stone-800' : 'text-tulika-900'}`}>
+                            {keepsake.title}
+                        </h3>
+                    )}
+
+                    {keepsake.content && (
+                        <p className={`font-serif leading-relaxed whitespace-pre-wrap text-sm ${isMine ? 'text-stone-600' : 'text-stone-700'}`}>
+                            {keepsake.content}
+                        </p>
+                    )}
+
+                    {keepsake.type === 'song' && keepsake.spotifyLink && (
+                        <div className="mt-3 p-3 bg-white/50 rounded-xl border border-stone-100 flex items-center gap-3">
+                            <div className="bg-green-100 p-2 rounded-full text-green-600">
+                                <Music size={14} />
+                            </div>
+                            <div className="overflow-hidden">
+                                <a href={keepsake.spotifyLink} target="_blank" rel="noreferrer" className="text-[10px] text-tulika-500 underline truncate block font-bold">
+                                    Open Spotify
+                                </a>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mt-4 pt-3 border-t border-black/5 flex justify-between items-center opacity-40">
+                        <span className="font-serif italic text-[10px]">
+                            {formattedDate}
+                        </span>
+                        <Gift size={12} />
+                    </div>
                 </div>
-            </div>
-        </motion.div>
+            </motion.div>
+        </div>
     );
 };
 
 export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const [keepsakes, setKeepsakes] = useState<Keepsake[]>([]);
-    const [activeTab, setActiveTab] = useState<'received' | 'sent'>('received');
+    const [activeTab, setActiveTab] = useState<'tulika' | 'ishan'>('tulika');
     const [selectedKeepsake, setSelectedKeepsake] = useState<Keepsake | null>(null);
     const [isComposing, setIsComposing] = useState(false);
     const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Me', partnerName: 'Partner', anniversaryDate: '' });
@@ -122,10 +129,30 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     }, []);
 
     const myId = StorageService.getDeviceId();
+    const isMeTulika = profile.myName === 'Tulika';
 
     const filteredKeepsakes = keepsakes
         .filter(k => !k.isHidden)
-        .filter(k => activeTab === 'sent' ? k.senderId === myId : k.senderId !== myId)
+        .filter(k => {
+            const isSentByTulika = k.senderId === 'Tulika';
+            const isSentByIshan = k.senderId === 'Ishan';
+            
+            // Fallback for legacy items without name-based senderId
+            const isMe = k.senderId === myId;
+            const isMeTulika = profile.myName === 'Tulika';
+            
+            if (activeTab === 'tulika') {
+                if (isSentByTulika) return true;
+                if (isSentByIshan) return false;
+                // Legacy
+                return isMeTulika ? isMe : !isMe;
+            } else {
+                if (isSentByIshan) return true;
+                if (isSentByTulika) return false;
+                // Legacy
+                return isMeTulika ? !isMe : isMe;
+            }
+        })
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const handleHide = (id: string) => {
@@ -195,7 +222,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const handleSend = async () => {
         const newKeepsake: Keepsake = {
             id: Date.now().toString(),
-            senderId: myId,
+            senderId: profile.myName || myId,
             type,
             title,
             content,
@@ -231,22 +258,23 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                     <h2 className="font-serif font-bold text-2xl text-gray-800">The Keepsake Box</h2>
                     <div className="w-10"></div>
                 </div>
-                <div className="flex bg-gray-100 p-1 rounded-full relative">
+                
+                <div className="flex bg-gray-100 p-1 rounded-full relative mb-2">
                     <div
                         className="absolute top-1 bottom-1 w-[48%] bg-white rounded-full shadow-sm transition-all duration-300 ease-spring"
-                        style={{ left: activeTab === 'received' ? '1%' : '51%' }}
+                        style={{ left: activeTab === 'tulika' ? '1%' : '51%' }}
                     ></div>
                     <button
-                        onClick={() => setActiveTab('received')}
-                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider relative z-10 transition-colors ${activeTab === 'received' ? 'text-gray-800' : 'text-gray-400'}`}
+                        onClick={() => setActiveTab('tulika')}
+                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider relative z-10 transition-colors ${activeTab === 'tulika' ? 'text-gray-800' : 'text-gray-400'}`}
                     >
-                        From {profile.partnerName}
+                        From Tulika
                     </button>
                     <button
-                        onClick={() => setActiveTab('sent')}
-                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider relative z-10 transition-colors ${activeTab === 'sent' ? 'text-gray-800' : 'text-gray-400'}`}
+                        onClick={() => setActiveTab('ishan')}
+                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider relative z-10 transition-colors ${activeTab === 'ishan' ? 'text-gray-800' : 'text-gray-400'}`}
                     >
-                        From Me
+                        From Ishan
                     </button>
                 </div>
             </div>
@@ -257,8 +285,9 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                         <KeepsakeCard
                             key={k.id}
                             keepsake={k}
-                            isMine={activeTab === 'sent'}
+                            isMine={k.senderId === myId || k.senderId === profile.myName}
                             partnerName={profile.partnerName}
+                            myName={profile.myName}
                             onHide={() => handleHide(k.id)}
                             onClick={() => setSelectedKeepsake(k)}
                         />

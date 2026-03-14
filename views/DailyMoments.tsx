@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, Clock, Plus, Trash2, X, Sparkles, Loader2, RefreshCw, ArrowLeft, Video, PlayCircle } from 'lucide-react';
+import { Camera, Clock, Plus, Trash2, X, Sparkles, Loader2, RefreshCw, ArrowLeft, Video, PlayCircle, Send, Reply, MessageCircle, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ViewState, DailyPhoto } from '../types';
+import { ViewState, DailyPhoto, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useTulikaMedia } from '../hooks/useTulikaImage';
-import { GestureModal } from '../components/GestureModal';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
 }
 
+// ─── Thumbnail Card (with blurred bg + object-contain for zero cropping) ─────
 const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo, onClick }) => {
     const isVideo = !!photo.video || !!photo.videoId;
-    // OPTIMIZATION: Load thumbnail (image/imageId) for list view, not video
     const mediaId = isVideo ? photo.imageId : (photo.imageId || photo.videoId);
     const mediaData = isVideo ? photo.image : (photo.image || photo.video);
 
@@ -51,33 +50,47 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
         <motion.div
             layoutId={`photo-${photo.id}`}
             onClick={onClick}
-            className="relative group rounded-3xl overflow-hidden shadow-md aspect-[3/4] bg-gray-100 cursor-pointer spring-press transition-transform"
+            className="relative group rounded-3xl overflow-hidden shadow-md aspect-[3/4] cursor-pointer spring-press transition-transform"
+            style={{ background: '#1a1a1a' }}
         >
             {isLoading ? (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-tulika-300">
+                <div className="w-full h-full flex flex-col items-center justify-center text-tulika-300">
                     <Loader2 className="animate-spin mb-2" size={24} />
                     <span className="text-[10px] font-bold uppercase tracking-widest">Opening...</span>
                 </div>
             ) : mediaUrl ? (
-                isVideo ? (
-                    <div className="relative w-full h-full bg-black">
-                        <img src={mediaUrl} className="w-full h-full object-cover opacity-80" alt="Video thumbnail" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <PlayCircle size={32} className="text-white opacity-80" fill="currentColor" />
-                        </div>
-                    </div>
-                ) : (
-                    <img src={mediaUrl} className="w-full h-full object-cover" alt="Daily moment" />
-                )
+                <div className="relative w-full h-full">
+                    {/* Blurred background layer — prevents black bars */}
+                    <img
+                        src={mediaUrl}
+                        className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-60"
+                        alt=""
+                        aria-hidden="true"
+                    />
+                    {/* Sharp foreground — using object-cover for clean grid thumbnails */}
+                    {isVideo ? (
+                        <>
+                            <img src={mediaUrl} className="relative w-full h-full object-cover z-[1]" alt="Video thumbnail" />
+                            <div className="absolute inset-0 flex items-center justify-center z-[2]">
+                                <div className="bg-white/30 backdrop-blur-lg p-3 rounded-full border border-white/40 shadow-2xl group-hover:scale-110 transition-transform">
+                                    <PlayCircle size={32} className="text-white drop-shadow-lg" fill="currentColor" />
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <img src={mediaUrl} className="relative w-full h-full object-cover z-[1]" alt="Daily moment" />
+                    )}
+
+                </div>
             ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-400 p-4 text-center">
-                    <RefreshCw size={24} className="mb-2 opacity-50" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest leading-tight">Unavailable</span>
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center bg-gradient-to-br from-gray-800 to-gray-900">
+                    <Camera size={28} className="mb-3 opacity-30" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Media Unavailable</span>
                 </div>
             )}
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex flex-col justify-end p-4 pointer-events-none z-10">
-                <p className="text-white font-medium text-sm mb-1 line-clamp-2">{photo.caption}</p>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 flex flex-col justify-end p-4 pointer-events-none z-10">
+                <p className="text-white font-medium text-sm mb-1 line-clamp-2 drop-shadow-md">{photo.caption}</p>
                 <div className="flex items-center gap-1 text-[10px] text-white/90">
                     <Clock size={10} />
                     <span className="font-bold uppercase tracking-widest">{timeLeft}</span>
@@ -93,6 +106,303 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
         </motion.div>
     );
 };
+
+// ─── Comment Bubble ──────────────────────────────────────────────────────────
+const CommentBubble: React.FC<{
+    comment: Comment;
+    isReply?: boolean;
+    onReply: (comment: Comment) => void;
+    onDelete: (id: string) => void;
+    myDeviceId: string;
+}> = ({ comment, isReply, onReply, onDelete, myDeviceId }) => {
+    const isMine = comment.senderId === myDeviceId;
+    const time = new Date(comment.createdAt);
+    const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            className={`flex gap-2.5 ${isReply ? 'ml-10' : ''}`}
+        >
+            {/* Avatar */}
+            <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold ${isMine ? 'bg-tulika-100 text-tulika-600' : 'bg-blue-100 text-blue-600'}`}>
+                {comment.senderName.charAt(0).toUpperCase()}
+            </div>
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-50 border border-tulika-100' : 'bg-gray-50 border border-gray-100'}`}>
+                    <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[11px] font-bold text-gray-700">{comment.senderName}</span>
+                        <span className="text-[9px] text-gray-400">{timeStr}</span>
+                    </div>
+                    <p className="text-[13px] text-gray-800 leading-snug break-words">{comment.text}</p>
+                </div>
+                <div className="flex items-center gap-4 mt-1 ml-1">
+                    <button
+                        onClick={() => onReply(comment)}
+                        className="text-[10px] font-bold text-gray-400 uppercase tracking-wider hover:text-tulika-500 transition-colors flex items-center gap-1"
+                    >
+                        <Reply size={10} /> Reply
+                    </button>
+                    {isMine && (
+                        <button
+                            onClick={() => onDelete(comment.id)}
+                            className="text-[10px] font-bold text-gray-300 uppercase tracking-wider hover:text-red-400 transition-colors"
+                        >
+                            Delete
+                        </button>
+                    )}
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+// ─── Full-Screen Post Viewer with Comments ───────────────────────────────────
+const PostViewer: React.FC<{
+    photo: DailyPhoto;
+    onClose: () => void;
+}> = ({ photo, onClose }) => {
+    const isVideo = !!photo.video || !!photo.videoId;
+    const { src: mediaSrc, isLoading: mediaLoading } = useTulikaMedia(
+        isVideo ? (photo.videoId || photo.imageId) : photo.imageId,
+        isVideo ? (photo.video || photo.image) : photo.image
+    );
+    const [comments, setComments] = useState<Comment[]>([]);
+    const [commentText, setCommentText] = useState('');
+    const [replyTo, setReplyTo] = useState<Comment | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const commentInputRef = useRef<HTMLInputElement>(null);
+    const commentsEndRef = useRef<HTMLDivElement>(null);
+    const myDeviceId = StorageService.getDeviceId();
+    const profile = StorageService.getCoupleProfile();
+
+    // Load comments
+    useEffect(() => {
+        const loadComments = () => {
+            setComments(StorageService.getComments(photo.id));
+        };
+        loadComments();
+        storageEventTarget.addEventListener('storage-update', loadComments);
+        return () => storageEventTarget.removeEventListener('storage-update', loadComments);
+    }, [photo.id]);
+
+    // Auto-scroll to new comments
+    useEffect(() => {
+        commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [comments.length]);
+
+    const handleSubmitComment = async () => {
+        const text = commentText.trim();
+        if (!text || isSubmitting) return;
+        setIsSubmitting(true);
+
+        const newComment: Comment = {
+            id: Date.now().toString() + Math.random().toString(36).substring(2, 5),
+            postId: photo.id,
+            senderId: myDeviceId,
+            senderName: profile.myName,
+            text,
+            createdAt: new Date().toISOString(),
+            parentId: replyTo?.id
+        };
+
+        await StorageService.saveComment(newComment);
+        setCommentText('');
+        setReplyTo(null);
+        setIsSubmitting(false);
+    };
+
+    const handleReply = (comment: Comment) => {
+        setReplyTo(comment);
+        commentInputRef.current?.focus();
+    };
+
+    const handleDeleteComment = async (id: string) => {
+        await StorageService.deleteComment(id);
+    };
+
+    // Organize comments into threads
+    const topLevelComments = comments.filter(c => !c.parentId);
+    const replies = comments.filter(c => !!c.parentId);
+
+    const postedAt = new Date(photo.createdAt);
+    const timeStr = postedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = postedAt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+    // Calculate time left
+    const now = new Date();
+    const expires = new Date(photo.expiresAt);
+    const diff = expires.getTime() - now.getTime();
+    const hoursLeft = Math.max(0, Math.floor(diff / (1000 * 60 * 60)));
+    const minsLeft = Math.max(0, Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)));
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] bg-white flex flex-col"
+        >
+            {/* ── Header ── */}
+            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                    <button onClick={onClose} className="p-1.5 text-gray-500 hover:text-gray-700 transition-colors">
+                        <ArrowLeft size={22} />
+                    </button>
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-tulika-400 to-tulika-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                            {photo.senderId === myDeviceId ? profile.myName.charAt(0) : profile.partnerName.charAt(0)}
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-gray-800 leading-tight">
+                                {photo.senderId === myDeviceId ? profile.myName : profile.partnerName}
+                            </p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                {dateStr} · {timeStr}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-tulika-500 bg-tulika-50 px-2.5 py-1 rounded-full">
+                        <Clock size={10} className="inline mr-1" />
+                        {hoursLeft}h {minsLeft}m
+                    </span>
+                </div>
+            </div>
+
+            {/* ── Media ── */}
+            <div className="relative bg-black flex items-center justify-center flex-shrink-0" style={{ maxHeight: '50vh', minHeight: '200px' }}>
+                {mediaLoading ? (
+                    <div className="flex items-center justify-center py-20">
+                        <Loader2 className="animate-spin text-white" size={28} />
+                    </div>
+                ) : mediaSrc ? (
+                    <>
+                        {/* Blurred background */}
+                        <img
+                            src={mediaSrc}
+                            className="absolute inset-0 w-full h-full object-cover blur-3xl scale-110 opacity-40"
+                            alt=""
+                            aria-hidden="true"
+                        />
+                        {isVideo ? (
+                            <video
+                                src={mediaSrc}
+                                className="relative z-[1] max-w-full max-h-[50vh] object-contain"
+                                controls
+                                autoPlay
+                                playsInline
+                            />
+                        ) : (
+                            <img
+                                src={mediaSrc}
+                                className="relative z-[1] max-w-full max-h-[50vh] object-contain"
+                                alt="Moment"
+                            />
+                        )}
+                    </>
+                ) : (
+                    <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                        <Camera size={32} className="mb-2 opacity-30" />
+                        <span className="text-xs font-bold uppercase tracking-widest opacity-40">Media Unavailable</span>
+                    </div>
+                )}
+            </div>
+
+            {/* ── Caption ── */}
+            {photo.caption && (
+                <div className="px-5 py-4 bg-white border-b border-gray-50">
+                    <p className="text-[15px] text-gray-800 leading-relaxed font-medium">{photo.caption}</p>
+                </div>
+            )}
+
+            {/* ── Comments Section ── */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 bg-gray-50/50">
+                {comments.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 opacity-40">
+                        <MessageCircle size={28} className="mb-2 text-gray-400" />
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No comments yet</p>
+                        <p className="text-[11px] text-gray-300 mt-1">Be the first to react!</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <AnimatePresence>
+                            {topLevelComments.map(comment => (
+                                <React.Fragment key={comment.id}>
+                                    <CommentBubble
+                                        comment={comment}
+                                        onReply={handleReply}
+                                        onDelete={handleDeleteComment}
+                                        myDeviceId={myDeviceId}
+                                    />
+                                    {/* Threaded Replies */}
+                                    {replies
+                                        .filter(r => r.parentId === comment.id)
+                                        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                                        .map(reply => (
+                                            <CommentBubble
+                                                key={reply.id}
+                                                comment={reply}
+                                                isReply
+                                                onReply={handleReply}
+                                                onDelete={handleDeleteComment}
+                                                myDeviceId={myDeviceId}
+                                            />
+                                        ))
+                                    }
+                                </React.Fragment>
+                            ))}
+                        </AnimatePresence>
+                        <div ref={commentsEndRef} />
+                    </div>
+                )}
+            </div>
+
+            {/* ── Comment Input Bar ── */}
+            <div className="flex-shrink-0 bg-white border-t border-gray-100 px-4 py-3 safe-area-bottom">
+                {replyTo && (
+                    <div className="flex items-center justify-between mb-2 px-1">
+                        <span className="text-[11px] text-tulika-500 font-bold">
+                            <Reply size={10} className="inline mr-1" />
+                            Replying to {replyTo.senderName}
+                        </span>
+                        <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-gray-600">
+                            <X size={14} />
+                        </button>
+                    </div>
+                )}
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-tulika-400 to-tulika-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                        {profile.myName.charAt(0)}
+                    </div>
+                    <input
+                        ref={commentInputRef}
+                        type="text"
+                        value={commentText}
+                        onChange={e => setCommentText(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSubmitComment(); }}
+                        placeholder={replyTo ? `Reply to ${replyTo.senderName}...` : "Add a comment..."}
+                        className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-tulika-200 focus:bg-white transition-all placeholder:text-gray-400"
+                    />
+                    <button
+                        onClick={handleSubmitComment}
+                        disabled={!commentText.trim() || isSubmitting}
+                        className="p-2.5 bg-tulika-500 text-white rounded-full disabled:opacity-30 disabled:scale-90 transition-all spring-press shadow-sm"
+                    >
+                        <Send size={16} />
+                    </button>
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
 
 export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     const [photos, setPhotos] = useState<DailyPhoto[]>([]);
@@ -140,10 +450,10 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                     } else {
                         if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
                     }
-                    canvas.width = width;
-                    canvas.height = height;
+                    canvas.width = Math.round(width);
+                    canvas.height = Math.round(height);
                     const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
+                    ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
                     resolve(canvas.toDataURL('image/jpeg', 0.6));
                 };
                 img.onerror = () => reject(new Error("Image load failed"));
@@ -152,6 +462,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         });
     };
 
+    // FIX: Calculate target dimensions FIRST, then set canvas only once
     const generateVideoThumbnail = (file: File): Promise<string> => {
         return new Promise((resolve) => {
             const video = document.createElement('video');
@@ -160,19 +471,20 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                 video.currentTime = 0.5;
             };
             video.onseeked = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                // Resize thumb
                 const MAX_SIZE = 600;
-                if (canvas.width > MAX_SIZE || canvas.height > MAX_SIZE) {
-                    const ratio = Math.min(MAX_SIZE / canvas.width, MAX_SIZE / canvas.height);
-                    canvas.width *= ratio;
-                    canvas.height *= ratio;
+                let w = video.videoWidth;
+                let h = video.videoHeight;
+                if (w > MAX_SIZE || h > MAX_SIZE) {
+                    const ratio = Math.min(MAX_SIZE / w, MAX_SIZE / h);
+                    w = Math.round(w * ratio);
+                    h = Math.round(h * ratio);
                 }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
                 const ctx = canvas.getContext('2d');
-                ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.6));
+                ctx?.drawImage(video, 0, 0, w, h);
+                resolve(canvas.toDataURL('image/jpeg', 0.7));
                 URL.revokeObjectURL(video.src);
             };
             video.onerror = () => resolve('');
@@ -202,9 +514,8 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             }
 
             try {
-                // Generate Thumbnail
                 const thumb = await generateVideoThumbnail(file);
-                setNewImage(thumb); // We store thumb in 'image' field for list views
+                setNewImage(thumb);
             } catch (e) { console.error("Thumb error", e); }
 
             const reader = new FileReader();
@@ -306,11 +617,16 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                         </button>
                     </div>
                     <div className="flex-1 p-6 flex flex-col overflow-y-auto">
-                        <div className="aspect-[3/4] bg-gray-100 rounded-[2rem] overflow-hidden mb-6 shadow-xl relative flex items-center justify-center bg-black">
-                            {newImage && !newVideo && <img src={newImage} className="w-full h-full object-cover" alt="Preview" />}
+                        <div className="aspect-[3/4] rounded-[2rem] overflow-hidden mb-6 shadow-xl relative flex items-center justify-center bg-black">
+                            {newImage && !newVideo && (
+                                <>
+                                    <img src={newImage} className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" alt="" aria-hidden="true" />
+                                    <img src={newImage} className="relative w-full h-full object-contain z-[1]" alt="Preview" />
+                                </>
+                            )}
                             {newVideo && (
                                 <>
-                                    {newImage && <img src={newImage} className="absolute inset-0 w-full h-full object-cover opacity-50" />}
+                                    {newImage && <img src={newImage} className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-40" alt="" aria-hidden="true" />}
                                     <video src={newVideo} controls className="relative z-10 w-full h-full object-contain" />
                                 </>
                             )}
@@ -329,54 +645,15 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                 </div>
             )}
 
-            {/* View Modal with Physical Swipe-to-Dismiss */}
-            <GestureModal
-                isOpen={!!selectedPhoto}
-                onClose={() => setSelectedPhoto(null)}
-                layoutId={selectedPhoto ? `photo-${selectedPhoto.id}` : undefined}
-            >
+            {/* ── Full-Screen Post Viewer ── */}
+            <AnimatePresence>
                 {selectedPhoto && (
-                    <div className="w-full max-w-sm flex flex-col">
-                        <div className="p-6 flex justify-between items-center w-full">
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white backdrop-blur-md">
-                                    <Clock size={16} />
-                                </div>
-                                <span className="text-white text-xs font-bold uppercase tracking-widest drop-shadow-md">Expires in 24h</span>
-                            </div>
-                            <button onClick={() => setSelectedPhoto(null)} className="p-2 text-white bg-black/20 rounded-full backdrop-blur-md">
-                                <X size={24} />
-                            </button>
-                        </div>
-
-                        <div className="w-full aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl relative bg-black ring-1 ring-white/10">
-                            <DetailMedia photo={selectedPhoto} />
-                            <div className="absolute inset-x-0 bottom-0 p-8 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none">
-                                <p className="text-white text-xl font-medium leading-relaxed mb-1 drop-shadow-lg">
-                                    {selectedPhoto.caption}
-                                </p>
-                                <p className="text-white/70 text-[10px] font-bold uppercase tracking-[0.2em] drop-shadow-md">
-                                    Posted {new Date(selectedPhoto.createdAt).toLocaleTimeString()}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    <PostViewer
+                        photo={selectedPhoto}
+                        onClose={() => setSelectedPhoto(null)}
+                    />
                 )}
-            </GestureModal>
+            </AnimatePresence>
         </div>
     );
-};
-
-// Internal component for the detail view to leverage the hook
-const DetailMedia: React.FC<{ photo: DailyPhoto }> = ({ photo }) => {
-    // Only here do we load the videoID
-    const { src, isLoading } = useTulikaMedia(photo.videoId || photo.imageId, photo.video || photo.image);
-    const isVideo = !!photo.video || !!photo.videoId;
-
-    if (isLoading) return <div className="w-full h-full bg-gray-900 flex items-center justify-center"><Loader2 className="animate-spin text-white" /></div>;
-
-    if (isVideo) {
-        return <video src={src || ''} className="w-full h-full object-contain" controls autoPlay />;
-    }
-    return <img src={src || ''} className="w-full h-full object-cover" alt="Moment" />;
 };

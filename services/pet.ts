@@ -4,30 +4,35 @@ import { Memory, Note, PetStats, CoupleProfile } from "../types";
 
 export const PetAIService = {
   async generateDialogue(
-    stats: PetStats, 
-    profile: CoupleProfile, 
-    recentMemories: Memory[], 
+    stats: PetStats,
+    profile: CoupleProfile,
+    recentMemories: Memory[],
     recentNotes: Note[]
   ): Promise<{ text: string; isFlashback: boolean; memoryId?: string }> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
+    const apiKey = ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || ((process as any).env?.API_KEY as string) || "";
+    if (!apiKey) {
+      console.warn("No Gemini API key found. Using fallback dialogue.");
+      return { text: "I love you both! ❤️", isFlashback: false };
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
     // Logic for Feature 4: Memory Prompting
     // Look for a memory that is exactly N months/years old, or just a random old one
     const now = new Date();
     const oldMemories = recentMemories.filter(m => {
-        const ageInDays = Math.floor((now.getTime() - new Date(m.date).getTime()) / (1000 * 86400));
-        return ageInDays > 30; // Older than a month
+      const ageInDays = Math.floor((now.getTime() - new Date(m.date).getTime()) / (1000 * 86400));
+      return ageInDays > 30; // Older than a month
     });
 
-    const flashbackMemory = oldMemories.length > 0 && Math.random() > 0.7 
-        ? oldMemories[Math.floor(Math.random() * oldMemories.length)] 
-        : null;
+    const flashbackMemory = oldMemories.length > 0 && Math.random() > 0.7
+      ? oldMemories[Math.floor(Math.random() * oldMemories.length)]
+      : null;
 
     const lastMemory = recentMemories[0]?.text || "none";
     const lastNote = recentNotes[0]?.content || "none";
     const daysTogether = Math.floor((Date.now() - new Date(profile.anniversaryDate).getTime()) / (1000 * 86400));
-    
-    const prompt = flashbackMemory 
+
+    const prompt = flashbackMemory
       ? `
       You are ${stats.name}, the cute mascot for ${profile.myName} and ${profile.partnerName}.
       You just found an old memory in the vault from ${new Date(flashbackMemory.date).toLocaleDateString()}.
@@ -53,16 +58,14 @@ export const PetAIService = {
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: "gemini-1.5-flash",
         contents: prompt,
-        config: {
-          thinkingConfig: { thinkingBudget: 0 }
-        }
       });
-      return { 
-          text: response.text || "I love you both! ❤️", 
-          isFlashback: !!flashbackMemory,
-          memoryId: flashbackMemory?.id
+      const text = response.text;
+      return {
+        text: text || "I love you both! ❤️",
+        isFlashback: !!flashbackMemory,
+        memoryId: flashbackMemory?.id
       };
     } catch (e) {
       console.error("Pet AI Error:", e);

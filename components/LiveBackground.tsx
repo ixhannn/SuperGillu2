@@ -119,13 +119,19 @@ export const LiveBackground: React.FC = () => {
 
         const updateSize = () => {
             if (!containerRef.current) return;
-            const w = containerRef.current.clientWidth;
-            const h = containerRef.current.clientHeight;
+            // Use window dimensions to ensure we don't accidentally expand based on content
+            const w = window.innerWidth;
+            const h = window.innerHeight;
             renderer.setSize(w, h);
             uniforms.uResolution.value.set(w, h);
         };
 
         containerRef.current.appendChild(renderer.domElement);
+        renderer.domElement.style.position = 'absolute';
+        renderer.domElement.style.top = '0';
+        renderer.domElement.style.left = '0';
+        renderer.domElement.style.width = '100%';
+        renderer.domElement.style.height = '100%';
 
         // Uniforms for the shader
         const uniforms = {

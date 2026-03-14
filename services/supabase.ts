@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const HARDCODED_URL = 'https://zogdcuapmnbltdvqsrga.supabase.co'; 
-const HARDCODED_KEY = 'sb_publishable_KRRnxuRIWdlgHbn_g65dfQ_Mzzg5Vjl'; 
+const HARDCODED_URL = 'https://zogdcuapmnbltdvqsrga.supabase.co';
+const HARDCODED_KEY = 'sb_publishable_KRRnxuRIWdlgHbn_g65dfQ_Mzzg5Vjl';
 
 const KEYS = { URL: 'tulika_sb_url', KEY: 'tulika_sb_key' };
 
@@ -30,20 +30,29 @@ export const SupabaseService = {
 
     upsertItem: async (table: string, item: any) => {
         if (!SupabaseService.client) return;
-        const { error } = await SupabaseService.client.from(table).upsert({ id: item.id, data: item });
-        if (error) throw error;
+        try {
+            const { error } = await SupabaseService.client.from(table).upsert({ id: item.id, data: item });
+            if (error) console.warn(`Supabase upsert failed for ${table}:`, error);
+        } catch (e) {
+            console.warn(`Supabase upsert exception for ${table}:`, e);
+        }
     },
 
     deleteItem: async (table: string, id: string) => {
         if (!SupabaseService.client) return;
-        const { error } = await SupabaseService.client.from(table).delete().eq('id', id);
-        if (error) throw error;
+        try {
+            const { error } = await SupabaseService.client.from(table).delete().eq('id', id);
+            if (error) console.warn(`Supabase delete failed for ${table}:`, error);
+        } catch (e) {
+            console.warn(`Supabase delete exception for ${table}:`, e);
+        }
     },
 
-    fetchAll: async (table: string): Promise<any[]> => {
+    fetchAll: async (table: string): Promise<any[] | null> => {
         if (!SupabaseService.client) return [];
         const { data, error } = await SupabaseService.client.from(table).select('*');
-        if (error || !data) return [];
+        if (error) return null; // Return null so we know it failed (e.g. table missing)
+        if (!data) return [];
         return data.map((row: any) => row.data);
     },
 

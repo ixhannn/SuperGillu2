@@ -19,6 +19,7 @@ import { ViewTransition } from './components/ViewTransition';
 import { Countdowns } from './views/Countdowns';
 import { MoodCalendar } from './views/MoodCalendar';
 import { Auth } from './views/Auth';
+import { AuraRewind } from './views/AuraRewind';
 import { SyncService } from './services/sync';
 import { StorageService, storageEventTarget } from './services/storage';
 import { ThemeService } from './services/theme';
@@ -76,32 +77,45 @@ const App = () => {
 
   useEffect(() => {
     const initializeApp = async () => {
-      // 1. Initialize Storage and DB
-      await StorageService.init();
+      try {
+        // 1. Initialize Storage and DB
+        await StorageService.init();
 
-      // 2. Check for Onboarding status
-      const profile = StorageService.getCoupleProfile();
-      const hasOnboarded = localStorage.getItem('tulika_onboarded') === 'true' || localStorage.getItem('tulika_manual_override') === 'true';
-      setShowOnboarding(!hasOnboarded);
+        // 2. Check for Onboarding status
+        const profile = StorageService.getCoupleProfile();
+        const hasOnboarded = localStorage.getItem('tulika_onboarded') === 'true' || localStorage.getItem('tulika_manual_override') === 'true';
+        setShowOnboarding(!hasOnboarded);
 
-      // 3. Apply stored theme
-      ThemeService.applyTheme(profile.theme || 'rose');
+        // 3. Apply stored theme
+        ThemeService.applyTheme(profile.theme || 'rose');
 
-      // 4. Initialize Cloud Services (Supabase Auth)
-      if (SupabaseService.init()) {
-        const { data: { session } } = await SupabaseService.client!.auth.getSession();
-        setIsAuthenticated(!!session);
+        // 4. Initialize Cloud Services (Supabase Auth)
+        if (SupabaseService.init()) {
+          try {
+            const { data: { session } } = await SupabaseService.client!.auth.getSession();
+            setIsAuthenticated(!!session);
 
-        // Listen for realtime auth changes
-        SupabaseService.client!.auth.onAuthStateChange((event, session) => {
-          setIsAuthenticated(!!session);
-        });
+            // Listen for realtime auth changes
+            SupabaseService.client!.auth.onAuthStateChange((event, session) => {
+              setIsAuthenticated(!!session);
+            });
+          } catch (authError) {
+            console.error("Supabase Auth failed:", authError);
+            setIsAuthenticated(false);
+          }
+        }
+
+        // 5. Initialize Sync (Realtime Channels)
+        try {
+          await SyncService.init();
+        } catch (syncError) {
+          console.error("Sync Initialization failed:", syncError);
+        }
+      } catch (err) {
+        console.error("Initialization error:", err);
+      } finally {
+        setIsInitialized(true);
       }
-
-      // 5. Initialize Sync (Realtime Channels)
-      await SyncService.init();
-
-      setIsInitialized(true);
     };
 
     initializeApp();
@@ -160,6 +174,7 @@ const App = () => {
       case 'keepsakes': return <KeepsakeBox setView={setCurrentView} />;
       case 'countdowns': return <Countdowns setView={setCurrentView} />;
       case 'mood-calendar': return <MoodCalendar setView={setCurrentView} />;
+      case 'aura-rewind': return <AuraRewind setView={setCurrentView} />;
       default: return <Home setView={setCurrentView} />;
     }
   };

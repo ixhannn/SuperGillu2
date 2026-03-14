@@ -8,24 +8,24 @@ interface ViewTransitionProps {
 }
 
 export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, children }) => {
-    // Track the last pointer down position to originate the ripple from there
-    const [clickPos, setClickPos] = useState({
+    const clickPosRef = useRef({
         x: typeof window !== 'undefined' ? window.innerWidth / 2 : 0,
-        y: typeof window !== 'undefined' ? window.innerHeight : 0
+        y: typeof window !== 'undefined' ? window.innerHeight / 2 : 0
     });
+    const [clickPos, setClickPos] = useState(clickPosRef.current);
 
     useEffect(() => {
         const handleGlobalClick = (e: MouseEvent | TouchEvent) => {
-            let clientX = 0;
-            let clientY = 0;
+            let clientX: number, clientY: number;
             if (e instanceof MouseEvent) {
                 clientX = e.clientX;
                 clientY = e.clientY;
             } else if (e.touches && e.touches.length > 0) {
                 clientX = e.touches[0].clientX;
                 clientY = e.touches[0].clientY;
-            }
+            } else return;
 
+            clickPosRef.current = { x: clientX, y: clientY };
             setClickPos({ x: clientX, y: clientY });
         };
 
@@ -38,32 +38,37 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, childre
         };
     }, []);
 
+    // Use a smooth tween instead of spring for clip-path —
+    // springs oscillate which causes clip-path to repaint back and forth = jitter
     const variants = {
-        initial: (pos: { x: number, y: number }) => ({
-            clipPath: `circle(0px at ${pos.x}px ${pos.y}px)`,
+        initial: (pos: { x: number; y: number }) => ({
+            clipPath: `circle(0% at ${pos.x}px ${pos.y}px)`,
+            opacity: 1,
             zIndex: 10,
         }),
-        animate: (pos: { x: number, y: number }) => ({
-            clipPath: `circle(150% at ${pos.x}px ${pos.y}px)`,
+        animate: (pos: { x: number; y: number }) => ({
+            clipPath: `circle(200% at ${pos.x}px ${pos.y}px)`,
+            opacity: 1,
             zIndex: 10,
             transition: {
-                type: "spring",
-                stiffness: 200,
-                damping: 30,
-                mass: 0.8
-            }
+                clipPath: { duration: 0.6, ease: [0.32, 0.72, 0, 1] }, // Apple-style cinematic ease
+                opacity: { duration: 0.3 },
+            },
         }),
         exit: {
-            opacity: 0.5,
-            filter: "blur(4px)",
+            opacity: 0,
+            scale: 0.99,
             zIndex: 0,
-            transition: { duration: 0.4 }
-        }
+            transition: {
+                opacity: { duration: 0.2, ease: 'easeOut' },
+                scale: { duration: 0.2, ease: 'easeOut' },
+            },
+        },
     };
 
     return (
         <div className="relative w-full h-full min-h-full">
-            <AnimatePresence initial={false}>
+            <AnimatePresence initial={false} mode="popLayout">
                 <motion.div
                     key={viewKey}
                     custom={clickPos}
@@ -71,7 +76,16 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, childre
                     initial="initial"
                     animate="animate"
                     exit="exit"
-                    className="absolute inset-0 w-full mb-32 origin-center will-change-transform" // mb-32 to clear bottom nav
+                    onAnimationComplete={(definition) => {
+                        if (definition === 'animate') {
+                            // After transition, remove clipPath to allow GPU scroll optimization
+                            // and prevent flickering "shredding" artifacts on long pages.
+                            const el = document.querySelector(`[data-transition-key="${viewKey}"]`) as HTMLElement;
+                            if (el) el.style.clipPath = 'none';
+                        }
+                    }}
+                    data-transition-key={viewKey}
+                    className="absolute inset-x-0 top-0 w-full min-h-full will-change-[clip-path,opacity] bg-tulika-50"
                 >
                     {children}
                 </motion.div>
@@ -79,3 +93,5 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, childre
         </div>
     );
 };
+
+

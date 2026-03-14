@@ -27,19 +27,19 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
     return (
         <div 
             onClick={onClick}
-            className="bg-white rounded-3xl p-4 shadow-sm border border-white overflow-hidden group transition-all hover:shadow-md animate-slide-up cursor-pointer active:scale-[0.98] relative opacity-0"
-            style={{ animationDelay: `${index * 100}ms` }}
+            className="bg-white rounded-3xl p-3 shadow-sm border border-stone-100/50 overflow-hidden group transition-all hover:shadow-md animate-slide-up cursor-pointer active:scale-[0.98] relative opacity-0"
+            style={{ animationDelay: `${index * 80}ms` }}
         >
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl bg-gray-50 w-10 h-10 flex items-center justify-center rounded-full shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl bg-tulika-50 w-9 h-9 flex items-center justify-center rounded-full shadow-sm border border-white">
                 <MoodEmoji mood={memory.mood} />
               </span>
               <div>
-                <p className="text-sm font-semibold text-gray-700">
-                  {new Date(memory.date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric' })}
+                <p className="text-[13px] font-bold text-gray-800 leading-tight">
+                  {new Date(memory.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
                 </p>
-                <p className="text-xs text-gray-400">
+                <p className="text-[10px] text-gray-400 font-medium">
                   {new Date(memory.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -47,49 +47,46 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
             
             <button 
               onClick={(e) => { e.stopPropagation(); onDelete(memory.id); }}
-              className="p-3 -mr-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all relative z-20"
+              className="p-2 -mr-1 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-full transition-all relative z-20"
             >
-              <Trash2 size={20} />
+              <Trash2 size={16} />
             </button>
           </div>
 
-          <div className="rounded-2xl overflow-hidden mb-4 shadow-inner bg-gray-50 aspect-video relative flex items-center justify-center group-hover:scale-[1.01] transition-transform duration-500">
+          <div className="rounded-2xl overflow-hidden mb-3 shadow-inner bg-gray-50 aspect-square relative flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-500 border border-gray-100">
             {isLoading ? (
                 <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="animate-spin text-tulika-300" size={24} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-tulika-200">Opening Vault...</span>
+                    <Loader2 className="animate-spin text-tulika-300" size={20} />
                 </div>
             ) : mediaUrl ? (
                 isVideo ? (
-                    // Show Thumbnail + Play Button
                     <div className="relative w-full h-full bg-black flex items-center justify-center">
-                        <img src={mediaUrl} className="w-full h-full object-cover opacity-80" alt="Video Thumbnail" loading="lazy" />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors">
-                            <div className="bg-white/20 backdrop-blur-md p-3 rounded-full group-hover:scale-110 transition-transform">
-                                <PlayCircle size={32} className="text-white" fill="currentColor" />
+                        <img src={mediaUrl} className="w-full h-full object-cover opacity-90" alt="Video Thumbnail" loading="lazy" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors">
+                            <div className="bg-white/30 backdrop-blur-md p-2.5 rounded-full border border-white/40 shadow-xl group-hover:scale-110 transition-transform">
+                                <PlayCircle size={28} className="text-white" fill="currentColor" />
                             </div>
                         </div>
                     </div>
                 ) : (
-                    // Standard Image
-                    <img src={mediaUrl} alt="Memory" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                    <img src={mediaUrl} alt="Memory" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" loading="lazy" />
                 )
             ) : (
                 <div className="text-gray-200 flex flex-col items-center gap-2">
-                    <ImageIcon size={32} />
-                    {(memory.imageId || memory.videoId) && <span className="text-[8px] font-bold uppercase opacity-50">Checking Vault...</span>}
+                    <ImageIcon size={28} className="opacity-40" />
                 </div>
             )}
           </div>
 
           {memory.text && (
-            <p className="text-gray-700 leading-relaxed font-serif text-lg px-1 pb-1 line-clamp-3">
+            <p className="text-gray-700 leading-snug font-serif text-base px-1 pb-1 line-clamp-2">
               {memory.text}
             </p>
           )}
         </div>
     );
 };
+
 
 const MemoryDetailModal = ({ memory, onClose, onDelete }: { memory: Memory, onClose: () => void, onDelete: (id: string) => void }) => {
     // In detail view, we actually load the VIDEO ID
@@ -170,7 +167,10 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         <div className="space-y-8">
           {keys.map((key, groupIdx) => (
             <div key={key} className="animate-slide-up" style={{ animationDelay: `${groupIdx * 100}ms` }}>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4 ml-1 sticky top-0 bg-tulika-50/90 backdrop-blur-sm py-2 z-10">{key}</h3>
+              <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-tulika-400 mb-6 ml-1 sticky top-0 bg-tulika-50/95 backdrop-blur-md py-4 z-10 border-b border-tulika-100/50">
+                {key}
+              </h3>
+
               <div className="space-y-4">
                 {grouped[key].map((m, i) => (
                   <MemoryCard 

@@ -10,29 +10,23 @@ export const HolographicCard: React.FC<HolographicCardProps> = ({ children, clas
     const x = useMotionValue(0);
     const y = useMotionValue(0);
 
-    // Spring physics for smooth tilt
-    const mouseXSpring = useSpring(x, { stiffness: 150, damping: 20, mass: 0.5 });
-    const mouseYSpring = useSpring(y, { stiffness: 150, damping: 20, mass: 0.5 });
+    // Cinematic floating spring — graceful tracking, no rigid locking
+    const mouseXSpring = useSpring(x, { stiffness: 100, damping: 30, mass: 0.5 });
+    const mouseYSpring = useSpring(y, { stiffness: 100, damping: 30, mass: 0.5 });
 
-    // 3D rotation based on mouse position
-    const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["15deg", "-15deg"]);
-    const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-15deg", "15deg"]);
+    // 3D rotation — keep subtle to avoid repaint-heavy transforms
+    const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["8deg", "-8deg"]);
+    const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-8deg", "8deg"]);
 
-    // Glare position mapped opposite to mouse for realism
-    const glareX = useTransform(mouseXSpring, [-0.5, 0.5], ["100%", "0%"]);
-    const glareY = useTransform(mouseYSpring, [-0.5, 0.5], ["100%", "0%"]);
+    // Glare position — simple transform maps (no callback, no string templates)
+    const glareXPx = useTransform(mouseXSpring, [-0.5, 0.5], [100, 0]);
+    const glareYPx = useTransform(mouseYSpring, [-0.5, 0.5], [100, 0]);
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!ref.current) return;
         const rect = ref.current.getBoundingClientRect();
-        const width = rect.width;
-        const height = rect.height;
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        const xPct = mouseX / width - 0.5;
-        const yPct = mouseY / height - 0.5;
-        x.set(xPct);
-        y.set(yPct);
+        x.set((e.clientX - rect.left) / rect.width - 0.5);
+        y.set((e.clientY - rect.top) / rect.height - 0.5);
     };
 
     const handleMouseLeave = () => {
@@ -44,17 +38,15 @@ export const HolographicCard: React.FC<HolographicCardProps> = ({ children, clas
     useEffect(() => {
         const handleOrientation = (e: DeviceOrientationEvent) => {
             if (e.gamma !== null && e.beta !== null) {
-                // Gamma: left-to-right tilt in degrees (-90 to 90)
-                // Beta: front-to-back tilt in degrees (-180 to 180)
-                const gamma = Math.min(Math.max(e.gamma, -45), 45) / 45; // -1 to 1
-                const beta = Math.min(Math.max(e.beta - 45, -45), 45) / 45; // -1 to 1 assuming 45 rest angle
-                x.set(gamma * 0.5);
-                y.set(beta * 0.5);
+                const gamma = Math.min(Math.max(e.gamma, -45), 45) / 45;
+                const beta = Math.min(Math.max(e.beta - 45, -45), 45) / 45;
+                x.set(gamma * 0.3);
+                y.set(beta * 0.3);
             }
         };
 
         if (window.DeviceOrientationEvent && typeof (DeviceOrientationEvent as any).requestPermission !== 'function') {
-            window.addEventListener('deviceorientation', handleOrientation);
+            window.addEventListener('deviceorientation', handleOrientation, { passive: true });
         }
         return () => window.removeEventListener('deviceorientation', handleOrientation);
     }, [x, y]);
@@ -69,26 +61,31 @@ export const HolographicCard: React.FC<HolographicCardProps> = ({ children, clas
                 rotateX,
                 rotateY,
                 transformStyle: "preserve-3d",
-                perspective: 1000,
+                perspective: 800,
             }}
-            className={`relative cursor-pointer ${className}`}
+            className={`relative ${className}`}
             {...props}
         >
-            {/* Inner Wrapper giving content Z-depth */}
-            <div style={{ transform: "translateZ(20px)", transformStyle: "preserve-3d" }} className="w-full h-full relative rounded-[inherit]">
+            {/* Z-depth wrapper — NO overflow-hidden here to allow decorative elements to bleed out slightly */}
+            <div style={{ transform: "translateZ(10px)", transformStyle: "preserve-3d" }} className="w-full h-full relative rounded-[inherit]">
                 {children}
 
-                {/* Dynamic Holographic Glare */}
-                <motion.div
-                    className="absolute inset-0 z-50 pointer-events-none rounded-[inherit] overflow-hidden"
-                    style={{
-                        background: useTransform(() =>
-                            `radial-gradient(circle at ${glareX.get()} ${glareY.get()}, rgba(255,255,255,0.4) 0%, transparent 60%)`
-                        ),
-                        mixBlendMode: 'overlay',
-                    }}
-                />
+                {/* Glare effect — in its own overflow-hidden container to keep it clipped to the card */}
+                <div className="absolute inset-0 z-50 pointer-events-none rounded-[inherit] overflow-hidden">
+                    <motion.div
+                        className="absolute inset-0"
+                        style={{
+                            background: 'radial-gradient(circle at center, rgba(255,255,255,0.25) 0%, transparent 55%)',
+                            left: useTransform(glareXPx, v => `${v - 50}%`),
+                            top: useTransform(glareYPx, v => `${v - 50}%`),
+                            width: '200%',
+                            height: '200%',
+                            mixBlendMode: 'overlay',
+                        }}
+                    />
+                </div>
             </div>
+
         </motion.div>
     );
 };

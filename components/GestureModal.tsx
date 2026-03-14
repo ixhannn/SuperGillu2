@@ -44,7 +44,7 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
                         }}
                         style={{ y }}
                         className="relative z-10 w-full max-w-md pointer-events-auto origin-center"
-                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
                     >
                         {children}
                     </motion.div>

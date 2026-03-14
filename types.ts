@@ -45,6 +45,16 @@ export interface DailyPhoto {
   senderId: string;
 }
 
+export interface Comment {
+  id: string;
+  postId: string;       // DailyPhoto id
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: string;
+  parentId?: string;    // For threaded replies
+}
+
 // NEW: Immutable Keepsake (Gift/Letter)
 export interface Keepsake {
   id: string;
@@ -88,4 +98,12 @@ export interface PetStats {
   lastMemoryPrompt?: string; // ISO String of last AI flashback
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar';
+export interface MoodEntry {
+  id: string;
+  userId: string;
+  mood: string;
+  timestamp: string; // ISO string
+  note?: string;
+}
+
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind';

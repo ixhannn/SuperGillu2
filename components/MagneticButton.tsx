@@ -48,7 +48,7 @@ export const MagneticButton: React.FC<MagneticButtonProps> = ({
             animate={{ x, y }}
             whileHover={{ scale }}
             whileTap={{ scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 350, damping: 20, mass: 0.5 }}
+            transition={{ type: "spring", stiffness: 150, damping: 20, mass: 0.5 }}
             className={`relative cursor-pointer ${className}`}
             {...props}
         >

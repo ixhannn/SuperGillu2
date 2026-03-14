@@ -1,8 +1,8 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry } from '../types';
 import { SupabaseService } from './supabase';
 
 // ENSURING WE STAY ON V11 FOR DATA CONTINUITY
-const DB_NAME = 'TulikaVault_v11'; 
+const DB_NAME = 'TulikaVault_v11';
 const DB_VERSION = 1;
 const STORES = {
     DATA: 'metadata_store',
@@ -17,13 +17,15 @@ const CACHE_KEYS = {
     DAILY_PHOTOS: 'tulika_daily_photos',
     DINNER_OPTIONS: 'tulika_dinner_options',
     KEEPSAKES: 'tulika_keepsakes',
+    COMMENTS: 'tulika_comments',
     SHARED_PROFILE: 'tulika_shared_profile',
     IDENTITY: 'tulika_identity',
     USER_STATUS: 'tulika_status',
     PARTNER_STATUS: 'tulika_partner_status',
     PET_STATS: 'tulika_pet_stats',
     DEVICE_ID: 'tulika_device_id',
-    TOGETHER_MUSIC_META: 'tulika_together_music_meta'
+    TOGETHER_MUSIC_META: 'tulika_together_music_meta',
+    MOOD_ENTRIES: 'tulika_mood_entries'
 };
 
 const DATA_CACHE = {
@@ -34,6 +36,8 @@ const DATA_CACHE = {
     dailyPhotos: [] as DailyPhoto[],
     dinnerOptions: [] as DinnerOption[],
     keepsakes: [] as Keepsake[],
+    comments: [] as Comment[],
+    moodEntries: [] as MoodEntry[],
 };
 
 const MEDIA_MEMORY_CACHE = new Map<string, string>();
@@ -121,7 +125,8 @@ export const StorageService = {
                 load(CACHE_KEYS.ENVELOPES, 'envelopes'),
                 load(CACHE_KEYS.DAILY_PHOTOS, 'dailyPhotos'),
                 load(CACHE_KEYS.DINNER_OPTIONS, 'dinnerOptions'),
-                load(CACHE_KEYS.KEEPSAKES, 'keepsakes')
+                load(CACHE_KEYS.KEEPSAKES, 'keepsakes'),
+                load(CACHE_KEYS.COMMENTS, 'comments')
             ]);
 
             // RECOVERY: If localStorage is empty but IndexedDB has profile/pet, restore it
@@ -156,7 +161,7 @@ export const StorageService = {
                     localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(cloudMusic.meta));
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
     },
 
     getDeviceId: () => {
@@ -186,9 +191,9 @@ export const StorageService = {
 
     async _saveInternal(listKey: keyof typeof DATA_CACHE, storageKey: string, item: any, prefix?: string, table?: string, source: 'user' | 'sync' = 'user') {
         const toSaveMetadata = { ...item };
-        const rawImage = item.image; 
+        const rawImage = item.image;
         const rawVideo = item.video;
-        
+
         if (rawImage && prefix) {
             const imageId = item.imageId || `${prefix}_${item.id}`;
             await writeRaw(STORES.IMAGES, imageId, rawImage);
@@ -216,7 +221,7 @@ export const StorageService = {
 
         (DATA_CACHE[listKey] as any) = list;
         await writeRaw(STORES.DATA, storageKey, list);
-        
+
         if (table) {
             notifyUpdate({ source, action: 'save', table, id: item.id, item: { ...toSaveMetadata, image: rawImage, video: rawVideo } });
         }
@@ -301,18 +306,38 @@ export const StorageService = {
         notifyUpdate({ source: 'user', action: 'delete', table: 'dinner_options', id: id });
     },
 
+    getComments: (postId?: string): Comment[] => {
+        if (postId) return DATA_CACHE.comments.filter(c => c.postId === postId);
+        return DATA_CACHE.comments;
+    },
+    saveComment: async (c: Comment) => {
+        const list = [...DATA_CACHE.comments];
+        const idx = list.findIndex(i => i.id === c.id);
+        if (idx >= 0) list[idx] = c;
+        else list.push(c);
+        DATA_CACHE.comments = list;
+        await writeRaw(STORES.DATA, CACHE_KEYS.COMMENTS, list);
+        notifyUpdate({ source: 'user', action: 'save', table: 'comments', id: c.id, item: c });
+    },
+    deleteComment: async (id: string) => {
+        DATA_CACHE.comments = DATA_CACHE.comments.filter(c => c.id !== id);
+        await writeRaw(STORES.DATA, CACHE_KEYS.COMMENTS, DATA_CACHE.comments);
+        notifyUpdate({ source: 'user', action: 'delete', table: 'comments', id });
+    },
+
     async handleCloudUpdate(table: string, data: any) {
         const item = data.data || data;
         if (!item || !item.id) return;
-        
-        const tableMap: Record<string, { cache: keyof typeof DATA_CACHE, key: string, prefix?: string }> = { 
+
+        const tableMap: Record<string, { cache: keyof typeof DATA_CACHE, key: string, prefix?: string }> = {
             memories: { cache: 'memories', key: CACHE_KEYS.MEMORIES, prefix: 'mem' },
             notes: { cache: 'notes', key: CACHE_KEYS.NOTES },
             dates: { cache: 'specialDates', key: CACHE_KEYS.DATES },
             envelopes: { cache: 'envelopes', key: CACHE_KEYS.ENVELOPES },
             daily_photos: { cache: 'dailyPhotos', key: CACHE_KEYS.DAILY_PHOTOS, prefix: 'daily' },
             keepsakes: { cache: 'keepsakes', key: CACHE_KEYS.KEEPSAKES, prefix: 'keep' },
-            dinner_options: { cache: 'dinnerOptions', key: CACHE_KEYS.DINNER_OPTIONS }
+            dinner_options: { cache: 'dinnerOptions', key: CACHE_KEYS.DINNER_OPTIONS },
+            comments: { cache: 'comments', key: CACHE_KEYS.COMMENTS }
         };
 
         if (tableMap[table]) {
@@ -342,13 +367,14 @@ export const StorageService = {
     },
 
     async handleCloudDelete(table: string, id: string) {
-        const tableToStorage: Record<string, { cache: keyof typeof DATA_CACHE, key: string }> = { 
-            memories: { cache: 'memories', key: CACHE_KEYS.MEMORIES }, 
+        const tableToStorage: Record<string, { cache: keyof typeof DATA_CACHE, key: string }> = {
+            memories: { cache: 'memories', key: CACHE_KEYS.MEMORIES },
             daily_photos: { cache: 'dailyPhotos', key: CACHE_KEYS.DAILY_PHOTOS },
             keepsakes: { cache: 'keepsakes', key: CACHE_KEYS.KEEPSAKES },
             notes: { cache: 'notes', key: CACHE_KEYS.NOTES },
             dates: { cache: 'specialDates', key: CACHE_KEYS.DATES },
-            envelopes: { cache: 'envelopes', key: CACHE_KEYS.ENVELOPES }
+            envelopes: { cache: 'envelopes', key: CACHE_KEYS.ENVELOPES },
+            comments: { cache: 'comments', key: CACHE_KEYS.COMMENTS }
         };
         if (tableToStorage[table]) {
             const cfg = tableToStorage[table];
@@ -375,13 +401,13 @@ export const StorageService = {
                     await writeRaw(STORES.IMAGES, 'custom_together_music', base64);
                     const meta = { name: file.name, date: new Date().toISOString(), size: file.size };
                     localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(meta));
-                    
+
                     if (SupabaseService.init()) {
                         await SupabaseService.saveSingle('together_music', { music_base64: base64, meta });
                     }
                     notifyUpdate({ source: 'user', action: 'save', table: 'together_music', id: 'singleton', item: { music_base64: base64, meta } });
                     resolve();
-                } catch(err) { reject(err); }
+                } catch (err) { reject(err); }
             };
             reader.onerror = reject;
             reader.readAsDataURL(file);
@@ -404,30 +430,53 @@ export const StorageService = {
     getCoupleProfile: (): CoupleProfile => {
         const idStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
         const sharedStr = localStorage.getItem(CACHE_KEYS.SHARED_PROFILE);
-        
+
         const id = idStr ? JSON.parse(idStr) : { myName: 'Ishan', partnerName: 'Tulika' };
-        
+
         // HARD-BUILD: Anniversary Date is 29 August 2023
         const HARD_CODED_ANNIVERSARY = '2023-08-29T00:00:00.000Z';
-        
+
         const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: HARD_CODED_ANNIVERSARY, theme: 'rose' };
-        
+
         // Final sanity check: if the anniversary somehow got mangled to something else, reset it to the hard-coded date
         if (!shared.anniversaryDate || shared.anniversaryDate === '2024-01-01T00:00:00.000Z' || shared.anniversaryDate.includes('1970')) {
             shared.anniversaryDate = HARD_CODED_ANNIVERSARY;
         }
-        
+
         return { ...id, ...shared };
     },
 
     saveCoupleProfile: (p: CoupleProfile, source: 'user' | 'sync' = 'user') => {
         localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: p.myName, partnerName: p.partnerName }));
         localStorage.setItem(CACHE_KEYS.SHARED_PROFILE, JSON.stringify({ anniversaryDate: p.anniversaryDate, theme: p.theme, photo: p.photo }));
-        
+
         // BACKUP TO INDEXEDDB (Deep Lock)
         writeRaw(STORES.DATA, CACHE_KEYS.SHARED_PROFILE, { anniversaryDate: p.anniversaryDate, theme: p.theme, photo: p.photo });
-        
-        notifyUpdate({ source, action: 'save', table: 'couple_profile', id: 'singleton', item: p });
+
+        notifyUpdate({ source: 'user', action: 'save', table: 'couple_profile', id: 'singleton', item: p });
+    },
+
+    getMoodEntries: (): MoodEntry[] => {
+        if (DATA_CACHE.moodEntries.length > 0) return DATA_CACHE.moodEntries;
+        const str = localStorage.getItem(CACHE_KEYS.MOOD_ENTRIES);
+        if (str) {
+            DATA_CACHE.moodEntries = JSON.parse(str);
+            return DATA_CACHE.moodEntries;
+        }
+        return [];
+    },
+
+    saveMoodEntry: (entry: MoodEntry, source: 'user' | 'sync' = 'user') => {
+        const entries = StorageService.getMoodEntries();
+        const existingIdx = entries.findIndex(e => e.id === entry.id);
+        if (existingIdx >= 0) {
+            entries[existingIdx] = entry;
+        } else {
+            entries.push(entry);
+        }
+        localStorage.setItem(CACHE_KEYS.MOOD_ENTRIES, JSON.stringify(entries));
+        writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, entries);
+        notifyUpdate({ source, action: 'save', table: 'mood_entries', id: entry.id, item: entry });
     },
 
     getPetStats: (): PetStats => {
@@ -442,14 +491,14 @@ export const StorageService = {
         notifyUpdate({ source, action: 'save', table: 'pet_stats', id: 'singleton', item: s });
     },
 
-    getStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.USER_STATUS) || '{"state":"awake","timestamp":"'+new Date().toISOString()+'"}'),
+    getStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.USER_STATUS) || '{"state":"awake","timestamp":"' + new Date().toISOString() + '"}'),
     saveStatus: (s: UserStatus) => {
         localStorage.setItem(CACHE_KEYS.USER_STATUS, JSON.stringify(s));
         const profile = StorageService.getCoupleProfile();
         notifyUpdate({ source: 'user', action: 'save', table: 'user_status', id: profile.myName, item: { id: profile.myName, ...s } });
     },
     getPartnerStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.PARTNER_STATUS) || '{"state":"awake","timestamp":""}'),
-    
+
     async exportAllData() {
         return {
             memories: DATA_CACHE.memories,
