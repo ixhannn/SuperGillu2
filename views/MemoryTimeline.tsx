@@ -4,6 +4,10 @@ import { Trash2, Calendar, X, Clock, Loader2, Image as ImageIcon, PlayCircle } f
 import { ViewState, Memory } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useTulikaMedia } from '../hooks/useTulikaImage';
+import { Skeleton } from '../components/Skeleton';
+import { PullToRefresh } from '../components/PullToRefresh';
+import { StaggeredText } from '../components/StaggeredText';
+import { motion, useScroll, useTransform } from 'framer-motion';
 
 interface MemoryTimelineProps {
   setView: (view: ViewState) => void;
@@ -55,13 +59,20 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
 
           <div className="rounded-2xl overflow-hidden mb-3 shadow-inner bg-gray-50 aspect-square relative flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-500 border border-gray-100">
             {isLoading ? (
-                <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="animate-spin text-tulika-300" size={20} />
-                </div>
+                <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
             ) : mediaUrl ? (
                 isVideo ? (
-                    <div className="relative w-full h-full bg-black flex items-center justify-center">
-                        <img src={mediaUrl} className="w-full h-full object-cover opacity-90" alt="Video Thumbnail" loading="lazy" />
+                    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
+                        <motion.img 
+                            initial={{ y: -40, scale: 1.15 }}
+                            whileInView={{ y: 0, scale: 1 }}
+                            viewport={{ once: false, margin: "100px 0px" }}
+                            transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+                            src={mediaUrl} 
+                            className="w-full h-full object-cover opacity-90" 
+                            alt="Video Thumbnail" 
+                            loading="lazy" 
+                        />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors">
                             <div className="bg-white/30 backdrop-blur-md p-2.5 rounded-full border border-white/40 shadow-xl group-hover:scale-110 transition-transform">
                                 <PlayCircle size={28} className="text-white" fill="currentColor" />
@@ -69,7 +80,18 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
                         </div>
                     </div>
                 ) : (
-                    <img src={mediaUrl} alt="Memory" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" loading="lazy" />
+                    <div className="w-full h-full overflow-hidden">
+                        <motion.img 
+                            initial={{ y: -40, scale: 1.15 }}
+                            whileInView={{ y: 0, scale: 1 }}
+                            viewport={{ once: false, margin: "100px 0px" }}
+                            transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+                            src={mediaUrl} 
+                            alt="Memory" 
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                            loading="lazy" 
+                        />
+                    </div>
                 )
             ) : (
                 <div className="text-gray-200 flex flex-col items-center gap-2">
@@ -102,9 +124,8 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: { memory: Memory, onCl
                 </div>
                 <div className="p-6 pt-6">
                     {isLoading ? (
-                        <div className="w-full aspect-video bg-gray-50 rounded-3xl mb-6 flex items-center justify-center">
-                            <Loader2 size={32} className="animate-spin text-tulika-300" />
-                            <span className="ml-2 text-sm text-gray-400 font-medium">Loading Media...</span>
+                        <div className="w-full h-64 mb-6 rounded-3xl overflow-hidden relative">
+                            <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
                         </div>
                     ) : mediaUrl && (
                         isVideo ? (
@@ -135,6 +156,12 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
     return () => storageEventTarget.removeEventListener('storage-update', load);
   }, []);
 
+  const handleRefresh = async () => {
+      // simulate network wait for haptics and aesthetic
+      await new Promise(r => setTimeout(r, 1200));
+      setMemories(StorageService.getMemories());
+  };
+
   const handleDelete = async (id: string) => {
     if (window.confirm('Delete this memory forever?')) {
         if (selectedMemory?.id === id) setSelectedMemory(null);
@@ -152,11 +179,12 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
   const keys = Object.keys(grouped).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
   return (
-    <div className="p-6 pt-8 pb-32 min-h-screen">
-      <div className="flex items-center gap-2 mb-8 animate-slide-down">
-          <Calendar className="text-tulika-500" />
-          <h2 className="text-2xl font-serif font-bold text-gray-800">Our Journey</h2>
-      </div>
+    <PullToRefresh onRefresh={handleRefresh}>
+      <div className="p-6 pt-8 pb-32 min-h-screen relative">
+        <div className="flex items-center gap-2 mb-8">
+            <Calendar className="text-tulika-500 animate-slide-down" />
+            <StaggeredText text="Our Journey" className="text-2xl font-serif font-bold text-gray-800" />
+        </div>
       
       {memories.length === 0 ? (
         <div className="text-center text-gray-400 py-20 animate-fade-in delay-200">
@@ -194,6 +222,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
             onDelete={handleDelete} 
         />
       )}
-    </div>
+      </div>
+    </PullToRefresh>
   );
 };

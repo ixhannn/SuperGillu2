@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { feedback } from '../utils/feedback';
 
 interface MagneticButtonProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onClick'> {
     children: React.ReactNode;
@@ -39,12 +40,17 @@ export const MagneticButton: React.FC<MagneticButtonProps> = ({
 
     const { x, y } = position;
 
+    const handlePointerDown = () => {
+        feedback.tap();
+    };
+
     return (
         <motion.div
             ref={ref}
             onMouseMove={handleMouseMove}
             onMouseLeave={reset}
             onClick={onClick}
+            onPointerDown={handlePointerDown}
             animate={{ x, y }}
             whileHover={{ scale }}
             whileTap={{ scale: 0.95 }}

@@ -4,6 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, DailyPhoto, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useTulikaMedia } from '../hooks/useTulikaImage';
+import { PullToRefresh } from '../components/PullToRefresh';
+import { Skeleton } from '../components/Skeleton';
+import { toast } from '../utils/toast';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -54,10 +57,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
             style={{ background: '#1a1a1a' }}
         >
             {isLoading ? (
-                <div className="w-full h-full flex flex-col items-center justify-center text-tulika-300">
-                    <Loader2 className="animate-spin mb-2" size={24} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Opening...</span>
-                </div>
+                <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
             ) : mediaUrl ? (
                 <div className="relative w-full h-full">
                     {/* Blurred background layer — prevents black bars */}
@@ -70,7 +70,15 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                     {/* Sharp foreground — using object-cover for clean grid thumbnails */}
                     {isVideo ? (
                         <>
-                            <img src={mediaUrl} className="relative w-full h-full object-cover z-[1]" alt="Video thumbnail" />
+                            <motion.img 
+                                initial={{ y: -20, scale: 1.15 }}
+                                whileInView={{ y: 0, scale: 1 }}
+                                viewport={{ once: false, margin: "50px 0px" }}
+                                transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                                src={mediaUrl} 
+                                className="relative w-full h-full object-cover z-[1]" 
+                                alt="Video thumbnail" 
+                            />
                             <div className="absolute inset-0 flex items-center justify-center z-[2]">
                                 <div className="bg-white/30 backdrop-blur-lg p-3 rounded-full border border-white/40 shadow-2xl group-hover:scale-110 transition-transform">
                                     <PlayCircle size={32} className="text-white drop-shadow-lg" fill="currentColor" />
@@ -78,7 +86,15 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                             </div>
                         </>
                     ) : (
-                        <img src={mediaUrl} className="relative w-full h-full object-cover z-[1]" alt="Daily moment" />
+                        <motion.img 
+                            initial={{ y: -20, scale: 1.15 }}
+                            whileInView={{ y: 0, scale: 1 }}
+                            viewport={{ once: false, margin: "50px 0px" }}
+                            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                            src={mediaUrl} 
+                            className="relative w-full h-full object-cover z-[1]" 
+                            alt="Daily moment" 
+                        />
                     )}
 
                 </div>
@@ -277,11 +293,9 @@ const PostViewer: React.FC<{
             </div>
 
             {/* ── Media ── */}
-            <div className="relative bg-black flex items-center justify-center flex-shrink-0" style={{ maxHeight: '50vh', minHeight: '200px' }}>
+            <div className="relative bg-black flex items-center justify-center flex-shrink-0 w-full" style={{ height: '40vh', minHeight: '300px' }}>
                 {mediaLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <Loader2 className="animate-spin text-white" size={28} />
-                    </div>
+                    <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none opacity-20" />
                 ) : mediaSrc ? (
                     <>
                         {/* Blurred background */}
@@ -433,6 +447,14 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         return () => clearInterval(interval);
     }, []);
 
+    const handleRefresh = async () => {
+        await new Promise(r => setTimeout(r, 1000));
+        const data = StorageService.getDailyPhotos();
+        const now = new Date();
+        const valid = data.filter(p => new Date(p.expiresAt) > now);
+        setPhotos(valid.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    };
+
     const compressImage = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -547,6 +569,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         setNewVideo(null);
         setCaption('');
         setIsSaving(false);
+        toast.show("Moment added successfully!", "success");
     };
 
     const cancelUpload = () => {
@@ -559,9 +582,10 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-[#f8f9fa] min-h-screen">
-            {/* Header */}
-            <div className="p-6 pt-12 flex justify-between items-center bg-white border-b border-gray-100 sticky top-0 z-20">
+        <PullToRefresh onRefresh={handleRefresh}>
+            <div className="flex flex-col h-full bg-[#f8f9fa] min-h-screen relative">
+                {/* Header */}
+                <div className="p-6 pt-12 flex justify-between items-center bg-white border-b border-gray-100 sticky top-0 z-20">
                 <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-400">
                     <ArrowLeft size={24} />
                 </button>
@@ -654,6 +678,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                     />
                 )}
             </AnimatePresence>
-        </div>
+            </div>
+        </PullToRefresh>
     );
 };
