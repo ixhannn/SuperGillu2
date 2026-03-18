@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { Memory, Note, UserStatus, PetStats } from '../types';
 import { StorageService } from '../services/storage';
 import { syncEventTarget, SyncService } from '../services/sync';
@@ -369,7 +370,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
 
             </div>
 
-            {showSettings && (
+            {showSettings && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-pop-in">
                         <div className="flex justify-between items-center mb-6">
@@ -414,18 +415,22 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
-            <AnimatePresence>
-                {showShop && (
-                    <PetShop 
-                        stats={stats} 
-                        onClose={() => setShowShop(false)} 
-                        onUpdateStats={(newStats) => setStats(newStats)} 
-                    />
-                )}
-            </AnimatePresence>
+            {ReactDOM.createPortal(
+                <AnimatePresence>
+                    {showShop && (
+                        <PetShop 
+                            stats={stats} 
+                            onClose={() => setShowShop(false)} 
+                            onUpdateStats={(newStats) => setStats(newStats)} 
+                        />
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </>
     );
 };
