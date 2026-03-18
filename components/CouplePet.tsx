@@ -208,7 +208,8 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
     }, [hoursSinceFed]);
 
     return (
-        <div className="relative mb-6 group animate-slide-up">
+        <>
+            <div className="relative mb-6 group animate-slide-up">
             <div className={`
                 relative p-5 rounded-[2.5rem] border-2 transition-all duration-700 overflow-hidden
                 ${status.state === 'sleeping' 
@@ -366,8 +367,10 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                 </div>
             </div>
 
+            </div>
+
             {showSettings && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-pop-in">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="font-serif font-bold text-xl text-gray-800">Pet Settings</h3>
@@ -423,6 +426,6 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                     />
                 )}
             </AnimatePresence>
-        </div>
+        </>
     );
 };
