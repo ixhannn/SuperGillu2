@@ -51,7 +51,15 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
 
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = color;
+    
+    if (lineWidth === 20) {
+      // Eraser mode: use destination-out to truly erase
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = color;
+    }
 
     if (!isMove) {
       ctx.beginPath();
@@ -107,19 +115,36 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (ctx && canvas) {
+      ctx.globalCompositeOperation = 'source-over';
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       SyncService.sendSignal('DRAW', { type: 'clear' });
     }
   };
 
+  const downloadCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = `tulika-canvas-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
   useEffect(() => {
-    // Set canvas size to match screen resolution for sharpness
+    // Set canvas size with DPI scaling for sharp rendering on retina/hi-dpi screens
     const canvas = canvasRef.current;
     if (canvas) {
         const parent = canvas.parentElement;
         if (parent) {
-            canvas.width = parent.clientWidth;
-            canvas.height = parent.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            const w = parent.clientWidth;
+            const h = parent.clientHeight;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = `${w}px`;
+            canvas.style.height = `${h}px`;
+            const ctx = canvas.getContext('2d');
+            if (ctx) ctx.scale(dpr, dpr);
         }
     }
 
@@ -158,6 +183,9 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
                      Offline
                  </span>
              )}
+             <button onClick={downloadCanvas} className="p-3 bg-white/80 backdrop-blur shadow-sm rounded-full text-gray-600 hover:text-tulika-500" title="Download">
+                <Download size={24} />
+             </button>
              <button onClick={clearCanvas} className="p-3 bg-white/80 backdrop-blur shadow-sm rounded-full text-gray-600 hover:text-red-500">
                 <Trash2 size={24} />
              </button>
@@ -195,7 +223,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
         </div>
         <div className="w-px h-8 bg-gray-200 mx-2"></div>
         <button 
-            onClick={() => { setColor('#f9fafb'); setLineWidth(20); }} // Eraser mode (paint background color)
+            onClick={() => { setColor('#f9fafb'); setLineWidth(20); }} // Eraser mode (composite erase)
             className={`p-2 rounded-full transition-colors ${
                 lineWidth === 20 ? 'bg-tulika-100 text-tulika-600' : 'text-gray-400'
             }`}

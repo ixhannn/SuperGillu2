@@ -2,23 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Plus, X, Heart, Trash2, MailOpen } from 'lucide-react';
 import { ViewState, Envelope } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { generateId } from '../utils/ids';
 
 interface OpenWhenProps {
   setView: (view: ViewState) => void;
 }
 
 const ENVELOPE_COLORS = [
-  'bg-red-100 text-red-600',
-  'bg-pink-100 text-pink-600',
-  'bg-purple-100 text-purple-600', 
-  'bg-orange-100 text-orange-600',
-  'bg-rose-100 text-rose-600'
+  { bg: 'bg-red-100', text: 'text-red-600', bgOnly: 'bg-red-100' },
+  { bg: 'bg-pink-100', text: 'text-pink-600', bgOnly: 'bg-pink-100' },
+  { bg: 'bg-purple-100', text: 'text-purple-600', bgOnly: 'bg-purple-100' }, 
+  { bg: 'bg-orange-100', text: 'text-orange-600', bgOnly: 'bg-orange-100' },
+  { bg: 'bg-rose-100', text: 'text-rose-600', bgOnly: 'bg-rose-100' }
 ];
 
 export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // Form State
   const [label, setLabel] = useState('');
@@ -35,11 +38,13 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
   const handleSave = () => {
     if (!label.trim() || !content.trim()) return;
 
+    const colorObj = ENVELOPE_COLORS[Math.floor(Math.random() * ENVELOPE_COLORS.length)];
+
     const newEnvelope: Envelope = {
-      id: Date.now().toString(),
+      id: generateId(),
       label: `Open when ${label}`,
       content: content,
-      color: ENVELOPE_COLORS[Math.floor(Math.random() * ENVELOPE_COLORS.length)],
+      color: `${colorObj.bg} ${colorObj.text}`,
       isLocked: true
     };
 
@@ -52,10 +57,15 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("Delete this letter?")) {
-      StorageService.deleteEnvelope(id);
-      setEnvelopes(prev => prev.filter(e => e.id !== id));
-      if (readingId === id) setReadingId(null);
+    setDeleteTarget(id);
+  };
+
+  const confirmDelete = () => {
+    if (deleteTarget) {
+      StorageService.deleteEnvelope(deleteTarget);
+      setEnvelopes(prev => prev.filter(e => e.id !== deleteTarget));
+      if (readingId === deleteTarget) setReadingId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -97,7 +107,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
             style={{ animationDelay: `${index * 50}ms` }}
           >
             {/* Envelope Flap decoration */}
-            <div className={`absolute top-0 left-0 right-0 h-1/2 rounded-t-2xl opacity-10 pointer-events-none ${env.color.replace('text', 'bg')}`}></div>
+            <div className={`absolute top-0 left-0 right-0 h-1/2 rounded-t-2xl opacity-10 pointer-events-none ${env.color.split(' ')[0]}`}></div>
             
             <div className={`mb-3 p-3 rounded-full ${env.isLocked ? 'bg-gray-50' : env.color.split(' ')[0]}`}>
               {env.isLocked ? (
@@ -128,6 +138,16 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+          isOpen={!!deleteTarget}
+          title="Delete Letter"
+          message="Are you sure you want to delete this letter?"
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+      />
 
       {/* Create Modal */}
       {isCreating && (

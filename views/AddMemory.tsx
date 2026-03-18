@@ -3,6 +3,9 @@ import React, { useState, useRef } from 'react';
 import { ArrowLeft, Camera, X, Video } from 'lucide-react';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
+import { toast } from '../utils/toast';
+import { generateId } from '../utils/ids';
+import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 
 interface AddMemoryProps {
   setView: (view: ViewState) => void;
@@ -25,75 +28,6 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  // AGGRESSIVE IMAGE COMPRESSION
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (e) => {
-        const img = new Image();
-        img.src = e.target?.result as string;
-        
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          
-          const MAX_SIZE = 800;
-          if (width > height) {
-            if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-          } else {
-            if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
-          resolve(compressedDataUrl);
-        };
-        img.onerror = () => reject(new Error("Image error"));
-      };
-      reader.onerror = () => reject(new Error("Read error"));
-    });
-  };
-
-  const generateVideoThumbnail = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.onloadedmetadata = () => {
-        video.currentTime = 0.5; // Seek a bit to avoid black frame
-      };
-      video.onseeked = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        
-        // Resize if too big
-        const MAX_SIZE = 800;
-        if (canvas.width > MAX_SIZE || canvas.height > MAX_SIZE) {
-            const ratio = Math.min(MAX_SIZE / canvas.width, MAX_SIZE / canvas.height);
-            canvas.width *= ratio;
-            canvas.height *= ratio;
-        }
-
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const thumb = canvas.toDataURL('image/jpeg', 0.7);
-        resolve(thumb);
-        // Clean up
-        URL.revokeObjectURL(video.src);
-      };
-      video.onerror = () => {
-         resolve(''); // Fallback to no thumb
-      };
-      video.src = URL.createObjectURL(file);
-    });
-  };
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -102,7 +36,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
            setImage(compressed);
            setVideo(null); // Mutually exclusive
        } catch (error) {
-           alert("Couldn't process photo.");
+           toast.show("Couldn't process photo. Please try a different image.", 'error');
        }
     }
   };
@@ -110,8 +44,8 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          if (file.size > 25 * 1024 * 1024) { // 25MB Limit
-              alert("Video too large! Please choose a video under 25MB.");
+          if (isVideoTooLarge(file)) {
+              toast.show("Video too large! Please choose a video under 25MB.", 'error');
               return;
           }
           
@@ -142,7 +76,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     setIsSaving(true);
     
     const newMemory: Memory = {
-      id: Date.now().toString(),
+      id: generateId(),
       text: text.trim(),
       image: image || undefined, // Stores thumbnail if video present
       video: video || undefined,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ViewState, Memory, Note, MoodEntry, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
+import { generateId } from '../utils/ids';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Sparkles, Plus, Smile, MessageCircle, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -58,7 +59,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
 
     const handleCheckIn = () => {
         const entry: MoodEntry = {
-            id: Date.now().toString(),
+            id: generateId(),
             userId: profile?.myName || 'Me',
             mood: selectedMood,
             timestamp: new Date().toISOString(),
@@ -95,7 +96,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                         scale: [1, 1.2, 0.9, 1] 
                     }}
                     transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
-                    className={`absolute top-[-15%] left-[-15%] w-[70%] h-[70%] rounded-full blur-[120px] transition-colors duration-1000 opacity-30 ${myMood ? moodThemes[myMood.mood]?.aura : 'bg-pink-200'}`}
+                    style={{ willChange: 'transform' }}
+                    className={`absolute top-[-15%] left-[-15%] w-[70%] h-[70%] rounded-full blur-[80px] transition-colors duration-1000 opacity-30 ${myMood ? moodThemes[myMood.mood]?.aura : 'bg-pink-200'}`}
                 />
                 <motion.div 
                     animate={{ 
@@ -104,7 +106,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                         scale: [1, 0.9, 1.1, 1] 
                     }}
                     transition={{ duration: 25, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-                    className={`absolute bottom-[-15%] right-[-15%] w-[70%] h-[70%] rounded-full blur-[120px] transition-colors duration-1000 opacity-30 ${partnerMood ? moodThemes[partnerMood.mood]?.aura : 'bg-blue-200'}`}
+                    style={{ willChange: 'transform' }}
+                    className={`absolute bottom-[-15%] right-[-15%] w-[70%] h-[70%] rounded-full blur-[80px] transition-colors duration-1000 opacity-30 ${partnerMood ? moodThemes[partnerMood.mood]?.aura : 'bg-blue-200'}`}
                 />
                 <motion.div 
                     animate={{ 
@@ -112,7 +115,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                         y: [0, 40, -40, 0] 
                     }}
                     transition={{ duration: 30, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-                    className={`absolute top-[20%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[100px] transition-colors duration-1000 opacity-20 ${partnerMood ? moodThemes[partnerMood.mood]?.aura : 'bg-tulika-100'}`}
+                    style={{ willChange: 'transform' }}
+                    className={`absolute top-[20%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[70px] transition-colors duration-1000 opacity-20 ${partnerMood ? moodThemes[partnerMood.mood]?.aura : 'bg-tulika-100'}`}
                 />
                 <motion.div 
                     animate={{ 
@@ -120,7 +124,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                         y: [0, -30, 50, 0] 
                     }}
                     transition={{ duration: 22, repeat: Infinity, ease: "easeInOut", delay: 3 }}
-                    className={`absolute bottom-[10%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[100px] transition-colors duration-1000 opacity-20 ${myMood ? moodThemes[myMood.mood]?.aura : 'bg-amber-100'}`}
+                    style={{ willChange: 'transform' }}
+                    className={`absolute bottom-[10%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[70px] transition-colors duration-1000 opacity-20 ${myMood ? moodThemes[myMood.mood]?.aura : 'bg-amber-100'}`}
                 />
             </div>
 
@@ -190,7 +195,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                 </div>
 
                 <div className="grid grid-cols-7 gap-3 mb-4 text-[10px] font-bold text-stone-300 uppercase tracking-widest text-center px-2">
-                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => <div key={d}>{d}</div>)}
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i}>{d}</div>)}
                 </div>
 
                 <div className="grid grid-cols-7 gap-3 flex-1 px-1">

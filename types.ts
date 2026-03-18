@@ -89,6 +89,14 @@ export interface CoupleProfile {
   theme?: string; // 'rose', 'blue', 'green', 'orange', 'purple', 'dark'
 }
 
+export interface ShopItem {
+  id: string;
+  name: string;
+  price: number;
+  category: 'hat' | 'accessory' | 'environment';
+  emoji: string;
+}
+
 export interface PetStats {
   name: string;
   type: 'dog' | 'cat' | 'bunny' | 'bear';
@@ -96,6 +104,13 @@ export interface PetStats {
   lastPetted: string; // ISO String
   happiness: number; // 0-100
   lastMemoryPrompt?: string; // ISO String of last AI flashback
+  coins: number;
+  inventory: string[];
+  equipped: {
+    hat?: string;
+    accessory?: string;
+    environment?: string;
+  };
 }
 
 export interface MoodEntry {

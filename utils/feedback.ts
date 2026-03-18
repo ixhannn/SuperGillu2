@@ -53,36 +53,91 @@ class FeedbackEngine {
 
   public light() {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(10); // Very short, light tick
+      // Extremely short, sharp tap
+      navigator.vibrate(5); 
     }
   }
 
   public medium() {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(30);
+      // Slightly more body, still sharp
+      navigator.vibrate(12); 
     }
   }
 
   public success() {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate([20, 50, 40]); // Da-DUM pattern
+      // Da-DUM (tightened cinematic timing)
+      navigator.vibrate([10, 60, 20]); 
     }
   }
 
   public error() {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate([40, 40, 40, 40, 40]); // Buzz buzz buzz
+      // Sharp, distinct staccato buzzes
+      navigator.vibrate([15, 40, 15, 40, 20]); 
     }
   }
 
-  // --- AUDIO ---
+  // --- PREMIUM AUDIO ---
 
   public playTick() {
-    this.playTone(800, 'sine', 0.05, 0.05); // High, short, soft sine wave
+    if (!this.isEnabled) return;
+    const ctx = this.getAudioContext();
+    if (!ctx) return;
+
+    try {
+      // Very short, high-frequency "snap" simulating a physical UI switch (taptic feel)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle'; 
+      // Very fast frequency drop to simulate a mechanical "click" instead of a tone
+      osc.frequency.setValueAtTime(1500, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.015);
+
+      // Extremely tight envelope to prevent any ringing
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 0.001); // Fast attack
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.015); // Fast decay
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.015);
+    } catch (e) {
+      console.warn("Audio playback failed", e);
+    }
   }
 
   public playPop() {
-    this.playTone(300, 'sine', 0.1, 0.08); // Lower, slightly longer pop
+    if (!this.isEnabled) return;
+    const ctx = this.getAudioContext();
+    if (!ctx) return;
+
+    try {
+      // Soft, warm "thock" sound (like closing a wooden box or a heavy mechanical key)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      // Lower register, subtle drop
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.03);
+
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.005); // Softer attack
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03); // Tighter decay than before
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.03);
+    } catch (e) {
+      console.warn("Audio playback failed", e);
+    }
   }
 
   public playSuccess() {
@@ -90,11 +145,11 @@ class FeedbackEngine {
     const ctx = this.getAudioContext();
     if (!ctx) return;
     
-    // Play a quick two-tone chime
-    this.playTone(600, 'sine', 0.1, 0.05);
+    // Play a quick, clean two-tone chime (F5 to C6 - perfect fifth), much softer than before
+    this.playTone(698.46, 'sine', 0.1, 0.03); 
     setTimeout(() => {
-      this.playTone(800, 'sine', 0.15, 0.05);
-    }, 100);
+      this.playTone(1046.50, 'sine', 0.2, 0.04); 
+    }, 80);
   }
 
   // --- COMPOSITE PRESETS ---

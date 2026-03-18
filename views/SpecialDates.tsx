@@ -3,6 +3,8 @@ import { Plus, Trash2, Heart } from 'lucide-react';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { differenceInDays, isFuture } from 'date-fns';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { generateId } from '../utils/ids';
 
 interface SpecialDatesProps {
   setView: (view: ViewState) => void;
@@ -13,6 +15,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDate, setNewDate] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => {
     const load = () => setDates(StorageService.getSpecialDates());
@@ -25,7 +28,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   const handleAdd = () => {
     if (!newTitle || !newDate) return;
     const item: SpecialDate = {
-      id: Date.now().toString(),
+      id: generateId(),
       title: newTitle,
       date: new Date(newDate).toISOString(),
       type: 'other'
@@ -38,9 +41,14 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   };
 
   const handleDelete = (id: string) => {
-    if(window.confirm("Remove this special date?")) {
-        StorageService.deleteSpecialDate(id);
-        setDates(prev => prev.filter(d => d.id !== id));
+    setDeleteTarget(id);
+  };
+
+  const confirmDelete = () => {
+    if (deleteTarget) {
+        StorageService.deleteSpecialDate(deleteTarget);
+        setDates(prev => prev.filter(d => d.id !== deleteTarget));
+        setDeleteTarget(null);
     }
   };
 
@@ -104,7 +112,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
             return (
               <div 
                 key={item.id} 
-                className="bg-white rounded-3xl p-5 shadow-sm border border-white flex items-center justify-between group animate-slide-up opacity-0"
+                className="bg-white rounded-3xl p-5 shadow-sm border border-white flex items-center justify-between group animate-slide-up opacity-0 relative"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
                 <div className="flex items-center gap-4">
@@ -122,7 +130,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                 </div>
                 <button 
                     onClick={() => handleDelete(item.id)}
-                    className="absolute right-2 top-2 p-2 text-gray-300 hover:text-red-500 hidden group-hover:block"
+                    className="absolute right-3 top-3 p-2 text-gray-300 hover:text-red-500 opacity-60 hover:opacity-100 transition-all"
                 >
                     <Trash2 size={16} />
                 </button>
@@ -130,6 +138,16 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
             );
         })}
       </div>
+
+      <ConfirmModal
+          isOpen={!!deleteTarget}
+          title="Remove Date"
+          message="Are you sure you want to remove this special date?"
+          confirmLabel="Remove"
+          variant="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

@@ -68,13 +68,45 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
             });
         };
 
+        const myWave = generateWave(myEntries);
+        const partnerWave = generateWave(partnerEntries);
+
+        // Real sync score: calculate mood overlap percentage
+        let matchCount = 0;
+        let totalCompared = 0;
+        let bestDay = '';
+        let bestDayDiff = Infinity;
+
+        days.forEach((day, i) => {
+            const myDay = myEntries.find(e => parseISO(e.timestamp).getDate() === day.getDate());
+            const partnerDay = partnerEntries.find(e => parseISO(e.timestamp).getDate() === day.getDate());
+            if (myDay && partnerDay) {
+                totalCompared++;
+                const diff = Math.abs((moodWeights[myDay.mood] || 3) - (moodWeights[partnerDay.mood] || 3));
+                if (diff <= 1) matchCount++;
+                if (diff < bestDayDiff) {
+                    bestDayDiff = diff;
+                    bestDay = format(day, 'MMMM do');
+                }
+            }
+        });
+
+        const syncScore = totalCompared > 0 ? Math.round((matchCount / totalCompared) * 100) : 0;
+
+        // Dynamic summary based on mood data
+        const topMyMood = moodDistribution(myEntries)[0]?.[0] || 'calm';
+        const topPartnerMood = moodDistribution(partnerEntries)[0]?.[0] || 'calm';
+
         return {
             totalEntries: currentMonthEntries.length,
             myMoods: moodDistribution(myEntries),
             partnerMoods: moodDistribution(partnerEntries),
-            myWave: generateWave(myEntries),
-            partnerWave: generateWave(partnerEntries),
-            syncScore: Math.round(Math.random() * 20 + 80) // Placeholder logic for now
+            myWave,
+            partnerWave,
+            syncScore,
+            bestAlignedDay: bestDay || 'no data yet',
+            topMyMood,
+            topPartnerMood
         };
     }, [moodEntries, profile, currentMonth]);
 
@@ -113,7 +145,21 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         <p className="text-[10px] font-bold text-tulika-500 uppercase tracking-widest mt-0.5">{format(currentMonth, 'MMMM yyyy')}</p>
                     </div>
                 </div>
-                <button className="p-3 bg-stone-900 text-white rounded-full shadow-lg spring-press">
+                <button 
+                    onClick={async () => {
+                        try {
+                            if (navigator.share) {
+                                await navigator.share({
+                                    title: `Aura Rewind — ${format(currentMonth, 'MMMM yyyy')}`,
+                                    text: `Our mood sync score this month: ${stats.syncScore}%! 💕`
+                                });
+                            } else {
+                                await navigator.clipboard.writeText(`Our mood sync score this month: ${stats.syncScore}%! 💕`);
+                            }
+                        } catch (e) { /* user cancelled share */ }
+                    }}
+                    className="p-3 bg-stone-900 text-white rounded-full shadow-lg spring-press"
+                >
                     <Share2 size={20} />
                 </button>
             </header>
@@ -197,7 +243,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                             <Heart size={16} className="text-pink-500 animate-pulse" />
                             Sync Score
                         </h3>
-                        <p className="text-[10px] text-stone-400 font-medium italic">You were most aligned on March 8th.</p>
+                        <p className="text-[10px] text-stone-400 font-medium italic">Most aligned on {stats.bestAlignedDay}.</p>
                     </div>
                     <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full bg-white shadow-lg border-4 border-tulika-50">
                         <span className="text-2xl font-black text-stone-800">{stats.syncScore}%</span>
@@ -212,7 +258,10 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         <Sparkles size={24} className="text-tulika-300 mb-4" />
                         <h4 className="font-serif text-xl font-bold mb-2">The Monthly Glow</h4>
                         <p className="text-sm text-stone-300 leading-relaxed font-serif italic">
-                            "This month, your combined aura radiated warmth and excitement. Keep blooming together!"
+                            {stats.totalEntries > 0
+                                ? `"This month, ${profile.myName} felt mostly ${stats.topMyMood} while ${profile.partnerName}  was ${stats.topPartnerMood}. ${stats.syncScore >= 70 ? 'Your auras were beautifully aligned!' : 'Keep checking in with each other — your bond grows stronger each day.'}"`
+                                : '"Start logging your moods to see your monthly glow bloom here!"'
+                            }
                         </p>
                     </div>
                 </section>

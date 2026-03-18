@@ -4,7 +4,10 @@ import { Memory, Note, UserStatus, PetStats } from '../types';
 import { StorageService } from '../services/storage';
 import { syncEventTarget, SyncService } from '../services/sync';
 import { PetAIService } from '../services/pet';
-import { Heart, Utensils, Settings, X, Crown, MessageCircle, Zap, Bell, Hand, Sparkles } from 'lucide-react';
+import { Heart, Utensils, Settings, X, Crown, MessageCircle, Zap, Bell, Hand, Sparkles, Store } from 'lucide-react';
+import { PetShop } from './PetShop';
+import { feedback } from '../utils/feedback';
+import { AnimatePresence } from 'framer-motion';
 
 interface CouplePetProps {
     memories: Memory[];
@@ -28,13 +31,19 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
     const [isFlashback, setIsFlashback] = useState(false);
     const [clickHearts, setClickHearts] = useState<{id: number, x: number, y: number}[]>([]);
     const [showSettings, setShowSettings] = useState(false);
+    const [showShop, setShowShop] = useState(false);
     const [editName, setEditName] = useState(stats.name);
     const [editType, setEditType] = useState(stats.type);
     
+    // Limits
+    const lastCoinEarned = useRef(0);
     const nudgeTimeoutRef = useRef<any>(null);
+    const statsRef = useRef(stats);
+    statsRef.current = stats;
 
     // Evolution Stats
-    const xp = (memories.length * 15) + (notes.length * 8);
+    // Use persisted XP from stats, supplemented by content counts
+    const xp = Math.max(stats.xp || 0, (memories.length * 15) + (notes.length * 8));
     let level = Math.floor(xp / 100) + 1;
     let stage = level > 5 ? 'Guardian' : level > 3 ? 'Adult' : level > 1 ? 'Child' : 'Baby';
 
@@ -97,7 +106,19 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
         setClickHearts(prev => [...prev, newHeart]);
         setTimeout(() => setClickHearts(prev => prev.filter(h => h.id !== newHeart.id)), 1000);
 
-        const newStats = { ...stats, lastPetted: new Date().toISOString(), happiness: Math.min(100, stats.happiness + 5) };
+        const now = Date.now();
+        let coinsEarned = 0;
+        if (now - lastCoinEarned.current > 5000) {
+            coinsEarned = 5; // Earn 5 coins for petting every 5 seconds max
+            lastCoinEarned.current = now;
+        }
+
+        const newStats = { 
+            ...stats, 
+            lastPetted: new Date().toISOString(), 
+            happiness: Math.min(100, stats.happiness + 5),
+            coins: stats.coins + coinsEarned
+        };
         setStats(newStats);
         StorageService.savePetStats(newStats);
         
@@ -116,6 +137,12 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
             SyncService.sendSignal('PET_NUDGE', { partner: StorageService.getCoupleProfile().myName });
             setDialogue(`Sending a poke to ${partnerName}... 👉`);
             if (navigator.vibrate) navigator.vibrate(200);
+            
+            // Nudging earns 10 coins
+            const newStats = { ...stats, coins: stats.coins + 10 };
+            setStats(newStats);
+            StorageService.savePetStats(newStats);
+
             setTimeout(() => setAction('idle'), 1000);
         }, 800);
     };
@@ -129,7 +156,19 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
         if (status.state === 'sleeping' || action === 'feeding') return;
         setAction('feeding');
         
-        const newStats = { ...stats, lastFed: new Date().toISOString(), happiness: Math.min(100, stats.happiness + 15) };
+        const now = Date.now();
+        let coinsEarned = 0;
+        if (now - lastCoinEarned.current > 5000) {
+            coinsEarned = 5; // Earn 5 coins for feeding
+            lastCoinEarned.current = now;
+        }
+
+        const newStats = { 
+            ...stats, 
+            lastFed: new Date().toISOString(), 
+            happiness: Math.min(100, stats.happiness + 15),
+            coins: stats.coins + coinsEarned
+        };
         setStats(newStats);
         StorageService.savePetStats(newStats);
         
@@ -153,9 +192,11 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
 
     // Feature 7: Shared Hunger Check
     useEffect(() => {
-        if (hoursSinceFed > 24 && stats.happiness > 10) {
+        if (hoursSinceFed > 24) {
             const interval = setInterval(() => {
-                const newStats = { ...stats, happiness: Math.max(0, stats.happiness - 1) };
+                const current = statsRef.current;
+                if (current.happiness <= 0) return;
+                const newStats = { ...current, happiness: Math.max(0, current.happiness - 1) };
                 setStats(newStats);
                 StorageService.savePetStats(newStats);
                 if (Math.random() > 0.9) {
@@ -164,7 +205,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
             }, 60000);
             return () => clearInterval(interval);
         }
-    }, [hoursSinceFed, stats]);
+    }, [hoursSinceFed]);
 
     return (
         <div className="relative mb-6 group animate-slide-up">
@@ -172,7 +213,13 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                 relative p-5 rounded-[2.5rem] border-2 transition-all duration-700 overflow-hidden
                 ${status.state === 'sleeping' 
                     ? 'bg-slate-900 border-slate-800 text-slate-400 shadow-none' 
-                    : 'bg-white border-white shadow-xl shadow-tulika-100/50 hover:shadow-2xl'}
+                    : stats.equipped.environment === 'env_space'
+                        ? 'bg-[#0f1020] border-[#1a1b3a] shadow-xl text-tulika-50'
+                        : stats.equipped.environment === 'env_beach'
+                            ? 'bg-[#e0f7fa] border-[#b2ebf2] shadow-xl'
+                            : stats.equipped.environment === 'env_forest'
+                                ? 'bg-[#e8f5e9] border-[#c8e6c9] shadow-xl'
+                                : 'bg-white border-white shadow-xl shadow-tulika-100/50 hover:shadow-2xl'}
                 ${action === 'nudge' ? 'ring-4 ring-tulika-400 ring-opacity-50' : ''}
             `}>
                 <div className={`absolute -right-4 -top-4 w-32 h-32 rounded-full blur-3xl opacity-20 transition-colors duration-1000 ${
@@ -199,8 +246,26 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                                 <Crown size={20} className="absolute -top-6 left-1/2 -translate-x-1/2 text-yellow-400 animate-pulse" fill="currentColor" />
                             )}
                             
-                            <span className={`transition-transform duration-300 ${status.state === 'sleeping' ? 'grayscale opacity-50' : ''}`}>
+                            <span className={`transition-transform duration-300 flex items-center justify-center relative ${status.state === 'sleeping' ? 'grayscale opacity-50' : ''}`}>
                                 {status.state === 'sleeping' ? '💤' : petEmoji}
+                                
+                                {/* Equipped Cosmetics overlaid absolutely */}
+                                {stats.equipped.hat && status.state !== 'sleeping' && (
+                                    <span className="absolute -top-6 text-4xl pointer-events-none drop-shadow-sm rotate-6">
+                                        {stats.equipped.hat === 'hat_crown' ? '👑' : 
+                                         stats.equipped.hat === 'hat_party' ? '🥳' : 
+                                         stats.equipped.hat === 'hat_cowboy' ? '🤠' : 
+                                         stats.equipped.hat === 'hat_wizard' ? '🧙‍♂️' : 
+                                         stats.equipped.hat === 'hat_halo' ? '😇' : ''}
+                                    </span>
+                                )}
+                                {stats.equipped.accessory && status.state !== 'sleeping' && (
+                                    <span className="absolute -bottom-1 -right-2 text-2xl pointer-events-none z-10 drop-shadow-sm -rotate-12">
+                                        {stats.equipped.accessory === 'acc_glasses' ? '🕶️' : 
+                                         stats.equipped.accessory === 'acc_scarf' ? '🧣' : 
+                                         stats.equipped.accessory === 'acc_bow' ? '🎀' : ''}
+                                    </span>
+                                )}
                             </span>
 
                             {/* Flashback Badge (Feature 4) */}
@@ -231,14 +296,17 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                     <div className="flex-1 flex flex-col pt-1">
                         <div className="flex justify-between items-start mb-2">
                             <div>
-                                <h3 className={`font-serif font-bold text-lg leading-tight flex items-center gap-2 ${status.state === 'sleeping' ? 'text-white' : 'text-gray-800'}`}>
+                                <h3 className={`font-serif font-bold text-lg leading-tight flex items-center gap-2 ${
+                                    status.state === 'sleeping' || stats.equipped.environment === 'env_space' ? 'text-white' : 'text-gray-800'
+                                }`}>
                                     {stats.name}
                                     <button onClick={() => setShowSettings(true)} className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition-opacity">
                                         <Settings size={14} />
                                     </button>
                                 </h3>
                                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-tulika-400">
-                                    {isFlashback ? 'Memory Flashback ✨' : stage}
+                                    {isFlashback ? 'Memory Flashback ✨' : stage} 
+                                    <span className="ml-2 text-yellow-500">• {stats.coins} <Sparkles size={8} className="inline mr-0.5" fill="currentColor"/></span>
                                 </p>
                             </div>
                             <div className="flex gap-1">
@@ -259,8 +327,16 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                                     onClick={refreshAI}
                                     disabled={isAILoading}
                                     className={`p-2 rounded-xl transition-all ${status.state === 'sleeping' ? 'bg-slate-800 text-slate-600' : 'bg-blue-50 text-blue-500 active:scale-90'}`}
+                                    title="Refresh Dialogue"
                                 >
                                     <MessageCircle size={16} className={isAILoading ? 'animate-spin' : ''} />
+                                </button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); setShowShop(true); feedback.playPop(); }}
+                                    className={`p-2 rounded-xl transition-all ${status.state === 'sleeping' ? 'bg-slate-800 text-slate-600' : 'bg-yellow-50 text-yellow-500 active:scale-90'}`}
+                                    title="Pet Shop"
+                                >
+                                    <Store size={16} />
                                 </button>
                             </div>
                         </div>
@@ -337,6 +413,16 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                     </div>
                 </div>
             )}
+
+            <AnimatePresence>
+                {showShop && (
+                    <PetShop 
+                        stats={stats} 
+                        onClose={() => setShowShop(false)} 
+                        onUpdateStats={(newStats) => setStats(newStats)} 
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 };

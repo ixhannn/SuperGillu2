@@ -257,8 +257,24 @@ export const StorageService = {
 
     async cleanupDailyPhotos() {
         const now = new Date();
-        const valid = DATA_CACHE.dailyPhotos.filter(p => new Date(p.expiresAt) > now);
-        if (valid.length !== DATA_CACHE.dailyPhotos.length) {
+        
+        // Find expired photos
+        const expired = DATA_CACHE.dailyPhotos.filter(p => new Date(p.expiresAt) <= now);
+        
+        if (expired.length > 0) {
+            // Memory Leak Fix: Actually delete the blobs from IndexedDB
+            for (const item of expired) {
+                if (item.imageId) {
+                    await deleteRaw(STORES.IMAGES, item.imageId);
+                    MEDIA_MEMORY_CACHE.delete(item.imageId);
+                }
+                if (item.videoId) {
+                    await deleteRaw(STORES.IMAGES, item.videoId);
+                }
+            }
+            
+            // Keep only valid photos
+            const valid = DATA_CACHE.dailyPhotos.filter(p => new Date(p.expiresAt) > now);
             DATA_CACHE.dailyPhotos = valid;
             await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, valid);
             notifyUpdate({ source: 'sync', action: 'save', table: 'daily_photos', id: 'cleanup' });
@@ -481,7 +497,15 @@ export const StorageService = {
 
     getPetStats: (): PetStats => {
         const str = localStorage.getItem(CACHE_KEYS.PET_STATS);
-        return str ? JSON.parse(str) : { name: 'Coco', type: 'bear', lastFed: '1970-01-01T00:00:00.000Z', lastPetted: '1970-01-01T00:00:00.000Z', happiness: 50 };
+        const defaults: PetStats = { 
+            name: 'Coco', type: 'bear', lastFed: '1970-01-01T00:00:00.000Z', lastPetted: '1970-01-01T00:00:00.000Z', happiness: 50,
+            coins: 0, inventory: [], equipped: {} 
+        };
+        if (str) {
+            const parsed = JSON.parse(str);
+            return { ...defaults, ...parsed };
+        }
+        return defaults;
     },
 
     savePetStats: (s: PetStats, source: 'user' | 'sync' = 'user') => {

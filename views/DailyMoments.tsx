@@ -7,6 +7,9 @@ import { useTulikaMedia } from '../hooks/useTulikaImage';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { Skeleton } from '../components/Skeleton';
 import { toast } from '../utils/toast';
+import { generateId } from '../utils/ids';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -42,14 +45,20 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
         return () => clearInterval(timer);
     }, [photo.expiresAt]);
 
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm("Delete this moment?")) {
-            await StorageService.deleteDailyPhoto(photo.id);
-        }
+        setShowDeleteConfirm(true);
+    };
+
+    const confirmDelete = async () => {
+        await StorageService.deleteDailyPhoto(photo.id);
+        setShowDeleteConfirm(false);
     };
 
     return (
+        <>
         <motion.div
             layoutId={`photo-${photo.id}`}
             onClick={onClick}
@@ -120,6 +129,17 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                 <Trash2 size={16} />
             </button>
         </motion.div>
+
+        <ConfirmModal
+            isOpen={showDeleteConfirm}
+            title="Delete Moment"
+            message="Delete this moment?"
+            confirmLabel="Delete"
+            variant="danger"
+            onConfirm={confirmDelete}
+            onCancel={() => setShowDeleteConfirm(false)}
+        />
+        </>
     );
 };
 
@@ -217,7 +237,7 @@ const PostViewer: React.FC<{
         setIsSubmitting(true);
 
         const newComment: Comment = {
-            id: Date.now().toString() + Math.random().toString(36).substring(2, 5),
+            id: generateId(),
             postId: photo.id,
             senderId: myDeviceId,
             senderName: profile.myName,
@@ -455,65 +475,6 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         setPhotos(valid.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     };
 
-    const compressImage = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (e) => {
-                const img = new Image();
-                img.src = e.target?.result as string;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    const MAX_SIZE = 800;
-                    if (width > height) {
-                        if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-                    } else {
-                        if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-                    }
-                    canvas.width = Math.round(width);
-                    canvas.height = Math.round(height);
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.6));
-                };
-                img.onerror = () => reject(new Error("Image load failed"));
-            };
-            reader.onerror = () => reject(new Error("File read failed"));
-        });
-    };
-
-    // FIX: Calculate target dimensions FIRST, then set canvas only once
-    const generateVideoThumbnail = (file: File): Promise<string> => {
-        return new Promise((resolve) => {
-            const video = document.createElement('video');
-            video.preload = 'metadata';
-            video.onloadedmetadata = () => {
-                video.currentTime = 0.5;
-            };
-            video.onseeked = () => {
-                const MAX_SIZE = 600;
-                let w = video.videoWidth;
-                let h = video.videoHeight;
-                if (w > MAX_SIZE || h > MAX_SIZE) {
-                    const ratio = Math.min(MAX_SIZE / w, MAX_SIZE / h);
-                    w = Math.round(w * ratio);
-                    h = Math.round(h * ratio);
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                ctx?.drawImage(video, 0, 0, w, h);
-                resolve(canvas.toDataURL('image/jpeg', 0.7));
-                URL.revokeObjectURL(video.src);
-            };
-            video.onerror = () => resolve('');
-            video.src = URL.createObjectURL(file);
-        });
-    };
-
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             try {
@@ -522,7 +483,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                 setNewVideo(null);
                 setIsUploading(true);
             } catch (err) {
-                alert("Could not process image.");
+                toast.show("Could not process image.", 'error');
             }
         }
     };
@@ -530,8 +491,8 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            if (file.size > 25 * 1024 * 1024) {
-                alert("Video too large (Max 25MB)");
+            if (isVideoTooLarge(file)) {
+                toast.show("Video too large (Max 25MB)", 'error');
                 return;
             }
 
@@ -554,7 +515,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         setIsSaving(true);
         const now = new Date();
         const photo: DailyPhoto = {
-            id: Date.now().toString(),
+            id: generateId(),
             caption: caption || 'Just now',
             createdAt: now.toISOString(),
             expiresAt: new Date(now.getTime() + (24 * 60 * 60 * 1000)).toISOString(),

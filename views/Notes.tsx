@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, X, PenLine, Trash2 } from 'lucide-react';
+import { Plus, X, PenLine, Trash2, ArrowLeft } from 'lucide-react';
 import { ViewState, Note } from '../types';
 import { StorageService } from '../services/storage';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { generateId } from '../utils/ids';
 
 interface NotesProps {
   setView: (view: ViewState) => void;
@@ -13,6 +15,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [currentNote, setCurrentNote] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => {
     setNotes(StorageService.getNotes());
@@ -24,7 +27,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
         return;
     }
     const note: Note = {
-      id: Date.now().toString(),
+      id: generateId(),
       content: currentNote,
       createdAt: new Date().toISOString(),
       color: COLORS[Math.floor(Math.random() * COLORS.length)]
@@ -35,18 +38,27 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
     setIsEditing(false);
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm("Delete this note?")) {
-        StorageService.deleteNote(id);
-        setNotes(prev => prev.filter(n => n.id !== id));
+  const handleDelete = (id: string) => {
+    setDeleteTarget(id);
+  };
+
+  const confirmDelete = () => {
+    if (deleteTarget) {
+        StorageService.deleteNote(deleteTarget);
+        setNotes(prev => prev.filter(n => n.id !== deleteTarget));
+        setDeleteTarget(null);
     }
   };
 
   return (
     <div className="p-6 pt-8 pb-32 min-h-screen">
       <div className="flex justify-between items-center mb-6 animate-fade-in">
-        <h2 className="text-2xl font-serif font-bold text-gray-800">Love Notes</h2>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-600 rounded-full hover:bg-gray-50 active:scale-95 transition-transform">
+            <ArrowLeft size={24} />
+          </button>
+          <h2 className="text-2xl font-serif font-bold text-gray-800">Love Notes</h2>
+        </div>
         <button 
           onClick={() => setIsEditing(true)}
           className="bg-gray-900 text-white p-3 rounded-full shadow-lg hover:scale-110 transition-transform"
@@ -94,7 +106,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
                     {new Date(note.createdAt).toLocaleDateString()}
                 </span>
                 <button 
-                    onClick={(e) => handleDelete(note.id, e)}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(note.id); }}
                     className="p-1.5 bg-white/50 rounded-full text-gray-500 hover:bg-white hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                 >
                     <Trash2 size={14} />
@@ -110,6 +122,16 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
               <p>Write a little note...</p>
           </div>
       )}
+
+      <ConfirmModal
+          isOpen={!!deleteTarget}
+          title="Delete Note"
+          message="Are you sure you want to delete this note?"
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

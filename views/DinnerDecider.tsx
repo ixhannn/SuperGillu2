@@ -3,6 +3,7 @@ import { ArrowLeft, Plus, Trash2, Utensils, RotateCw } from 'lucide-react';
 import { ViewState, DinnerOption } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
+import { generateId } from '../utils/ids';
 
 interface DinnerDeciderProps {
   setView: (view: ViewState) => void;
@@ -40,7 +41,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
   const handleAdd = () => {
     if (!newOption.trim()) return;
     const item: DinnerOption = {
-      id: Date.now().toString(),
+      id: generateId(),
       text: newOption.trim()
     };
     StorageService.saveDinnerOption(item);
@@ -128,8 +129,8 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
           {/* Spinning SVG */}
           <div
-            className="w-full h-full rounded-full shadow-2xl overflow-hidden border-4 border-white transition-transform duration-[3000ms] cubic-bezier(0.15, 0.2, 0.25, 1)"
-            style={{ transform: `rotate(${rotation}deg)` }}
+            className="w-full h-full rounded-full shadow-2xl overflow-hidden border-4 border-white transition-transform duration-[3000ms] ease-[cubic-bezier(0.15,0.2,0.25,1)] transform-gpu"
+            style={{ transform: `rotate(${rotation}deg) translateZ(0)`, willChange: 'transform' }}
           >
             <svg viewBox="-1 -1 2 2" className="w-full h-full transform -rotate-90">
               {options.map((opt, i) => {
@@ -138,42 +139,42 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                 const endAngle = (i + 1) / options.length;
                 const [startX, startY] = getCoordinatesForPercent(startAngle);
                 const [endX, endY] = getCoordinatesForPercent(endAngle);
-                const largeArcFlag = options.length === 1 ? 0 : 0; // Simplified for >1 items
 
                 // Construct Path
                 const pathData = options.length === 1
-                  ? `M 0 0 L 1 0 A 1 1 0 1 1 1 -0.0001 Z` // Full circle
+                  ? `M 0 0 L 1 0 A 1 1 0 1 1 1 -0.0001 Z`
                   : `M 0 0 L ${startX} ${startY} A 1 1 0 0 1 ${endX} ${endY} Z`;
 
+                // Calculate label position: midpoint of the arc, 60% out from center
+                const midAngle = (startAngle + endAngle) / 2;
+                const [labelX, labelY] = getCoordinatesForPercent(midAngle);
+                const textRotation = midAngle * 360 + 90; // Rotate text to read along slice
+
                 return (
-                  <path
-                    key={opt.id}
-                    d={pathData}
-                    fill={COLORS[i % COLORS.length]}
-                    stroke="white"
-                    strokeWidth="0.02"
-                  />
+                  <g key={opt.id}>
+                    <path
+                      d={pathData}
+                      fill={COLORS[i % COLORS.length]}
+                      stroke="white"
+                      strokeWidth="0.02"
+                    />
+                    <text
+                      x={labelX * 0.6}
+                      y={labelY * 0.6}
+                      fill="white"
+                      fontSize="0.12"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      transform={`rotate(${textRotation}, ${labelX * 0.6}, ${labelY * 0.6})`}
+                      style={{ textShadow: '0 0.005em 0.01em rgba(0,0,0,0.4)', pointerEvents: 'none' }}
+                    >
+                      {opt.text.length > 12 ? opt.text.slice(0, 12) + '…' : opt.text}
+                    </text>
+                  </g>
                 );
               })}
             </svg>
-
-            {/* Labels (Overlay absolute divs to avoid SVG text rotation complexity) */}
-            {options.map((opt, i) => {
-              const angle = (i * 360 / options.length) + (360 / options.length / 2);
-              return (
-                <div
-                  key={opt.id}
-                  className="absolute top-1/2 left-1/2 w-[50%] h-[20px] origin-left flex items-center pl-8"
-                  style={{
-                    transform: `translateY(-50%) rotate(${angle}deg)`,
-                  }}
-                >
-                  <span className="text-white font-bold text-xs truncate w-24 drop-shadow-sm transform text-right block" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
-                    {opt.text}
-                  </span>
-                </div>
-              );
-            })}
           </div>
         </div>
 

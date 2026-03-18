@@ -7,6 +7,7 @@ import { useTulikaMedia } from '../hooks/useTulikaImage';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { StaggeredText } from '../components/StaggeredText';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, useScroll, useTransform } from 'framer-motion';
 
 interface MemoryTimelineProps {
@@ -148,6 +149,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: { memory: Memory, onCl
 export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => {
     const load = () => setMemories(StorageService.getMemories());
@@ -163,9 +165,14 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Delete this memory forever?')) {
-        if (selectedMemory?.id === id) setSelectedMemory(null);
-        await StorageService.deleteMemory(id);
+    setDeleteTarget(id);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteTarget) {
+        if (selectedMemory?.id === deleteTarget) setSelectedMemory(null);
+        await StorageService.deleteMemory(deleteTarget);
+        setDeleteTarget(null);
     }
   };
 
@@ -176,7 +183,12 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
       return acc;
   }, {} as Record<string, Memory[]>);
 
-  const keys = Object.keys(grouped).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  // Sort by the actual date of the first memory in each group (reliable across locales)
+  const keys = Object.keys(grouped).sort((a, b) => {
+    const dateA = new Date(grouped[a][0].date).getTime();
+    const dateB = new Date(grouped[b][0].date).getTime();
+    return dateB - dateA;
+  });
 
   return (
     <PullToRefresh onRefresh={handleRefresh}>
@@ -222,6 +234,16 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
             onDelete={handleDelete} 
         />
       )}
+
+      <ConfirmModal
+          isOpen={!!deleteTarget}
+          title="Delete Memory"
+          message="Delete this memory forever? This can't be undone."
+          confirmLabel="Delete Forever"
+          variant="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+      />
       </div>
     </PullToRefresh>
   );

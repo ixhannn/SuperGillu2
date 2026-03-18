@@ -5,6 +5,10 @@ import { ViewState, Keepsake, CoupleProfile } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useTulikaMedia } from '../hooks/useTulikaImage';
 import { GestureModal } from '../components/GestureModal';
+import { toast } from '../utils/toast';
+import { generateId } from '../utils/ids';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 
 interface KeepsakeBoxProps {
     setView: (view: ViewState) => void;
@@ -98,6 +102,70 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
     );
 };
 
+// Extracted to separate component so we can use hooks conditionally for the specific opened keepsake
+const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void }> = ({ keepsake, onClose }) => {
+    // For detail views, we want the FULL resolution image/video
+    const { src: mediaUrl, isLoading } = useTulikaMedia(
+        keepsake.videoId || keepsake.imageId, 
+        keepsake.video || keepsake.image
+    );
+
+    return (
+        <div className="bg-[#fdfbf7] p-8 rounded-[2.5rem] shadow-2xl w-full relative overflow-hidden">
+            {/* Paper Texture Overlay */}
+            <div className="absolute inset-0 opacity-40 pointer-events-none mix-blend-multiply"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d6d3d1' fill-opacity='0.4' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='1'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E")` }}>
+            </div>
+
+            <button
+                onClick={onClose}
+                className="absolute top-4 right-4 p-2 text-stone-300 hover:text-stone-500 transition-colors z-20 bg-white/50 backdrop-blur-md rounded-full"
+            >
+                <X size={20} />
+            </button>
+
+            <div className="relative z-10 max-h-[70vh] overflow-y-auto no-scrollbar pb-6">
+                {keepsake.title && (
+                    <h3 className="font-serif font-bold text-3xl text-stone-800 mb-6 text-center leading-tight">
+                        {keepsake.title}
+                    </h3>
+                )}
+
+                {(keepsake.image || keepsake.video || keepsake.imageId || keepsake.videoId) && (
+                    <div className="rounded-2xl overflow-hidden mb-8 shadow-md border-[8px] border-white bg-stone-100 flex items-center justify-center min-h-[200px] relative">
+                        {isLoading ? (
+                           <div className="absolute inset-0 bg-stone-200 animate-pulse flex items-center justify-center">
+                               <div className="w-8 h-8 rounded-full border-4 border-stone-300 border-t-tulika-400 animate-spin"></div>
+                           </div>
+                        ) : (
+                            keepsake.video || keepsake.videoId ? (
+                                <video src={mediaUrl || ''} controls autoPlay className="max-w-full max-h-[40vh] object-contain relative z-10" />
+                            ) : (
+                                <img src={mediaUrl || ''} className="max-w-full max-h-[40vh] object-contain relative z-10" alt="Keepsake" />
+                            )
+                        )}
+                    </div>
+                )}
+
+                {keepsake.content && (
+                    <p className="font-serif text-stone-600 text-lg leading-relaxed whitespace-pre-wrap text-center px-4">
+                        {keepsake.content}
+                    </p>
+                )}
+
+                {keepsake.type === 'song' && keepsake.spotifyLink && (
+                    <div className="mt-8 p-4 bg-green-50 rounded-2xl border border-green-100 flex items-center justify-center gap-3">
+                        <Music size={24} className="text-green-600" />
+                        <a href={keepsake.spotifyLink} target="_blank" rel="noreferrer" className="text-sm font-bold text-green-700 underline">
+                            Open in Spotify
+                        </a>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const [keepsakes, setKeepsakes] = useState<Keepsake[]>([]);
     const [activeTab, setActiveTab] = useState<'tulika' | 'ishan'>('tulika');
@@ -155,39 +223,17 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
         })
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+    const [hideTarget, setHideTarget] = useState<string | null>(null);
+
     const handleHide = (id: string) => {
-        if (confirm("Hide this keepsake? It won't be deleted, just hidden from view.")) {
-            StorageService.hideKeepsake(id);
-        }
+        setHideTarget(id);
     };
 
-    const compressImage = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (e) => {
-                const img = new Image();
-                img.src = e.target?.result as string;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    const MAX_SIZE = 1000;
-                    if (width > height) {
-                        if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-                    } else {
-                        if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.8));
-                };
-                img.onerror = () => reject(new Error("Image load failed"));
-            };
-            reader.onerror = () => reject(new Error("File read failed"));
-        });
+    const confirmHide = () => {
+        if (hideTarget) {
+            StorageService.hideKeepsake(hideTarget);
+            setHideTarget(null);
+        }
     };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,22 +244,30 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                 setImage(compressed);
                 setVideo(null);
             } catch (err) {
-                alert("Could not load image.");
+                toast.show("Could not load image.", 'error');
             }
         }
     };
 
-    const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            if (file.size > 25 * 1024 * 1024) {
-                alert("Video too large (Max 25MB)");
+            if (isVideoTooLarge(file)) {
+                toast.show("Video too large (Max 25MB)", 'error');
                 return;
             }
+
+            // Generate thumbnail so the card has a preview image
+            try {
+                const thumb = await generateVideoThumbnail(file);
+                if (thumb) setImage(thumb);
+            } catch (err) {
+                console.error('Video thumbnail generation failed', err);
+            }
+
             const reader = new FileReader();
             reader.onload = (ev) => {
                 setVideo(ev.target?.result as string);
-                setImage(null);
             };
             reader.readAsDataURL(file);
         }
@@ -221,7 +275,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
 
     const handleSend = async () => {
         const newKeepsake: Keepsake = {
-            id: Date.now().toString(),
+            id: generateId(),
             senderId: profile.myName || myId,
             type,
             title,
@@ -477,54 +531,19 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                 layoutId={selectedKeepsake ? `keepsake-${selectedKeepsake.id}` : undefined}
             >
                 {selectedKeepsake && (
-                    <div className="bg-[#fdfbf7] p-8 rounded-[2.5rem] shadow-2xl w-full relative overflow-hidden">
-                        {/* Paper Texture Overlay */}
-                        <div className="absolute inset-0 opacity-40 pointer-events-none mix-blend-multiply"
-                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d6d3d1' fill-opacity='0.4' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='1'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E")` }}>
-                        </div>
-
-                        <button
-                            onClick={() => setSelectedKeepsake(null)}
-                            className="absolute top-4 right-4 p-2 text-stone-300 hover:text-stone-500 transition-colors z-20 bg-white/50 backdrop-blur-md rounded-full"
-                        >
-                            <X size={20} />
-                        </button>
-
-                        <div className="relative z-10 max-h-[70vh] overflow-y-auto no-scrollbar pb-6">
-                            {selectedKeepsake.title && (
-                                <h3 className="font-serif font-bold text-3xl text-stone-800 mb-6 text-center leading-tight">
-                                    {selectedKeepsake.title}
-                                </h3>
-                            )}
-
-                            {(selectedKeepsake.image || selectedKeepsake.video) && (
-                                <div className="rounded-2xl overflow-hidden mb-8 shadow-md border-[8px] border-white bg-stone-100 flex items-center justify-center">
-                                    {selectedKeepsake.video ? (
-                                        <video src={selectedKeepsake.video} controls autoPlay className="max-w-full max-h-[40vh] object-contain" />
-                                    ) : (
-                                        <img src={selectedKeepsake.image} className="max-w-full max-h-[40vh] object-contain" alt="Keepsake" />
-                                    )}
-                                </div>
-                            )}
-
-                            {selectedKeepsake.content && (
-                                <p className="font-serif text-stone-600 text-lg leading-relaxed whitespace-pre-wrap text-center px-4">
-                                    {selectedKeepsake.content}
-                                </p>
-                            )}
-
-                            {selectedKeepsake.type === 'song' && selectedKeepsake.spotifyLink && (
-                                <div className="mt-8 p-4 bg-green-50 rounded-2xl border border-green-100 flex items-center justify-center gap-3">
-                                    <Music size={24} className="text-green-600" />
-                                    <a href={selectedKeepsake.spotifyLink} target="_blank" rel="noreferrer" className="text-sm font-bold text-green-700 underline">
-                                        Open in Spotify
-                                    </a>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <KeepsakeDetailContent keepsake={selectedKeepsake} onClose={() => setSelectedKeepsake(null)} />
                 )}
             </GestureModal>
+
+        <ConfirmModal
+            isOpen={!!hideTarget}
+            title="Hide Keepsake"
+            message="Hide this keepsake? It won't be deleted, just hidden from view."
+            confirmLabel="Hide"
+            variant="default"
+            onConfirm={confirmHide}
+            onCancel={() => setHideTarget(null)}
+        />
         </div>
     );
 };

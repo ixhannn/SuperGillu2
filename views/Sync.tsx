@@ -3,6 +3,8 @@ import { ArrowLeft, Cloud, CheckCircle, RefreshCw, AlertTriangle, Bell, BellOff 
 import { ViewState } from '../types';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { SupabaseService } from '../services/supabase';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { toast } from '../utils/toast';
 
 interface SyncProps {
   setView: (view: ViewState) => void;
@@ -12,6 +14,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [status, setStatus] = useState(SyncService.status);
   const [lastSync, setLastSync] = useState(SyncService.lastSyncTime);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     "Notification" in window ? Notification.permission : "denied"
   );
@@ -33,7 +36,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
   const requestPermission = async () => {
       if (!("Notification" in window)) {
-          alert("This browser does not support notifications.");
+          toast.show("This browser does not support notifications.", 'info');
           return;
       }
       
@@ -49,10 +52,8 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   };
 
   const handleLogout = async () => {
-      if(confirm("Log out of cloud?")) {
-          if (SupabaseService.client) await SupabaseService.client.auth.signOut();
-          window.location.reload();
-      }
+      if (SupabaseService.client) await SupabaseService.client.auth.signOut();
+      window.location.reload();
   };
 
   return (
@@ -126,11 +127,21 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
         </div>
 
         <button 
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="mt-auto text-red-400 text-sm font-medium hover:text-red-600 py-8"
         >
             Log Out
         </button>
+
+        <ConfirmModal
+            isOpen={showLogoutConfirm}
+            title="Log Out"
+            message="Are you sure you want to log out of cloud sync?"
+            confirmLabel="Log Out"
+            variant="danger"
+            onConfirm={handleLogout}
+            onCancel={() => setShowLogoutConfirm(false)}
+        />
 
       </div>
     </div>

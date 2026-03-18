@@ -141,7 +141,6 @@ const audioEngine = new SoundscapeEngine();
 
 export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
   const [memories, setMemories] = useState<Memory[]>([]);
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   
   // UI States
@@ -153,10 +152,16 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
   const [opacity, setOpacity] = useState(0); 
   const [scale, setScale] = useState(1);
 
+  // Use refs to avoid re-creating intervals on every state change
+  const currentIndexRef = useRef(0);
+  const memoriesRef = useRef<Memory[]>([]);
+  const [currentMemory, setCurrentMemory] = useState<Memory | undefined>(undefined);
+
   useEffect(() => {
     const data = StorageService.getMemories();
     const shuffled = [...data].sort(() => 0.5 - Math.random());
     setMemories(shuffled);
+    memoriesRef.current = shuffled;
     
     // Start Audio Engine
     audioEngine.playLove(); 
@@ -185,24 +190,29 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
       }
   };
 
-  // Slideshow Logic
+  // Slideshow Logic — single stable interval, uses refs to avoid stacking
   useEffect(() => {
-    if (memories.length === 0) return;
+    if (memoriesRef.current.length === 0 && memories.length === 0) return;
+    memoriesRef.current = memories;
 
     const cycle = async () => {
+        const mems = memoriesRef.current;
+        if (mems.length === 0) return;
+
         // Fade Out & Zoom Reset
         setOpacity(0);
         
         await new Promise(r => setTimeout(r, 2000)); // Slow fade out
 
         // Change Content
-        const nextIndex = (currentIndex + 1) % memories.length;
-        setCurrentIndex(nextIndex);
+        const nextIndex = (currentIndexRef.current + 1) % mems.length;
+        currentIndexRef.current = nextIndex;
         
-        const mem = memories[nextIndex];
+        const mem = mems[nextIndex];
+        setCurrentMemory(mem);
+        
         if (mem.image) setCurrentImage(mem.image);
         else if (mem.imageId) {
-            // Fix: Updated getMemoryImage to getImage
             const imgData = await StorageService.getImage(mem.imageId);
             setCurrentImage(imgData || null);
         } else {
@@ -219,17 +229,12 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
         });
     };
 
+    // Initial load
+    cycle();
     const timer = setInterval(cycle, 10000); // 10 seconds per memory
     
-    // Initial Load
-    if (opacity === 0 && memories.length > 0) {
-        cycle();
-    }
-
     return () => clearInterval(timer);
-  }, [currentIndex, memories.length]);
-
-  const currentMemory = memories[currentIndex];
+  }, [memories]);
 
   const handleInteraction = () => {
       setShowUI(true);
