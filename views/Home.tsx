@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, ChevronRight, Zap, Award, Wind, Sun, Map } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
@@ -133,6 +133,89 @@ const HeartbeatRipple = ({ active }: { active: boolean }) => {
     );
 };
 
+// === SCROLL ANIMATION SYSTEM ===
+const scrollVariants = {
+    fadeUp: {
+        hidden: { opacity: 0, y: 50 },
+        visible: { opacity: 1, y: 0 }
+    },
+    fadeScale: {
+        hidden: { opacity: 0, scale: 0.88, y: 30 },
+        visible: { opacity: 1, scale: 1, y: 0 }
+    },
+    slideFromLeft: {
+        hidden: { opacity: 0, x: -60 },
+        visible: { opacity: 1, x: 0 }
+    },
+    slideFromRight: {
+        hidden: { opacity: 0, x: 60 },
+        visible: { opacity: 1, x: 0 }
+    },
+    popIn: {
+        hidden: { opacity: 0, scale: 0.7, y: 20 },
+        visible: { opacity: 1, scale: 1, y: 0 }
+    },
+    tiltUp: {
+        hidden: { opacity: 0, y: 60, rotateX: 8 },
+        visible: { opacity: 1, y: 0, rotateX: 0 }
+    }
+};
+
+const gridContainerVariants = {
+    hidden: {},
+    visible: {
+        transition: { staggerChildren: 0.1, delayChildren: 0.05 }
+    }
+};
+
+const gridItemVariants = {
+    hidden: { opacity: 0, y: 40, scale: 0.92 },
+    visible: {
+        opacity: 1, y: 0, scale: 1,
+        transition: { type: "spring", stiffness: 250, damping: 20 }
+    }
+};
+
+const ScrollReveal = ({ children, variant = 'fadeUp', delay = 0, className = '' }: {
+    children: React.ReactNode;
+    variant?: keyof typeof scrollVariants;
+    delay?: number;
+    className?: string;
+}) => (
+    <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-80px" }}
+        variants={scrollVariants[variant]}
+        transition={{ type: "spring", stiffness: 180, damping: 22, delay }}
+        className={className}
+    >
+        {children}
+    </motion.div>
+);
+
+// Counting number animation hook
+const useCountUp = (target: number, inView: boolean, duration = 1800) => {
+    const [count, setCount] = useState(0);
+    const hasRun = useRef(false);
+
+    useEffect(() => {
+        if (!inView || hasRun.current || target === 0) return;
+        hasRun.current = true;
+        let startTime: number;
+        const animate = (time: number) => {
+            if (!startTime) startTime = time;
+            const progress = Math.min((time - startTime) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+            setCount(Math.floor(eased * target));
+            if (progress < 1) requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+    }, [inView, target, duration]);
+
+    return count;
+};
+
 export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Ishan', partnerName: 'Tulika', anniversaryDate: new Date().toISOString() });
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
@@ -152,6 +235,11 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [receivedHeartbeat, setReceivedHeartbeat] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
+
+    // Hero card counting animation
+    const heroRef = useRef<HTMLDivElement>(null);
+    const heroInView = useInView(heroRef, { once: true, margin: "-100px" });
+    const displayCount = useCountUp(daysTogether, heroInView);
 
     const calculateStreak = (mems: Memory[]) => {
         if (mems.length === 0) return 0;
@@ -326,132 +414,166 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             {showSurprise && surpriseContent && <SurpriseModal content={surpriseContent} onClose={() => setShowSurprise(false)} />}
 
             {/* Sync Button */}
-            <button onClick={() => setView('sync')} className={`absolute top-12 right-6 p-2 backdrop-blur-sm rounded-full transition-all animate-spring-down z-50 cursor-pointer spring-press ${isConnected ? 'bg-green-100/80 text-green-600 shadow-sm' : 'bg-white/50 text-gray-400 hover:bg-white'}`}>
+            <motion.button
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.3 }}
+                onClick={() => setView('sync')}
+                className={`absolute top-12 right-6 p-2 backdrop-blur-sm rounded-full transition-all z-50 cursor-pointer spring-press ${isConnected ? 'bg-green-100/80 text-green-600 shadow-sm' : 'bg-white/50 text-gray-400 hover:bg-white'}`}
+            >
                 <RefreshCw size={20} />
-            </button>
+            </motion.button>
 
-            {/* Header — Spring Down Entrance */}
-            <header className="mb-6 relative z-10 animate-spring-down" onClick={() => setView('profile')}>
-                <div className={`flex items-center gap-4 cursor-pointer group transition-all duration-700 ${isTogether ? 'bg-white/40 p-3 -m-3 rounded-[2rem] shadow-[0_0_30px_rgba(244,63,94,0.3)] border border-white/50 animate-glow-pulse' : ''}`}>
-                    <div className={`w-16 h-16 rounded-full bg-tulika-100 border-2 border-white shadow-md overflow-hidden relative transition-all duration-700 group-hover:scale-105 ${isTogether ? 'ring-4 ring-tulika-300 ring-opacity-50 animate-breathe' : ''}`}>
+            {/* Header — Fade down entrance */}
+            <motion.header
+                initial={{ opacity: 0, y: -30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 200, damping: 22 }}
+                className="mb-8 relative z-10"
+                onClick={() => setView('profile')}
+            >
+                <div className={`flex items-center gap-4 cursor-pointer group transition-all duration-700 ${isTogether ? 'glass-card p-3 -m-3 rounded-[2rem] animate-glow-pulse' : ''}`}>
+                    <div className={`w-16 h-16 rounded-full bg-tulika-100 overflow-hidden relative transition-all duration-700 group-hover:scale-105 ${isTogether ? 'ring-4 ring-tulika-300 ring-opacity-50' : ''}`} style={{ boxShadow: '0 2px 8px rgba(244,63,94,0.12), 0 0 0 2px white' }}>
                         {profile.photo ? <img src={profile.photo} className="w-full h-full object-cover" alt="Profile" /> : <div className="w-full h-full flex items-center justify-center text-tulika-300"><Heart fill="currentColor" size={24} /></div>}
                     </div>
                     <div>
-                        <h1 className="font-serif text-2xl text-gray-800 font-bold leading-tight group-hover:text-tulika-600 transition-colors relative">
+                        <h1 className="font-serif text-3xl text-gray-900 font-bold leading-tight group-hover:text-tulika-600 transition-colors relative" style={{ letterSpacing: '-0.02em' }}>
                             {profile.myName} <span className="text-tulika-500 inline-flex items-center translate-y-[2px]">&</span> {profile.partnerName}
                             {isTogether && <span className="absolute -right-6 -top-2 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>}
                         </h1>
-                        {streak > 0 && <div className="inline-flex items-center gap-1 bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full mt-1 animate-breathe"><Zap size={12} fill="currentColor" /><span className="text-[10px] font-bold uppercase tracking-wider">{streak} Day Streak</span></div>}
-                        {streak === 0 && <p className={`text-xs font-medium uppercase tracking-widest mt-1 transition-colors ${isTogether ? 'text-tulika-600 font-bold' : 'text-gray-400 group-hover:text-tulika-400'}`}>{isTogether ? 'Currently Together ❤️' : 'Tap to edit profile'}</p>}
+                        {streak > 0 && <div className="inline-flex items-center gap-1 bg-orange-100/80 text-orange-600 px-2.5 py-0.5 rounded-full mt-1.5"><Zap size={12} fill="currentColor" /><span className="text-[10px] font-bold uppercase tracking-wider">{streak} Day Streak</span></div>}
+                        {streak === 0 && <p className={`text-xs font-medium uppercase tracking-widest mt-1.5 transition-colors ${isTogether ? 'text-tulika-600 font-bold' : 'text-gray-400 group-hover:text-tulika-400'}`}>{isTogether ? 'Currently Together ❤️' : 'Tap to edit profile'}</p>}
                     </div>
                 </div>
-            </header>
+            </motion.header>
 
-            {/* Pet Section — Stagger 1 */}
-            <div className="animate-spring-in stagger-1"><CouplePet memories={memories} notes={notes} status={myStatus} partnerName={profile.partnerName} /></div>
+            {/* Pet Section — Slide up */}
+            <ScrollReveal variant="fadeUp" delay={0.1}>
+                <CouplePet memories={memories} notes={notes} status={myStatus} partnerName={profile.partnerName} />
+            </ScrollReveal>
 
-            {/* Days Together Card — Stagger 2 */}
-            <HolographicCard
-                drag
-                dragConstraints={{ top: 0, left: 0, right: 0, bottom: 0 }}
-                dragElastic={0.2}
-                onClick={() => setShowDetailedDuration(!showDetailedDuration)}
-                className="bg-white/70 backdrop-blur-md p-8 rounded-3xl shadow-sm border border-white mb-6 animate-spring-in stagger-2 spring-hover duration-500 group"
-            >
-                <div className="absolute -right-4 -top-8 text-tulika-50 opacity-50 group-hover:scale-110 transition-transform duration-700 animate-breathe pointer-events-none uppercase">
-                    <Heart size={140} fill="currentColor" />
-                </div>
-                <div className="flex items-center justify-between mb-6 relative z-10">
-                    <span className="text-tulika-400 font-bold tracking-wider text-[10px] uppercase flex items-center gap-1.5 ml-0.5">
-                        <Clock size={14} className="translate-y-[-1px]" /> Our Journey
-                    </span>
-                    <Sparkles size={18} className="text-tulika-300 group-hover:rotate-180 transition-transform duration-700 mr-0.5" />
-                </div>
-                <div className="relative min-h-[5rem] flex items-center z-10 px-1">
-                    <div className={`transition-all duration-500 w-full ${showDetailedDuration ? 'opacity-0 translate-y-4 absolute pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-                        <p className="text-gray-400 text-[10px] font-bold mb-2 uppercase tracking-widest opacity-70">You've been together for</p>
-                        <div className="flex items-baseline gap-2.5 mb-2">
-                            <h2 className="text-6xl font-serif text-gray-800 tracking-tighter animate-number-roll">{daysTogether}</h2>
-                            <span className="text-xl text-gray-400 font-serif italic">days</span>
+            {/* Days Together Card — Scale + fade hero entrance with counting number */}
+            <ScrollReveal variant="fadeScale">
+                <div ref={heroRef}>
+                    <HolographicCard
+                        drag
+                        dragConstraints={{ top: 0, left: 0, right: 0, bottom: 0 }}
+                        dragElastic={0.2}
+                        onClick={() => setShowDetailedDuration(!showDetailedDuration)}
+                        className="bg-gradient-to-br from-tulika-500 via-pink-500 to-rose-400 text-white p-8 rounded-3xl mb-6 spring-hover duration-500 group relative overflow-hidden border border-white/20"
+                        style={{ boxShadow: '0 8px 24px rgba(244,63,94,0.3), 0 20px 60px rgba(244,63,94,0.15)' }}
+                    >
+                        {/* Decorative heart watermark */}
+                        <div className="absolute -right-6 -top-6 opacity-[0.15] group-hover:scale-110 transition-transform duration-700 pointer-events-none">
+                            <Heart size={160} fill="white" />
                         </div>
-                        <p className="text-tulika-500 text-xs font-bold flex items-center gap-1.5 opacity-90">
-                            <Sparkles size={12} fill="currentColor" /> Every day matters
-                        </p>
-                    </div>
-                    <div className={`transition-all duration-500 w-full ${!showDetailedDuration ? 'opacity-0 -translate-y-4 absolute pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-                        <p className="text-gray-400 text-[10px] font-bold mb-2 uppercase tracking-widest opacity-70">That is exactly</p>
-                        <h2 className="text-2xl font-serif text-gray-800 font-bold mb-3 leading-tight tracking-tight">{detailedDuration || `${daysTogether} days`}</h2>
-                        <p className="text-tulika-500 text-xs font-bold flex items-center gap-1.5 opacity-90">
-                            <Heart size={12} fill="currentColor" /> and counting...
-                        </p>
-                    </div>
+                        {/* Inner glow */}
+                        <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-white/15 to-transparent pointer-events-none rounded-t-3xl" />
+                        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black/10 to-transparent pointer-events-none rounded-b-3xl" />
+                        <div className="flex items-center justify-between mb-6 relative z-10">
+                            <span className="text-white/70 font-bold tracking-wider text-[10px] uppercase flex items-center gap-1.5 ml-0.5">
+                                <Clock size={14} className="translate-y-[-1px]" /> Our Journey
+                            </span>
+                            <Sparkles size={18} className="text-white/50 group-hover:rotate-180 transition-transform duration-700 mr-0.5" />
+                        </div>
+                        <div className="relative min-h-[5rem] flex items-center z-10 px-1" style={{ perspective: '600px' }}>
+                            <div className={`transition-all duration-500 w-full ${showDetailedDuration ? 'opacity-0 translate-y-4 absolute pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+                                <p className="text-white/60 text-[10px] font-bold mb-3 uppercase tracking-widest">You've been together for</p>
+                                <div className="flex items-baseline gap-3 mb-3">
+                                    <h2 className="text-8xl font-serif tracking-tighter font-bold text-white drop-shadow-lg" style={{ lineHeight: '1' }}>{displayCount}</h2>
+                                    <span className="text-2xl text-white/60 font-serif italic">days</span>
+                                </div>
+                                <p className="text-white/80 text-xs font-bold flex items-center gap-1.5">
+                                    <Sparkles size={12} fill="currentColor" /> Every day matters
+                                </p>
+                            </div>
+                            <div className={`transition-all duration-500 w-full ${!showDetailedDuration ? 'opacity-0 -translate-y-4 absolute pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+                                <p className="text-white/60 text-[10px] font-bold mb-3 uppercase tracking-widest">That is exactly</p>
+                                <h2 className="text-3xl font-serif font-bold mb-3 leading-tight tracking-tight text-white">{detailedDuration || `${daysTogether} days`}</h2>
+                                <p className="text-white/80 text-xs font-bold flex items-center gap-1.5">
+                                    <Heart size={12} fill="currentColor" /> and counting...
+                                </p>
+                            </div>
+                        </div>
+                    </HolographicCard>
                 </div>
-            </HolographicCard>
+            </ScrollReveal>
 
+            {/* Countdown Card — Slide from right */}
+            <ScrollReveal variant="slideFromRight">
+                <HolographicCard
+                    drag
+                    dragConstraints={{ top: 0, left: 0, right: 0, bottom: 0 }}
+                    dragElastic={0.2}
+                    onClick={() => setView('countdowns')}
+                    className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-violet-900 text-white p-6 rounded-3xl mb-6 group spring-hover relative overflow-hidden border border-indigo-700/30"
+                    style={{ boxShadow: '0 4px 16px rgba(79,70,229,0.15), 0 12px 40px rgba(79,70,229,0.1)' }}
+                >
+                    <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-400/20 rounded-full blur-3xl group-hover:bg-indigo-300/30 transition-colors duration-700"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-violet-400/15 rounded-full blur-2xl"></div>
+                    <div className="relative z-10 flex justify-between items-center">
+                        <div className="flex flex-col"><div className="flex items-center gap-2 mb-2"><Map size={16} className="text-indigo-300" /><span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Downtown</span></div>{nextEvent ? (<><h3 className="font-serif text-xl font-bold mb-1">{nextEvent.title}</h3><p className="text-sm text-indigo-300 font-medium">Coming up in <span className="text-2xl font-serif font-bold text-white">{nextEvent.days}</span> <span className="text-indigo-300 text-xs">days</span></p></>) : (<><h3 className="font-serif text-xl font-bold mb-0.5">Your Town is Empty</h3><p className="text-xs text-indigo-300 font-medium">Add some special dates!</p></>)}</div>
+                        <div className="bg-white/10 p-3.5 rounded-2xl backdrop-blur-sm group-hover:rotate-12 group-hover:scale-110 transition-transform duration-500 border border-white/10"><Calendar size={24} className="text-indigo-200" /></div>
+                    </div>
+                </HolographicCard>
+            </ScrollReveal>
 
-            {/* Countdown Card — Stagger 3 */}
-            <HolographicCard
-                drag
-                dragConstraints={{ top: 0, left: 0, right: 0, bottom: 0 }}
-                dragElastic={0.2}
-                onClick={() => setView('countdowns')}
-                className="bg-indigo-900 text-white p-5 rounded-3xl shadow-xl shadow-indigo-100 mb-6 group animate-spring-in spring-hover"
-            >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 rounded-full blur-2xl group-hover:bg-indigo-400/30 transition-colors duration-500"></div>
-                <div className="relative z-10 flex justify-between items-center">
-                    <div className="flex flex-col"><div className="flex items-center gap-2 mb-2"><Map size={16} className="text-indigo-300" /><span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Downtown</span></div>{nextEvent ? (<><h3 className="font-serif text-xl font-bold mb-0.5">{nextEvent.title}</h3><p className="text-xs text-indigo-300 font-medium">Coming up in <span className="text-white font-bold">{nextEvent.days} days</span></p></>) : (<><h3 className="font-serif text-xl font-bold mb-0.5">Your Town is Empty</h3><p className="text-xs text-indigo-300 font-medium">Add some special dates!</p></>)}</div>
-                    <div className="bg-white/10 p-3 rounded-full backdrop-blur-sm group-hover:rotate-12 group-hover:scale-110 transition-transform duration-500"><Calendar size={24} className="text-indigo-200" /></div>
-                </div>
-            </HolographicCard>
-
-            {/* On This Day — Stagger 4 */}
-            {
-                onThisDayMemory && (
-                    <div onClick={() => setView('timeline')} className={`rounded-3xl shadow-lg mb-6 relative z-10 animate-spring-in spring-hover cursor-pointer overflow-hidden ${otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6'}`}>
+            {/* On This Day — Tilt entrance */}
+            {onThisDayMemory && (
+                <ScrollReveal variant="tiltUp">
+                    <div onClick={() => setView('timeline')} className={`rounded-3xl shadow-lg mb-6 relative z-10 spring-hover cursor-pointer overflow-hidden ${otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6'}`}>
                         {otdImage && (<><img src={otdImage} className="absolute inset-0 w-full h-full object-cover z-0 transition-transform duration-1000 hover:scale-105" alt="On this day" /><div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-0"></div></>)}
                         <div className={`relative z-10 h-full flex flex-col ${otdImage ? 'justify-end p-6' : ''}`}>
                             <div className="flex items-center gap-2 mb-2 opacity-90">
-                                <Calendar size={16} className="text-yellow-300 animate-breathe" />
+                                <Calendar size={16} className="text-yellow-300" />
                                 <span className="text-xs font-bold uppercase tracking-wider text-yellow-300">On This Day</span>
                             </div>
                             <h3 className="font-serif text-2xl font-bold mb-1 shadow-black drop-shadow-md">{getYear(new Date()) - getYear(new Date(onThisDayMemory.date))} year ago today ❤️</h3>
                             {onThisDayMemory.text && <p className={`text-sm line-clamp-2 italic ${otdImage ? 'text-gray-100' : 'text-indigo-100'}`}>"{onThisDayMemory.text}"</p>}
                         </div>
                     </div>
-                )
-            }
+                </ScrollReveal>
+            )}
 
-            {/* Action Buttons */}
-            <div className="mb-6 flex gap-4 relative z-10 animate-spring-in">
-                <MagneticButton onClick={sendHeartbeat as any} strength={0.2} className="flex-1">
-                    <div className="w-full h-full group relative bg-gradient-to-r from-tulika-400 to-tulika-500 text-white p-5 rounded-3xl shadow-lg shadow-tulika-200 spring-press transition-all duration-300 flex items-center justify-center gap-3 overflow-hidden">
-                        <HeartbeatRipple active={showHeartbeat} />
-                        <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : 'group-hover:scale-110 group-hover:animate-wiggle'}`}><Heart fill="currentColor" size={24} /></div>
-                        <span className="font-bold text-sm">Heartbeat</span>
-                    </div>
-                </MagneticButton>
-                <MagneticButton onClick={handleSurprise as any} strength={0.4} className="w-20">
-                    <div className="w-full h-full bg-white text-tulika-500 p-5 rounded-3xl shadow-md border border-white spring-press transition-all flex items-center justify-center group relative overflow-hidden">
-                        <div className="absolute inset-0 bg-tulika-50 transform scale-0 group-hover:scale-100 transition-transform duration-300 rounded-3xl"></div>
-                        <Gift size={24} className="relative z-10 group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300" />
-                    </div>
-                </MagneticButton>
-            </div>
+            {/* Action Buttons — Pop in */}
+            <ScrollReveal variant="popIn">
+                <div className="mb-6 flex gap-4 relative z-10">
+                    <MagneticButton onClick={sendHeartbeat as any} strength={0.2} className="flex-1">
+                        <div className="w-full h-full group relative bg-gradient-to-br from-tulika-500 to-tulika-600 text-white p-5 rounded-3xl spring-press transition-all duration-300 flex items-center justify-center gap-3 overflow-hidden" style={{ boxShadow: '0 4px 12px rgba(244,63,94,0.25), 0 12px 32px rgba(244,63,94,0.15)' }}>
+                            <HeartbeatRipple active={showHeartbeat} />
+                            <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : 'group-hover:scale-110 group-hover:animate-wiggle'}`}><Heart fill="currentColor" size={24} /></div>
+                            <span className="font-bold text-sm tracking-wide">Heartbeat</span>
+                        </div>
+                    </MagneticButton>
+                    <MagneticButton onClick={handleSurprise as any} strength={0.4} className="w-20">
+                        <div className="w-full h-full glass-card text-tulika-500 p-5 rounded-3xl spring-press transition-all flex items-center justify-center group relative overflow-hidden">
+                            <div className="absolute inset-0 bg-tulika-50/60 transform scale-0 group-hover:scale-100 transition-transform duration-300 rounded-3xl"></div>
+                            <Gift size={24} className="relative z-10 group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300" />
+                        </div>
+                    </MagneticButton>
+                </div>
+            </ScrollReveal>
 
-            {/* Status & Feature Grid — Stagger 6+ */}
-            <div className="grid grid-cols-2 gap-4 relative z-10 mb-20">
-                <div className={`col-span-1 p-5 rounded-3xl flex flex-col justify-between shadow-sm border animate-spring-in spring-press magnetic-card ${partnerStatus.state === 'sleeping' ? 'bg-indigo-900/90 text-indigo-100 border-indigo-800' : 'bg-white text-gray-800 border-white'}`}>
+            {/* Status & Feature Grid — Staggered entrance */}
+            <motion.div
+                className="grid grid-cols-2 gap-4 relative z-10 mb-20"
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-60px" }}
+                variants={gridContainerVariants}
+            >
+                <motion.div variants={gridItemVariants} className={`col-span-1 p-5 rounded-3xl flex flex-col justify-between spring-press magnetic-card ${partnerStatus.state === 'sleeping' ? 'bg-indigo-900/90 text-indigo-100 border border-indigo-700/30' : 'glass-card'}`} style={partnerStatus.state !== 'sleeping' ? {} : { boxShadow: '0 4px 16px rgba(79,70,229,0.15)' }}>
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">Partner</span>
-                        {partnerStatus.state === 'sleeping' ? <Moon size={16} className="text-yellow-300 animate-breathe" fill="currentColor" /> : <Sun size={16} className="text-orange-400 animate-spin-slow" />}
+                        {partnerStatus.state === 'sleeping' ? <Moon size={16} className="text-yellow-300" fill="currentColor" /> : <Sun size={16} className="text-orange-400 animate-spin-slow" />}
                     </div>
                     <div>
                         <p className="font-bold font-serif leading-tight">{profile.partnerName} is {partnerStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}</p>
                         <p className="text-[10px] opacity-60 mt-1 leading-tight">{getStatusDisplay(partnerStatus)}</p>
                     </div>
-                </div>
+                </motion.div>
 
-                <div onClick={toggleMyStatus} className={`col-span-1 p-5 rounded-3xl flex flex-col justify-between cursor-pointer transition-all duration-300 shadow-md spring-press relative overflow-hidden group animate-spring-in magnetic-card ${myStatus.state === 'sleeping' ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-white text-tulika-600 border border-tulika-100'}`}>
+                <motion.div variants={gridItemVariants} onClick={toggleMyStatus} className={`col-span-1 p-5 rounded-3xl flex flex-col justify-between cursor-pointer transition-all duration-300 spring-press relative overflow-hidden group magnetic-card ${myStatus.state === 'sleeping' ? 'bg-indigo-600 text-white border border-indigo-500/30' : 'glass-card text-tulika-600'}`} style={myStatus.state === 'sleeping' ? { boxShadow: '0 4px 16px rgba(79,70,229,0.2)' } : {}}>
                     <div className="flex items-center justify-between mb-2 relative z-10">
                         <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">You</span>
                         {myStatus.state === 'sleeping' ? <Moon size={16} fill="currentColor" /> : <Sun size={16} />}
@@ -460,54 +582,60 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         <p className="font-bold font-serif leading-tight">{myStatus.state === 'sleeping' ? 'I am Sleeping' : 'I am Awake'}</p>
                         <p className="text-[10px] opacity-60 mt-1 group-hover:underline">Tap to switch</p>
                     </div>
-                    {myStatus.state === 'sleeping' && <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full blur-xl -mr-4 -mt-4 animate-breathe"></div>}
-                </div>
+                    {myStatus.state === 'sleeping' && <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full blur-xl -mr-4 -mt-4"></div>}
+                </motion.div>
 
-                <MagneticButton onClick={() => setView('open-when')} strength={0.15} className="w-full h-full">
-                    <div className="bg-white text-tulika-600 p-6 rounded-3xl shadow-sm border border-tulika-100 flex flex-col items-center justify-center gap-3 spring-press transition-all animate-spring-in group magnetic-card h-full">
-                        <div className="bg-tulika-50 p-3 rounded-full group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300"><Mail size={32} /></div>
-                        <span className="font-semibold text-sm">Open When</span>
-                    </div>
-                </MagneticButton>
-
-                <MagneticButton onClick={() => setView('dinner-decider')} strength={0.15} className="w-full h-full">
-                    <div className="bg-white text-tulika-600 p-6 rounded-3xl shadow-sm border border-tulika-100 flex flex-col items-center justify-center gap-3 spring-press transition-all animate-spring-in group magnetic-card h-full">
-                        <div className="bg-tulika-50 p-3 rounded-full group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300"><Utensils size={32} /></div>
-                        <span className="font-semibold text-sm">Dinner?</span>
-                    </div>
-                </MagneticButton>
-
-                <div onClick={() => setView('mood-calendar')} className="col-span-2 premium-glass p-5 rounded-3xl flex items-center justify-between cursor-pointer relative overflow-hidden group animate-spring-in active:scale-[0.98] transition-all duration-300 border-white/60">
-                    <div className="absolute inset-0 bg-gradient-to-br from-pink-400/20 to-orange-400/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    {/* Living Aura Pulse */}
-                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-pink-100/50 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                    <div className="absolute -left-4 -bottom-4 w-24 h-24 bg-orange-100/50 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                    
-                    <div className="relative z-10 flex items-center gap-4">
-                        <div className="bg-gradient-to-br from-pink-400 to-orange-400 p-3 rounded-2xl shadow-lg shadow-pink-100 group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300">
-                            <Sparkles size={24} className="text-white animate-pulse" />
+                <motion.div variants={gridItemVariants}>
+                    <MagneticButton onClick={() => setView('open-when')} strength={0.15} className="w-full h-full">
+                        <div className="bg-gradient-to-br from-sky-500 to-blue-600 text-white p-6 rounded-3xl flex flex-col items-center justify-center gap-3 spring-press transition-all group magnetic-card h-full relative overflow-hidden border border-white/20" style={{ boxShadow: '0 6px 20px rgba(14,165,233,0.25)' }}>
+                            <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/10 rounded-full blur-2xl"></div>
+                            <div className="bg-white/20 p-3.5 rounded-2xl group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300 backdrop-blur-sm"><Mail size={28} /></div>
+                            <span className="font-semibold text-sm">Open When</span>
                         </div>
-                        <div>
-                            <span className="block font-serif font-bold text-lg text-gray-800 tracking-tight">Mood Board</span>
-                            <span className="text-[10px] text-pink-500 font-bold uppercase tracking-widest opacity-70">Daily colors & memories 🎨</span>
-                        </div>
-                    </div>
-                    <ChevronRight size={20} className="text-stone-300 group-hover:translate-x-1 transition-transform" />
-                </div>
+                    </MagneticButton>
+                </motion.div>
 
-                <div onClick={() => setView('quiet-mode')} className="col-span-2 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-3xl shadow-xl shadow-slate-200 spring-hover spring-press transition-all flex items-center justify-between cursor-pointer relative overflow-hidden group animate-spring-in">
-                    <div className="relative z-10 flex items-center gap-4">
-                        <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-sm group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300 border border-white/10"><Wind size={24} className="text-indigo-200" /></div>
-                        <div>
-                            <span className="block font-serif font-bold text-lg text-indigo-50 tracking-tight">Quiet Mode</span>
-                            <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-widest opacity-60">Just memories, no distractions</span>
+                <motion.div variants={gridItemVariants}>
+                    <MagneticButton onClick={() => setView('dinner-decider')} strength={0.15} className="w-full h-full">
+                        <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-6 rounded-3xl flex flex-col items-center justify-center gap-3 spring-press transition-all group magnetic-card h-full relative overflow-hidden border border-white/20" style={{ boxShadow: '0 6px 20px rgba(245,158,11,0.25)' }}>
+                            <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-white/10 rounded-full blur-2xl"></div>
+                            <div className="bg-white/20 p-3.5 rounded-2xl group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300 backdrop-blur-sm"><Utensils size={28} /></div>
+                            <span className="font-semibold text-sm">Dinner?</span>
                         </div>
-                    </div>
-                    <div className="absolute right-0 top-0 w-24 h-24 bg-white/5 rounded-full blur-2xl group-hover:bg-white/10 transition-colors animate-breathe opacity-20"></div>
-                    <ChevronRight size={20} className="text-white/20 group-hover:translate-x-1 transition-transform" />
-                </div>
+                    </MagneticButton>
+                </motion.div>
 
-            </div>
-        </div >
+                <motion.div variants={gridItemVariants} className="col-span-2" onClick={() => setView('mood-calendar')}>
+                    <div className="bg-gradient-to-br from-pink-500 via-rose-500 to-orange-500 text-white p-5 rounded-3xl flex items-center justify-between cursor-pointer relative overflow-hidden group active:scale-[0.98] transition-all duration-300 border border-white/20" style={{ boxShadow: '0 6px 20px rgba(236,72,153,0.25)' }}>
+                        <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+                        <div className="absolute -left-4 -bottom-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+                        <div className="relative z-10 flex items-center gap-4">
+                            <div className="bg-white/20 p-3 rounded-2xl group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300 backdrop-blur-sm border border-white/10">
+                                <Sparkles size={24} className="text-white" />
+                            </div>
+                            <div>
+                                <span className="block font-serif font-bold text-lg text-white tracking-tight">Mood Board</span>
+                                <span className="text-[10px] text-white/70 font-bold uppercase tracking-widest">Daily colors & memories</span>
+                            </div>
+                        </div>
+                        <ChevronRight size={20} className="text-white/40 group-hover:translate-x-1 transition-transform relative z-10" />
+                    </div>
+                </motion.div>
+
+                <motion.div variants={gridItemVariants} className="col-span-2" onClick={() => setView('quiet-mode')}>
+                    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white p-5 rounded-3xl spring-hover spring-press transition-all flex items-center justify-between cursor-pointer relative overflow-hidden group border border-white/10" style={{ boxShadow: '0 6px 20px rgba(15,23,42,0.3)' }}>
+                        <div className="relative z-10 flex items-center gap-4">
+                            <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-sm group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300 border border-white/10"><Wind size={24} className="text-indigo-200" /></div>
+                            <div>
+                                <span className="block font-serif font-bold text-lg text-indigo-50 tracking-tight">Quiet Mode</span>
+                                <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-widest opacity-60">Just memories, no distractions</span>
+                            </div>
+                        </div>
+                        <div className="absolute right-0 top-0 w-40 h-40 bg-indigo-500/15 rounded-full blur-3xl"></div>
+                        <ChevronRight size={20} className="text-white/20 group-hover:translate-x-1 transition-transform relative z-10" />
+                    </div>
+                </motion.div>
+            </motion.div>
+        </div>
     );
 };

@@ -663,6 +663,76 @@
     border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
+/* === PREMIUM GLASS CARD SYSTEM === */
+.glass-card {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow:
+        0 1px 2px rgba(244, 63, 94, 0.03),
+        0 4px 8px rgba(244, 63, 94, 0.04),
+        0 12px 32px rgba(244, 63, 94, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.glass-card-hero {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(32px) saturate(200%);
+    -webkit-backdrop-filter: blur(32px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow:
+        0 1px 3px rgba(244, 63, 94, 0.05),
+        0 6px 16px rgba(244, 63, 94, 0.06),
+        0 20px 48px rgba(244, 63, 94, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.glass-nav {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow:
+        0 -1px 0 rgba(255, 255, 255, 0.6),
+        0 8px 40px -8px rgba(244, 63, 94, 0.12),
+        0 20px 60px -12px rgba(0, 0, 0, 0.08);
+}
+
+/* === GRADIENT TEXT === */
+.text-gradient-rose {
+    background: linear-gradient(135deg, #e11d48, #f43f5e, #fb7185);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.text-gradient-warm {
+    background: linear-gradient(135deg, #f43f5e, #f97316);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* === ATMOSPHERIC ORBS === */
+.atmo-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    will-change: transform;
+}
+
+/* === BREATHING UI RHYTHM === */
+@keyframes ui-breathe {
+    0%, 100% { opacity: var(--breathe-min, 0.6); }
+    50% { opacity: var(--breathe-max, 1); }
+}
+
+.animate-ui-breathe {
+    animation: ui-breathe 4s ease-in-out infinite;
+}
+
 .no-scrollbar::-webkit-scrollbar {
     display: none;
 }

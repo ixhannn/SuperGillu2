@@ -219,8 +219,8 @@ export const LiveBackground: React.FC = () => {
     return (
         <div
             ref={containerRef}
-            className="fixed inset-0 z-0 pointer-events-none opacity-[0.15] mix-blend-color-burn"
-            style={{ filter: 'blur(30px) saturate(1.5)' }}
+            className="fixed inset-0 z-0 pointer-events-none opacity-[0.45] mix-blend-soft-light"
+            style={{ filter: 'blur(12px) saturate(2)' }}
         />
     );
 };

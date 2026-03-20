@@ -19,24 +19,24 @@ export const FloatingHearts = () => {
   const [particles, setParticles] = useState<Particle[]>([]);
 
   useEffect(() => {
-    const items: Particle[] = Array.from({ length: 12 }).map((_, i) => {
-      const layer = i < 4 ? 'slow' : i < 8 ? 'medium' : 'fast';
-      const baseDuration = layer === 'slow' ? 14 : layer === 'medium' ? 10 : 7;
+    const items: Particle[] = Array.from({ length: 18 }).map((_, i) => {
+      const layer = i < 6 ? 'slow' : i < 12 ? 'medium' : 'fast';
+      const baseDuration = layer === 'slow' ? 16 : layer === 'medium' ? 11 : 8;
 
       return {
         id: i,
         left: Math.random() * 100,
-        delay: Math.random() * 8,
+        delay: Math.random() * 10,
         size: layer === 'slow'
-          ? Math.random() * 6 + 8
+          ? Math.random() * 8 + 10
           : layer === 'medium'
-            ? Math.random() * 8 + 12
-            : Math.random() * 10 + 16,
+            ? Math.random() * 10 + 14
+            : Math.random() * 12 + 18,
         shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
         duration: baseDuration + Math.random() * 4,
-        driftX: (Math.random() - 0.5) * 60,
+        driftX: (Math.random() - 0.5) * 80,
         driftRotate: Math.random() * 360,
-        opacity: layer === 'slow' ? 0.25 : layer === 'medium' ? 0.4 : 0.55,
+        opacity: layer === 'slow' ? 0.35 : layer === 'medium' ? 0.55 : 0.7,
         layer,
       };
     });

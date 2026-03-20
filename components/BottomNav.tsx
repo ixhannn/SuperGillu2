@@ -34,7 +34,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
 
         {/* Glass Navigation Bar with Gooey Filter applied */}
         <div
-          className="relative bg-white/85 backdrop-blur-2xl rounded-[2.5rem] flex items-center justify-between p-1.5 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.15)] border border-white/60"
+          className="relative glass-nav rounded-[2.5rem] flex items-center justify-between p-1.5"
           style={{ filter: 'url(#goo)' }}
         >
 
