@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
 
 interface GestureModalProps {
@@ -16,9 +17,8 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
     // Pulling down 150px will fade the background to 0
     const bgOpacity = useTransform(y, [0, 150], [1, 0]);
 
-    return (
         <AnimatePresence>
-            {isOpen && (
+            {isOpen && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 pointer-events-none">
                     {/* Reactive Background Backdrop */}
                     <motion.div
@@ -48,8 +48,8 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
                     >
                         {children}
                     </motion.div>
-                </div>
+                </div>,
+                document.body
             )}
         </AnimatePresence>
-    );
 };

@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { Trash2, Calendar, X, Clock, Loader2, Image as ImageIcon, PlayCircle } from 'lucide-react';
 import { ViewState, Memory } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -116,7 +117,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: { memory: Memory, onCl
     const { src: mediaUrl, isLoading } = useTulikaMedia(memory.videoId || memory.imageId, memory.video || memory.image);
     const isVideo = !!memory.video || !!memory.videoId;
 
-    return (
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in" onClick={onClose}>
             <div className="bg-white rounded-[2rem] w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl relative animate-pop-in flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="sticky top-0 p-4 flex justify-between items-center bg-white/90 backdrop-blur-md z-10 border-b border-gray-50">
@@ -142,7 +143,8 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: { memory: Memory, onCl
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

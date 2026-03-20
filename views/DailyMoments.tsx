@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { Camera, Clock, Plus, Trash2, X, Sparkles, Loader2, RefreshCw, ArrowLeft, Video, PlayCircle, Send, Reply, MessageCircle, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, DailyPhoto, Comment } from '../types';
@@ -276,7 +277,7 @@ const PostViewer: React.FC<{
     const hoursLeft = Math.max(0, Math.floor(diff / (1000 * 60 * 60)));
     const minsLeft = Math.max(0, Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)));
 
-    return (
+    return ReactDOM.createPortal(
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -433,7 +434,8 @@ const PostViewer: React.FC<{
                     </button>
                 </div>
             </div>
-        </motion.div>
+        </motion.div>,
+        document.body
     );
 };
 
@@ -588,7 +590,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             </div>
 
             {/* Upload Modal */}
-            {isUploading && (
+            {isUploading && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-50 bg-white flex flex-col" style={{ animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
                     <div className="p-4 flex items-center justify-between border-b">
                         <button onClick={cancelUpload} className="p-2"><X size={24} /></button>
@@ -627,7 +629,8 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                             Visible for 24 hours
                         </p>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* ── Full-Screen Post Viewer ── */}

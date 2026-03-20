@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Volume2, VolumeX, Wind, Heart, Cloud } from 'lucide-react';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
@@ -242,7 +243,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
       (window as any).uiTimeout = setTimeout(() => setShowUI(false), 4000);
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div 
         onClick={handleInteraction}
         className="fixed inset-0 bg-black z-[100] flex items-center justify-center overflow-hidden"
@@ -354,6 +355,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
                 </button>
             </div>
         </div>
-    </div>
+    </div>,
+    document.body
   );
 };

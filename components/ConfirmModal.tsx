@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle } from 'lucide-react';
 
@@ -25,7 +26,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 }) => {
     return (
         <AnimatePresence>
-            {isOpen && (
+            {isOpen && ReactDOM.createPortal(
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -71,7 +72,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                             </button>
                         </div>
                     </motion.div>
-                </motion.div>
+                </motion.div>,
+                document.body
             )}
         </AnimatePresence>
     );
