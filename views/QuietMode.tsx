@@ -213,8 +213,8 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
         setCurrentMemory(mem);
         
         if (mem.image) setCurrentImage(mem.image);
-        else if (mem.imageId) {
-            const imgData = await StorageService.getImage(mem.imageId);
+        else if (mem.imageId || mem.storagePath) {
+            const imgData = await StorageService.getImage(mem.imageId || '', undefined, mem.storagePath);
             setCurrentImage(imgData || null);
         } else {
             setCurrentImage(null);

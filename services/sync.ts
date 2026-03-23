@@ -1,5 +1,7 @@
 import { StorageService, storageEventTarget, StorageUpdateDetail } from './storage';
 import { SupabaseService } from './supabase';
+import { MediaStorageService } from './mediaStorage';
+import { MediaMigrationService } from './mediaMigration';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 export const syncEventTarget = new EventTarget();
@@ -137,9 +139,15 @@ class SyncServiceClass {
                                 dinner_options: StorageService.getDinnerOptions(),
                                 comments: StorageService.getComments()
                             };
+                            const mediaPrefixes: Record<string, string> = {
+                                memories: 'mem', daily_photos: 'daily', keepsakes: 'keep'
+                            };
                             const localItems = listKeyMap[table] || [];
                             for (const it of localItems) {
-                                await SupabaseService.upsertItem(table, it);
+                                const toUpload = mediaPrefixes[table]
+                                    ? await StorageService._getItemWithImages(it, mediaPrefixes[table])
+                                    : it;
+                                await SupabaseService.upsertItem(table, toUpload);
                             }
                         }
                     } else {
@@ -153,6 +161,17 @@ class SyncServiceClass {
                 }
             }
             this.updateStatus('Cloud Synced');
+
+            // Ensure Storage bucket exists
+            await MediaStorageService.ensureBucket();
+
+            // Auto-migrate existing base64 data to Supabase Storage
+            if (!MediaMigrationService.isMigrated()) {
+                this.updateStatus('Migrating media...');
+                const result = await MediaMigrationService.migrateAll();
+                console.log('Media migration:', result);
+                this.updateStatus('Cloud Synced');
+            }
         } catch (e) {
             console.warn("Reconciliation failed", e);
         }
@@ -165,7 +184,11 @@ class SyncServiceClass {
                 if (['couple_profile', 'pet_stats', 'together_music'].includes(detail.table)) {
                     await SupabaseService.saveSingle(detail.table, detail.item);
                 } else {
-                    await SupabaseService.upsertItem(detail.table, detail.item);
+                    // Strip base64 blobs from cloud payload when Storage path exists
+                    const cleanItem = { ...detail.item };
+                    if (cleanItem.storagePath) delete cleanItem.image;
+                    if (cleanItem.videoStoragePath) delete cleanItem.video;
+                    await SupabaseService.upsertItem(detail.table, cleanItem);
                 }
             } else if (detail.action === 'delete') {
                 await SupabaseService.deleteItem(detail.table, detail.id);

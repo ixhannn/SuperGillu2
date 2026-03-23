@@ -4,15 +4,15 @@ import { StorageService } from '../services/storage';
 /**
  * Custom hook to resolve media (Images/Videos) from RAM -> IndexedDB -> Cloud Payload.
  */
-export const useTulikaMedia = (mediaId?: string, fallbackData?: string) => {
+export const useTulikaMedia = (mediaId?: string, fallbackData?: string, storagePath?: string) => {
     const [src, setSrc] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         let isMounted = true;
-        
+
         const resolve = async () => {
-            if (!mediaId && !fallbackData) {
+            if (!mediaId && !fallbackData && !storagePath) {
                 if (isMounted) {
                     setSrc(null);
                     setIsLoading(false);
@@ -21,9 +21,7 @@ export const useTulikaMedia = (mediaId?: string, fallbackData?: string) => {
             }
 
             try {
-                // Resolves from RAM, then IndexedDB, and hydrates from fallbackData if needed
-                // getImage is now the generic media resolver
-                const data = await StorageService.getImage(mediaId || '', fallbackData);
+                const data = await StorageService.getImage(mediaId || '', fallbackData, storagePath);
                 if (isMounted) {
                     setSrc(data);
                     setIsLoading(false);
@@ -38,11 +36,11 @@ export const useTulikaMedia = (mediaId?: string, fallbackData?: string) => {
         };
 
         resolve();
-        
+
         return () => {
             isMounted = false;
         };
-    }, [mediaId, fallbackData]);
+    }, [mediaId, fallbackData, storagePath]);
 
     return { src, isLoading };
 };

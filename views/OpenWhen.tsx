@@ -22,11 +22,11 @@ interface OpenWhenProps {
 }
 
 const ENVELOPE_COLORS = [
-  { bg: 'bg-red-100', text: 'text-red-600', bgOnly: 'bg-red-100' },
-  { bg: 'bg-pink-100', text: 'text-pink-600', bgOnly: 'bg-pink-100' },
-  { bg: 'bg-purple-100', text: 'text-purple-600', bgOnly: 'bg-purple-100' }, 
-  { bg: 'bg-orange-100', text: 'text-orange-600', bgOnly: 'bg-orange-100' },
-  { bg: 'bg-rose-100', text: 'text-rose-600', bgOnly: 'bg-rose-100' }
+  { bg: 'bg-red-500/12', text: 'text-red-400', bgOnly: 'bg-red-500/12' },
+  { bg: 'bg-pink-500/12', text: 'text-pink-400', bgOnly: 'bg-pink-500/12' },
+  { bg: 'bg-purple-500/12', text: 'text-purple-400', bgOnly: 'bg-purple-500/12' },
+  { bg: 'bg-orange-500/12', text: 'text-orange-400', bgOnly: 'bg-orange-500/12' },
+  { bg: 'bg-rose-500/12', text: 'text-rose-400', bgOnly: 'bg-rose-500/12' }
 ];
 
 export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
@@ -97,12 +97,12 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
     <div className="p-6 pt-8 pb-32 min-h-screen">
       <div className="flex justify-between items-center mb-6 animate-fade-in">
         <div>
-          <h2 className="text-2xl font-serif font-bold text-gray-800">Open When...</h2>
-          <p className="text-xs text-gray-500 mt-1">Letters for every moment</p>
+          <h2 className="text-2xl font-serif font-bold text-gray-100">Open When...</h2>
+          <p className="text-xs text-gray-400 mt-1">Letters for every moment</p>
         </div>
         <button 
           onClick={() => setIsCreating(true)}
-          className="bg-tulika-500 text-white p-3 rounded-full shadow-lg shadow-tulika-200 transition-transform"
+          className="bg-tulika-500 text-white p-3 rounded-full transition-transform"
         >
           <Plus size={24} />
         </button>
@@ -115,14 +115,14 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
             key={env.id}
             variants={staggerItem}
             onClick={() => { feedback.tap(); openEnvelope(env); }}
-            className={`aspect-[4/3] rounded-2xl relative p-4 flex flex-col items-center justify-center text-center shadow-sm border border-white/50 spring-press cursor-pointer ${
-              env.isLocked ? 'bg-white' : 'bg-white/80'
+            className={`aspect-[4/3] rounded-2xl relative p-4 flex flex-col items-center justify-center text-center border border-white/10 spring-press cursor-pointer ${
+              env.isLocked ? 'bg-white/6' : 'bg-white/10'
             }`}
           >
             {/* Envelope Flap decoration */}
             <div className={`absolute top-0 left-0 right-0 h-1/2 rounded-t-2xl opacity-10 pointer-events-none ${env.color.split(' ')[0]}`}></div>
             
-            <div className={`mb-3 p-3 rounded-full ${env.isLocked ? 'bg-gray-50' : env.color.split(' ')[0]}`}>
+            <div className={`mb-3 p-3 rounded-full ${env.isLocked ? 'bg-white/5' : env.color.split(' ')[0]}`}>
               {env.isLocked ? (
                 <Mail size={24} className="text-gray-400" />
               ) : (
@@ -130,7 +130,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
               )}
             </div>
             
-            <span className="text-xs font-bold text-gray-600 leading-tight px-1">
+            <span className="text-xs font-bold text-gray-300 leading-tight px-1">
               {env.label}
             </span>
 
@@ -145,18 +145,18 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
         ))}
 
         {envelopes.length === 0 && (
-          <div className="col-span-2 flex flex-col items-center text-center py-16 border-2 border-dashed border-gray-200 rounded-3xl animate-fade-in bg-white/50">
+          <div className="col-span-2 flex flex-col items-center text-center py-16 border-2 border-dashed border-white/10 rounded-3xl animate-fade-in bg-white/5">
             <div className="relative mb-5">
-              <div className="absolute inset-0 bg-tulika-200/20 rounded-full blur-2xl animate-breathe-glow" />
-              <div className="relative p-5 bg-tulika-50 rounded-full border border-tulika-100 shadow-sm">
+              <div className="absolute inset-0 bg-tulika-500/10 rounded-full blur-2xl animate-breathe-glow" />
+              <div className="relative p-5 bg-white/5 rounded-full border border-white/10">
                 <Mail size={32} className="text-tulika-300" />
               </div>
             </div>
-            <p className="font-serif text-gray-500 text-lg mb-1">Write your first letter</p>
-            <p className="text-xs text-gray-400 mb-5">Letters for every moment</p>
+            <p className="font-serif text-gray-300 text-lg mb-1">Write your first letter</p>
+            <p className="text-xs text-gray-500 mb-5">Letters for every moment</p>
             <button
               onClick={() => setIsCreating(true)}
-              className="px-5 py-2.5 bg-tulika-500 text-white rounded-full text-sm font-bold shadow-lg shadow-tulika-200 spring-press"
+              className="px-5 py-2.5 bg-tulika-500 text-white rounded-full text-sm font-bold spring-press"
             >
               Write a Letter
             </button>
@@ -177,34 +177,34 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
       {/* Create Modal */}
       {isCreating && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-pop-in">
+          <div className="w-full max-w-sm rounded-3xl p-6 animate-pop-in" style={{ background: 'rgba(20,15,28,0.92)', backdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <div className="flex justify-between items-center mb-6">
-              <h3 className="font-semibold text-lg">Write a Letter</h3>
+              <h3 className="font-semibold text-lg text-gray-100">Write a Letter</h3>
               <button onClick={() => setIsCreating(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} className="text-gray-400" /></button>
             </div>
-            
-            <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded-xl">
+
+            <div className="flex items-center gap-2 mb-4 bg-white/5 p-3 rounded-xl border border-white/10">
               <span className="text-gray-400 text-sm font-medium whitespace-nowrap">Open when...</span>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 autoFocus
                 placeholder="you miss me"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                className="bg-transparent w-full outline-none focus:outline-none text-gray-800 font-medium placeholder-gray-300"
+                className="bg-transparent w-full outline-none focus:outline-none text-gray-200 font-medium placeholder-gray-500"
               />
             </div>
 
-            <textarea 
+            <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full h-48 bg-gray-50 p-4 rounded-xl text-base resize-none focus:outline-none mb-4 font-serif leading-relaxed text-gray-700"
+              className="w-full h-48 bg-white/5 p-4 rounded-xl text-base resize-none focus:outline-none mb-4 font-serif leading-relaxed text-gray-200 border border-white/10 placeholder-gray-500"
               placeholder="Write your heart out..."
             />
-            
-            <button 
+
+            <button
               onClick={handleSave}
-              className="w-full bg-tulika-500 text-white py-3 rounded-xl font-semibold shadow-md shadow-tulika-200"
+              className="w-full bg-tulika-500 text-white py-3 rounded-xl font-semibold"
             >
               Seal Envelope
             </button>
@@ -214,26 +214,26 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
 
       {/* Read Modal */}
       {readingId && currentLetter && (
-        <div className="fixed inset-0 bg-tulika-50 z-50 flex flex-col animate-fade-in">
+        <div className="fixed inset-0 z-50 flex flex-col animate-fade-in" style={{ background: 'linear-gradient(135deg, rgba(15,10,25,0.98), rgba(20,12,30,0.98))' }}>
           <div className="flex justify-between items-center p-6 pb-2">
-            <button onClick={() => setReadingId(null)} aria-label="Close letter" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white rounded-full shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
-              <X size={24} className="text-gray-600" />
+            <button onClick={() => setReadingId(null)} aria-label="Close letter" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white/10 border border-white/12 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
+              <X size={24} className="text-gray-300" />
             </button>
-            <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
+            <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
               {currentLetter.openedAt ? new Date(currentLetter.openedAt).toLocaleDateString() : 'Just now'}
             </span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
-            <div className="bg-white min-h-[70vh] rounded-3xl p-8 shadow-sm border border-tulika-100 relative overflow-hidden animate-slide-up">
+            <div className="min-h-[70vh] rounded-3xl p-8 border border-white/10 relative overflow-hidden animate-slide-up" style={{ background: 'rgba(255,255,255,0.04)' }}>
                {/* Paper texture/lines */}
-               <div className="absolute top-0 left-0 right-0 h-8 bg-tulika-100/30"></div>
-               
-               <h2 className="font-bold text-xl text-gray-800 mb-8 border-b pb-4 border-gray-100 leading-snug">
+               <div className="absolute top-0 left-0 right-0 h-8 bg-tulika-500/10"></div>
+
+               <h2 className="font-bold text-xl text-gray-100 mb-8 border-b pb-4 border-white/10 leading-snug">
                  {currentLetter.label}
                </h2>
-               
-               <div className="font-serif text-lg leading-relaxed text-gray-700 whitespace-pre-wrap">
+
+               <div className="font-serif text-lg leading-relaxed text-gray-300 whitespace-pre-wrap">
                  {currentLetter.content}
                </div>
 

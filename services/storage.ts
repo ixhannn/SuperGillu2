@@ -1,5 +1,6 @@
 import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry } from '../types';
 import { SupabaseService } from './supabase';
+import { MediaStorageService } from './mediaStorage';
 
 // ENSURING WE STAY ON V11 FOR DATA CONTINUITY
 const DB_NAME = 'TulikaVault_v11';
@@ -173,17 +174,38 @@ export const StorageService = {
         return id;
     },
 
-    async getImage(mediaId: string, cloudPayload?: string): Promise<string | null> {
-        if (!mediaId) return cloudPayload || null;
-        if (MEDIA_MEMORY_CACHE.has(mediaId)) return MEDIA_MEMORY_CACHE.get(mediaId)!;
-        const local = await readRaw(STORES.IMAGES, mediaId);
-        if (local) {
-            if (local.length < 2_000_000) MEDIA_MEMORY_CACHE.set(mediaId, local);
-            return local;
+    async getImage(mediaId: string, cloudPayload?: string, storagePath?: string): Promise<string | null> {
+        if (!mediaId && !storagePath) return cloudPayload || null;
+
+        // 1. RAM cache
+        const cacheKey = mediaId || storagePath || '';
+        if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
+
+        // 2. IndexedDB local cache
+        if (mediaId) {
+            const local = await readRaw(STORES.IMAGES, mediaId);
+            if (local) {
+                if (local.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, local);
+                return local;
+            }
         }
+
+        // 3. Supabase Storage signed URL (private, cross-device)
+        if (storagePath) {
+            const url = await MediaStorageService.getSignedUrl(storagePath);
+            if (url) {
+                // Don't cache signed URLs in MEDIA_MEMORY_CACHE — they expire
+                // The MediaStorageService has its own signed URL cache with expiry tracking
+                return url;
+            }
+        }
+
+        // 4. Legacy fallback: base64 from cloud JSON column
         if (cloudPayload) {
-            await writeRaw(STORES.IMAGES, mediaId, cloudPayload);
-            if (cloudPayload.length < 2_000_000) MEDIA_MEMORY_CACHE.set(mediaId, cloudPayload);
+            if (mediaId) {
+                await writeRaw(STORES.IMAGES, mediaId, cloudPayload);
+            }
+            if (cloudPayload.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, cloudPayload);
             return cloudPayload;
         }
         return null;
@@ -197,7 +219,7 @@ export const StorageService = {
         if (rawImage && prefix) {
             const imageId = item.imageId || `${prefix}_${item.id}`;
             await writeRaw(STORES.IMAGES, imageId, rawImage);
-            MEDIA_MEMORY_CACHE.set(imageId, rawImage);
+            if (rawImage.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, rawImage);
             toSaveMetadata.imageId = imageId;
             delete toSaveMetadata.image;
         }
@@ -209,11 +231,14 @@ export const StorageService = {
             delete toSaveMetadata.video;
         }
 
+        // Preserve existing storagePaths and IDs from previous saves
         const list = [...(DATA_CACHE[listKey] as any[])];
         const idx = list.findIndex(i => i.id === item.id);
         if (idx >= 0) {
             if (!toSaveMetadata.imageId && list[idx].imageId) toSaveMetadata.imageId = list[idx].imageId;
             if (!toSaveMetadata.videoId && list[idx].videoId) toSaveMetadata.videoId = list[idx].videoId;
+            if (!toSaveMetadata.storagePath && list[idx].storagePath) toSaveMetadata.storagePath = list[idx].storagePath;
+            if (!toSaveMetadata.videoStoragePath && list[idx].videoStoragePath) toSaveMetadata.videoStoragePath = list[idx].videoStoragePath;
             list[idx] = toSaveMetadata;
         } else {
             list.unshift(toSaveMetadata);
@@ -224,6 +249,47 @@ export const StorageService = {
 
         if (table) {
             notifyUpdate({ source, action: 'save', table, id: item.id, item: { ...toSaveMetadata, image: rawImage, video: rawVideo } });
+        }
+
+        // Background: Upload to Supabase Storage (non-blocking, fire-and-forget)
+        if (prefix && source === 'user') {
+            this._uploadToStorage(listKey, storageKey, toSaveMetadata, prefix, rawImage, rawVideo);
+        }
+    },
+
+    async _uploadToStorage(listKey: keyof typeof DATA_CACHE, storageKey: string, metadata: any, prefix: string, rawImage?: string, rawVideo?: string) {
+        try {
+            let updated = false;
+
+            if (rawImage && !metadata.storagePath) {
+                const path = MediaStorageService.buildPath(prefix, metadata.id, 'image');
+                const result = await MediaStorageService.uploadMedia(rawImage, path);
+                if (result) {
+                    metadata.storagePath = result;
+                    updated = true;
+                }
+            }
+
+            if (rawVideo && !metadata.videoStoragePath) {
+                const path = MediaStorageService.buildPath(prefix, metadata.id, 'video');
+                const result = await MediaStorageService.uploadMedia(rawVideo, path);
+                if (result) {
+                    metadata.videoStoragePath = result;
+                    updated = true;
+                }
+            }
+
+            // Persist updated storagePath back to cache and IndexedDB
+            if (updated) {
+                const list = DATA_CACHE[listKey] as any[];
+                const idx = list.findIndex(i => i.id === metadata.id);
+                if (idx >= 0) {
+                    list[idx] = { ...list[idx], storagePath: metadata.storagePath, videoStoragePath: metadata.videoStoragePath };
+                    await writeRaw(STORES.DATA, storageKey, list);
+                }
+            }
+        } catch (e) {
+            console.warn('Background storage upload failed:', e);
         }
     },
 
@@ -236,6 +302,8 @@ export const StorageService = {
             MEDIA_MEMORY_CACHE.delete(item.imageId);
         }
         if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
+        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
+        if (item?.videoStoragePath) MediaStorageService.deleteMedia(item.videoStoragePath);
         DATA_CACHE.memories = DATA_CACHE.memories.filter(m => m.id !== id);
         await writeRaw(STORES.DATA, CACHE_KEYS.MEMORIES, DATA_CACHE.memories);
         notifyUpdate({ source: 'user', action: 'delete', table: 'memories', id });
@@ -250,6 +318,8 @@ export const StorageService = {
             MEDIA_MEMORY_CACHE.delete(item.imageId);
         }
         if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
+        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
+        if (item?.videoStoragePath) MediaStorageService.deleteMedia(item.videoStoragePath);
         DATA_CACHE.dailyPhotos = DATA_CACHE.dailyPhotos.filter(p => p.id !== id);
         await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, DATA_CACHE.dailyPhotos);
         notifyUpdate({ source: 'user', action: 'delete', table: 'daily_photos', id });
@@ -401,6 +471,8 @@ export const StorageService = {
                 MEDIA_MEMORY_CACHE.delete(item.imageId);
             }
             if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
+            if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
+            if (item?.videoStoragePath) MediaStorageService.deleteMedia(item.videoStoragePath);
             DATA_CACHE[cfg.cache] = list.filter(i => i.id !== id);
             await writeRaw(STORES.DATA, cfg.key, DATA_CACHE[cfg.cache]);
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
@@ -547,5 +619,88 @@ export const StorageService = {
     async getStorageUsage() {
         if (navigator.storage && navigator.storage.estimate) return await navigator.storage.estimate();
         return null;
+    },
+
+    /**
+     * Recovery: Pull images back from Supabase cloud into local IndexedDB.
+     * Call this when local images are missing but cloud has the data.
+     */
+    async recoverImagesFromCloud(): Promise<{ recovered: number; failed: number }> {
+        if (!SupabaseService.init()) return { recovered: 0, failed: 0 };
+
+        let recovered = 0;
+        let failed = 0;
+
+        const mediaTables: { table: string; cache: keyof typeof DATA_CACHE; prefix: string }[] = [
+            { table: 'memories', cache: 'memories', prefix: 'mem' },
+            { table: 'daily_photos', cache: 'dailyPhotos', prefix: 'daily' },
+            { table: 'keepsakes', cache: 'keepsakes', prefix: 'keep' },
+        ];
+
+        for (const { table, cache, prefix } of mediaTables) {
+            try {
+                const cloudItems = await SupabaseService.fetchAll(table);
+                if (!cloudItems) continue;
+
+                for (const raw of cloudItems) {
+                    const item = raw?.data || raw;
+                    if (!item?.id) continue;
+
+                    const imageId = item.imageId || `${prefix}_${item.id}`;
+                    const videoId = item.videoId || `${prefix}_vid_${item.id}`;
+
+                    // Recover image if cloud has it and local doesn't
+                    if (item.image) {
+                        const existing = await readRaw(STORES.IMAGES, imageId);
+                        if (!existing) {
+                            await writeRaw(STORES.IMAGES, imageId, item.image);
+                            if (item.image.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, item.image);
+                            recovered++;
+                        }
+
+                        // Ensure metadata has imageId reference
+                        const list = DATA_CACHE[cache] as any[];
+                        const idx = list.findIndex(i => i.id === item.id);
+                        if (idx >= 0 && !list[idx].imageId) {
+                            list[idx] = { ...list[idx], imageId };
+                            await writeRaw(STORES.DATA, CACHE_KEYS[cache === 'memories' ? 'MEMORIES' : cache === 'dailyPhotos' ? 'DAILY_PHOTOS' : 'KEEPSAKES'], list);
+                        }
+                    }
+
+                    // Recover video if cloud has it
+                    if (item.video) {
+                        const existing = await readRaw(STORES.IMAGES, videoId);
+                        if (!existing) {
+                            await writeRaw(STORES.IMAGES, videoId, item.video);
+                            recovered++;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn(`Image recovery failed for ${table}:`, e);
+                failed++;
+            }
+        }
+
+        // Force UI refresh
+        notifyUpdate({ source: 'sync', action: 'save', table: 'recovery', id: 'images' });
+        return { recovered, failed };
+    },
+
+    /**
+     * Get an image-enriched copy of items for cloud push.
+     * Re-attaches raw image blobs from IndexedDB to metadata before uploading.
+     */
+    async _getItemWithImages(item: any, prefix: string): Promise<any> {
+        const enriched = { ...item };
+        if (item.imageId) {
+            const img = await readRaw(STORES.IMAGES, item.imageId);
+            if (img) enriched.image = img;
+        }
+        if (item.videoId) {
+            const vid = await readRaw(STORES.IMAGES, item.videoId);
+            if (vid) enriched.video = vid;
+        }
+        return enriched;
     }
 };

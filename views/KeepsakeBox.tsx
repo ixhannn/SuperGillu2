@@ -16,7 +16,7 @@ interface KeepsakeBoxProps {
 }
 
 const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick }) => {
-    const { src: mediaSrc } = useTulikaMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video);
+    const { src: mediaSrc } = useTulikaMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, keepsake.storagePath || keepsake.videoStoragePath);
 
     const formattedDate = new Date(keepsake.date).toLocaleDateString(undefined, {
         year: 'numeric', month: 'short', day: 'numeric'
@@ -107,8 +107,9 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
 const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void }> = ({ keepsake, onClose }) => {
     // For detail views, we want the FULL resolution image/video
     const { src: mediaUrl, isLoading } = useTulikaMedia(
-        keepsake.videoId || keepsake.imageId, 
-        keepsake.video || keepsake.image
+        keepsake.videoId || keepsake.imageId,
+        keepsake.video || keepsake.image,
+        keepsake.videoStoragePath || keepsake.storagePath
     );
 
     return (

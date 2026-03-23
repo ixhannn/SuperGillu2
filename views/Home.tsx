@@ -24,8 +24,8 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
         if (type === 'memory') {
             const mem = item as Memory;
             if (mem.image) setImageUrl(mem.image);
-            else if (mem.imageId) {
-                StorageService.getImage(mem.imageId).then(data => setImageUrl(data || null));
+            else if (mem.imageId || mem.storagePath) {
+                StorageService.getImage(mem.imageId || '', undefined, mem.storagePath).then(data => setImageUrl(data || null));
             }
         }
     }, [content]);
@@ -352,7 +352,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     useEffect(() => {
         if (onThisDayMemory) {
             if (onThisDayMemory.image) setOtdImage(onThisDayMemory.image);
-            else if (onThisDayMemory.imageId) StorageService.getImage(onThisDayMemory.imageId).then(img => setOtdImage(img || null));
+            else if (onThisDayMemory.imageId || onThisDayMemory.storagePath) StorageService.getImage(onThisDayMemory.imageId || '', undefined, onThisDayMemory.storagePath).then(img => setOtdImage(img || null));
         } else setOtdImage(null);
     }, [onThisDayMemory]);
 

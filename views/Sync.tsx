@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Cloud, CheckCircle, RefreshCw, AlertTriangle, Bell, BellOff } from 'lucide-react';
+import { ArrowLeft, Cloud, CheckCircle, RefreshCw, AlertTriangle, Bell, BellOff, ImageDown, HardDriveUpload } from 'lucide-react';
 import { ViewState } from '../types';
 import { SyncService, syncEventTarget } from '../services/sync';
+import { StorageService } from '../services/storage';
 import { SupabaseService } from '../services/supabase';
+import { MediaMigrationService } from '../services/mediaMigration';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from '../utils/toast';
 
@@ -15,6 +17,9 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [lastSync, setLastSync] = useState(SyncService.lastSyncTime);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState('');
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     "Notification" in window ? Notification.permission : "denied"
   );
@@ -51,13 +56,47 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       }
   };
 
+  const migrateToStorage = async () => {
+      setIsMigrating(true);
+      setMigrationStatus('Starting migration...');
+      try {
+          const result = await MediaMigrationService.migrateAll((msg) => setMigrationStatus(msg));
+          if (result.migrated > 0) {
+              toast.show(`Migrated ${result.migrated} file(s) to cloud storage!`, 'success');
+          } else if (result.skipped > 0) {
+              toast.show('All media already in cloud storage.', 'success');
+          } else {
+              toast.show('No media found to migrate.', 'info');
+          }
+      } catch (e) {
+          toast.show('Migration failed. Try again.', 'error');
+      }
+      setIsMigrating(false);
+      setMigrationStatus('');
+  };
+
+  const recoverImages = async () => {
+      setIsRecovering(true);
+      try {
+          const result = await StorageService.recoverImagesFromCloud();
+          if (result.recovered > 0) {
+              toast.show(`Recovered ${result.recovered} image(s) from cloud!`, 'success');
+          } else {
+              toast.show('No recoverable images found in cloud.', 'info');
+          }
+      } catch (e) {
+          toast.show('Recovery failed. Try syncing first.', 'error');
+      }
+      setIsRecovering(false);
+  };
+
   const handleLogout = async () => {
       if (SupabaseService.client) await SupabaseService.client.auth.signOut();
       window.location.reload();
   };
 
   return (
-    <div className="flex flex-col h-full bg-white min-h-screen">
+    <div className="flex flex-col h-full min-h-screen pb-32">
       <div className="p-4 flex items-center gap-4 border-b border-gray-100">
         <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-600 rounded-full hover:bg-gray-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
           <ArrowLeft size={24} />
@@ -97,6 +136,27 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
             >
                 <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
                 Sync Now
+            </button>
+
+            <button
+                onClick={migrateToStorage}
+                disabled={isMigrating}
+                className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50"
+            >
+                <div className="flex items-center gap-2">
+                    <HardDriveUpload size={20} className={isMigrating ? "animate-pulse" : ""} />
+                    {isMigrating ? 'Migrating...' : 'Upload Images to Cloud'}
+                </div>
+                {migrationStatus && <span className="text-[10px] opacity-80">{migrationStatus}</span>}
+            </button>
+
+            <button
+                onClick={recoverImages}
+                disabled={isRecovering}
+                className="w-full bg-indigo-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+                <ImageDown size={20} className={isRecovering ? "animate-bounce" : ""} />
+                {isRecovering ? 'Recovering...' : 'Recover Images from Cloud'}
             </button>
 
             {/* Notification Permission Card */}

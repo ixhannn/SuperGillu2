@@ -93,17 +93,17 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const isDisabled = isSaving || (!text.trim() && !image && !video);
 
   return (
-    <div className="flex flex-col h-full min-h-screen animate-fade-in" style={{ background: 'linear-gradient(168deg, #fffcf9 0%, #fff6f1 40%, #fff0f3 100%)' }}>
-      <div className="p-4 flex items-center justify-between sticky top-0 z-10 glass-nav">
-        <button onClick={() => setView('home')} className="p-2 -ml-2 text-warmgray-500 rounded-full active:scale-95 transition-transform spring-press">
+    <div className="flex flex-col h-full min-h-screen animate-fade-in" style={{ background: 'transparent' }}>
+      <div className="p-4 flex items-center justify-between sticky top-0 z-10" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-400 rounded-full active:scale-95 transition-transform spring-press">
           <ArrowLeft size={22} />
         </button>
-        <span className="font-serif font-bold text-lg text-gray-800">New Memory</span>
+        <span className="font-serif font-bold text-lg text-gray-100">New Memory</span>
         <button
           onClick={handleSave}
           disabled={isDisabled}
           className={`px-5 py-1.5 rounded-full text-sm font-bold transition-all spring-press ${
-            isDisabled ? 'bg-warmgray-100 text-warmgray-300' : 'bg-tulika-500 text-white shadow-glow-rose'
+            isDisabled ? 'bg-white/10 text-gray-500' : 'bg-tulika-500 text-white shadow-tulika-500/20'
           }`}
         >
           {isSaving ? 'Saving...' : 'Save'}
@@ -112,14 +112,14 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
       <div className="flex-1 overflow-y-auto p-5 pb-32">
         <div className="mb-6 animate-slide-up">
-          <label className="text-micro text-warmgray-400 uppercase tracking-widest mb-3 block">Mood</label>
+          <label className="text-micro text-gray-400 uppercase tracking-widest mb-3 block">Mood</label>
           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
             {Moods.map((m, i) => (
               <button
                 key={m.id}
                 onClick={() => { feedback.tap(); setSelectedMood(m.id); }}
                 className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl transition-all opacity-0 animate-pop-in ${
-                  selectedMood === m.id ? 'bg-tulika-100 border-2 border-tulika-400 scale-110' : 'bg-gray-50 border border-transparent'
+                  selectedMood === m.id ? 'bg-tulika-500/20 border-2 border-tulika-400 scale-110' : 'bg-white/5 border border-transparent'
                 }`}
                 style={{ animationDelay: `${i * 50}ms`, animationFillMode: 'forwards' }}
               >
@@ -132,7 +132,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         <div className="mb-6 animate-slide-up animate-delay-100">
           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Media</label>
           <div className={`relative rounded-3xl overflow-hidden transition-all ${
-              image || video ? 'aspect-auto' : 'bg-gray-50 border-2 border-dashed border-gray-200 p-8'
+              image || video ? 'aspect-auto' : 'bg-white/5 border-2 border-dashed border-white/15 p-8'
             }`}
           >
             {image && !video ? (
@@ -168,7 +168,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
                     <Camera size={32} />
                     <span className="text-xs font-medium">Photo</span>
                   </div>
-                  <div className="w-px bg-gray-200 my-2"></div>
+                  <div className="w-px bg-white/10 my-2"></div>
                   <div
                     onClick={() => videoInputRef.current?.click()}
                     className="flex flex-col items-center justify-center text-gray-400 gap-2 cursor-pointer p-4 rounded-xl transition-all active:scale-95"
@@ -189,7 +189,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Write something..."
-            className="w-full h-40 p-4 bg-gray-50 rounded-3xl border-none text-gray-700 placeholder-gray-400 text-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-tulika-100 transition-all resize-none"
+            className="w-full h-40 p-4 bg-white/5 rounded-3xl border border-white/10 text-gray-200 placeholder:text-gray-500 text-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-tulika-500/30 transition-all resize-none"
           />
         </div>
       </div>

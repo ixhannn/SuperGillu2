@@ -211,16 +211,16 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-white min-h-screen">
-            <div className="p-4 flex items-center justify-between border-b border-gray-100 sticky top-0 bg-white z-10">
-                <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
+        <div className="flex flex-col h-full min-h-screen">
+            <div className="p-4 flex items-center justify-between border-b border-white/8 sticky top-0 z-10" style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px)' }}>
+                <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
                     <ArrowLeft size={24} />
                 </button>
-                <span className="font-semibold text-lg text-gray-800">Couple Profile</span>
+                <span className="font-semibold text-lg text-gray-100">Couple Profile</span>
                 <button
                     onClick={save}
                     disabled={isSaving}
-                    className={`px-4 py-2 rounded-full text-sm font-semibold shadow-md flex items-center gap-2 transition-all ${isSaving ? 'bg-green-500 text-white' : 'bg-tulika-500 text-white'
+                    className={`px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all ${isSaving ? 'bg-green-500 text-white' : 'bg-tulika-500 text-white'
                         }`}
                 >
                     {isSaving ? (
@@ -236,7 +236,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                 {/* Photo Upload */}
                 <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="group relative w-40 h-40 rounded-full bg-gray-50 border-4 border-white shadow-2xl overflow-hidden cursor-pointer mb-10 transition-all duration-500 spring-press"
+                    className="group relative w-40 h-40 rounded-full border-2 border-white/20 overflow-hidden cursor-pointer mb-10 transition-all duration-500 spring-press"
+                    style={{ background: 'rgba(255,255,255,0.06)' }}
                 >
                     {profile.photo ? (
                         <img src={profile.photo} className="w-full h-full object-cover" alt="Couple" />
@@ -261,40 +262,40 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                 </div>
 
                 <div className="w-full space-y-6">
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow">
+                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">My Name</label>
                         <input
                             type="text"
                             value={profile.myName}
                             onChange={(e) => handleChange('myName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-xl text-gray-800 outline-none placeholder-gray-300"
+                            className="w-full bg-transparent font-serif text-xl text-gray-200 outline-none placeholder-gray-500"
                             placeholder="E.g. Romeo"
                         />
                     </div>
 
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow">
+                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Partner's Name</label>
                         <input
                             type="text"
                             value={profile.partnerName}
                             onChange={(e) => handleChange('partnerName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-xl text-gray-800 outline-none placeholder-gray-300"
+                            className="w-full bg-transparent font-serif text-xl text-gray-200 outline-none placeholder-gray-500"
                             placeholder="E.g. Juliet"
                         />
                     </div>
 
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow">
+                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Relationship Start Date</label>
                         <input
                             type="date"
                             value={profile.anniversaryDate ? new Date(profile.anniversaryDate).toISOString().split('T')[0] : ''}
                             onChange={(e) => handleChange('anniversaryDate', new Date(e.target.value).toISOString())}
-                            className="w-full bg-transparent font-medium text-lg text-gray-700 outline-none"
+                            className="w-full bg-transparent font-medium text-lg text-gray-200 outline-none"
                         />
                     </div>
 
                     {/* Theme Selector */}
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 transition-shadow">
+                    <div className="p-4 rounded-2xl transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
                             <Palette size={14} /> App Theme
                         </label>
@@ -308,7 +309,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                         className={`flex flex-col items-center gap-2 flex-shrink-0 transition-all duration-300 ${isSelected ? 'scale-110' : 'opacity-60'}`}
                                     >
                                         <div
-                                            className="w-12 h-12 rounded-full border-4 shadow-sm flex items-center justify-center transition-all"
+                                            className="w-12 h-12 rounded-full border-4 flex items-center justify-center transition-all"
                                             style={{
                                                 backgroundColor: theme.palette[500],
                                                 borderColor: isSelected ? theme.palette[200] : 'transparent'
@@ -316,7 +317,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                         >
                                             {isSelected && <Check size={20} className="text-white" />}
                                         </div>
-                                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isSelected ? 'text-gray-800' : 'text-gray-400'}`}>
+                                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isSelected ? 'text-gray-200' : 'text-gray-500'}`}>
                                             {theme.label.split(' ')[0]}
                                         </span>
                                     </button>
@@ -326,19 +327,19 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     </div>
 
                     {/* Music Upload */}
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 transition-shadow">
+                    <div className="p-4 rounded-2xl transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
                             <Music size={14} /> Together Song
                         </label>
 
                         {musicMeta ? (
-                            <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                            <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
                                 <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="bg-tulika-100 p-2.5 rounded-full text-tulika-600 flex-shrink-0">
+                                    <div className="bg-tulika-500/15 p-2.5 rounded-full text-tulika-400 flex-shrink-0">
                                         <Music size={20} />
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-sm font-bold text-gray-800 truncate pr-2 leading-tight">
+                                        <p className="text-sm font-bold text-gray-200 truncate pr-2 leading-tight">
                                             {musicMeta.name}
                                         </p>
                                         <p className="text-[10px] text-tulika-500 font-bold uppercase tracking-wide">
@@ -359,7 +360,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                 <div className="flex items-center gap-4">
                                     <button
                                         onClick={() => musicInputRef.current?.click()}
-                                        className="flex-1 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-bold text-xs uppercase tracking-wide shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                        className="flex-1 bg-white/10 border border-white/10 text-gray-200 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2 active:scale-95 transition-all"
                                     >
                                         <Upload size={16} /> Upload Song
                                     </button>
@@ -386,31 +387,31 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     </div>
 
                     {/* Storage Status */}
-                    <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 mt-4">
+                    <div className="p-5 rounded-2xl mt-4" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.15)' }}>
                         <div className="flex justify-between items-center mb-4">
                             <label className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
                                 <HardDrive size={14} /> Storage Vault
                             </label>
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-white px-2 py-1 rounded-md shadow-sm">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300 bg-white/10 px-2 py-1 rounded-md">
                                 <ShieldCheck size={12} /> {storageInfo.type}
                             </div>
                         </div>
 
                         <div className="flex justify-between items-end">
                             <div>
-                                <p className="text-2xl font-mono font-bold text-indigo-900">{storageInfo.used}</p>
+                                <p className="text-2xl font-mono font-bold text-gray-100">{storageInfo.used}</p>
                                 <p className="text-[10px] text-indigo-400">Total stored locally</p>
                             </div>
-                            <div className="h-8 w-px bg-indigo-200"></div>
+                            <div className="h-8 w-px bg-indigo-500/30"></div>
                             <div className="text-right">
-                                <p className="text-xs text-indigo-500 font-medium">Database Active</p>
-                                <p className="text-[10px] text-indigo-300">IndexedDB Engine</p>
+                                <p className="text-xs text-indigo-400 font-medium">Database Active</p>
+                                <p className="text-[10px] text-indigo-500">IndexedDB Engine</p>
                             </div>
                         </div>
                     </div>
 
                     {/* Data & Backup Section */}
-                    <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 mt-4">
+                    <div className="p-5 rounded-2xl mt-4" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-4 flex items-center gap-2">
                             <Database size={14} /> Backup & Restore
                         </label>
@@ -419,7 +420,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             <button
                                 onClick={handleDownloadBackup}
                                 disabled={isBackingUp}
-                                className="flex-1 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-bold text-xs uppercase tracking-wide shadow-sm flex flex-col items-center gap-1 active:scale-95 transition-all"
+                                className="flex-1 bg-white/10 border border-white/10 text-gray-200 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
                             >
                                 {isBackingUp ? <Download size={20} className="animate-bounce" /> : <Download size={20} />}
                                 <span>{isBackingUp ? 'Exporting...' : 'Backup'}</span>
@@ -427,7 +428,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
                             <button
                                 onClick={() => backupInputRef.current?.click()}
-                                className="flex-1 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-bold text-xs uppercase tracking-wide shadow-sm flex flex-col items-center gap-1 active:scale-95 transition-all"
+                                className="flex-1 bg-white/10 border border-white/10 text-gray-200 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
                             >
                                 <Upload size={20} />
                                 <span>Restore</span>
@@ -445,17 +446,17 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                         </p>
                     </div>
 
-                    <div className="w-full mt-8 border-t border-gray-100 pt-8 space-y-3">
+                    <div className="w-full mt-8 border-t border-white/8 pt-8 space-y-3">
                         <button
                             onClick={handleSwitchIdentityClick}
-                            className="w-full flex items-center justify-center gap-2 text-gray-700 font-bold text-sm bg-gray-50 py-3 rounded-xl transition-colors"
+                            className="w-full flex items-center justify-center gap-2 text-gray-200 font-bold text-sm bg-white/10 border border-white/10 py-3 rounded-xl transition-colors"
                         >
                             <Users size={16} /> Switch Identity
                         </button>
 
                         <button
                             onClick={handleSignOut}
-                            className="w-full flex items-center justify-center gap-2 text-red-500 font-bold text-sm bg-red-50 py-3 rounded-xl transition-colors"
+                            className="w-full flex items-center justify-center gap-2 text-red-400 font-bold text-sm bg-red-500/15 py-3 rounded-xl transition-colors"
                         >
                             <LogOut size={16} /> Sign Out
                         </button>
@@ -466,37 +467,37 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
             {/* Identity Switch Modal */}
             {showIdentityModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-backdrop-enter" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)' }}>
-                    <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-modal-enter relative">
+                    <div className="w-full max-w-sm rounded-[2rem] p-6 animate-modal-enter relative" style={{ background: 'rgba(20,15,28,0.92)', backdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.1)' }}>
                         <button
                             onClick={() => setShowIdentityModal(false)}
-                            className="absolute top-4 right-4 p-2 bg-gray-50 rounded-full text-gray-400 transition-colors"
+                            className="absolute top-4 right-4 p-2 bg-white/10 rounded-full text-gray-400 transition-colors"
                         >
                             <X size={20} />
                         </button>
 
-                        <h3 className="font-serif font-bold text-2xl text-center text-gray-800 mb-2">Who are you?</h3>
+                        <h3 className="font-serif font-bold text-2xl text-center text-gray-100 mb-2">Who are you?</h3>
                         <p className="text-center text-gray-400 text-sm mb-8">Select your identity to switch profiles.</p>
 
                         <div className="space-y-4">
                             <button
                                 onClick={() => handleIdentitySelect('Tulika')}
-                                className="w-full p-4 rounded-2xl border-2 border-tulika-100 bg-tulika-50 flex items-center gap-4 transition-all group spring-press"
+                                className="w-full p-4 rounded-2xl border border-tulika-500/20 bg-tulika-500/10 flex items-center gap-4 transition-all group spring-press"
                             >
-                                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-2xl shadow-sm transition-transform">👩🏻</div>
+                                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl transition-transform">👩🏻</div>
                                 <div className="text-left">
-                                    <span className="block font-bold text-gray-800 text-lg transition-colors">Tulika</span>
-                                    <span className="text-xs text-gray-500">Switch to Tulika's view</span>
+                                    <span className="block font-bold text-gray-100 text-lg transition-colors">Tulika</span>
+                                    <span className="text-xs text-gray-400">Switch to Tulika's view</span>
                                 </div>
                             </button>
 
                             <button
                                 onClick={() => handleIdentitySelect('Ishan')}
-                                className="w-full p-4 rounded-2xl border-2 border-blue-100 bg-blue-50 flex items-center gap-4 transition-all group spring-press"
+                                className="w-full p-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 flex items-center gap-4 transition-all group spring-press"
                             >
-                                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-2xl shadow-sm transition-transform">👨🏻</div>
+                                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl transition-transform">👨🏻</div>
                                 <div className="text-left">
-                                    <span className="block font-bold text-gray-800 text-lg transition-colors">Ishan</span>
-                                    <span className="text-xs text-gray-500">Switch to Ishan's view</span>
+                                    <span className="block font-bold text-gray-100 text-lg transition-colors">Ishan</span>
+                                    <span className="text-xs text-gray-400">Switch to Ishan's view</span>
                                 </div>
                             </button>
                         </div>

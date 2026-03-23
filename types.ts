@@ -5,6 +5,8 @@ export interface Memory {
   imageId?: string; // ID for IndexedDB
   video?: string; // Data URI for Video
   videoId?: string; // ID for IndexedDB
+  storagePath?: string; // Supabase Storage path for image
+  videoStoragePath?: string; // Supabase Storage path for video
   text: string;
   date: string; // ISO string
   mood: string;
@@ -39,6 +41,8 @@ export interface DailyPhoto {
   image?: string; // For sync transport
   videoId?: string;
   video?: string;
+  storagePath?: string; // Supabase Storage path for image
+  videoStoragePath?: string; // Supabase Storage path for video
   caption: string;
   createdAt: string;
   expiresAt: string;
@@ -66,6 +70,8 @@ export interface Keepsake {
   imageId?: string; // ID for IndexedDB
   video?: string;
   videoId?: string;
+  storagePath?: string; // Supabase Storage path for image
+  videoStoragePath?: string; // Supabase Storage path for video
   spotifyLink?: string;
   date: string; // ISO String
   isHidden: boolean; // Soft delete only

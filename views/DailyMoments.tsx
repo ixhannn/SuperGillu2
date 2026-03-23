@@ -23,7 +23,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
     const mediaId = isVideo ? photo.imageId : (photo.imageId || photo.videoId);
     const mediaData = isVideo ? photo.image : (photo.image || photo.video);
 
-    const { src: mediaUrl, isLoading } = useTulikaMedia(mediaId, mediaData);
+    const { src: mediaUrl, isLoading } = useTulikaMedia(mediaId, mediaData, photo.storagePath);
     const [timeLeft, setTimeLeft] = useState('');
 
     useEffect(() => {
@@ -207,7 +207,8 @@ const PostViewer: React.FC<{
     const isVideo = !!photo.video || !!photo.videoId;
     const { src: mediaSrc, isLoading: mediaLoading } = useTulikaMedia(
         isVideo ? (photo.videoId || photo.imageId) : photo.imageId,
-        isVideo ? (photo.video || photo.image) : photo.image
+        isVideo ? (photo.video || photo.image) : photo.image,
+        isVideo ? (photo.videoStoragePath || photo.storagePath) : photo.storagePath
     );
     const [comments, setComments] = useState<Comment[]>([]);
     const [commentText, setCommentText] = useState('');

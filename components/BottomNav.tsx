@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { Home, Plus, Gift, Archive, Sparkles, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState } from '../types';
-import { MagneticButton } from './MagneticButton';
 
 interface BottomNavProps {
   currentView: ViewState;
@@ -24,82 +23,110 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
   ], [notifications]);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 px-5 pb-safe z-50 pointer-events-none">
-      <div className="max-w-md mx-auto mb-5 pointer-events-auto">
-        <div className="relative glass-nav rounded-[2rem] flex items-center justify-around px-2 py-1">
+    <div className="fixed bottom-0 left-0 right-0 px-4 pb-safe z-50 pointer-events-none">
+      <div className="max-w-md mx-auto mb-4 pointer-events-auto">
+        <div
+          className="relative rounded-[1.75rem] flex items-center justify-around px-1.5 py-1.5"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.08) 100%)',
+            backdropFilter: 'blur(40px) saturate(180%) brightness(1.1)',
+            WebkitBackdropFilter: 'blur(40px) saturate(180%) brightness(1.1)',
+            border: '1px solid rgba(255,255,255,0.18)',
+            boxShadow: `
+              inset 0 1px 0 rgba(255,255,255,0.2),
+              inset 0 -1px 0 rgba(255,255,255,0.05),
+              0 8px 32px rgba(0,0,0,0.35),
+              0 2px 8px rgba(0,0,0,0.2)
+            `,
+          }}
+        >
+          {/* Specular highlight — top edge refraction */}
+          <div
+            className="absolute top-0 left-6 right-6 h-[1px] rounded-full pointer-events-none"
+            style={{
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 30%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.35) 70%, transparent 100%)',
+            }}
+          />
 
           {navItems.map((item) => {
             const isActive = currentView === item.id;
             const Icon = item.icon;
 
             return (
-              <MagneticButton
+              <button
                 key={item.id}
                 onClick={() => setView(item.id as any)}
-                className="relative flex flex-col items-center justify-center py-2.5 px-3 group z-10 outline-none"
+                className="relative flex flex-col items-center justify-center py-2 px-3 outline-none min-w-[52px] min-h-[48px]"
                 aria-label={item.label}
-                strength={0.15}
               >
-                {/* Center "Add" button — elevated pill */}
                 {item.isCenter ? (
                   <motion.div
                     whileTap={{ scale: 0.88 }}
                     transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-                      isActive
-                        ? 'bg-gradient-to-br from-tulika-500 to-tulika-600 shadow-glow-rose'
-                        : 'bg-gradient-to-br from-tulika-400 to-tulika-500 shadow-lg shadow-tulika-200/40'
-                    }`}
+                    className="w-12 h-12 rounded-[1.1rem] flex items-center justify-center relative"
+                    style={{
+                      background: isActive
+                        ? 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)'
+                        : 'linear-gradient(135deg, rgba(244,63,94,0.85) 0%, rgba(225,29,72,0.85) 100%)',
+                      boxShadow: isActive
+                        ? '0 4px 20px rgba(244,63,94,0.5), 0 2px 8px rgba(244,63,94,0.3), inset 0 1px 0 rgba(255,255,255,0.25)'
+                        : '0 4px 16px rgba(244,63,94,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+                    }}
                   >
                     <Plus size={22} strokeWidth={2.5} className="text-white" />
                   </motion.div>
                 ) : (
                   <>
-                    <div className={`relative transition-all duration-400 ease-spring ${
-                      isActive ? '-translate-y-0.5' : 'opacity-35'
-                    }`}>
+                    <div className="relative">
                       <Icon
                         size={21}
-                        strokeWidth={isActive ? 2.5 : 1.8}
-                        className={`transition-colors duration-300 ${isActive ? 'text-tulika-600' : 'text-warmgray-600'}`}
+                        strokeWidth={isActive ? 2.2 : 1.6}
+                        className="transition-all duration-300"
+                        style={{
+                          color: isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.4)',
+                        }}
                         fill={isActive ? 'currentColor' : 'none'}
                         fillOpacity={isActive ? 0.15 : 0}
                       />
 
-                      {/* Notification heart */}
                       {item.hasNotification && !isActive && (
-                        <div className="absolute -top-1 -right-1.5">
-                          <Heart size={8} className="text-tulika-500 fill-tulika-500 animate-breathe" />
+                        <div className="absolute -top-0.5 -right-1">
+                          <Heart size={7} className="text-tulika-400 fill-tulika-400 animate-breathe" />
                         </div>
                       )}
                     </div>
 
-                    {/* Label */}
                     <AnimatePresence>
                       {isActive && (
                         <motion.span
-                          initial={{ opacity: 0, y: 4, scale: 0.8 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 2, scale: 0.9 }}
-                          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                          className="text-micro text-tulika-600 mt-0.5 tracking-wider"
+                          initial={{ opacity: 0, y: 3 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 2 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                          className="text-[9px] font-semibold tracking-[0.06em] mt-0.5"
+                          style={{ color: 'rgba(255,255,255,0.85)' }}
                         >
                           {item.label}
                         </motion.span>
                       )}
                     </AnimatePresence>
 
-                    {/* Active pill background */}
+                    {/* Active indicator — glowing pill behind icon */}
                     {isActive && (
                       <motion.div
                         layoutId="nav-active-pill"
-                        className="absolute inset-1 bg-tulika-50/60 rounded-2xl -z-10"
-                        transition={{ type: 'spring', stiffness: 280, damping: 28, mass: 0.7 }}
+                        className="absolute inset-0.5 -z-10 rounded-2xl"
+                        style={{
+                          background: 'rgba(255,255,255,0.1)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 0 12px rgba(244,63,94,0.08)',
+                        }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 28, mass: 0.7 }}
                       />
                     )}
                   </>
                 )}
-              </MagneticButton>
+              </button>
             );
           })}
         </div>

@@ -21,7 +21,7 @@ interface NotesProps {
   setView: (view: ViewState) => void;
 }
 
-const COLORS = ['bg-yellow-100', 'bg-pink-100', 'bg-blue-100', 'bg-green-100', 'bg-purple-100'];
+const COLORS = ['bg-yellow-500/15', 'bg-pink-500/15', 'bg-blue-500/15', 'bg-green-500/15', 'bg-purple-500/15'];
 
 export const Notes: React.FC<NotesProps> = ({ setView }) => {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -83,14 +83,15 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
     <div className="px-5 pt-10 pb-32 min-h-screen">
       <div className="flex justify-between items-center mb-8 animate-fade-in">
         <div className="flex items-center gap-3">
-          <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-warmgray-500 rounded-full spring-press">
+          <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full spring-press">
             <ArrowLeft size={22} />
           </button>
-          <h2 className="text-headline font-serif text-gray-900">Love Notes</h2>
+          <h2 className="text-headline font-serif text-gray-100">Love Notes</h2>
         </div>
         <button
           onClick={() => setIsEditing(true)}
-          className="bg-warmgray-900 text-white p-3 rounded-2xl shadow-elevated spring-press"
+          className="text-white p-3 rounded-2xl spring-press"
+          style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)' }}
         >
           <Plus size={22} />
         </button>
@@ -98,16 +99,16 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
 
       {isEditing && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
-            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-pop-in">
+            <div className="w-full max-w-sm rounded-3xl p-6 animate-pop-in" style={{ background: 'rgba(20,15,28,0.92)', backdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold">New Note</h3>
-                    <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} className="text-gray-400" /></button>
+                    <h3 className="font-semibold text-gray-100">New Note</h3>
+                    <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} className="text-gray-500" /></button>
                 </div>
                 <textarea 
                     autoFocus
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
-                    className="w-full h-40 bg-yellow-50 p-4 rounded-xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed"
+                    className="w-full h-40 bg-white/5 p-4 rounded-xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed text-gray-200 placeholder:text-gray-600"
                     placeholder="Write something sweet..."
                 />
                 <button 
@@ -125,17 +126,18 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
           <motion.div
             key={note.id}
             variants={staggerItem}
-            className={`${note.color} p-4 rounded-3xl shadow-sm min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press ${longPressId === note.id ? 'scale-[1.02] shadow-md ring-2 ring-red-200' : ''} transition-all`}
+            className={`${note.color} p-4 rounded-3xl min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press ${longPressId === note.id ? 'scale-[1.02] ring-2 ring-red-400/40' : ''} transition-all`}
+            style={{ border: '1px solid rgba(255,255,255,0.08)' }}
             onPointerDown={() => handlePointerDown(note.id)}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
             onClick={() => { if (longPressId && longPressId !== note.id) setLongPressId(null); }}
           >
-            <p className="font-serif text-gray-800 leading-snug whitespace-pre-wrap text-sm">
+            <p className="font-serif text-gray-200 leading-snug whitespace-pre-wrap text-sm">
                 {note.content}
             </p>
             <div className="flex justify-between items-end mt-4">
-                <span className="text-[10px] text-gray-500 font-medium opacity-60">
+                <span className="text-[10px] text-gray-500 font-medium">
                     {new Date(note.createdAt).toLocaleDateString()}
                 </span>
                 <AnimatePresence>
@@ -159,16 +161,17 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
       {notes.length === 0 && (
           <div className="flex flex-col items-center justify-center mt-20 animate-fade-in">
               <div className="relative mb-6">
-                  <div className="absolute inset-0 bg-yellow-200/30 rounded-full blur-2xl animate-breathe-glow" />
-                  <div className="relative p-6 bg-yellow-50 rounded-full border border-yellow-100 shadow-sm">
-                      <PenLine size={36} className="text-yellow-400/60" />
+                  <div className="absolute inset-0 bg-yellow-500/10 rounded-full blur-2xl animate-breathe-glow" />
+                  <div className="relative p-6 bg-yellow-500/10 rounded-full border border-yellow-500/20">
+                      <PenLine size={36} className="text-yellow-400/40" />
                   </div>
               </div>
-              <p className="font-serif text-gray-500 text-lg mb-2">Write a little note...</p>
-              <p className="text-xs text-gray-400 mb-6">Leave sweet words for each other</p>
+              <p className="font-serif text-gray-400 text-lg mb-2">Write a little note...</p>
+              <p className="text-xs text-gray-500 mb-6">Leave sweet words for each other</p>
               <button
                   onClick={() => setIsEditing(true)}
-                  className="px-6 py-3 bg-warmgray-900 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg spring-press flex items-center gap-2"
+                  className="px-6 py-3 bg-white/10 text-white rounded-full text-sm font-bold uppercase tracking-wider spring-press flex items-center gap-2"
+                  style={{ border: '1px solid rgba(255,255,255,0.12)' }}
               >
                   <Plus size={18} /> Write a Note
               </button>
