@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls \"C:\\\\Users\\\\Sameer\\\\Downloads\\\\tulika\\\\.claude\\\\worktrees\\\\focused-khayyam\\\\node_modules\\\\.bin\\\\vite\"*)",
+      "Bash(npx tsc:*)",
+      "Bash(node node_modules/vite/bin/vite.js --help)",
+      "WebSearch",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:webpeak.org)",
+      "WebFetch(domain:linear.app)",
+      "WebFetch(domain:www.frontendtools.tech)"
+    ]
+  }
+}
