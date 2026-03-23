@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Tulika Dev Server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:\\Users\\Sameer\\Downloads\\tulika\\node_modules\\vite\\bin\\vite.js", "C:\\Users\\Sameer\\Downloads\\tulika\\.claude\\worktrees\\focused-khayyam"],
+      "port": 3000
+    },
+    {
+      "name": "Tulika Preview Server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:\\Users\\Sameer\\Downloads\\tulika\\node_modules\\vite\\bin\\vite.js", "preview", "C:\\Users\\Sameer\\Downloads\\tulika\\.claude\\worktrees\\focused-khayyam"],
+      "port": 4173
+    }
+  ]
+}
