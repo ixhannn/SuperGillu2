@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { ViewState, MoodEntry, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
-import { ArrowLeft, Sparkles, TrendingUp, Heart, Share2, Cloud } from 'lucide-react';
+import { ArrowLeft, Sparkles, TrendingUp, Heart, Share2, Cloud, Palette } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, parseISO } from 'date-fns';
 
@@ -165,6 +165,28 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
             </header>
 
             <main className="flex-1 space-y-8 relative z-10 overflow-auto pb-12 no-scrollbar">
+                {stats.totalEntries === 0 && (
+                    <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+                        <div className="relative mb-6">
+                            <div className="absolute inset-0 bg-tulika-200/30 rounded-full blur-2xl animate-breathe-glow" />
+                            <div className="relative p-6 premium-glass rounded-full shadow-sm">
+                                <Palette size={40} className="text-stone-400" style={{ animation: 'breathe-glow 3s ease-in-out infinite' }} />
+                            </div>
+                        </div>
+                        <p className="font-serif text-stone-600 text-center text-lg mb-2">
+                            Check in with your moods to see your aura story
+                        </p>
+                        <p className="text-xs text-stone-400 mb-6">Your monthly rewind will bloom here</p>
+                        <button
+                            onClick={() => setView('mood-calendar')}
+                            className="px-6 py-3 bg-stone-900 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg spring-press"
+                        >
+                            Go to Aura Board
+                        </button>
+                    </div>
+                )}
+
+                {stats.totalEntries > 0 && <>
                 {/* Harmony Wave Card */}
                 <section className="premium-glass rounded-[2.5rem] p-8 shadow-xl shadow-tulika-100/20 overflow-hidden relative border-white">
                     <div className="flex items-center justify-between mb-6">
@@ -236,8 +258,8 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 </section>
 
                 {/* Sync Score */}
-                <section className="premium-glass rounded-[2rem] p-8 flex items-center justify-between shadow-xl border-white relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-tulika-100/20 to-pink-100/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <section className="premium-glass rounded-[2rem] p-8 flex items-center justify-between shadow-xl border-white relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-tulika-100/20 to-pink-100/20 opacity-0 transition-opacity"></div>
                     <div className="relative z-10">
                         <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest mb-1 flex items-center gap-2">
                             <Heart size={16} className="text-pink-500 animate-pulse" />
@@ -265,6 +287,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         </p>
                     </div>
                 </section>
+                </>}
             </main>
         </div>
     );

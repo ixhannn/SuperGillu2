@@ -1,9 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Trash2, Calendar, X, Clock, Loader2, Image as ImageIcon, PlayCircle } from 'lucide-react';
+import { Trash2, Calendar, X, Clock, Loader2, Image as ImageIcon, PlayCircle, Plus } from 'lucide-react';
 import { ViewState, Memory } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { feedback } from '../utils/feedback';
 import { useTulikaMedia } from '../hooks/useTulikaImage';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
@@ -31,9 +32,9 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
     };
 
     return (
-        <div 
-            onClick={onClick}
-            className="bg-white rounded-3xl p-3 shadow-sm border border-stone-100/50 overflow-hidden group transition-all hover:shadow-md animate-slide-up cursor-pointer active:scale-[0.98] relative opacity-0"
+        <div
+            onClick={() => { feedback.light(); onClick(); }}
+            className="bg-white rounded-3xl p-3 shadow-sm border border-stone-100/50 overflow-hidden group transition-all animate-slide-up cursor-pointer spring-press relative opacity-0"
             style={{ animationDelay: `${index * 80}ms` }}
         >
           <div className="flex items-center justify-between mb-3 px-1">
@@ -53,13 +54,13 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
             
             <button 
               onClick={(e) => { e.stopPropagation(); onDelete(memory.id); }}
-              className="p-2 -mr-1 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-full transition-all relative z-20"
+              className="p-2 -mr-1 text-gray-300 rounded-full transition-all relative z-20"
             >
               <Trash2 size={16} />
             </button>
           </div>
 
-          <div className="rounded-2xl overflow-hidden mb-3 shadow-inner bg-gray-50 aspect-square relative flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-500 border border-gray-100">
+          <div className="rounded-2xl overflow-hidden mb-3 shadow-inner bg-gray-50 aspect-square relative flex items-center justify-center transition-transform duration-500 border border-gray-100">
             {isLoading ? (
                 <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
             ) : mediaUrl ? (
@@ -76,7 +77,7 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
                             loading="lazy" 
                         />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors">
-                            <div className="bg-white/30 backdrop-blur-md p-2.5 rounded-full border border-white/40 shadow-xl group-hover:scale-110 transition-transform">
+                            <div className="bg-white/30 backdrop-blur-md p-2.5 rounded-full border border-white/40 shadow-xl transition-transform">
                                 <PlayCircle size={28} className="text-white" fill="currentColor" />
                             </div>
                         </div>
@@ -90,7 +91,7 @@ const MemoryCard: React.FC<{ memory: Memory; index: number; onClick: () => void;
                             transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
                             src={mediaUrl} 
                             alt="Memory" 
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                            className="w-full h-full object-cover transition-transform duration-700"
                             loading="lazy" 
                         />
                     </div>
@@ -122,7 +123,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: { memory: Memory, onCl
             <div className="bg-white rounded-[2rem] w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl relative animate-pop-in flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="sticky top-0 p-4 flex justify-between items-center bg-white/90 backdrop-blur-md z-10 border-b border-gray-50">
                     <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">{new Date(memory.date).toLocaleDateString()}</span>
-                    <button onClick={onClose} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors"><X size={20} /></button>
+                    <button onClick={onClose} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-gray-100 rounded-full text-gray-500 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"><X size={20} /></button>
                 </div>
                 <div className="p-6 pt-6">
                     {isLoading ? (
@@ -139,7 +140,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: { memory: Memory, onCl
                     <p className="text-gray-800 font-serif text-xl leading-relaxed whitespace-pre-wrap">{memory.text}</p>
                     <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between text-gray-400 text-sm">
                         <div className="flex items-center gap-2"><Clock size={16} /><span>{new Date(memory.date).toLocaleTimeString()}</span></div>
-                        <button onClick={() => onDelete(memory.id)} className="flex items-center gap-2 text-red-400 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"><Trash2 size={16} /><span>Delete</span></button>
+                        <button onClick={() => onDelete(memory.id)} className="flex items-center gap-2 text-red-400 px-3 py-1.5 rounded-lg transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2"><Trash2 size={16} /><span>Delete</span></button>
                     </div>
                 </div>
             </div>
@@ -201,9 +202,21 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         </div>
       
       {memories.length === 0 ? (
-        <div className="text-center text-gray-400 py-20 animate-fade-in delay-200">
-          <Calendar size={48} className="mx-auto mb-2 opacity-20" />
-          <p>Your journey is waiting to be written.</p>
+        <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-tulika-200/20 rounded-full blur-2xl animate-breathe-glow" />
+            <div className="relative p-6 bg-white rounded-full shadow-sm border border-gray-100">
+              <Calendar size={40} className="text-gray-300" />
+            </div>
+          </div>
+          <p className="font-serif text-gray-500 text-center text-lg mb-2">Your journey is waiting to be written</p>
+          <p className="text-xs text-gray-400 mb-6">Capture your first memory together</p>
+          <button
+            onClick={() => setView('add-memory')}
+            className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-200 spring-press flex items-center gap-2"
+          >
+            <Plus size={18} /> Add Memory
+          </button>
         </div>
       ) : (
         <div className="space-y-8">

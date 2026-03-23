@@ -19,11 +19,63 @@ export default {
                     400: '#fb7185',
                     500: '#f43f5e',
                     600: '#e11d48',
-                }
+                    700: '#be123c',
+                    800: '#9f1239',
+                    900: '#881337',
+                },
+                warmgray: {
+                    50: '#fafaf9',
+                    100: '#f5f5f4',
+                    200: '#e7e5e4',
+                    300: '#d6d3d1',
+                    400: '#a8a29e',
+                    500: '#78716c',
+                    600: '#57534e',
+                    700: '#44403c',
+                    800: '#292524',
+                    900: '#1c1917',
+                },
+                honey: {
+                    50: '#fffbeb',
+                    100: '#fef3c7',
+                    200: '#fde68a',
+                    300: '#fcd34d',
+                    400: '#fbbf24',
+                    500: '#f59e0b',
+                },
+                petal: {
+                    50: '#fdf4ff',
+                    100: '#fae8ff',
+                    200: '#f5d0fe',
+                    300: '#f0abfc',
+                    400: '#e879f9',
+                    500: '#d946ef',
+                },
+                sage: {
+                    50: '#f0fdf4',
+                    100: '#dcfce7',
+                    200: '#bbf7d0',
+                    300: '#86efac',
+                    400: '#4ade80',
+                    500: '#22c55e',
+                },
             },
             fontFamily: {
-                sans: ['Inter', 'sans-serif'],
-                serif: ['Playfair Display', 'serif'],
+                sans: ['Inter', 'system-ui', 'sans-serif'],
+                serif: ['Playfair Display', 'Georgia', 'serif'],
+                mono: ['JetBrains Mono', 'monospace'],
+            },
+            fontSize: {
+                'display': ['4.5rem', { lineHeight: '1', letterSpacing: '-0.04em', fontWeight: '700' }],
+                'headline': ['2.25rem', { lineHeight: '1.1', letterSpacing: '-0.03em', fontWeight: '700' }],
+                'title': ['1.5rem', { lineHeight: '1.2', letterSpacing: '-0.02em', fontWeight: '600' }],
+                'body-lg': ['1.125rem', { lineHeight: '1.6', letterSpacing: '-0.01em' }],
+                'caption': ['0.6875rem', { lineHeight: '1.4', letterSpacing: '0.06em', fontWeight: '600' }],
+                'micro': ['0.5625rem', { lineHeight: '1.3', letterSpacing: '0.08em', fontWeight: '700' }],
+            },
+            borderRadius: {
+                '4xl': '2rem',
+                '5xl': '2.5rem',
             },
             transitionTimingFunction: {
                 'spring': 'cubic-bezier(0.32, 0.72, 0, 1)',
@@ -31,6 +83,15 @@ export default {
                 'spring-snappy': 'cubic-bezier(0.22, 0.68, 0, 1.71)',
                 'ease-out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
                 'ease-out-quart': 'cubic-bezier(0.25, 1, 0.5, 1)',
+            },
+            boxShadow: {
+                'glow-rose': '0 0 40px -8px rgba(244, 63, 94, 0.3)',
+                'glow-amber': '0 0 40px -8px rgba(245, 158, 11, 0.3)',
+                'glow-petal': '0 0 40px -8px rgba(217, 70, 239, 0.3)',
+                'inner-shine': 'inset 0 1px 0 rgba(255, 255, 255, 0.9)',
+                'soft-xl': '0 8px 32px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -2px rgba(0, 0, 0, 0.04)',
+                'soft-2xl': '0 16px 48px -8px rgba(0, 0, 0, 0.1), 0 8px 16px -4px rgba(0, 0, 0, 0.06)',
+                'elevated': '0 24px 64px -12px rgba(0, 0, 0, 0.12), 0 8px 24px -8px rgba(0, 0, 0, 0.08)',
             },
             animation: {
                 'float': 'float 6s ease-in-out infinite',
@@ -50,6 +111,7 @@ export default {
                 'number-roll': 'numberRoll 0.8s cubic-bezier(0.23, 1, 0.32, 1) both',
                 'wiggle-spring': 'wiggleSpring 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
                 'spin-slow': 'spin 8s linear infinite',
+                'aurora': 'auroraShift 12s ease-in-out infinite alternate',
             },
             keyframes: {
                 float: {
@@ -125,6 +187,11 @@ export default {
                     '60%': { transform: 'rotate(-3deg)' },
                     '80%': { transform: 'rotate(2deg)' },
                     '100%': { transform: 'rotate(0deg)' },
+                },
+                auroraShift: {
+                    '0%': { backgroundPosition: '0% 50%' },
+                    '50%': { backgroundPosition: '100% 50%' },
+                    '100%': { backgroundPosition: '0% 50%' },
                 },
             }
         }

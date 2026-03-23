@@ -18,27 +18,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
   const navItems = useMemo(() => [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'keepsakes', icon: Gift, label: 'Box', hasNotification: notifications?.keepsakes },
-    { id: 'add-memory', icon: Plus, label: 'Add' },
+    { id: 'add-memory', icon: Plus, label: 'Add', isCenter: true },
     { id: 'daily-moments', icon: Sparkles, label: 'Moments', hasNotification: notifications?.moments },
     { id: 'timeline', icon: Archive, label: 'Memories', hasNotification: notifications?.timeline },
   ], [notifications]);
 
-  const activeIndex = useMemo(() => {
-    const idx = navItems.findIndex(item => item.id === currentView);
-    return idx === -1 ? 0 : idx;
-  }, [currentView, navItems]);
-
   return (
-    <div className="fixed bottom-0 left-0 right-0 px-6 pb-safe z-50 pointer-events-none">
-      <div className="max-w-md mx-auto mb-6 pointer-events-auto relative">
-
-        {/* Glass Navigation Bar with Gooey Filter applied */}
-        <div
-          className="relative glass-nav rounded-[2.5rem] flex items-center justify-between p-1.5"
-          style={{ filter: 'url(#goo)' }}
-        >
-
-          {/* We remove the CSS-based morphing pill here as framer-motion handles it per-button */}
+    <div className="fixed bottom-0 left-0 right-0 px-5 pb-safe z-50 pointer-events-none">
+      <div className="max-w-md mx-auto mb-5 pointer-events-auto">
+        <div className="relative glass-nav rounded-[2rem] flex items-center justify-around px-2 py-1">
 
           {navItems.map((item) => {
             const isActive = currentView === item.id;
@@ -48,55 +36,69 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
               <MagneticButton
                 key={item.id}
                 onClick={() => setView(item.id as any)}
-                className="relative flex flex-col items-center justify-center flex-1 py-3 group z-10 outline-none spring-press"
+                className="relative flex flex-col items-center justify-center py-2.5 px-3 group z-10 outline-none"
                 aria-label={item.label}
-                strength={0.2}
+                strength={0.15}
               >
-                <div className={`relative transition-all duration-500 ease-spring-bounce ${isActive
-                  ? 'scale-110 -translate-y-0.5'
-                  : 'scale-100 opacity-30 hover:opacity-60 hover:-translate-y-0.5'
-                  }`}>
-                  <Icon
-                    size={20}
-                    strokeWidth={isActive ? 2.5 : 2}
-                    className={`transition-colors duration-300 ${isActive ? 'text-tulika-600' : 'text-gray-600'}`}
-                    fill={isActive ? 'currentColor' : 'none'}
-                    fillOpacity={isActive ? 0.2 : 0}
-                  />
-
-                  {/* Notification Pulsing Heart */}
-                  {item.hasNotification && !isActive && (
-                    <div className="absolute -top-1.5 -right-1.5 filter drop-shadow-sm">
-                      <Heart
-                        size={10}
-                        className="text-tulika-500 fill-tulika-500 animate-breathe"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Active Indicator Morphing Pill (Framer Motion) */}
-                {isActive && (
+                {/* Center "Add" button — elevated pill */}
+                {item.isCenter ? (
                   <motion.div
-                    layoutId="active-nav-pill"
-                    className="absolute inset-y-1.5 inset-x-0 bg-gradient-to-b from-gray-50 to-gray-100/80 rounded-full -z-10"
-                    style={{ boxShadow: '0 2px 12px -2px rgba(244, 63, 94, 0.12), inset 0 1px 0 rgba(255,255,255,0.8)' }}
-                    transition={{ type: "spring", stiffness: 200, damping: 25, mass: 0.8 }}
-                  />
-                )}
+                    whileTap={{ scale: 0.88 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                      isActive
+                        ? 'bg-gradient-to-br from-tulika-500 to-tulika-600 shadow-glow-rose'
+                        : 'bg-gradient-to-br from-tulika-400 to-tulika-500 shadow-lg shadow-tulika-200/40'
+                    }`}
+                  >
+                    <Plus size={22} strokeWidth={2.5} className="text-white" />
+                  </motion.div>
+                ) : (
+                  <>
+                    <div className={`relative transition-all duration-400 ease-spring ${
+                      isActive ? '-translate-y-0.5' : 'opacity-35'
+                    }`}>
+                      <Icon
+                        size={21}
+                        strokeWidth={isActive ? 2.5 : 1.8}
+                        className={`transition-colors duration-300 ${isActive ? 'text-tulika-600' : 'text-warmgray-600'}`}
+                        fill={isActive ? 'currentColor' : 'none'}
+                        fillOpacity={isActive ? 0.15 : 0}
+                      />
 
-                {/* Active dot with spring bounce */}
-                <AnimatePresence>
-                  {isActive && (
-                    <motion.div
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                      className="absolute bottom-1 w-1 h-1 bg-tulika-500 rounded-full"
-                    />
-                  )}
-                </AnimatePresence>
+                      {/* Notification heart */}
+                      {item.hasNotification && !isActive && (
+                        <div className="absolute -top-1 -right-1.5">
+                          <Heart size={8} className="text-tulika-500 fill-tulika-500 animate-breathe" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Label */}
+                    <AnimatePresence>
+                      {isActive && (
+                        <motion.span
+                          initial={{ opacity: 0, y: 4, scale: 0.8 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 2, scale: 0.9 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                          className="text-micro text-tulika-600 mt-0.5 tracking-wider"
+                        >
+                          {item.label}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Active pill background */}
+                    {isActive && (
+                      <motion.div
+                        layoutId="nav-active-pill"
+                        className="absolute inset-1 bg-tulika-50/60 rounded-2xl -z-10"
+                        transition={{ type: 'spring', stiffness: 280, damping: 28, mass: 0.7 }}
+                      />
+                    )}
+                  </>
+                )}
               </MagneticButton>
             );
           })}

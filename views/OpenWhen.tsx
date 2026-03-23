@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Plus, X, Heart, Trash2, MailOpen } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { ViewState, Envelope } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { feedback } from '../utils/feedback';
+
+const staggerContainer = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } }
+};
+
+const staggerItem = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } }
+};
 import { ConfirmModal } from '../components/ConfirmModal';
 import { generateId } from '../utils/ids';
 
@@ -49,6 +61,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
     };
 
     StorageService.saveEnvelope(newEnvelope);
+    feedback.celebrate();
     setEnvelopes(prev => [...prev, newEnvelope]);
     setIsCreating(false);
     setLabel('');
@@ -89,22 +102,22 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
         </div>
         <button 
           onClick={() => setIsCreating(true)}
-          className="bg-tulika-500 text-white p-3 rounded-full shadow-lg shadow-tulika-200 hover:scale-110 transition-transform"
+          className="bg-tulika-500 text-white p-3 rounded-full shadow-lg shadow-tulika-200 transition-transform"
         >
           <Plus size={24} />
         </button>
       </div>
 
       {/* Grid of Envelopes */}
-      <div className="grid grid-cols-2 gap-4">
-        {envelopes.map((env, index) => (
-          <div 
+      <motion.div className="grid grid-cols-2 gap-4" variants={staggerContainer} initial="hidden" animate="show">
+        {envelopes.map((env) => (
+          <motion.div
             key={env.id}
-            onClick={() => openEnvelope(env)}
-            className={`aspect-[4/3] rounded-2xl relative p-4 flex flex-col items-center justify-center text-center shadow-sm border border-white/50 transition-all active:scale-95 cursor-pointer animate-pop-in opacity-0 ${
+            variants={staggerItem}
+            onClick={() => { feedback.tap(); openEnvelope(env); }}
+            className={`aspect-[4/3] rounded-2xl relative p-4 flex flex-col items-center justify-center text-center shadow-sm border border-white/50 spring-press cursor-pointer ${
               env.isLocked ? 'bg-white' : 'bg-white/80'
             }`}
-            style={{ animationDelay: `${index * 50}ms` }}
           >
             {/* Envelope Flap decoration */}
             <div className={`absolute top-0 left-0 right-0 h-1/2 rounded-t-2xl opacity-10 pointer-events-none ${env.color.split(' ')[0]}`}></div>
@@ -124,20 +137,32 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
             {/* Delete button (hidden unless long press or specific action in real app, simplified here) */}
             <button 
                onClick={(e) => handleDelete(env.id, e)}
-               className="absolute top-2 right-2 text-gray-300 hover:text-red-400"
+               className="absolute top-2 right-2 text-gray-300"
             >
               <Trash2 size={14} />
             </button>
-          </div>
+          </motion.div>
         ))}
 
         {envelopes.length === 0 && (
-          <div className="col-span-2 text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-3xl animate-fade-in delay-200">
-            <Heart size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">Write your first letter</p>
+          <div className="col-span-2 flex flex-col items-center text-center py-16 border-2 border-dashed border-gray-200 rounded-3xl animate-fade-in bg-white/50">
+            <div className="relative mb-5">
+              <div className="absolute inset-0 bg-tulika-200/20 rounded-full blur-2xl animate-breathe-glow" />
+              <div className="relative p-5 bg-tulika-50 rounded-full border border-tulika-100 shadow-sm">
+                <Mail size={32} className="text-tulika-300" />
+              </div>
+            </div>
+            <p className="font-serif text-gray-500 text-lg mb-1">Write your first letter</p>
+            <p className="text-xs text-gray-400 mb-5">Letters for every moment</p>
+            <button
+              onClick={() => setIsCreating(true)}
+              className="px-5 py-2.5 bg-tulika-500 text-white rounded-full text-sm font-bold shadow-lg shadow-tulika-200 spring-press"
+            >
+              Write a Letter
+            </button>
           </div>
         )}
-      </div>
+      </motion.div>
 
       <ConfirmModal
           isOpen={!!deleteTarget}
@@ -155,7 +180,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-pop-in">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-semibold text-lg">Write a Letter</h3>
-              <button onClick={() => setIsCreating(false)}><X size={24} className="text-gray-400" /></button>
+              <button onClick={() => setIsCreating(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} className="text-gray-400" /></button>
             </div>
             
             <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded-xl">
@@ -166,7 +191,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
                 placeholder="you miss me"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                className="bg-transparent w-full outline-none text-gray-800 font-medium placeholder-gray-300"
+                className="bg-transparent w-full outline-none focus:outline-none text-gray-800 font-medium placeholder-gray-300"
               />
             </div>
 
@@ -191,7 +216,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
       {readingId && currentLetter && (
         <div className="fixed inset-0 bg-tulika-50 z-50 flex flex-col animate-fade-in">
           <div className="flex justify-between items-center p-6 pb-2">
-            <button onClick={() => setReadingId(null)} className="p-2 bg-white rounded-full shadow-sm">
+            <button onClick={() => setReadingId(null)} aria-label="Close letter" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white rounded-full shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
               <X size={24} className="text-gray-600" />
             </button>
             <span className="text-xs font-bold uppercase tracking-widest text-gray-400">

@@ -221,7 +221,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                             ? 'bg-[#e0f7fa] border-[#b2ebf2] shadow-xl'
                             : stats.equipped.environment === 'env_forest'
                                 ? 'bg-[#e8f5e9] border-[#c8e6c9] shadow-xl'
-                                : 'bg-white border-white shadow-xl shadow-tulika-100/50 hover:shadow-2xl'}
+                                : 'bg-white border-white shadow-xl shadow-tulika-100/50'}
                 ${action === 'nudge' ? 'ring-4 ring-tulika-400 ring-opacity-50' : ''}
             `}>
                 <div className={`absolute -right-4 -top-4 w-32 h-32 rounded-full blur-3xl opacity-20 transition-colors duration-1000 ${
@@ -238,7 +238,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                             onClick={handlePet}
                             className={`
                                 w-24 h-24 rounded-[2rem] flex items-center justify-center text-6xl shadow-inner relative transition-all duration-500 cursor-pointer select-none
-                                ${status.state === 'sleeping' ? 'bg-slate-800' : 'bg-tulika-50 group-hover:bg-tulika-100'}
+                                ${status.state === 'sleeping' ? 'bg-slate-800' : 'bg-tulika-50'}
                                 ${action === 'petting' ? 'scale-110 rotate-3' : ''}
                                 ${action === 'feeding' ? 'animate-bounce' : ''}
                                 ${action === 'nudge' ? 'animate-wiggle' : ''}
@@ -302,7 +302,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                                     status.state === 'sleeping' || stats.equipped.environment === 'env_space' ? 'text-white' : 'text-gray-800'
                                 }`}>
                                     {stats.name}
-                                    <button onClick={() => setShowSettings(true)} className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition-opacity">
+                                    <button onClick={() => setShowSettings(true)} className="opacity-0 transition-opacity">
                                         <Settings size={14} />
                                     </button>
                                 </h3>
@@ -375,7 +375,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                     <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-pop-in">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="font-serif font-bold text-xl text-gray-800">Pet Settings</h3>
-                            <button onClick={() => setShowSettings(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-600">
+                            <button onClick={() => setShowSettings(false)} className="p-2 bg-gray-50 rounded-full text-gray-400">
                                 <X size={20} />
                             </button>
                         </div>

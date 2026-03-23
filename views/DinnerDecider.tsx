@@ -1,9 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Trash2, Utensils, RotateCw } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { ViewState, DinnerOption } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { generateId } from '../utils/ids';
+import { feedback } from '../utils/feedback';
+
+const staggerContainer = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } }
+};
+
+const staggerItem = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }
+};
 
 interface DinnerDeciderProps {
   setView: (view: ViewState) => void;
@@ -45,6 +57,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
       text: newOption.trim()
     };
     StorageService.saveDinnerOption(item);
+    feedback.tap();
     setNewOption('');
   };
 
@@ -54,6 +67,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
   const startSpin = () => {
     if (isSpinning || options.length < 2) return;
+    feedback.interact();
 
     // Calculate a new random rotation
     // Ensure at least 5 full spins (360 * 5) + random segment
@@ -96,7 +110,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
     if (options[index]) {
       setWinner(options[index].text);
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      feedback.celebrate();
     }
   };
 
@@ -112,7 +126,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
   return (
     <div className="flex flex-col h-full bg-white min-h-screen">
       <div className="p-4 flex items-center gap-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-        <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-600 rounded-full hover:bg-gray-50">
+        <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-600 rounded-full hover:bg-gray-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
           <ArrowLeft size={24} />
         </button>
         <span className="font-semibold text-lg text-gray-800">Dinner Decider</span>
@@ -208,27 +222,34 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
             />
             <button
               onClick={handleAdd}
-              className="bg-tulika-100 text-tulika-600 p-3 rounded-xl hover:bg-tulika-200"
+              className="bg-tulika-100 text-tulika-600 p-3 rounded-xl"
             >
               <Plus size={24} />
             </button>
           </div>
 
-          <div className="space-y-2">
+          <motion.div className="space-y-2" variants={staggerContainer} initial="hidden" animate="show">
             {options.map(opt => (
-              <div key={opt.id} className="flex items-center justify-between bg-white border border-gray-100 p-3 rounded-xl animate-spring-in spring-hover">
+              <motion.div key={opt.id} variants={staggerItem} className="flex items-center justify-between bg-white border border-gray-100 p-3 rounded-xl spring-press">
                 <span className="font-medium text-gray-700">{opt.text}</span>
-                <button onClick={() => handleDelete(opt.id)} className="text-gray-300 hover:text-red-500">
+                <button onClick={() => handleDelete(opt.id)} aria-label={`Delete ${opt.text}`} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-300 cursor-pointer focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:rounded-lg focus-visible:ring-offset-1">
                   <Trash2 size={18} />
                 </button>
-              </div>
+              </motion.div>
             ))}
             {options.length === 0 && (
-              <div className="text-center text-gray-400 py-4 text-sm">
-                Add at least 2 options to spin!
+              <div className="flex flex-col items-center text-center py-8 animate-fade-in">
+                <div className="relative mb-4">
+                  <div className="absolute inset-0 bg-tulika-100/30 rounded-full blur-xl" />
+                  <div className="relative p-4 bg-gray-50 rounded-full">
+                    <Utensils size={28} className="text-gray-300" style={{ animation: 'wiggle-spring 2s ease-in-out infinite' }} />
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-gray-500 mb-1">Add some options to spin the wheel</p>
+                <p className="text-xs text-gray-400">You need at least 2 to get started</p>
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       </div>
     </div>

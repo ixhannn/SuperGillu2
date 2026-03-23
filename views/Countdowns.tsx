@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight, Map } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { differenceInDays, isAfter, intervalToDuration, setYear, isBefore } from 'date-fns';
@@ -110,7 +111,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                 </div>
 
                 <div className="relative z-10 p-6 pt-12">
-                    <button onClick={() => setView('home')} className="mb-6 p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors">
+                    <button onClick={() => setView('home')} className="mb-6 p-2 bg-white/10 rounded-full transition-colors">
                         <ArrowLeft size={24} />
                     </button>
                     <div className="flex items-center gap-3">
@@ -154,12 +155,12 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                 </div>
 
                 {/* Event List */}
-                <div className="space-y-4">
-                    {restEvents.map((event, idx) => (
-                        <div
+                <motion.div className="space-y-4" initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}>
+                    {restEvents.map((event) => (
+                        <motion.div
                             key={event.id}
-                            className="bg-white/5 backdrop-blur-sm border border-white/10 p-5 rounded-3xl flex items-center gap-4 animate-spring-in spring-hover"
-                            style={{ animationDelay: `${idx * 100}ms` }}
+                            variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}
+                            className="bg-white/5 backdrop-blur-sm border border-white/10 p-5 rounded-3xl flex items-center gap-4 spring-press"
                         >
                             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${event.type === 'birthday' ? 'bg-yellow-500/10' :
                                     event.type === 'anniversary' ? 'bg-tulika-500/10' : 'bg-purple-500/10'
@@ -178,7 +179,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                                 </span>
                                 <span className="block text-[8px] uppercase font-bold text-indigo-500">Days To Go</span>
                             </div>
-                        </div>
+                        </motion.div>
                     ))}
 
                     {allEvents.length === 0 && (
@@ -193,7 +194,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                             </button>
                         </div>
                     )}
-                </div>
+                </motion.div>
             </div>
 
             {/* Quick Add Floating Button */}

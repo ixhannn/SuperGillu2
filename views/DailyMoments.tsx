@@ -9,6 +9,7 @@ import { PullToRefresh } from '../components/PullToRefresh';
 import { Skeleton } from '../components/Skeleton';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
+import { feedback } from '../utils/feedback';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 
@@ -90,7 +91,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                                 alt="Video thumbnail" 
                             />
                             <div className="absolute inset-0 flex items-center justify-center z-[2]">
-                                <div className="bg-white/30 backdrop-blur-lg p-3 rounded-full border border-white/40 shadow-2xl group-hover:scale-110 transition-transform">
+                                <div className="bg-white/30 backdrop-blur-lg p-3 rounded-full border border-white/40 shadow-2xl transition-transform">
                                     <PlayCircle size={32} className="text-white drop-shadow-lg" fill="currentColor" />
                                 </div>
                             </div>
@@ -125,7 +126,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
 
             <button
                 onClick={handleDelete}
-                className="absolute top-2 right-2 p-2 bg-black/40 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                className="absolute top-2 right-2 p-2 bg-black/40 backdrop-blur-md rounded-full text-white opacity-0 transition-opacity z-20"
             >
                 <Trash2 size={16} />
             </button>
@@ -180,14 +181,14 @@ const CommentBubble: React.FC<{
                 <div className="flex items-center gap-4 mt-1 ml-1">
                     <button
                         onClick={() => onReply(comment)}
-                        className="text-[10px] font-bold text-gray-400 uppercase tracking-wider hover:text-tulika-500 transition-colors flex items-center gap-1"
+                        className="text-[10px] font-bold text-gray-400 uppercase tracking-wider transition-colors flex items-center gap-1"
                     >
                         <Reply size={10} /> Reply
                     </button>
                     {isMine && (
                         <button
                             onClick={() => onDelete(comment.id)}
-                            className="text-[10px] font-bold text-gray-300 uppercase tracking-wider hover:text-red-400 transition-colors"
+                            className="text-[10px] font-bold text-gray-300 uppercase tracking-wider transition-colors"
                         >
                             Delete
                         </button>
@@ -288,7 +289,7 @@ const PostViewer: React.FC<{
             {/* ── Header ── */}
             <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 flex-shrink-0">
                 <div className="flex items-center gap-3">
-                    <button onClick={onClose} className="p-1.5 text-gray-500 hover:text-gray-700 transition-colors">
+                    <button onClick={onClose} className="p-1.5 text-gray-500 transition-colors">
                         <ArrowLeft size={22} />
                     </button>
                     <div className="flex items-center gap-2.5">
@@ -407,7 +408,7 @@ const PostViewer: React.FC<{
                             <Reply size={10} className="inline mr-1" />
                             Replying to {replyTo.senderName}
                         </span>
-                        <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-gray-600">
+                        <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-1">
                             <X size={14} />
                         </button>
                     </div>
@@ -532,6 +533,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         setNewVideo(null);
         setCaption('');
         setIsSaving(false);
+        feedback.celebrate();
         toast.show("Moment added successfully!", "success");
     };
 
@@ -549,7 +551,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             <div className="flex flex-col h-full bg-[#f8f9fa] min-h-screen relative">
                 {/* Header */}
                 <div className="p-6 pt-12 flex justify-between items-center bg-white border-b border-gray-100 sticky top-0 z-20">
-                <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-400">
+                <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2">
                     <ArrowLeft size={24} />
                 </button>
                 <div className="text-center">
@@ -559,13 +561,15 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                 <div className="flex gap-2">
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-2 bg-tulika-50 text-tulika-600 rounded-full"
+                        aria-label="Share a photo moment"
+                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-50 text-tulika-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"
                     >
                         <Camera size={20} />
                     </button>
                     <button
                         onClick={() => videoInputRef.current?.click()}
-                        className="p-2 bg-blue-50 text-blue-600 rounded-full"
+                        aria-label="Share a video moment"
+                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                     >
                         <Video size={20} />
                     </button>
@@ -576,11 +580,18 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
             <div className="flex-1 p-6 pb-32">
                 {photos.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-4">
+                    <motion.div
+                        className="grid grid-cols-2 gap-4"
+                        initial="hidden"
+                        animate="show"
+                        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
+                    >
                         {photos.map(p => (
-                            <PhotoCard key={p.id} photo={p} onClick={() => setSelectedPhoto(p)} />
+                            <motion.div key={p.id} variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}>
+                                <PhotoCard photo={p} onClick={() => setSelectedPhoto(p)} />
+                            </motion.div>
                         ))}
-                    </div>
+                    </motion.div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center py-20 text-gray-300 opacity-50">
                         <Sparkles size={48} className="mb-4" />
@@ -593,7 +604,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             {isUploading && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-50 bg-white flex flex-col" style={{ animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
                     <div className="p-4 flex items-center justify-between border-b">
-                        <button onClick={cancelUpload} className="p-2"><X size={24} /></button>
+                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} /></button>
                         <span className="font-bold text-sm uppercase tracking-widest">Post Moment</span>
                         <button
                             onClick={handleSave}

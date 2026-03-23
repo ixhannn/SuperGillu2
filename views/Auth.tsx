@@ -145,7 +145,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
                      <button 
                         onClick={handleSetup}
-                        className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold mt-8 shadow-lg shadow-tulika-200 hover:scale-[1.02] transition-transform"
+                        className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold mt-8 shadow-lg shadow-tulika-200 transition-transform"
                      >
                          Connect
                      </button>
@@ -207,7 +207,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <button 
                     onClick={handleAuth}
                     disabled={loading}
-                    className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold mt-6 shadow-xl shadow-tulika-200 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                    className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold mt-6 shadow-xl shadow-tulika-200 active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
                     {loading ? <Loader2 className="animate-spin" /> : (
                         <>
@@ -219,7 +219,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <div className="mt-6 flex justify-center">
                     <button 
                         onClick={() => { setIsSignUp(!isSignUp); setError(null); }}
-                        className="text-sm text-gray-400 font-medium hover:text-tulika-500 transition-colors"
+                        className="text-sm text-gray-400 font-medium transition-colors"
                     >
                         {isSignUp ? 'Already have an account? Log In' : 'New here? Create Account'}
                     </button>

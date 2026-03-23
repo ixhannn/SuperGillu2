@@ -1,9 +1,12 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useState, createContext, useContext } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { BottomNav } from './BottomNav';
-import { FloatingHearts } from './FloatingHearts';
-import { LiveBackground } from './LiveBackground';
+import { LiveBackground3D } from './LiveBackground3D';
+import { FloatingHeartsScene } from './FloatingHeartsScene';
 import { TogetherMode } from './TogetherMode';
+import { DebugOverlay } from './DebugOverlay';
 import { ViewState } from '../types';
+import { startBreathingRhythm } from '../utils/BreathingRhythm';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,65 +19,95 @@ interface LayoutProps {
   };
 }
 
+export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number) => void }>({
+  trigger: () => {},
+});
+export const useConfetti = () => useContext(ConfettiContext);
+
 export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, notifications }) => {
   const mainRef = useRef<HTMLElement>(null);
-  const [scrollProgress, setScrollProgress] = useState(0);
-  const [parallaxY, setParallaxY] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const prevView = useRef(currentView);
 
-  const handleScroll = useCallback(() => {
-    const main = mainRef.current;
-    if (!main) return;
-    const { scrollTop, scrollHeight, clientHeight } = main;
-    const progress = scrollHeight > clientHeight ? scrollTop / (scrollHeight - clientHeight) : 0;
-    setScrollProgress(Math.min(progress, 1));
-    setParallaxY(scrollTop);
+  useEffect(() => {
+    startBreathingRhythm();
   }, []);
 
   useEffect(() => {
-    const main = mainRef.current;
-    if (!main) return;
-    main.addEventListener('scroll', handleScroll, { passive: true });
-    return () => main.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
+    if (prevView.current !== currentView) {
+      setIsTransitioning(true);
+      prevView.current = currentView;
+      const timer = setTimeout(() => setIsTransitioning(false), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [currentView]);
 
   return (
-    <div className="fixed inset-0 text-gray-800 overflow-hidden flex flex-col" style={{ background: 'linear-gradient(165deg, #fff1f2 0%, #ffe4e6 25%, #fce7f3 50%, #fff7ed 75%, #fff1f2 100%)' }}>
+    <ConfettiContext.Provider value={{ trigger: () => {} }}>
+      <div
+        className="fixed inset-0 text-gray-100 overflow-hidden flex flex-col"
+        style={{
+          background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 25%, #1a0e1e 50%, #120a18 75%, #0d0810 100%)',
+        }}
+      >
+        {/* Page transition progress bar */}
+        <AnimatePresence>
+          {isTransitioning && (
+            <motion.div
+              className="fixed top-0 left-0 right-0 h-[2px] z-[100]"
+              style={{ background: 'linear-gradient(90deg, #f43f5e, #e879f9, #f43f5e)' }}
+              initial={{ scaleX: 0, transformOrigin: 'left' }}
+              animate={{ scaleX: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            />
+          )}
+        </AnimatePresence>
+        {/* Ambient warm glow background */}
+        <LiveBackground3D />
 
-      {/* Vivid Gradient Mesh — parallax-linked orbs */}
-      <div className="fixed inset-0 pointer-events-none z-[1] overflow-hidden">
-        <div style={{ transform: `translateY(${parallaxY * 0.08}px)` }}>
-          <div className="atmo-orb animate-morph-1" style={{ width: '600px', height: '600px', background: 'radial-gradient(circle, rgba(251,113,133,0.5), transparent 65%)', top: '-200px', left: '-120px', filter: 'blur(60px)' }} />
-        </div>
-        <div style={{ transform: `translateY(${parallaxY * -0.05}px)` }}>
-          <div className="atmo-orb animate-morph-2" style={{ width: '550px', height: '550px', background: 'radial-gradient(circle, rgba(249,115,22,0.35), transparent 65%)', bottom: '-180px', right: '-120px', filter: 'blur(60px)', animationDelay: '-8s' }} />
-        </div>
-        <div style={{ transform: `translateY(${parallaxY * 0.04}px)` }}>
-          <div className="atmo-orb animate-morph-3" style={{ width: '450px', height: '450px', background: 'radial-gradient(circle, rgba(168,85,247,0.3), transparent 65%)', top: '30%', left: '50%', filter: 'blur(60px)', animationDelay: '-15s' }} />
-        </div>
-        <div style={{ transform: `translateY(${parallaxY * -0.06}px)` }}>
-          <div className="atmo-orb animate-morph-1" style={{ width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(251,191,36,0.25), transparent 65%)', top: '60%', left: '-10%', filter: 'blur(60px)', animationDelay: '-20s' }} />
-        </div>
+        {/* 3D floating hearts scene */}
+        <FloatingHeartsScene />
+
+        {/* Subtle top-down vignette for depth */}
+        <div
+          className="fixed inset-0 pointer-events-none z-[2]"
+          aria-hidden="true"
+          style={{
+            background: `
+              radial-gradient(ellipse 120% 80% at 50% -10%, rgba(244,63,94,0.08) 0%, transparent 60%),
+              radial-gradient(ellipse 100% 60% at 50% 110%, rgba(139,92,246,0.06) 0%, transparent 50%)
+            `,
+          }}
+        />
+
+        {/* Noise texture overlay for premium feel */}
+        <div
+          className="fixed inset-0 pointer-events-none z-[3] opacity-[0.025]"
+          aria-hidden="true"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat',
+          }}
+        />
+
+        {/* Main content */}
+        <main
+          ref={mainRef}
+          className="flex-1 relative z-10 w-full max-w-md mx-auto overflow-y-auto overflow-x-hidden no-scrollbar smooth-scroll pt-safe pb-32"
+        >
+          {children}
+        </main>
+
+        {/* Global features */}
+        <TogetherMode />
+
+        {/* Navigation */}
+        <BottomNav currentView={currentView} setView={setView} notifications={notifications} />
+
+        {/* Dev debug overlay */}
+        <DebugOverlay />
       </div>
-
-      {/* Ambient Particle Layer */}
-      <FloatingHearts />
-
-      {/* Live WebGL Fluid Aurora Background */}
-      <LiveBackground />
-
-      {/* Subtle Vignette — frames the content */}
-      <div className="fixed inset-0 pointer-events-none z-[2]" style={{ background: 'radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(255,228,230,0.5) 100%)' }} />
-
-      {/* Main Content Area */}
-      <main ref={mainRef} className="flex-1 relative z-10 w-full max-w-md mx-auto overflow-y-auto overflow-x-hidden no-scrollbar smooth-scroll pt-safe pb-32">
-        {children}
-      </main>
-
-      {/* Global Features */}
-      <TogetherMode />
-
-      {/* Navigation */}
-      <BottomNav currentView={currentView} setView={setView} notifications={notifications} />
-    </div>
+    </ConfettiContext.Provider>
   );
 };

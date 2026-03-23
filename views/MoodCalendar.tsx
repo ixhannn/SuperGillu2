@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ViewState, Memory, Note, MoodEntry, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { generateId } from '../utils/ids';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Sparkles, Plus, Smile, MessageCircle, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Sparkles, Plus, Smile, MessageCircle, TrendingUp, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { feedback } from '../utils/feedback';
 import {
     format,
     addMonths,
@@ -66,6 +67,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
             note: note.trim() || undefined
         };
         StorageService.saveMoodEntry(entry);
+        feedback.celebrate();
         setMoodEntries(prev => [...prev, entry]);
         setIsCheckingIn(false);
         setNote('');
@@ -143,7 +145,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                     onClick={() => setView('aura-rewind')}
                     className="flex flex-col items-center gap-1 p-2 premium-glass rounded-2xl group spring-press border-white/40 shadow-xl"
                 >
-                    <div className="bg-stone-900 text-white p-2 rounded-xl group-hover:rotate-12 transition-transform">
+                    <div className="bg-stone-900 text-white p-2 rounded-xl transition-transform">
                         <TrendingUp size={18} />
                     </div>
                     <span className="text-[8px] font-black uppercase text-stone-600">Rewind</span>
@@ -177,7 +179,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                             onClick={() => setIsCheckingIn(true)}
                             className="bg-stone-900 text-white p-3 rounded-2xl shadow-lg spring-press flex items-center gap-2 group"
                         >
-                            <Plus size={20} className="group-hover:rotate-90 transition-transform" />
+                            <Plus size={20} className="transition-transform" />
                             <span className="text-xs font-bold uppercase pr-1">Pulse</span>
                         </button>
                     </div>
@@ -189,8 +191,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="font-serif text-xl font-bold text-stone-800">{format(currentDate, 'MMMM yyyy')}</h2>
                     <div className="flex gap-2">
-                        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 bg-stone-50 rounded-full text-stone-400 hover:text-stone-800"><ChevronLeft size={20} /></button>
-                        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 bg-stone-50 rounded-full text-stone-400 hover:text-stone-800"><ChevronRight size={20} /></button>
+                        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} aria-label="Previous month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-stone-50 rounded-full text-stone-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"><ChevronLeft size={20} /></button>
+                        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} aria-label="Next month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-stone-50 rounded-full text-stone-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"><ChevronRight size={20} /></button>
                     </div>
                 </div>
 
@@ -254,10 +256,10 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
 
                             <div className="grid grid-cols-4 gap-4 mb-8">
                                 {Object.entries(moodThemes).filter(([k]) => k !== 'default').map(([key, theme]) => (
-                                    <button 
+                                    <button
                                         key={key}
-                                        onClick={() => setSelectedMood(key)}
-                                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all ${selectedMood === key ? 'bg-stone-50 scale-110 shadow-inner' : 'opacity-60 grayscale-[0.5] hover:opacity-100 hover:grayscale-0'}`}
+                                        onClick={() => { feedback.tap(); setSelectedMood(key); }}
+                                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all ${selectedMood === key ? 'bg-stone-50 scale-110 shadow-inner' : 'opacity-60 grayscale-[0.5]'}`}
                                     >
                                         <div className={`w-12 h-12 rounded-full ${theme.gradient} bg-gradient-to-br shadow-lg flex items-center justify-center text-xl text-white`}>
                                             {theme.emoji}

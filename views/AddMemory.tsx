@@ -5,6 +5,7 @@ import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
+import { feedback } from '../utils/feedback';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 
 interface AddMemoryProps {
@@ -85,39 +86,40 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     };
 
     await StorageService.saveMemory(newMemory);
+    feedback.celebrate();
     setView('timeline');
   };
 
   const isDisabled = isSaving || (!text.trim() && !image && !video);
 
   return (
-    <div className="flex flex-col h-full bg-white min-h-screen animate-fade-in">
-      <div className="p-4 flex items-center justify-between border-b border-gray-100 sticky top-0 bg-white z-10">
-        <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-600 rounded-full hover:bg-gray-50 active:scale-95 transition-transform">
-          <ArrowLeft size={24} />
+    <div className="flex flex-col h-full min-h-screen animate-fade-in" style={{ background: 'linear-gradient(168deg, #fffcf9 0%, #fff6f1 40%, #fff0f3 100%)' }}>
+      <div className="p-4 flex items-center justify-between sticky top-0 z-10 glass-nav">
+        <button onClick={() => setView('home')} className="p-2 -ml-2 text-warmgray-500 rounded-full active:scale-95 transition-transform spring-press">
+          <ArrowLeft size={22} />
         </button>
-        <span className="font-semibold text-lg text-gray-800">New Memory</span>
-        <button 
+        <span className="font-serif font-bold text-lg text-gray-800">New Memory</span>
+        <button
           onClick={handleSave}
           disabled={isDisabled}
-          className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all active:scale-95 ${
-            isDisabled ? 'bg-gray-200 text-gray-400' : 'bg-tulika-500 text-white shadow-md hover:shadow-lg'
+          className={`px-5 py-1.5 rounded-full text-sm font-bold transition-all spring-press ${
+            isDisabled ? 'bg-warmgray-100 text-warmgray-300' : 'bg-tulika-500 text-white shadow-glow-rose'
           }`}
         >
           {isSaving ? 'Saving...' : 'Save'}
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 pb-32">
+      <div className="flex-1 overflow-y-auto p-5 pb-32">
         <div className="mb-6 animate-slide-up">
-          <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Mood</label>
+          <label className="text-micro text-warmgray-400 uppercase tracking-widest mb-3 block">Mood</label>
           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
             {Moods.map((m, i) => (
               <button
                 key={m.id}
-                onClick={() => setSelectedMood(m.id)}
+                onClick={() => { feedback.tap(); setSelectedMood(m.id); }}
                 className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl transition-all opacity-0 animate-pop-in ${
-                  selectedMood === m.id ? 'bg-tulika-100 border-2 border-tulika-400 scale-110' : 'bg-gray-50 border border-transparent hover:bg-gray-100'
+                  selectedMood === m.id ? 'bg-tulika-100 border-2 border-tulika-400 scale-110' : 'bg-gray-50 border border-transparent'
                 }`}
                 style={{ animationDelay: `${i * 50}ms`, animationFillMode: 'forwards' }}
               >
@@ -130,14 +132,14 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         <div className="mb-6 animate-slide-up animate-delay-100">
           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Media</label>
           <div className={`relative rounded-3xl overflow-hidden transition-all ${
-              image || video ? 'aspect-auto' : 'bg-gray-50 border-2 border-dashed border-gray-200 hover:bg-gray-100 p-8'
+              image || video ? 'aspect-auto' : 'bg-gray-50 border-2 border-dashed border-gray-200 p-8'
             }`}
           >
             {image && !video ? (
               // Standard Photo
               <>
                 <img src={image} alt="Memory" className="w-full h-auto object-cover animate-fade-in" />
-                <button onClick={removeMedia} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"><X size={16} /></button>
+                <button onClick={removeMedia} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full transition-colors"><X size={16} /></button>
               </>
             ) : video ? (
                 // Video Mode (Shows Thumbnail + Video)
@@ -155,21 +157,21 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
                     ) : (
                         <video src={video} controls className="w-full h-auto rounded-xl animate-fade-in" />
                     )}
-                    <button onClick={removeMedia} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full z-10 hover:bg-black/70"><X size={16} /></button>
+                    <button onClick={removeMedia} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full z-10"><X size={16} /></button>
                 </>
             ) : (
               <div className="flex gap-4 justify-center">
                   <div 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center justify-center text-gray-400 gap-2 cursor-pointer p-4 hover:bg-white rounded-xl transition-all active:scale-95"
+                    className="flex flex-col items-center justify-center text-gray-400 gap-2 cursor-pointer p-4 rounded-xl transition-all active:scale-95"
                   >
                     <Camera size={32} />
                     <span className="text-xs font-medium">Photo</span>
                   </div>
                   <div className="w-px bg-gray-200 my-2"></div>
-                  <div 
+                  <div
                     onClick={() => videoInputRef.current?.click()}
-                    className="flex flex-col items-center justify-center text-gray-400 gap-2 cursor-pointer p-4 hover:bg-white rounded-xl transition-all active:scale-95"
+                    className="flex flex-col items-center justify-center text-gray-400 gap-2 cursor-pointer p-4 rounded-xl transition-all active:scale-95"
                   >
                     <Video size={32} />
                     <span className="text-xs font-medium">Video</span>

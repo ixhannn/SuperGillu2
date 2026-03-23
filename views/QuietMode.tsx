@@ -304,7 +304,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
                         audioEngine.close();
                         setView('home');
                     }}
-                    className="p-3 bg-black/20 backdrop-blur-xl rounded-full text-white/80 hover:bg-white/20 hover:text-white transition-all shadow-lg active:scale-90"
+                    className="p-3 bg-black/20 backdrop-blur-xl rounded-full text-white/80 transition-all shadow-lg active:scale-90"
                     aria-label="Exit Quiet Mode"
                 >
                     <X size={24} />
@@ -348,9 +348,9 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
                         audioEngine.close();
                         setView('home');
                     }}
-                    className="flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-full text-white hover:bg-white/20 hover:scale-105 transition-all active:scale-95 group"
+                    className="flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-full text-white transition-all active:scale-95 group"
                 >
-                    <X size={18} className="group-hover:rotate-90 transition-transform" />
+                    <X size={18} className="transition-transform" />
                     <span className="text-sm font-medium">Exit Quiet Mode</span>
                 </button>
             </div>

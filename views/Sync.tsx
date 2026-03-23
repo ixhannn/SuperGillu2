@@ -59,7 +59,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   return (
     <div className="flex flex-col h-full bg-white min-h-screen">
       <div className="p-4 flex items-center gap-4 border-b border-gray-100">
-        <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-600 rounded-full hover:bg-gray-50">
+        <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-600 rounded-full hover:bg-gray-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
           <ArrowLeft size={24} />
         </button>
         <span className="font-semibold text-lg text-gray-800">Cloud Sync</span>
@@ -114,7 +114,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
                 ) : (
                     <button 
                         onClick={requestPermission}
-                        className="p-2 bg-tulika-100 text-tulika-600 rounded-full hover:bg-tulika-200 transition-colors"
+                        className="p-2 bg-tulika-100 text-tulika-600 rounded-full transition-colors"
                     >
                         <BellOff size={20} />
                     </button>
@@ -128,7 +128,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
         <button 
             onClick={() => setShowLogoutConfirm(true)}
-            className="mt-auto text-red-400 text-sm font-medium hover:text-red-600 py-8"
+            className="mt-auto text-red-400 text-sm font-medium py-8"
         >
             Log Out
         </button>

@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Heart } from 'lucide-react';
+import { Plus, Trash2, Heart, Calendar } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { feedback } from '../utils/feedback';
+
+const staggerContainer = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08 } }
+};
+
+const staggerItem = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } }
+};
 import { differenceInDays, isFuture } from 'date-fns';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { generateId } from '../utils/ids';
@@ -34,6 +46,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
       type: 'other'
     };
     StorageService.saveSpecialDate(item);
+    feedback.celebrate();
     setDates(prev => [...prev, item]);
     setNewTitle('');
     setNewDate('');
@@ -71,7 +84,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
         <h2 className="text-2xl font-serif font-bold text-gray-800">Special Dates</h2>
         <button 
           onClick={() => setShowAdd(!showAdd)}
-          className="bg-tulika-100 text-tulika-600 p-2 rounded-full hover:bg-tulika-200 transition-colors"
+          className="bg-tulika-100 text-tulika-600 p-2 rounded-full transition-colors"
         >
           <Plus size={24} />
         </button>
@@ -101,43 +114,68 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
         </div>
       )}
 
-      <div className="space-y-4">
+      <motion.div className="space-y-4" variants={staggerContainer} initial="hidden" animate="show">
         {dates.length === 0 && !showAdd && (
-             <div className="text-center text-gray-400 py-10 animate-fade-in delay-200">
-                <p>No important dates saved yet.</p>
+             <div className="flex flex-col items-center text-center py-16 animate-fade-in">
+                <div className="relative mb-5">
+                    <div className="absolute inset-0 bg-red-100/30 rounded-full blur-2xl animate-breathe-glow" />
+                    <div className="relative p-5 bg-red-50 rounded-full border border-red-100 shadow-sm">
+                        <Calendar size={32} className="text-red-300" />
+                    </div>
+                </div>
+                <p className="font-serif text-gray-500 text-lg mb-1">No important dates saved yet</p>
+                <p className="text-xs text-gray-400 mb-5">Mark the moments that matter</p>
+                <button
+                    onClick={() => setShowAdd(true)}
+                    className="px-5 py-2.5 bg-tulika-500 text-white rounded-full text-sm font-bold shadow-lg shadow-tulika-200 spring-press flex items-center gap-2"
+                >
+                    <Plus size={16} /> Add a Date
+                </button>
              </div>
         )}
         {dates.map((item, index) => {
             const { count, label } = getDaysText(item.date);
             return (
-              <div 
-                key={item.id} 
-                className="bg-white rounded-3xl p-5 shadow-sm border border-white flex items-center justify-between group animate-slide-up opacity-0 relative"
-                style={{ animationDelay: `${index * 100}ms` }}
+              <motion.div
+                key={item.id}
+                variants={staggerItem}
+                className="relative overflow-hidden rounded-3xl"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-400">
-                    <Heart size={24} fill="currentColor" className="opacity-80" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-800">{item.title}</h3>
-                    <p className="text-xs text-gray-400">{new Date(item.date).toDateString()}</p>
-                  </div>
+                {/* Delete zone behind card */}
+                <div className="absolute inset-0 bg-red-500 rounded-3xl flex items-center justify-end pr-6">
+                  <Trash2 size={22} className="text-white" />
                 </div>
-                <div className="text-right">
-                  <span className="block text-2xl font-bold text-tulika-500">{count}</span>
-                  <span className="text-[10px] uppercase font-bold text-gray-300">{label}</span>
-                </div>
-                <button 
-                    onClick={() => handleDelete(item.id)}
-                    className="absolute right-3 top-3 p-2 text-gray-300 hover:text-red-500 opacity-60 hover:opacity-100 transition-all"
+                {/* Swipeable card */}
+                <motion.div
+                  drag="x"
+                  dragConstraints={{ left: -120, right: 0 }}
+                  dragElastic={0.1}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.x < -80) {
+                      feedback.error();
+                      handleDelete(item.id);
+                    }
+                  }}
+                  className="bg-white rounded-3xl p-5 shadow-sm border border-white flex items-center justify-between relative spring-press cursor-grab active:cursor-grabbing"
                 >
-                    <Trash2 size={16} />
-                </button>
-              </div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-400">
+                      <Heart size={24} fill="currentColor" className="opacity-80" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">{item.title}</h3>
+                      <p className="text-xs text-gray-400">{new Date(item.date).toDateString()}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-2xl font-bold text-tulika-500">{count}</span>
+                    <span className="text-[10px] uppercase font-bold text-gray-300">{label}</span>
+                  </div>
+                </motion.div>
+              </motion.div>
             );
         })}
-      </div>
+      </motion.div>
 
       <ConfirmModal
           isOpen={!!deleteTarget}

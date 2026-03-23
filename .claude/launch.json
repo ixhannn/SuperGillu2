@@ -3,14 +3,14 @@
   "configurations": [
     {
       "name": "Tulika Dev Server",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["C:\\Users\\Sameer\\Downloads\\tulika\\node_modules\\vite\\bin\\vite.js", "C:\\Users\\Sameer\\Downloads\\tulika\\.claude\\worktrees\\focused-khayyam"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 3000
     },
     {
       "name": "Tulika Preview Server",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["C:\\Users\\Sameer\\Downloads\\tulika\\node_modules\\vite\\bin\\vite.js", "preview", "C:\\Users\\Sameer\\Downloads\\tulika\\.claude\\worktrees\\focused-khayyam"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview"],
       "port": 4173
     }
   ]

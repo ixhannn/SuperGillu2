@@ -107,7 +107,7 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                     </div>
                     <button 
                         onClick={() => { feedback.tap(); onClose(); }}
-                        className="p-3 bg-gray-50 text-gray-400 hover:text-gray-600 rounded-full transition-colors"
+                        className="p-3 bg-gray-50 text-gray-400 rounded-full transition-colors"
                     >
                         <X size={20} />
                     </button>
@@ -122,7 +122,7 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                             className={`px-5 py-2.5 rounded-2xl font-bold text-sm capitalize transition-all whitespace-nowrap ${
                                 activeTab === tab 
                                 ? 'bg-tulika-500 text-white shadow-md shadow-tulika-200' 
-                                : 'bg-white text-gray-500 hover:bg-gray-50'
+                                : 'bg-white text-gray-500'
                             }`}
                         >
                             {tab}s
@@ -175,7 +175,7 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                                                     onClick={() => handleBuy(item)}
                                                     className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                                                         stats.coins >= item.price
-                                                            ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 hover:shadow-sm'
+                                                            ? 'bg-yellow-100 text-yellow-700'
                                                             : 'bg-gray-100 text-gray-400 opacity-50 cursor-not-allowed'
                                                     }`}
                                                 >
@@ -188,7 +188,7 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                                                     className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all outline-none ${
                                                         isEquipped 
                                                             ? 'bg-tulika-500 text-white shadow-md shadow-tulika-200' 
-                                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                            : 'bg-gray-100 text-gray-600'
                                                     }`}
                                                 >
                                                     {isEquipped && <Check size={14} strokeWidth={3} />}

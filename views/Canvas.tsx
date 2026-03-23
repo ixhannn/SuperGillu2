@@ -183,10 +183,10 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
                      Offline
                  </span>
              )}
-             <button onClick={downloadCanvas} className="p-3 bg-white/80 backdrop-blur shadow-sm rounded-full text-gray-600 hover:text-tulika-500" title="Download">
+             <button onClick={downloadCanvas} className="p-3 bg-white/80 backdrop-blur shadow-sm rounded-full text-gray-600" title="Download">
                 <Download size={24} />
              </button>
-             <button onClick={clearCanvas} className="p-3 bg-white/80 backdrop-blur shadow-sm rounded-full text-gray-600 hover:text-red-500">
+             <button onClick={clearCanvas} className="p-3 bg-white/80 backdrop-blur shadow-sm rounded-full text-gray-600">
                 <Trash2 size={24} />
              </button>
         </div>

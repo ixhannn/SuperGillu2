@@ -13,6 +13,15 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, childre
         y: typeof window !== 'undefined' ? window.innerHeight / 2 : 0
     });
     const [clickPos, setClickPos] = useState(clickPosRef.current);
+    const [direction, setDirection] = useState(1);
+    const prevView = useRef(viewKey);
+
+    useEffect(() => {
+        if (viewKey !== prevView.current) {
+            setDirection(1);
+            prevView.current = viewKey;
+        }
+    }, [viewKey]);
 
     useEffect(() => {
         const handleGlobalClick = (e: MouseEvent | TouchEvent) => {
@@ -38,36 +47,47 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, childre
         };
     }, []);
 
-    // Use a smooth tween instead of spring for clip-path —
-    // springs oscillate which causes clip-path to repaint back and forth = jitter
     const variants = {
         initial: (pos: { x: number; y: number }) => ({
             clipPath: `circle(0% at ${pos.x}px ${pos.y}px)`,
             opacity: 1,
             zIndex: 10,
+            rotateY: 6,
+            scale: 0.95,
+            filter: 'blur(4px)',
         }),
         animate: (pos: { x: number; y: number }) => ({
             clipPath: `circle(200% at ${pos.x}px ${pos.y}px)`,
             opacity: 1,
             zIndex: 10,
+            rotateY: 0,
+            scale: 1,
+            filter: 'blur(0px)',
             transition: {
-                clipPath: { duration: 0.6, ease: [0.32, 0.72, 0, 1] }, // Apple-style cinematic ease
+                clipPath: { duration: 0.55, ease: [0.32, 0.72, 0, 1] },
                 opacity: { duration: 0.3 },
+                rotateY: { duration: 0.6, ease: [0.16, 1, 0.3, 1] },
+                scale: { duration: 0.5, ease: [0.16, 1, 0.3, 1] },
+                filter: { duration: 0.4, ease: 'easeOut' },
             },
         }),
         exit: {
             opacity: 0,
-            scale: 0.99,
+            scale: 0.96,
+            rotateY: -4,
+            filter: 'blur(3px)',
             zIndex: 0,
             transition: {
                 opacity: { duration: 0.2, ease: 'easeOut' },
-                scale: { duration: 0.2, ease: 'easeOut' },
+                scale: { duration: 0.25, ease: 'easeOut' },
+                rotateY: { duration: 0.25, ease: 'easeOut' },
+                filter: { duration: 0.2 },
             },
         },
     };
 
     return (
-        <div className="relative w-full h-full min-h-full">
+        <div className="relative w-full h-full min-h-full" style={{ perspective: '1200px' }}>
             <AnimatePresence initial={false} mode="popLayout">
                 <motion.div
                     key={viewKey}
@@ -78,14 +98,16 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, childre
                     exit="exit"
                     onAnimationComplete={(definition) => {
                         if (definition === 'animate') {
-                            // After transition, remove clipPath to allow GPU scroll optimization
-                            // and prevent flickering "shredding" artifacts on long pages.
                             const el = document.querySelector(`[data-transition-key="${viewKey}"]`) as HTMLElement;
-                            if (el) el.style.clipPath = 'none';
+                            if (el) {
+                                el.style.clipPath = 'none';
+                                el.style.filter = 'none';
+                            }
                         }
                     }}
                     data-transition-key={viewKey}
-                    className="absolute inset-x-0 top-0 w-full min-h-full will-change-[clip-path,opacity] bg-tulika-50"
+                    className="absolute inset-x-0 top-0 w-full min-h-full will-change-[clip-path,opacity,transform,filter] bg-transparent"
+                    style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden' }}
                 >
                     {children}
                 </motion.div>
@@ -93,5 +115,3 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ viewKey, childre
         </div>
     );
 };
-
-
