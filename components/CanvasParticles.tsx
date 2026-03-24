@@ -73,8 +73,8 @@ export const CanvasParticles: React.FC = () => {
       py[i] = Math.random() * h;
       vx[i] = 0;
       vy[i] = 0;
-      sizes[i] = Math.random() * 2.5 + 0.8;
-      alphas[i] = Math.random() * 0.4 + 0.15;
+      sizes[i] = Math.random() * 2.0 + 1.4;
+      alphas[i] = Math.random() * 0.35 + 0.45;
       hues[i] = Math.random() * 30 - 15; /* slight hue variation around rose */
     }
 
@@ -177,8 +177,8 @@ export const CanvasParticles: React.FC = () => {
 
         if (size > 2) {
           ctx.beginPath();
-          ctx.arc(px[i], py[i], size * 3, 0, TAU);
-          ctx.fillStyle = colors[colorIdx] + (alpha * 0.15).toFixed(3) + ')';
+          ctx.arc(px[i], py[i], size * 1.8, 0, TAU);
+          ctx.fillStyle = colors[colorIdx] + (alpha * 0.12).toFixed(3) + ')';
           ctx.fill();
         }
       }
@@ -202,7 +202,7 @@ export const CanvasParticles: React.FC = () => {
     <canvas
       ref={canvasRef}
       className="fixed inset-0 z-[4] pointer-events-none"
-      style={{ opacity: 0.7 }}
+      style={{ opacity: 1 }}
     />
   );
 };

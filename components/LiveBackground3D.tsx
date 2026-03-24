@@ -186,14 +186,15 @@ export const LiveBackground3D: React.FC = () => {
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           float dist = -mvPosition.z;
 
-          // Per-particle breathing — staggered by phase attribute
-          float breathe   = 0.65 + 0.35 * sin(uTime * 0.38 + phase);
+          // Steady bright presence — less dim breathing
+          float breathe   = 0.82 + 0.18 * sin(uTime * 0.38 + phase);
           float depthFade = clamp(1.0 - dist / 75.0, 0.0, 1.0);
-          float depthFade2 = depthFade * depthFade; // sharper depth falloff
+          float depthFade2 = depthFade * depthFade;
 
-          vAlpha = breathe * mix(0.22, 0.10, 1.0 - depthFade2);
+          // Much higher alpha for visible, punchy orbs
+          vAlpha = breathe * mix(0.72, 0.45, 1.0 - depthFade2);
 
-          gl_PointSize = size * uPixelRatio * (48.0 / max(dist, 4.0));
+          gl_PointSize = size * uPixelRatio * (52.0 / max(dist, 4.0));
           gl_Position  = projectionMatrix * mvPosition;
         }
       `,
@@ -210,19 +211,19 @@ export const LiveBackground3D: React.FC = () => {
           float alpha;
 
           if (vIsSparkle > 0.5) {
-            // Sparkles: tighter gaussian + bright core flash
-            float core  = exp(-d * d * 28.0);
-            float glow  = exp(-d * d * 6.0) * 0.4;
-            alpha = vAlpha * (core + glow);
+            // Sparkles: crisp bright point + tight halo
+            float core = exp(-d * d * 80.0);
+            float halo = exp(-d * d * 18.0) * 0.35;
+            alpha = vAlpha * (core + halo);
           } else {
-            // Bokeh: large soft outer glow + subtle warm core
-            float outerGlow = exp(-d * d * 2.8);          // wide, very soft
-            float innerCore = exp(-d * d * 18.0) * 0.35;  // tight bright center
-            alpha = vAlpha * (outerGlow + innerCore);
+            // Bokeh: hard disc edge + intense bright core
+            float disc = smoothstep(0.50, 0.30, d);        // crisp hard edge
+            float core = exp(-d * d * 22.0) * 0.90;        // punchy bright centre
+            alpha = vAlpha * (disc * 0.55 + core);
           }
 
-          // Subtle warm highlight at center
-          vec3 col = vColor + exp(-d * d * 25.0) * vec3(0.08, 0.04, 0.04);
+          // Strong warm highlight at centre
+          vec3 col = vColor + exp(-d * d * 35.0) * vec3(0.18, 0.08, 0.06);
 
           gl_FragColor = vec4(col, alpha);
         }
