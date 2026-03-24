@@ -163,28 +163,24 @@ export const CanvasParticles: React.FC = () => {
         if (py[i] > h + 10) py[i] = -10;
       }
 
-      /* Phase 2: batch draw by color — minimises ctx.fillStyle state changes */
+      /* Phase 2: draw each particle individually (alpha varies per particle) */
       const TAU = Math.PI * 2;
-      for (let c = 0; c < colors.length; c++) {
-        ctx.beginPath();
-        for (let i = c; i < count; i += colors.length) {
-          const alpha = alphas[i] * (0.8 + Math.sin(time * 2 + i) * 0.2);
-          ctx.fillStyle = colors[c] + alpha.toFixed(2) + ')';
-          ctx.arc(px[i], py[i], sizes[i], 0, TAU);
-          ctx.closePath();
-        }
-        ctx.fill();
+      for (let i = 0; i < count; i++) {
+        const colorIdx = i % colors.length;
+        const alpha = alphas[i] * (0.8 + Math.sin(time * 2 + i) * 0.2);
+        const size = sizes[i];
 
         ctx.beginPath();
-        for (let i = c; i < count; i += colors.length) {
-          if (sizes[i] > 2) {
-            const alpha = alphas[i] * (0.8 + Math.sin(time * 2 + i) * 0.2);
-            ctx.fillStyle = colors[c] + (alpha * 0.15).toFixed(3) + ')';
-            ctx.arc(px[i], py[i], sizes[i] * 3, 0, TAU);
-            ctx.closePath();
-          }
-        }
+        ctx.arc(px[i], py[i], size, 0, TAU);
+        ctx.fillStyle = colors[colorIdx] + alpha.toFixed(2) + ')';
         ctx.fill();
+
+        if (size > 2) {
+          ctx.beginPath();
+          ctx.arc(px[i], py[i], size * 3, 0, TAU);
+          ctx.fillStyle = colors[colorIdx] + (alpha * 0.15).toFixed(3) + ')';
+          ctx.fill();
+        }
       }
     };
 
