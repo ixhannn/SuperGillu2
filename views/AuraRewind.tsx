@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { ViewState, MoodEntry, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
-import { ArrowLeft, Sparkles, TrendingUp, Heart, Share2, Cloud, Palette } from 'lucide-react';
+import { Sparkles, TrendingUp, Heart, Share2, Cloud, Palette } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { motion } from 'framer-motion';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, parseISO } from 'date-fns';
 
@@ -131,34 +132,32 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
 
     return (
         <div className="min-h-screen p-6 pt-12 flex flex-col relative pb-32 overflow-hidden">
-            <header className="mb-10 flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => setView('mood-calendar')} className="p-3 bg-white/10 backdrop-blur-md border border-white/10 rounded-full shadow-sm text-gray-400 spring-press">
-                        <ArrowLeft size={24} />
+            <ViewHeader
+                title="Aura Rewind"
+                subtitle={format(currentMonth, 'MMMM yyyy')}
+                onBack={() => setView('mood-calendar')}
+                variant="simple"
+                borderless
+                rightSlot={
+                    <button
+                        onClick={async () => {
+                            try {
+                                if (navigator.share) {
+                                    await navigator.share({
+                                        title: `Aura Rewind — ${format(currentMonth, 'MMMM yyyy')}`,
+                                        text: `Our mood sync score this month: ${stats.syncScore}%! 💕`
+                                    });
+                                } else {
+                                    await navigator.clipboard.writeText(`Our mood sync score this month: ${stats.syncScore}%! 💕`);
+                                }
+                            } catch (e) { /* user cancelled share */ }
+                        }}
+                        className="p-3 bg-tulika-500 text-white rounded-full shadow-lg shadow-tulika-500/20 spring-press"
+                    >
+                        <Share2 size={20} />
                     </button>
-                    <div>
-                        <h1 className="font-serif text-3xl text-gray-100 font-bold">Aura Rewind</h1>
-                        <p className="text-[10px] font-bold text-tulika-500 uppercase tracking-widest mt-0.5">{format(currentMonth, 'MMMM yyyy')}</p>
-                    </div>
-                </div>
-                <button
-                    onClick={async () => {
-                        try {
-                            if (navigator.share) {
-                                await navigator.share({
-                                    title: `Aura Rewind — ${format(currentMonth, 'MMMM yyyy')}`,
-                                    text: `Our mood sync score this month: ${stats.syncScore}%! 💕`
-                                });
-                            } else {
-                                await navigator.clipboard.writeText(`Our mood sync score this month: ${stats.syncScore}%! 💕`);
-                            }
-                        } catch (e) { /* user cancelled share */ }
-                    }}
-                    className="p-3 bg-tulika-500 text-white rounded-full shadow-lg shadow-tulika-500/20 spring-press"
-                >
-                    <Share2 size={20} />
-                </button>
-            </header>
+                }
+            />
 
             <main className="flex-1 space-y-8 relative z-10 overflow-auto pb-12 no-scrollbar">
                 {stats.totalEntries === 0 && (

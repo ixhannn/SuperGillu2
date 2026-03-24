@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Plus, X, Heart, Trash2, MailOpen } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { motion } from 'framer-motion';
 import { ViewState, Envelope } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -94,19 +95,23 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
   const currentLetter = envelopes.find(e => e.id === readingId);
 
   return (
-    <div className="p-6 pt-8 pb-32 min-h-screen">
-      <div className="flex justify-between items-center mb-6 animate-fade-in">
-        <div>
-          <h2 className="text-2xl font-serif font-bold text-gray-100">Open When...</h2>
-          <p className="text-xs text-gray-400 mt-1">Letters for every moment</p>
-        </div>
-        <button 
-          onClick={() => setIsCreating(true)}
-          className="bg-tulika-500 text-white p-3 rounded-full transition-transform"
-        >
-          <Plus size={24} />
-        </button>
-      </div>
+    <div className="pb-32 min-h-screen">
+      <ViewHeader
+        title="Open When..."
+        subtitle="Letters for every moment"
+        onBack={() => setView('home')}
+        variant="simple"
+        rightSlot={
+          <button
+            onClick={() => setIsCreating(true)}
+            className="bg-tulika-500 text-white p-3 rounded-full transition-transform"
+          >
+            <Plus size={24} />
+          </button>
+        }
+      />
+
+      <div className="px-6 pt-4">
 
       {/* Grid of Envelopes */}
       <motion.div className="grid grid-cols-2 gap-4" variants={staggerContainer} initial="hidden" animate="show">
@@ -163,6 +168,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
           </div>
         )}
       </motion.div>
+      </div>
 
       <ConfirmModal
           isOpen={!!deleteTarget}

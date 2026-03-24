@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, DailyPhoto, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useTulikaMedia } from '../hooks/useTulikaImage';
+import { ViewHeader } from '../components/ViewHeader';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { Skeleton } from '../components/Skeleton';
 import { toast } from '../utils/toast';
@@ -552,33 +553,32 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         <PullToRefresh onRefresh={handleRefresh}>
             <div className="flex flex-col h-full min-h-screen relative">
                 {/* Header */}
-                <div className="p-6 pt-12 flex justify-between items-center sticky top-0 z-20" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2">
-                    <ArrowLeft size={24} />
-                </button>
-                <div className="text-center">
-                    <h2 className="font-serif font-bold text-2xl text-gray-100">Moments</h2>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-400">Ephemeral Memories</p>
-                </div>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        aria-label="Share a photo moment"
-                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-500/15 text-tulika-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"
-                    >
-                        <Camera size={20} />
-                    </button>
-                    <button
-                        onClick={() => videoInputRef.current?.click()}
-                        aria-label="Share a video moment"
-                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-500/15 text-blue-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                    >
-                        <Video size={20} />
-                    </button>
-                </div>
+                <ViewHeader
+                    title="Moments"
+                    subtitle="Ephemeral Memories"
+                    onBack={() => setView('home')}
+                    variant="centered"
+                    rightSlot={
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                aria-label="Share a photo moment"
+                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-500/15 text-tulika-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"
+                            >
+                                <Camera size={20} />
+                            </button>
+                            <button
+                                onClick={() => videoInputRef.current?.click()}
+                                aria-label="Share a video moment"
+                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-500/15 text-blue-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                            >
+                                <Video size={20} />
+                            </button>
+                        </div>
+                    }
+                />
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
                 <input type="file" ref={videoInputRef} className="hidden" accept="video/*" onChange={handleVideoChange} />
-            </div>
 
             <div className="flex-1 p-6 pb-32">
                 {photos.length > 0 ? (

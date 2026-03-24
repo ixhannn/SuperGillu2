@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Volume2, VolumeX, Wind, Heart, Cloud } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
 
@@ -297,21 +298,18 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
         <div 
             className={`absolute inset-0 flex flex-col justify-between p-6 pointer-events-none transition-all duration-700 ${showUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
         >
-            {/* Top Right: Standard Exit Button */}
-            <div className="absolute top-6 right-6 pointer-events-auto z-50">
-                <button 
-                    onClick={() => {
+            {/* Top Bar: Header + Sound Controls */}
+            <div className="pointer-events-auto z-50">
+                <ViewHeader
+                    title="Quiet Mode"
+                    onBack={() => {
                         audioEngine.close();
                         setView('home');
                     }}
-                    className="p-3 bg-black/20 backdrop-blur-xl rounded-full text-white/80 transition-all shadow-lg active:scale-90"
-                    aria-label="Exit Quiet Mode"
-                >
-                    <X size={24} />
-                </button>
+                    variant="simple"
+                    borderless
+                />
             </div>
-
-            {/* Top Bar: Sound Controls */}
             <div className="flex justify-center pointer-events-auto mt-2">
                 <div className="bg-black/40 backdrop-blur-xl p-1.5 rounded-full border border-white/10 flex items-center gap-1 shadow-2xl">
                     <button 

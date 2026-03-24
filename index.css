@@ -198,6 +198,21 @@ canvas.fixed, .fixed[aria-hidden="true"] {
     inset 0 1px 0 rgba(255, 255, 255, 0.90);
 }
 
+/* ── ACCENT CARD — color-themeable shortcut cards ─────────────────────────── */
+.accent-card {
+  background: var(--accent-bg, rgba(255, 252, 252, 0.04));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--accent-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-card);
+  box-shadow: 0 2px 12px var(--accent-shadow, rgba(0, 0, 0, 0.1));
+  transition: transform 0.4s var(--spring-smooth), box-shadow 0.4s ease;
+}
+
+.accent-card:active {
+  transform: scale(0.96);
+}
+
 /* ── AURORA CARD — gradient depth with light refraction ───────────────────── */
 .aurora-card {
   position: relative;
@@ -224,6 +239,26 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   background: linear-gradient(to top, rgba(232,160,176,0.06), transparent);
   pointer-events: none;
   z-index: 1;
+}
+
+/* ── VIEW HEADER — standardized sticky header for all views ───────────────── */
+.view-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 1rem 1.5rem;
+  padding-top: max(env(safe-area-inset-top, 0px), 3rem);
+  background: rgba(15, 10, 20, 0.85);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.view-header--borderless {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom: none;
 }
 
 /* ── 3D DEPTH SYSTEM ─────────────────────────────────────────────────────── */
@@ -580,8 +615,9 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   transition: transform 0.28s var(--spring-smooth);
 }
 .spring-press:active {
-  transform: scale(0.98) !important;
+  transform: scale(0.97) translateY(1px) !important;
   transition: transform 0.08s ease-out;
+  filter: brightness(0.97);
 }
 
 .spring-hover {

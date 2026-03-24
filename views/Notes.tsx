@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, X, PenLine, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, X, PenLine, Trash2 } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, Note } from '../types';
 import { StorageService } from '../services/storage';
@@ -80,22 +81,23 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
   };
 
   return (
-    <div className="px-5 pt-10 pb-32 min-h-screen">
-      <div className="flex justify-between items-center mb-8 animate-fade-in">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full spring-press">
-            <ArrowLeft size={22} />
+    <div className="pb-32 min-h-screen">
+      <ViewHeader
+        title="Love Notes"
+        onBack={() => setView('home')}
+        variant="simple"
+        rightSlot={
+          <button
+            onClick={() => setIsEditing(true)}
+            className="text-white p-3 rounded-2xl spring-press"
+            style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)' }}
+          >
+            <Plus size={22} />
           </button>
-          <h2 className="text-headline font-serif text-gray-100">Love Notes</h2>
-        </div>
-        <button
-          onClick={() => setIsEditing(true)}
-          className="text-white p-3 rounded-2xl spring-press"
-          style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)' }}
-        >
-          <Plus size={22} />
-        </button>
-      </div>
+        }
+      />
+
+      <div className="px-5">
 
       {isEditing && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
@@ -177,6 +179,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
               </button>
           </div>
       )}
+      </div>
 
       <ConfirmModal
           isOpen={!!deleteTarget}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Archive, Plus, Camera, Music, FileText, Lock, Gift, X, EyeOff, ArrowLeft, Video, PlayCircle } from 'lucide-react';
+import { Archive, Plus, Camera, Music, FileText, Lock, Gift, X, EyeOff, Video, PlayCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, Keepsake, CoupleProfile } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -10,6 +10,7 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
+import { ViewHeader } from '../components/ViewHeader';
 
 interface KeepsakeBoxProps {
     setView: (view: ViewState) => void;
@@ -303,16 +304,15 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
 
     return (
         <div className="flex flex-col h-full min-h-screen">
-            <div className="p-6 pt-12 pb-4 sticky top-0 z-20" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex justify-between items-center mb-6">
-                    <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
-                        <ArrowLeft size={24} />
-                    </button>
-                    <h2 className="font-serif font-bold text-2xl text-gray-100">The Keepsake Box</h2>
-                    <div className="w-10"></div>
-                </div>
+            <div className="pb-4 sticky top-0 z-20" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <ViewHeader
+                    title="The Keepsake Box"
+                    onBack={() => setView('home')}
+                    variant="centered"
+                    borderless
+                />
 
-                <div className="flex p-1 rounded-full relative mb-2" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <div className="flex p-1 rounded-full relative mb-2 mx-6" style={{ background: 'rgba(255,255,255,0.06)' }}>
                     <div
                         className="absolute top-1 bottom-1 w-[48%] rounded-full transition-all duration-300 ease-spring"
                         style={{ left: activeTab === 'tulika' ? '1%' : '51%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.1)' }}

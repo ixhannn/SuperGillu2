@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users } from 'lucide-react';
+import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { ThemeService, THEMES, ThemeId } from '../services/theme';
@@ -212,24 +213,25 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
     return (
         <div className="flex flex-col h-full min-h-screen">
-            <div className="p-4 flex items-center justify-between border-b border-white/8 sticky top-0 z-10" style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px)' }}>
-                <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
-                    <ArrowLeft size={24} />
-                </button>
-                <span className="font-semibold text-lg text-gray-100">Couple Profile</span>
-                <button
-                    onClick={save}
-                    disabled={isSaving}
-                    className={`px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all ${isSaving ? 'bg-green-500 text-white' : 'bg-tulika-500 text-white'
-                        }`}
-                >
-                    {isSaving ? (
-                        <>
-                            <Save size={16} className="animate-bounce" /> Saved
-                        </>
-                    ) : 'Save'}
-                </button>
-            </div>
+            <ViewHeader
+                title="Couple Profile"
+                onBack={() => setView('home')}
+                variant="centered"
+                rightSlot={
+                    <button
+                        onClick={save}
+                        disabled={isSaving}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all ${isSaving ? 'bg-green-500 text-white' : 'bg-tulika-500 text-white'
+                            }`}
+                    >
+                        {isSaving ? (
+                            <>
+                                <Save size={16} className="animate-bounce" /> Saved
+                            </>
+                        ) : 'Save'}
+                    </button>
+                }
+            />
 
             <div className="p-6 pb-20 flex flex-col items-center overflow-y-auto">
 

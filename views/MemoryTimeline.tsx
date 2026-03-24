@@ -2,13 +2,13 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Trash2, Calendar, X, Clock, Loader2, Image as ImageIcon, PlayCircle, Plus } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { feedback } from '../utils/feedback';
 import { useTulikaMedia } from '../hooks/useTulikaImage';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
-import { StaggeredText } from '../components/StaggeredText';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, useScroll, useTransform } from 'framer-motion';
 
@@ -196,10 +196,11 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
   return (
     <PullToRefresh onRefresh={handleRefresh}>
       <div className="p-6 pt-8 pb-32 min-h-screen relative">
-        <div className="flex items-center gap-2 mb-8">
-            <Calendar className="text-tulika-500 animate-slide-down" />
-            <StaggeredText text="Our Journey" className="text-2xl font-serif font-bold text-gray-100" />
-        </div>
+        <ViewHeader
+            title="Our Journey"
+            onBack={() => setView('home')}
+            variant="simple"
+        />
       
       {memories.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 animate-fade-in">

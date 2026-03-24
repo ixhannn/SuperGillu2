@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight } from 'lucide-react';
+import { Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { motion } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -98,17 +99,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
     return (
         <div className="min-h-screen text-white flex flex-col pb-32">
             {/* Header */}
-            <div className="p-6 pt-12 pb-8 sticky top-0 z-20" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center gap-4">
-                    <button onClick={() => setView('home')} className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full">
-                        <ArrowLeft size={24} />
-                    </button>
-                    <div>
-                        <h2 className="text-2xl font-serif font-bold text-gray-100">Countdowns</h2>
-                        <p className="text-[10px] font-bold text-tulika-400 uppercase tracking-widest">Upcoming Moments</p>
-                    </div>
-                </div>
-            </div>
+            <ViewHeader title="Countdowns" subtitle="Upcoming Moments" onBack={() => setView('home')} variant="simple" />
 
             {/* Content Area */}
             <div className="flex-1 px-6 pt-4 relative z-20">

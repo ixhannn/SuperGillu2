@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ViewState, Memory, Note, MoodEntry, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { generateId } from '../utils/ids';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Sparkles, Plus, Smile, MessageCircle, TrendingUp, Palette } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Heart, Sparkles, Plus, Smile, MessageCircle, TrendingUp, Palette } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { feedback } from '../utils/feedback';
 import {
@@ -80,26 +81,24 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
     return (
         <div className="min-h-screen p-6 pt-12 flex flex-col relative pb-32 overflow-hidden">
 
-            <header className="mb-8 flex items-center justify-between relative z-10 animate-slide-down">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => setView('home')} className="p-3 bg-white/10 backdrop-blur-md border border-white/10 rounded-full shadow-sm text-gray-400 spring-press">
-                        <ArrowLeft size={24} />
+            <ViewHeader
+                title="Aura Board"
+                subtitle="Your Shared Pulse"
+                onBack={() => setView('home')}
+                variant="simple"
+                borderless
+                rightSlot={
+                    <button
+                        onClick={() => setView('aura-rewind')}
+                        className="flex flex-col items-center gap-1 p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl group spring-press shadow-xl"
+                    >
+                        <div className="bg-white/15 text-white p-2 rounded-xl transition-transform">
+                            <TrendingUp size={18} />
+                        </div>
+                        <span className="text-[8px] font-black uppercase text-gray-400">Rewind</span>
                     </button>
-                    <div>
-                        <h1 className="font-serif text-3xl text-gray-100 font-bold">Aura Board</h1>
-                        <p className="text-[10px] font-bold text-tulika-500 uppercase tracking-widest mt-0.5">Your Shared Pulse</p>
-                    </div>
-                </div>
-                <button
-                    onClick={() => setView('aura-rewind')}
-                    className="flex flex-col items-center gap-1 p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl group spring-press shadow-xl"
-                >
-                    <div className="bg-white/15 text-white p-2 rounded-xl transition-transform">
-                        <TrendingUp size={18} />
-                    </div>
-                    <span className="text-[8px] font-black uppercase text-gray-400">Rewind</span>
-                </button>
-            </header>
+                }
+            />
 
             {/* Couple Aura Bloom */}
             <section className="mb-8 relative z-10">

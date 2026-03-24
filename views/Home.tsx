@@ -157,14 +157,14 @@ const scrollVariants = {
 
 const gridContainerVariants = {
     hidden: {},
-    visible: { transition: { staggerChildren: 0.06, delayChildren: 0.03 } }
+    visible: { transition: { staggerChildren: 0.08, delayChildren: 0.03 } }
 };
 
 const gridItemVariants = {
-    hidden: { opacity: 0, y: 32, scale: 0.92 },
+    hidden: { opacity: 0, y: 32, scale: 0.92, rotateX: 4 },
     visible: {
-        opacity: 1, y: 0, scale: 1,
-        transition: { type: "spring", stiffness: 400, damping: 24, mass: 0.7 }
+        opacity: 1, y: 0, scale: 1, rotateX: 0,
+        transition: { type: "spring", stiffness: 380, damping: 22, mass: 0.7 }
     }
 };
 
@@ -229,6 +229,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [showParticleHeart, setShowParticleHeart] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
+    const [headerOpacity, setHeaderOpacity] = useState(0);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
@@ -356,6 +357,16 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         } else setOtdImage(null);
     }, [onThisDayMemory]);
 
+    // Scroll-linked header opacity — transparent at top, solid on scroll
+    useEffect(() => {
+        const handleScroll = () => {
+            const y = window.scrollY || 0;
+            setHeaderOpacity(Math.min(y / 100, 1));
+        };
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
     const triggerReceivedHeartbeat = () => {
         setReceivedHeartbeat(true);
         setShowParticleHeart(true);
@@ -394,8 +405,30 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         } else alert("Add some memories or notes first! 💖");
     };
 
+    // ── Section divider for visual hierarchy ──
+    const SectionDivider = ({ label }: { label: string }) => (
+        <div className="flex items-center gap-3 mb-4 mt-2 px-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{label}</span>
+            <div className="flex-1 h-[1px]" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.08), transparent)' }} />
+        </div>
+    );
+
     return (
         <div className="px-5 pt-14 pb-40 min-h-screen relative parallax-container">
+            {/* Scroll-linked floating header bar */}
+            <div
+                className="fixed top-0 left-0 right-0 z-30 pointer-events-none transition-opacity duration-300"
+                style={{
+                    opacity: headerOpacity,
+                    background: `rgba(15,10,20,${0.7 + headerOpacity * 0.15})`,
+                    backdropFilter: headerOpacity > 0.1 ? 'blur(16px) saturate(140%)' : 'none',
+                    WebkitBackdropFilter: headerOpacity > 0.1 ? 'blur(16px) saturate(140%)' : 'none',
+                    borderBottom: `1px solid rgba(255,255,255,${headerOpacity * 0.06})`,
+                    height: 'env(safe-area-inset-top, 0px)',
+                    minHeight: '2.5rem',
+                }}
+            />
+
             {/* Particle Heart — triggered on send & receive */}
             <ParticleHeart active={showParticleHeart} onComplete={() => setShowParticleHeart(false)} originRef={heartbeatBtnRef} />
             {showSurprise && surpriseContent && <SurpriseModal content={surpriseContent} onClose={() => setShowSurprise(false)} />}
@@ -527,14 +560,15 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
+            <SectionDivider label="Quick Actions" />
             {/* ── ACTION BUTTONS — Heartbeat & Surprise ────────────────── */}
             <ScrollReveal variant="popIn">
                 <div className="mb-5 flex gap-3 relative z-10">
                     <MagneticButton onClick={sendHeartbeat as any} strength={0.2} className="flex-1">
                         <div
                             ref={heartbeatBtnRef}
-                            className="w-full h-full group relative bg-gradient-to-br from-tulika-500 to-tulika-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden"
-                            style={{ boxShadow: '0 4px 16px rgba(251,207,232,0.20), 0 12px 32px rgba(251,207,232,0.08)' }}
+                            className={`w-full h-full group relative bg-gradient-to-br from-tulika-500 to-tulika-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-shadow duration-500 ${receivedHeartbeat ? 'ring-2 ring-tulika-300/50 animate-glow-pulse' : ''}`}
+                            style={{ boxShadow: receivedHeartbeat ? '0 4px 24px rgba(251,207,232,0.40), 0 12px 40px rgba(251,207,232,0.15)' : '0 4px 16px rgba(251,207,232,0.20), 0 12px 32px rgba(251,207,232,0.08)' }}
                         >
                             <HeartbeatRipple active={showHeartbeat} />
                             <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : ''}`}>
@@ -551,6 +585,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
+            <SectionDivider label="Coming Up" />
             {/* ── COUNTDOWN CARD ───────────────────────────────────────── */}
             <ScrollReveal variant="slideFromRight">
                 <TiltCard
@@ -593,19 +628,24 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </TiltCard>
             </ScrollReveal>
 
+            {onThisDayMemory && <SectionDivider label="Throwback" />}
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
             {onThisDayMemory && (
                 <ScrollReveal variant="tiltUp">
                     <div
                         onClick={() => setView('timeline')}
-                        className={`rounded-[1.75rem] mb-5 relative z-10 spring-hover cursor-pointer overflow-hidden ${
+                        className={`rounded-[1.75rem] mb-5 relative z-10 spring-press cursor-pointer overflow-hidden ${
                             otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-tulika-500 to-amber-500 text-white p-6'
                         }`}
                         style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                     >
                         {otdImage && (
                             <>
-                                <img src={otdImage} className="absolute inset-0 w-full h-full object-cover" alt="On this day" />
+                                <img
+                                    src={otdImage}
+                                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-[20s] ease-linear hover:scale-110"
+                                    alt="On this day"
+                                />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                             </>
                         )}
@@ -614,19 +654,27 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 <Calendar size={14} className="text-amber-300" />
                                 <span className="text-micro uppercase tracking-widest text-amber-300">On This Day</span>
                             </div>
-                            <h3 className="font-serif text-2xl font-bold mb-1 drop-shadow-md">
-                                {getYear(new Date()) - getYear(new Date(onThisDayMemory.date))} year ago today
-                            </h3>
-                            {onThisDayMemory.text && (
-                                <p className={`text-sm line-clamp-2 italic ${otdImage ? 'text-gray-200' : 'text-rose-100'}`}>
-                                    "{onThisDayMemory.text}"
-                                </p>
-                            )}
+                            <div className="flex items-end justify-between">
+                                <div>
+                                    <h3 className="font-serif text-2xl font-bold mb-1 drop-shadow-md">
+                                        {getYear(new Date()) - getYear(new Date(onThisDayMemory.date))} year ago today
+                                    </h3>
+                                    {onThisDayMemory.text && (
+                                        <p className={`text-sm line-clamp-2 italic ${otdImage ? 'text-gray-200' : 'text-rose-100'}`}>
+                                            "{onThisDayMemory.text}"
+                                        </p>
+                                    )}
+                                </div>
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-white/50 bg-white/10 px-2.5 py-1 rounded-full flex-shrink-0 ml-3">
+                                    View
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </ScrollReveal>
             )}
 
+            <SectionDivider label="Your Space" />
             {/* ── STATUS & FEATURE BENTO GRID ──────────────────────────── */}
             <motion.div
                 className="grid grid-cols-2 gap-3 relative z-10 mb-16"
@@ -634,11 +682,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 whileInView="visible"
                 viewport={{ once: true, margin: "-50px" }}
                 variants={gridContainerVariants}
+                style={{ transformPerspective: 900 }}
             >
                 {/* Partner status */}
                 <motion.div
                     variants={gridItemVariants}
-                    className={`col-span-1 p-5 rounded-[1.5rem] flex flex-col justify-between spring-press ${
+                    className={`col-span-1 p-5 rounded-[1.5rem] flex flex-col justify-between spring-press relative ${
                         partnerStatus.state === 'sleeping'
                             ? 'bg-warmgray-900/95 text-warmgray-100 border border-warmgray-700/30'
                             : 'bento-card'
@@ -647,10 +696,15 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 >
                     <div className="flex items-center justify-between mb-3">
                         <span className="text-micro uppercase tracking-widest opacity-60">Partner</span>
-                        {partnerStatus.state === 'sleeping'
-                            ? <Moon size={15} className="text-amber-300" fill="currentColor" />
-                            : <Sun size={15} className="text-amber-400 animate-spin-slow" />
-                        }
+                        <div className="relative">
+                            {partnerStatus.state === 'sleeping'
+                                ? <Moon size={15} className="text-amber-300" fill="currentColor" />
+                                : <Sun size={15} className="text-amber-400 animate-spin-slow" />
+                            }
+                            {partnerStatus.state === 'sleeping' && (
+                                <span className="absolute -top-2 -right-2 text-[8px] text-amber-300/50 animate-bounce" style={{ animationDuration: '3s' }}>z</span>
+                            )}
+                        </div>
                     </div>
                     <div>
                         <p className="font-serif font-bold leading-tight text-[0.95rem]">{profile.partnerName} is {partnerStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}</p>
@@ -662,7 +716,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 <motion.div
                     variants={gridItemVariants}
                     onClick={toggleMyStatus}
-                    className={`col-span-1 p-5 rounded-[1.5rem] flex flex-col justify-between cursor-pointer spring-press ${
+                    className={`col-span-1 p-5 rounded-[1.5rem] flex flex-col justify-between cursor-pointer spring-press relative ${
                         myStatus.state === 'sleeping'
                             ? 'bg-tulika-800 text-white border border-tulika-700/30'
                             : 'bento-card text-tulika-600'
@@ -671,7 +725,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 >
                     <div className="flex items-center justify-between mb-3">
                         <span className="text-micro uppercase tracking-widest opacity-60">You</span>
-                        {myStatus.state === 'sleeping' ? <Moon size={15} fill="currentColor" /> : <Sun size={15} />}
+                        <div className="relative">
+                            {myStatus.state === 'sleeping' ? <Moon size={15} fill="currentColor" /> : <Sun size={15} />}
+                            {myStatus.state === 'sleeping' && (
+                                <span className="absolute -top-2 -right-2 text-[8px] text-tulika-300/50 animate-bounce" style={{ animationDuration: '3s' }}>z</span>
+                            )}
+                        </div>
                     </div>
                     <div>
                         <p className="font-serif font-bold leading-tight text-[0.95rem]">{myStatus.state === 'sleeping' ? 'Sleeping' : 'Awake'}</p>
@@ -679,7 +738,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </motion.div>
 
-                {/* Open When */}
+                {/* Open When — amber "letter" aesthetic */}
                 <motion.div variants={gridItemVariants}>
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
@@ -688,24 +747,25 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         className="w-full h-full cursor-pointer"
                     >
                         <div
-                            className="p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden rounded-[1.5rem] spring-press"
-                            style={{ background: 'rgba(251,207,232,0.06)', border: '1px solid rgba(251,207,232,0.10)', backdropFilter: 'blur(20px)' }}
+                            className="accent-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press"
+                            style={{ '--accent-bg': 'rgba(251,191,36,0.06)', '--accent-border': 'rgba(251,191,36,0.10)', '--accent-shadow': 'rgba(251,191,36,0.08)' } as React.CSSProperties}
                         >
                             <motion.div
                                 className="relative"
-                                animate={{ y: [0, -5, 0] }}
-                                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                                animate={{ rotate: [-1, 1, -1] }}
+                                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
                             >
-                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,207,232,0.12)', border: '1px solid rgba(251,207,232,0.08)' }}>
-                                    <Mail size={26} className="text-pink-300" />
+                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.08)' }}>
+                                    <Mail size={26} className="text-amber-300" />
                                 </div>
                             </motion.div>
                             <span className="font-semibold text-sm text-gray-200">Open When</span>
+                            <div className="absolute bottom-0 left-4 right-4 h-[1px] bg-amber-300/10" />
                         </div>
                     </motion.div>
                 </motion.div>
 
-                {/* Dinner Decider */}
+                {/* Dinner Decider — playful orange aesthetic */}
                 <motion.div variants={gridItemVariants}>
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
@@ -714,16 +774,16 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         className="w-full h-full cursor-pointer"
                     >
                         <div
-                            className="p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden rounded-[1.5rem] spring-press"
-                            style={{ background: 'rgba(251,207,232,0.06)', border: '1px solid rgba(251,207,232,0.10)', backdropFilter: 'blur(20px)' }}
+                            className="accent-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press"
+                            style={{ '--accent-bg': 'rgba(251,146,60,0.06)', '--accent-border': 'rgba(251,146,60,0.10)', '--accent-shadow': 'rgba(251,146,60,0.08)' } as React.CSSProperties}
                         >
                             <motion.div
                                 className="relative"
-                                animate={{ y: [0, -5, 0] }}
-                                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
+                                animate={{ rotate: [0, 10, -10, 0], y: [0, -3, 0] }}
+                                transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
                             >
-                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,207,232,0.12)', border: '1px solid rgba(251,207,232,0.08)' }}>
-                                    <Utensils size={26} className="text-pink-300" />
+                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.08)' }}>
+                                    <Utensils size={26} className="text-orange-300" />
                                 </div>
                             </motion.div>
                             <span className="font-semibold text-sm text-gray-200">Dinner?</span>

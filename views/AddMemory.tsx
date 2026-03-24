@@ -1,6 +1,7 @@
 
 import React, { useState, useRef } from 'react';
-import { ArrowLeft, Camera, X, Video } from 'lucide-react';
+import { Camera, X, Video } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
@@ -94,21 +95,22 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
   return (
     <div className="flex flex-col h-full min-h-screen animate-fade-in" style={{ background: 'transparent' }}>
-      <div className="p-4 flex items-center justify-between sticky top-0 z-10" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <button onClick={() => setView('home')} className="p-2 -ml-2 text-gray-400 rounded-full active:scale-95 transition-transform spring-press">
-          <ArrowLeft size={22} />
-        </button>
-        <span className="font-serif font-bold text-lg text-gray-100">New Memory</span>
-        <button
-          onClick={handleSave}
-          disabled={isDisabled}
-          className={`px-5 py-1.5 rounded-full text-sm font-bold transition-all spring-press ${
-            isDisabled ? 'bg-white/10 text-gray-500' : 'bg-tulika-500 text-white shadow-tulika-500/20'
-          }`}
-        >
-          {isSaving ? 'Saving...' : 'Save'}
-        </button>
-      </div>
+      <ViewHeader
+        title="New Memory"
+        onBack={() => setView('home')}
+        variant="centered"
+        rightSlot={
+          <button
+            onClick={handleSave}
+            disabled={isDisabled}
+            className={`px-5 py-1.5 rounded-full text-sm font-bold transition-all spring-press ${
+              isDisabled ? 'bg-white/10 text-gray-500' : 'bg-tulika-500 text-white shadow-tulika-500/20'
+            }`}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-5 pb-32">
         <div className="mb-6 animate-slide-up">

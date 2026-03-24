@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Cloud, CheckCircle, RefreshCw, AlertTriangle, Bell, BellOff, ImageDown, HardDriveUpload } from 'lucide-react';
+import { Cloud, CheckCircle, RefreshCw, AlertTriangle, Bell, BellOff, ImageDown, HardDriveUpload } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { ViewState } from '../types';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { StorageService } from '../services/storage';
@@ -97,12 +98,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
   return (
     <div className="flex flex-col h-full min-h-screen pb-32">
-      <div className="p-4 flex items-center gap-4 sticky top-0 z-10" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
-          <ArrowLeft size={24} />
-        </button>
-        <span className="font-semibold text-lg text-gray-100">Cloud Sync</span>
-      </div>
+      <ViewHeader title="Cloud Sync" onBack={() => setView('home')} variant="simple" />
 
       <div className="flex-1 p-8 flex flex-col items-center justify-center text-center">
         

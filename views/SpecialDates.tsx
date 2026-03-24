@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Heart, Calendar } from 'lucide-react';
+import { ViewHeader } from '../components/ViewHeader';
 import { motion } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -80,15 +81,19 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
 
   return (
     <div className="p-6 pt-8 pb-32 min-h-screen">
-      <div className="flex justify-between items-center mb-8 animate-fade-in">
-        <h2 className="text-2xl font-serif font-bold text-gray-100">Special Dates</h2>
-        <button 
-          onClick={() => setShowAdd(!showAdd)}
-          className="bg-tulika-500/15 text-tulika-400 p-2 rounded-full transition-colors"
-        >
-          <Plus size={24} />
-        </button>
-      </div>
+      <ViewHeader
+        title="Special Dates"
+        onBack={() => setView('home')}
+        variant="simple"
+        rightSlot={
+          <button
+            onClick={() => setShowAdd(!showAdd)}
+            className="bg-tulika-500/15 text-tulika-400 p-2 rounded-full transition-colors"
+          >
+            <Plus size={24} />
+          </button>
+        }
+      />
 
       {showAdd && (
         <div className="p-4 rounded-3xl shadow-lg mb-6 animate-pop-in" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
