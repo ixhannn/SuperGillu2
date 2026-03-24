@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, memo } from 'react';
 import { Home, Plus, Gift, Archive, Sparkles, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState } from '../types';
@@ -13,7 +13,7 @@ interface BottomNavProps {
   };
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, notifications }) => {
+export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView, notifications }) => {
   const navItems = useMemo(() => [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'keepsakes', icon: Gift, label: 'Box', hasNotification: notifications?.keepsakes },
@@ -29,8 +29,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
           className="relative rounded-[1.75rem] flex items-center justify-around px-1.5 py-1.5"
           style={{
             background: 'linear-gradient(135deg, rgba(251,207,232,0.10) 0%, rgba(255,255,255,0.05) 50%, rgba(251,207,232,0.08) 100%)',
-            backdropFilter: 'blur(40px) saturate(180%) brightness(1.1)',
-            WebkitBackdropFilter: 'blur(40px) saturate(180%) brightness(1.1)',
+            backdropFilter: 'blur(24px) saturate(160%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(160%)',
             border: '1px solid rgba(251,207,232,0.15)',
             boxShadow: `
               inset 0 1px 0 rgba(255,255,255,0.2),
@@ -133,4 +133,4 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
       </div>
     </div>
   );
-};
+}) as React.FC<BottomNavProps>;

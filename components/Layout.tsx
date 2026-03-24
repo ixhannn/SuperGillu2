@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, createContext, useContext } from 'react';
+import React, { useRef, useEffect, useState, createContext, useContext, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BottomNav } from './BottomNav';
 import { LiveBackground3D } from './LiveBackground3D';
@@ -24,7 +24,7 @@ export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number)
 });
 export const useConfetti = () => useContext(ConfettiContext);
 
-export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, notifications }) => {
+export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, notifications }) => {
   const mainRef = useRef<HTMLElement>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const prevView = useRef(currentView);
@@ -83,15 +83,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, 
           }}
         />
 
-        {/* Soft diffusion layer — smooths out particle noise */}
-        <div
-          className="fixed inset-0 pointer-events-none z-[3]"
-          aria-hidden="true"
-          style={{
-            backdropFilter: 'blur(1.5px)',
-            WebkitBackdropFilter: 'blur(1.5px)',
-          }}
-        />
+        {/* Soft diffusion layer removed — full-screen backdrop-filter is expensive */}
 
         {/* Main content */}
         <main
@@ -112,4 +104,4 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, 
       </div>
     </ConfettiContext.Provider>
   );
-};
+}) as React.FC<LayoutProps>;

@@ -20,8 +20,8 @@ import { AnimationEngine, QualityTier } from '../utils/AnimationEngine';
 import { LiveBackground } from './LiveBackground';
 
 // ── Particle counts ────────────────────────────────────────────────
-const BOKEH_COUNT   = 60;   // large, slow, dreamy
-const SPARKLE_COUNT = 35;   // small, faster, bright accents
+const BOKEH_COUNT   = 40;   // large, slow, dreamy
+const SPARKLE_COUNT = 20;   // small, faster, bright accents
 const TOTAL         = BOKEH_COUNT + SPARKLE_COUNT;
 
 // ── Color palette — weighted towards soft baby pink ───────────────
@@ -253,6 +253,7 @@ export const LiveBackground3D: React.FC = () => {
     window.addEventListener('scroll', onScroll, { passive: true });
 
     // ── Animation ─────────────────────────────────────────────────
+    let frameCount = 0;
     AnimationEngine.register({
       id:        'live-bg-3d',
       priority:  3,
@@ -260,20 +261,25 @@ export const LiveBackground3D: React.FC = () => {
       minTier:   'medium' as QualityTier,
 
       tick(_delta, timestamp) {
+        frameCount++;
         const t = timestamp * 0.001;
         material.uniforms.uTime.value = t;
 
-        const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
+        // Update positions every 2 frames — bokeh moves very slowly, halves CPU cost
+        if (frameCount % 2 === 0) {
+          const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
+          const arr = pos.array as Float32Array;
 
-        for (let i = 0; i < TOTAL; i++) {
-          const ax = phaseOff[i] + t * freqX[i];
-          const ay = phaseOff[i] + t * freqY[i];
+          for (let i = 0; i < TOTAL; i++) {
+            const ax = phaseOff[i] + t * freqX[i];
+            const ay = phaseOff[i] + t * freqY[i];
 
-          pos.array[i * 3]     = centerX[i] + Math.cos(ax) * orbitRX[i];
-          pos.array[i * 3 + 1] = centerY[i] + Math.sin(ay) * orbitRY[i];
-          pos.array[i * 3 + 2] = baseZ[i]   + Math.sin(t * zDriftFreq[i] + phaseOff[i]) * zDriftAmp[i];
+            arr[i * 3]     = centerX[i] + Math.cos(ax) * orbitRX[i];
+            arr[i * 3 + 1] = centerY[i] + Math.sin(ay) * orbitRY[i];
+            arr[i * 3 + 2] = baseZ[i]   + Math.sin(t * zDriftFreq[i] + phaseOff[i]) * zDriftAmp[i];
+          }
+          pos.needsUpdate = true;
         }
-        pos.needsUpdate = true;
 
         // Camera: scroll parallax + very slow gentle breath on Z
         camera.position.y = -scrollY * 0.006;

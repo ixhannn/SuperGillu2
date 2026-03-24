@@ -108,6 +108,12 @@ label, .cursor-pointer, .spring-press {
   perspective: 1000px;
 }
 
+/* Canvas / fixed background layers — isolation prevents expensive stacking context recalculations */
+canvas.fixed, .fixed[aria-hidden="true"] {
+  contain: strict;
+  isolation: isolate;
+}
+
 .will-change-transform {
   will-change: transform, opacity;
 }
@@ -120,8 +126,8 @@ label, .cursor-pointer, .spring-press {
 /* Layer 2 — Primary cards */
 .glass-card {
   background: rgba(255, 252, 252, 0.72);
-  backdrop-filter: blur(32px) saturate(160%);
-  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-bottom-color: rgba(232, 160, 176, 0.15);
   border-right-color: rgba(232, 160, 176, 0.10);
@@ -135,8 +141,8 @@ label, .cursor-pointer, .spring-press {
 /* Layer 3 — Hero / elevated cards */
 .glass-card-hero {
   background: rgba(255, 252, 252, 0.78);
-  backdrop-filter: blur(40px) saturate(160%);
-  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-bottom-color: rgba(232, 160, 176, 0.18);
   border-right-color: rgba(232, 160, 176, 0.12);
@@ -150,8 +156,8 @@ label, .cursor-pointer, .spring-press {
 /* Navigation — most solid, highest blur */
 .glass-nav {
   background: rgba(255, 253, 253, 0.88);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
   border-top: 1px solid rgba(255, 255, 255, 0.90);
   box-shadow:
     0 -8px 32px rgba(232, 160, 176, 0.10),
@@ -162,8 +168,8 @@ label, .cursor-pointer, .spring-press {
 /* Premium glass — subtle emphasis */
 .premium-glass {
   background: rgba(255, 252, 252, 0.72);
-  backdrop-filter: blur(32px) saturate(160%);
-  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.80);
   border-bottom-color: rgba(232, 160, 176, 0.12);
   box-shadow:
@@ -250,8 +256,8 @@ label, .cursor-pointer, .spring-press {
 /* Frosted glass with 3D depth */
 .glass-3d {
   background: rgba(255, 252, 252, 0.72);
-  backdrop-filter: blur(32px) saturate(160%);
-  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-bottom-color: rgba(232, 160, 176, 0.15);
   box-shadow:
@@ -457,8 +463,8 @@ label, .cursor-pointer, .spring-press {
 }
 
 @keyframes backdrop-enter {
-  0%   { opacity: 0; backdrop-filter: blur(0px); }
-  100% { opacity: 1; backdrop-filter: blur(12px); }
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 @keyframes magnetic-pull {
@@ -542,23 +548,23 @@ label, .cursor-pointer, .spring-press {
 .animate-scale-bounce  { animation: scale-bounce 0.4s var(--spring-smooth) both; }
 .animate-tilt-in       { animation: tilt-in 0.6s var(--ease-out-expo) both; }
 .animate-shimmer       { background: linear-gradient(90deg, transparent, rgba(249,184,196,0.3), transparent); background-size: 300% 100%; animation: shimmerSweep 3s ease-in-out infinite; }
-.animate-glow-pulse    { animation: glow-pulse 3s ease-in-out infinite; }
-.animate-breathe-glow  { animation: breathe-glow 4s ease-in-out infinite; }
-.animate-number-roll   { animation: number-roll 0.8s var(--spring-smooth) both; }
-.animate-wiggle-spring { animation: wiggle-spring 0.5s var(--spring-bounce); }
-.animate-modal-enter   { animation: modal-enter 0.4s var(--spring-smooth) both; }
+.animate-glow-pulse    { animation: glow-pulse 3s ease-in-out infinite; will-change: box-shadow; }
+.animate-breathe-glow  { animation: breathe-glow 4s ease-in-out infinite; will-change: transform, opacity; }
+.animate-number-roll   { animation: number-roll 0.8s var(--spring-smooth) both; will-change: transform, opacity; }
+.animate-wiggle-spring { animation: wiggle-spring 0.5s var(--spring-bounce); will-change: transform; }
+.animate-modal-enter   { animation: modal-enter 0.4s var(--spring-smooth) both; will-change: transform, opacity; }
 .animate-backdrop-enter{ animation: backdrop-enter 0.3s ease-out both; }
-.animate-icon-spring   { animation: icon-spring 0.5s var(--spring-bounce) both; }
-.animate-dot-spring    { animation: dot-spring 0.4s var(--spring-bounce) both; }
-.animate-magnetic-hover{ animation: magnetic-pull 2s ease-in-out infinite; }
-.animate-morph-1       { animation: morph-blob-1 20s ease-in-out infinite; }
-.animate-morph-2       { animation: morph-blob-2 25s ease-in-out infinite; }
-.animate-morph-3       { animation: morph-blob-3 18s ease-in-out infinite; }
-.animate-drift         { animation: drift-float var(--drift-duration, 8s) linear infinite; }
-.animate-drift-1       { animation: drift-1 22s ease-in-out infinite; }
-.animate-drift-2       { animation: drift-2 28s ease-in-out infinite; }
-.animate-drift-3       { animation: drift-3 18s ease-in-out infinite; }
-.animate-ui-breathe    { animation: ui-breathe 4s ease-in-out infinite; }
+.animate-icon-spring   { animation: icon-spring 0.5s var(--spring-bounce) both; will-change: transform; }
+.animate-dot-spring    { animation: dot-spring 0.4s var(--spring-bounce) both; will-change: transform, opacity; }
+.animate-magnetic-hover{ animation: magnetic-pull 2s ease-in-out infinite; will-change: transform; }
+.animate-morph-1       { animation: morph-blob-1 20s ease-in-out infinite; will-change: transform; }
+.animate-morph-2       { animation: morph-blob-2 25s ease-in-out infinite; will-change: transform; }
+.animate-morph-3       { animation: morph-blob-3 18s ease-in-out infinite; will-change: transform; }
+.animate-drift         { animation: drift-float var(--drift-duration, 8s) linear infinite; will-change: transform, opacity; }
+.animate-drift-1       { animation: drift-1 22s ease-in-out infinite; will-change: transform; }
+.animate-drift-2       { animation: drift-2 28s ease-in-out infinite; will-change: transform; }
+.animate-drift-3       { animation: drift-3 18s ease-in-out infinite; will-change: transform; }
+.animate-ui-breathe    { animation: ui-breathe 4s ease-in-out infinite; will-change: opacity; }
 
 /* Page transitions */
 .page-enter      { animation: slide-fade-enter 0.4s var(--spring-smooth) both; }

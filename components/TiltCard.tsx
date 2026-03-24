@@ -27,6 +27,8 @@ export const TiltCard: React.FC<TiltCardProps> = ({
   onClick,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
+  const rectRef = useRef<DOMRect | null>(null);
+  const orientRafRef = useRef<number>(0);
   const [isHovered, setIsHovered] = useState(false);
 
   const rotateX = useMotionValue(0);
@@ -48,9 +50,14 @@ export const TiltCard: React.FC<TiltCardProps> = ({
     }
   );
 
+  const handlePointerEnterCapture = useCallback(() => {
+    // Cache rect on enter — avoids calling getBoundingClientRect on every move
+    if (cardRef.current) rectRef.current = cardRef.current.getBoundingClientRect();
+  }, []);
+
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
+    const rect = rectRef.current;
+    if (!rect) return;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const pctX = (e.clientX - centerX) / (rect.width / 2);
@@ -70,14 +77,17 @@ export const TiltCard: React.FC<TiltCardProps> = ({
     setIsHovered(false);
   }, [rotateX, rotateY, glareX, glareY]);
 
-  // Device orientation (gyroscope) for mobile
+  // Device orientation (gyroscope) for mobile — RAF-throttled
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
       if (e.beta === null || e.gamma === null) return;
-      const tiltX = Math.max(-maxTilt, Math.min(maxTilt, (e.beta - 45) * 0.3));
-      const tiltY = Math.max(-maxTilt, Math.min(maxTilt, e.gamma * 0.3));
-      rotateX.set(-tiltX);
-      rotateY.set(tiltY);
+      cancelAnimationFrame(orientRafRef.current);
+      orientRafRef.current = requestAnimationFrame(() => {
+        const tiltX = Math.max(-maxTilt, Math.min(maxTilt, (e.beta! - 45) * 0.3));
+        const tiltY = Math.max(-maxTilt, Math.min(maxTilt, e.gamma! * 0.3));
+        rotateX.set(-tiltX);
+        rotateY.set(tiltY);
+      });
     };
 
     if (typeof DeviceOrientationEvent !== 'undefined') {
@@ -86,6 +96,7 @@ export const TiltCard: React.FC<TiltCardProps> = ({
 
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation);
+      cancelAnimationFrame(orientRafRef.current);
     };
   }, [maxTilt, rotateX, rotateY]);
 
@@ -102,7 +113,7 @@ export const TiltCard: React.FC<TiltCardProps> = ({
       }}
       whileHover={{ scale }}
       onPointerMove={handlePointerMove}
-      onPointerEnter={() => setIsHovered(true)}
+      onPointerEnter={() => { handlePointerEnterCapture(); setIsHovered(true); }}
       onPointerLeave={handlePointerLeave}
       onClick={onClick}
     >

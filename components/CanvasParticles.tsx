@@ -134,57 +134,57 @@ export const CanvasParticles: React.FC = () => {
       const touchRadius = 120;
       const touchForce = 4;
 
+      /* Phase 1: update physics */
       for (let i = 0; i < count; i++) {
-        /* Flow field — gentle idle drift */
         const angle = flowAngle(px[i], py[i], time);
-        const flowSpeed = 0.3;
-        vx[i] += Math.cos(angle) * flowSpeed * dt;
-        vy[i] += Math.sin(angle) * flowSpeed * dt;
+        vx[i] += Math.cos(angle) * 0.3 * dt;
+        vy[i] += Math.sin(angle) * 0.3 * dt;
 
-        /* Touch interaction — particles flee from finger */
         if (touching) {
           const dx = px[i] - touchX;
           const dy = py[i] - touchY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < touchRadius && dist > 0) {
+          const distSq = dx * dx + dy * dy;
+          if (distSq < touchRadius * touchRadius && distSq > 0) {
+            const dist = Math.sqrt(distSq);
             const force = (1 - dist / touchRadius) * touchForce * dt;
             vx[i] += (dx / dist) * force;
             vy[i] += (dy / dist) * force;
           }
         }
 
-        /* Damping — elastic return to flow */
         vx[i] *= 0.94;
         vy[i] *= 0.94;
-
-        /* Apply velocity */
         px[i] += vx[i] * dt;
         py[i] += vy[i] * dt;
 
-        /* Wrap around screen edges */
         if (px[i] < -10) px[i] = w + 10;
         if (px[i] > w + 10) px[i] = -10;
         if (py[i] < -10) py[i] = h + 10;
         if (py[i] > h + 10) py[i] = -10;
+      }
 
-        /* Draw particle — soft glowing circle */
-        const colorIdx = i % colors.length;
-        const alpha = alphas[i] * (0.8 + Math.sin(time * 2 + i) * 0.2);
-        const size = sizes[i];
-
+      /* Phase 2: batch draw by color — minimises ctx.fillStyle state changes */
+      const TAU = Math.PI * 2;
+      for (let c = 0; c < colors.length; c++) {
         ctx.beginPath();
-        ctx.arc(px[i], py[i], size, 0, Math.PI * 2);
-        ctx.fillStyle = colors[colorIdx] + alpha.toFixed(2) + ')';
+        for (let i = c; i < count; i += colors.length) {
+          const alpha = alphas[i] * (0.8 + Math.sin(time * 2 + i) * 0.2);
+          ctx.fillStyle = colors[c] + alpha.toFixed(2) + ')';
+          ctx.arc(px[i], py[i], sizes[i], 0, TAU);
+          ctx.closePath();
+        }
         ctx.fill();
 
-        /* Subtle glow on larger particles */
-        if (size > 2) {
-          ctx.beginPath();
-          ctx.arc(px[i], py[i], size * 3, 0, Math.PI * 2);
-          ctx.fillStyle = colors[colorIdx] + (alpha * 0.15).toFixed(3) + ')';
-          ctx.fill();
+        ctx.beginPath();
+        for (let i = c; i < count; i += colors.length) {
+          if (sizes[i] > 2) {
+            const alpha = alphas[i] * (0.8 + Math.sin(time * 2 + i) * 0.2);
+            ctx.fillStyle = colors[c] + (alpha * 0.15).toFixed(3) + ')';
+            ctx.arc(px[i], py[i], sizes[i] * 3, 0, TAU);
+            ctx.closePath();
+          }
         }
+        ctx.fill();
       }
     };
 
