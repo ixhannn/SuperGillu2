@@ -28,10 +28,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
         <div
           className="relative rounded-[1.75rem] flex items-center justify-around px-1.5 py-1.5"
           style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.08) 100%)',
+            background: 'linear-gradient(135deg, rgba(251,207,232,0.10) 0%, rgba(255,255,255,0.05) 50%, rgba(251,207,232,0.08) 100%)',
             backdropFilter: 'blur(40px) saturate(180%) brightness(1.1)',
             WebkitBackdropFilter: 'blur(40px) saturate(180%) brightness(1.1)',
-            border: '1px solid rgba(255,255,255,0.18)',
+            border: '1px solid rgba(251,207,232,0.15)',
             boxShadow: `
               inset 0 1px 0 rgba(255,255,255,0.2),
               inset 0 -1px 0 rgba(255,255,255,0.05),
@@ -66,11 +66,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
                     className="w-12 h-12 rounded-[1.1rem] flex items-center justify-center relative"
                     style={{
                       background: isActive
-                        ? 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)'
-                        : 'linear-gradient(135deg, rgba(244,63,94,0.85) 0%, rgba(225,29,72,0.85) 100%)',
+                        ? 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)'
+                        : 'linear-gradient(135deg, rgba(236,72,153,0.85) 0%, rgba(219,39,119,0.85) 100%)',
                       boxShadow: isActive
-                        ? '0 4px 20px rgba(244,63,94,0.5), 0 2px 8px rgba(244,63,94,0.3), inset 0 1px 0 rgba(255,255,255,0.25)'
-                        : '0 4px 16px rgba(244,63,94,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+                        ? '0 4px 20px rgba(251,207,232,0.35), 0 2px 8px rgba(251,207,232,0.2), inset 0 1px 0 rgba(255,255,255,0.25)'
+                        : '0 4px 16px rgba(251,207,232,0.2), inset 0 1px 0 rgba(255,255,255,0.2)',
                     }}
                   >
                     <Plus size={22} strokeWidth={2.5} className="text-white" />
@@ -119,7 +119,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setView, noti
                         style={{
                           background: 'rgba(255,255,255,0.1)',
                           border: '1px solid rgba(255,255,255,0.12)',
-                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 0 12px rgba(244,63,94,0.08)',
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 0 12px rgba(251,207,232,0.06)',
                         }}
                         transition={{ type: 'spring', stiffness: 300, damping: 28, mass: 0.7 }}
                       />

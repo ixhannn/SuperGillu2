@@ -106,7 +106,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
       {/* Content wrapper pushed down by spring */}
       <motion.div 
         style={{ y: pullHeight, zIndex: 10 }}
-        className="min-h-full bg-tulika-50 relative rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)]"
+        className="min-h-full relative"
       >
         {children}
       </motion.div>

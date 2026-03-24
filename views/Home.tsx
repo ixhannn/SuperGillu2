@@ -413,7 +413,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     >
                         <div
                             className={`w-12 h-12 rounded-full bg-tulika-50 overflow-hidden flex-shrink-0 transition-all duration-500 ${isTogether ? 'ring-[3px] ring-tulika-300/50' : ''}`}
-                            style={{ boxShadow: '0 2px 8px rgba(244,63,94,0.1), 0 0 0 2px white' }}
+                            style={{ boxShadow: '0 2px 8px rgba(251,207,232,0.1), 0 0 0 2px rgba(251,207,232,0.3)' }}
                         >
                             {profile.photo
                                 ? <img src={profile.photo} className="w-full h-full object-cover" alt="Profile" />
@@ -486,8 +486,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setShowDetailedDuration(!showDetailedDuration)}
                         className="relative overflow-hidden p-8 rounded-[1.75rem] mb-5 aurora-card border border-white/20 cursor-pointer"
                         style={{
-                            background: 'linear-gradient(135deg, #f43f5e 0%, #ec4899 35%, #e11d48 70%, #f43f5e 100%)',
-                            boxShadow: '0 8px 32px rgba(244,63,94,0.3), 0 24px 64px rgba(244,63,94,0.12)',
+                            background: 'linear-gradient(135deg, #ec4899 0%, #f9a8d4 35%, #ec4899 70%, #f472b6 100%)',
+                            boxShadow: '0 8px 32px rgba(251,207,232,0.25), 0 24px 64px rgba(251,207,232,0.10)',
                         }}
                     >
                         {/* Decorative heart watermark */}
@@ -534,7 +534,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         <div
                             ref={heartbeatBtnRef}
                             className="w-full h-full group relative bg-gradient-to-br from-tulika-500 to-tulika-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden"
-                            style={{ boxShadow: '0 4px 16px rgba(244,63,94,0.25), 0 12px 32px rgba(244,63,94,0.1)' }}
+                            style={{ boxShadow: '0 4px 16px rgba(251,207,232,0.20), 0 12px 32px rgba(251,207,232,0.08)' }}
                         >
                             <HeartbeatRipple active={showHeartbeat} />
                             <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : ''}`}>
@@ -687,15 +687,17 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('open-when')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div className="glass-3d bento-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden holo-shimmer glow-3d">
+                        <div
+                            className="p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden rounded-[1.5rem] spring-press"
+                            style={{ background: 'rgba(251,207,232,0.06)', border: '1px solid rgba(251,207,232,0.10)', backdropFilter: 'blur(20px)' }}
+                        >
                             <motion.div
-                                className="relative inner-elevate"
-                                animate={{ y: [0, -5, 0], rotateY: [0, 5, 0] }}
+                                className="relative"
+                                animate={{ y: [0, -5, 0] }}
                                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                             >
-                                <div className="icon-glow-ring absolute inset-0 rounded-2xl" />
-                                <div className="bg-tulika-50 p-3 rounded-2xl relative z-10 shadow-3d">
-                                    <Mail size={26} className="text-tulika-500" />
+                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,207,232,0.12)', border: '1px solid rgba(251,207,232,0.08)' }}>
+                                    <Mail size={26} className="text-pink-300" />
                                 </div>
                             </motion.div>
                             <span className="font-semibold text-sm text-gray-200">Open When</span>
@@ -711,15 +713,17 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('dinner-decider')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div className="glass-3d bento-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden holo-shimmer glow-3d">
+                        <div
+                            className="p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden rounded-[1.5rem] spring-press"
+                            style={{ background: 'rgba(251,207,232,0.06)', border: '1px solid rgba(251,207,232,0.10)', backdropFilter: 'blur(20px)' }}
+                        >
                             <motion.div
-                                className="relative inner-elevate"
-                                animate={{ y: [0, -5, 0], rotateY: [0, -5, 0] }}
+                                className="relative"
+                                animate={{ y: [0, -5, 0] }}
                                 transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
                             >
-                                <div className="icon-glow-ring absolute inset-0 rounded-2xl" />
-                                <div className="bg-amber-50 p-3 rounded-2xl relative z-10 shadow-3d">
-                                    <Utensils size={26} className="text-amber-500" />
+                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,207,232,0.12)', border: '1px solid rgba(251,207,232,0.08)' }}>
+                                    <Utensils size={26} className="text-pink-300" />
                                 </div>
                             </motion.div>
                             <span className="font-semibold text-sm text-gray-200">Dinner?</span>
@@ -738,7 +742,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         <div
                             className="relative overflow-hidden p-5 rounded-[1.5rem] flex items-center justify-between aurora-card border border-white/15"
                             style={{
-                                background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 40%, #f97316 100%)',
+                                background: 'linear-gradient(135deg, #f9a8d4 0%, #ec4899 40%, #f472b6 100%)',
                                 boxShadow: '0 4px 20px rgba(236,72,153,0.2)',
                             }}
                         >

@@ -166,17 +166,17 @@ const CommentBubble: React.FC<{
             className={`flex gap-2.5 ${isReply ? 'ml-10' : ''}`}
         >
             {/* Avatar */}
-            <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold ${isMine ? 'bg-tulika-100 text-tulika-600' : 'bg-blue-100 text-blue-600'}`}>
+            <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold ${isMine ? 'bg-tulika-500/15 text-tulika-400' : 'bg-blue-500/15 text-blue-400'}`}>
                 {comment.senderName.charAt(0).toUpperCase()}
             </div>
             {/* Content */}
             <div className="flex-1 min-w-0">
-                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-50 border border-tulika-100' : 'bg-gray-50 border border-gray-100'}`}>
+                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-500/10 border border-tulika-500/20' : 'bg-white/5 border border-white/10'}`}>
                     <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[11px] font-bold text-gray-700">{comment.senderName}</span>
+                        <span className="text-[11px] font-bold text-gray-300">{comment.senderName}</span>
                         <span className="text-[9px] text-gray-400">{timeStr}</span>
                     </div>
-                    <p className="text-[13px] text-gray-800 leading-snug break-words">{comment.text}</p>
+                    <p className="text-[13px] text-gray-200 leading-snug break-words">{comment.text}</p>
                 </div>
                 <div className="flex items-center gap-4 mt-1 ml-1">
                     <button
@@ -188,7 +188,7 @@ const CommentBubble: React.FC<{
                     {isMine && (
                         <button
                             onClick={() => onDelete(comment.id)}
-                            className="text-[10px] font-bold text-gray-300 uppercase tracking-wider transition-colors"
+                            className="text-[10px] font-bold text-gray-600 uppercase tracking-wider transition-colors"
                         >
                             Delete
                         </button>
@@ -285,12 +285,13 @@ const PostViewer: React.FC<{
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] bg-white flex flex-col"
+            className="fixed inset-0 z-[100] flex flex-col"
+            style={{ background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 25%, #1a0e1e 50%, #120a18 75%, #0d0810 100%)' }}
         >
             {/* ── Header ── */}
-            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 flex-shrink-0">
+            <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="flex items-center gap-3">
-                    <button onClick={onClose} className="p-1.5 text-gray-500 transition-colors">
+                    <button onClick={onClose} className="p-1.5 text-gray-400 transition-colors">
                         <ArrowLeft size={22} />
                     </button>
                     <div className="flex items-center gap-2.5">
@@ -298,7 +299,7 @@ const PostViewer: React.FC<{
                             {photo.senderId === myDeviceId ? profile.myName.charAt(0) : profile.partnerName.charAt(0)}
                         </div>
                         <div>
-                            <p className="text-sm font-bold text-gray-800 leading-tight">
+                            <p className="text-sm font-bold text-gray-100 leading-tight">
                                 {photo.senderId === myDeviceId ? profile.myName : profile.partnerName}
                             </p>
                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
@@ -308,7 +309,7 @@ const PostViewer: React.FC<{
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-tulika-500 bg-tulika-50 px-2.5 py-1 rounded-full">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-tulika-500 bg-tulika-500/15 px-2.5 py-1 rounded-full">
                         <Clock size={10} className="inline mr-1" />
                         {hoursLeft}h {minsLeft}m
                     </span>
@@ -354,18 +355,18 @@ const PostViewer: React.FC<{
 
             {/* ── Caption ── */}
             {photo.caption && (
-                <div className="px-5 py-4 bg-white border-b border-gray-50">
-                    <p className="text-[15px] text-gray-800 leading-relaxed font-medium">{photo.caption}</p>
+                <div className="px-5 py-4 border-b border-white/8" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                    <p className="text-[15px] text-gray-200 leading-relaxed font-medium">{photo.caption}</p>
                 </div>
             )}
 
             {/* ── Comments Section ── */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 bg-gray-50/50">
+            <div className="flex-1 overflow-y-auto px-4 py-4">
                 {comments.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 opacity-40">
-                        <MessageCircle size={28} className="mb-2 text-gray-400" />
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No comments yet</p>
-                        <p className="text-[11px] text-gray-300 mt-1">Be the first to react!</p>
+                        <MessageCircle size={28} className="mb-2 text-gray-500" />
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No comments yet</p>
+                        <p className="text-[11px] text-gray-600 mt-1">Be the first to react!</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -402,7 +403,7 @@ const PostViewer: React.FC<{
             </div>
 
             {/* ── Comment Input Bar ── */}
-            <div className="flex-shrink-0 bg-white border-t border-gray-100 px-4 py-3 safe-area-bottom">
+            <div className="flex-shrink-0 border-t border-white/8 px-4 py-3 safe-area-bottom" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)' }}>
                 {replyTo && (
                     <div className="flex items-center justify-between mb-2 px-1">
                         <span className="text-[11px] text-tulika-500 font-bold">
@@ -425,7 +426,7 @@ const PostViewer: React.FC<{
                         onChange={e => setCommentText(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleSubmitComment(); }}
                         placeholder={replyTo ? `Reply to ${replyTo.senderName}...` : "Add a comment..."}
-                        className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-tulika-200 focus:bg-white transition-all placeholder:text-gray-400"
+                        className="flex-1 bg-white/5 rounded-full px-4 py-2.5 text-sm text-gray-200 outline-none focus:ring-2 focus:ring-tulika-500/30 focus:bg-white/10 transition-all placeholder:text-gray-500"
                     />
                     <button
                         onClick={handleSubmitComment}
@@ -549,28 +550,28 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
     return (
         <PullToRefresh onRefresh={handleRefresh}>
-            <div className="flex flex-col h-full bg-[#f8f9fa] min-h-screen relative">
+            <div className="flex flex-col h-full min-h-screen relative">
                 {/* Header */}
-                <div className="p-6 pt-12 flex justify-between items-center bg-white border-b border-gray-100 sticky top-0 z-20">
+                <div className="p-6 pt-12 flex justify-between items-center sticky top-0 z-20" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2">
                     <ArrowLeft size={24} />
                 </button>
                 <div className="text-center">
-                    <h2 className="font-serif font-bold text-2xl text-gray-800">Moments</h2>
+                    <h2 className="font-serif font-bold text-2xl text-gray-100">Moments</h2>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-400">Ephemeral Memories</p>
                 </div>
                 <div className="flex gap-2">
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         aria-label="Share a photo moment"
-                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-50 text-tulika-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"
+                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-500/15 text-tulika-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"
                     >
                         <Camera size={20} />
                     </button>
                     <button
                         onClick={() => videoInputRef.current?.click()}
                         aria-label="Share a video moment"
-                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-500/15 text-blue-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                     >
                         <Video size={20} />
                     </button>
@@ -594,7 +595,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                         ))}
                     </motion.div>
                 ) : (
-                    <div className="h-full flex flex-col items-center justify-center py-20 text-gray-300 opacity-50">
+                    <div className="h-full flex flex-col items-center justify-center py-20 text-gray-500">
                         <Sparkles size={48} className="mb-4" />
                         <p className="font-serif text-center">Share a moment that<br />disappears in 24 hours.</p>
                     </div>
@@ -603,10 +604,10 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
             {/* Upload Modal */}
             {isUploading && ReactDOM.createPortal(
-                <div className="fixed inset-0 z-50 bg-white flex flex-col" style={{ animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
-                    <div className="p-4 flex items-center justify-between border-b">
+                <div className="fixed inset-0 z-50 flex flex-col" style={{ animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both', background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 25%, #1a0e1e 50%, #120a18 75%, #0d0810 100%)' }}>
+                    <div className="p-4 flex items-center justify-between border-b border-white/8">
                         <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} /></button>
-                        <span className="font-bold text-sm uppercase tracking-widest">Post Moment</span>
+                        <span className="font-bold text-sm uppercase tracking-widest text-gray-200">Post Moment</span>
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
@@ -635,7 +636,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                             value={caption}
                             onChange={e => setCaption(e.target.value)}
                             placeholder="Add a caption..."
-                            className="w-full bg-gray-50 p-4 rounded-2xl font-medium outline-none border-none focus:ring-2 focus:ring-tulika-200"
+                            className="w-full bg-white/5 p-4 rounded-2xl font-medium outline-none text-gray-200 placeholder:text-gray-500 border border-white/10 focus:ring-2 focus:ring-tulika-500/30"
                         />
                         <p className="mt-4 text-[10px] text-gray-400 text-center font-bold uppercase tracking-widest">
                             Visible for 24 hours

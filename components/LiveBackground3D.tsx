@@ -1,9 +1,17 @@
 /**
- * LiveBackground3D — Atmospheric 3D particle field.
+ * LiveBackground3D — Cinematic atmospheric bokeh field.
  *
- * Soft, warm bokeh lights drifting in gentle elliptical orbits.
- * Creates depth through z-spread and varying opacity.
- * Falls back to CSS LiveBackground on low-tier devices or no WebGL.
+ * Two-layer particle system:
+ *   Layer A — 60 large dreamy bokeh orbs, slow Lissajous orbits
+ *   Layer B — 35 tiny sparkle dots, faster drift
+ *
+ * Features:
+ *   • Per-particle breathing alpha via shader phase attribute
+ *   • Dual-ring bokeh (outer glow + bright core) for cinematic depth
+ *   • Lissajous orbits (mismatched X/Y frequencies) for organic paths
+ *   • Slow camera Z-breath for living parallax
+ *   • Depth fog and scroll parallax
+ *   • Graceful CSS fallback for low-tier / no-WebGL devices
  */
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -11,19 +19,35 @@ import * as THREE from 'three';
 import { AnimationEngine, QualityTier } from '../utils/AnimationEngine';
 import { LiveBackground } from './LiveBackground';
 
-const PARTICLE_COUNT = 100;
+// ── Particle counts ────────────────────────────────────────────────
+const BOKEH_COUNT   = 60;   // large, slow, dreamy
+const SPARKLE_COUNT = 35;   // small, faster, bright accents
+const TOTAL         = BOKEH_COUNT + SPARKLE_COUNT;
 
-// Warm Tulika palette for particles
-const COLORS = [
-  new THREE.Color('#f43f5e'),  // rose
-  new THREE.Color('#a855f7'),  // violet
-  new THREE.Color('#6366f1'),  // indigo
-  new THREE.Color('#ec4899'),  // pink
-  new THREE.Color('#8b5cf6'),  // purple
-  new THREE.Color('#f472b6'),  // soft pink
-  new THREE.Color('#7c3aed'),  // deep violet
-  new THREE.Color('#c084fc'),  // light purple
+// ── Color palette — weighted towards soft baby pink ───────────────
+const BOKEH_COLORS = [
+  new THREE.Color('#fce7f3'), // lightest blush     — most common
+  new THREE.Color('#fbcfe8'), // soft blush
+  new THREE.Color('#fbcfe8'), // soft blush (double weight)
+  new THREE.Color('#f9a8d4'), // baby pink
+  new THREE.Color('#f9a8d4'), // baby pink (double weight)
+  new THREE.Color('#fda4af'), // rose blush
+  new THREE.Color('#f0abfc'), // lavender blush
+  new THREE.Color('#f472b6'), // pink (rare — accent)
 ];
+
+const SPARKLE_COLORS = [
+  new THREE.Color('#fce7f3'), // near-white blush
+  new THREE.Color('#fbcfe8'), // soft blush
+  new THREE.Color('#f9a8d4'), // baby pink
+  new THREE.Color('#ffffff'), // pure white sparkle
+];
+
+// ── Seeded random helper ───────────────────────────────────────────
+const rng = (() => {
+  let s = 42;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+})();
 
 export const LiveBackground3D: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -34,114 +58,178 @@ export const LiveBackground3D: React.FC = () => {
     if (!canvas) return;
 
     // ── WebGL check ───────────────────────────────────────────────
-    let gl: WebGLRenderingContext | null = null;
+    let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
     try {
       gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
     } catch (_) { /* no WebGL */ }
-    if (!gl) {
-      setUseFallback(true);
-      return;
-    }
+    if (!gl) { setUseFallback(true); return; }
 
     // ── Renderer ──────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({
       canvas,
       alpha: true,
       antialias: false,
-      powerPreference: 'low-power',
+      powerPreference: 'default',
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
+    // ── Scene & Camera ────────────────────────────────────────────
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
-    camera.position.z = 50;
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 250);
+    camera.position.z = 55;
 
-    // ── Particle system ───────────────────────────────────────────
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const colors = new Float32Array(PARTICLE_COUNT * 3);
-    const sizes = new Float32Array(PARTICLE_COUNT);
+    // ── Particle data arrays ──────────────────────────────────────
+    const positions  = new Float32Array(TOTAL * 3);
+    const colors     = new Float32Array(TOTAL * 3);
+    const sizes      = new Float32Array(TOTAL);
+    const phases     = new Float32Array(TOTAL); // per-particle breath phase
 
-    // Per-particle orbital data (not stored in geometry — local arrays)
-    const orbitRadiusX = new Float32Array(PARTICLE_COUNT);
-    const orbitRadiusY = new Float32Array(PARTICLE_COUNT);
-    const orbitSpeed = new Float32Array(PARTICLE_COUNT);
-    const orbitPhase = new Float32Array(PARTICLE_COUNT);
-    const orbitCenterX = new Float32Array(PARTICLE_COUNT);
-    const orbitCenterY = new Float32Array(PARTICLE_COUNT);
-    const baseZ = new Float32Array(PARTICLE_COUNT);
+    // Motion parameters (not in GPU geometry — stay in JS)
+    const orbitRX    = new Float32Array(TOTAL);
+    const orbitRY    = new Float32Array(TOTAL);
+    const freqX      = new Float32Array(TOTAL); // Lissajous X frequency
+    const freqY      = new Float32Array(TOTAL); // Lissajous Y frequency
+    const phaseOff   = new Float32Array(TOTAL); // initial angle offset
+    const centerX    = new Float32Array(TOTAL);
+    const centerY    = new Float32Array(TOTAL);
+    const baseZ      = new Float32Array(TOTAL);
+    const zDriftAmp  = new Float32Array(TOTAL);
+    const zDriftFreq = new Float32Array(TOTAL);
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      // Orbital parameters — gentle ellipses
-      orbitRadiusX[i] = 8 + Math.random() * 35;
-      orbitRadiusY[i] = 6 + Math.random() * 28;
-      orbitSpeed[i] = 0.03 + Math.random() * 0.06;
-      orbitPhase[i] = Math.random() * Math.PI * 2;
-      orbitCenterX[i] = (Math.random() - 0.5) * 20;
-      orbitCenterY[i] = (Math.random() - 0.5) * 16;
-      baseZ[i] = -20 + Math.random() * 50;
+    // ── Init BOKEH layer ──────────────────────────────────────────
+    for (let i = 0; i < BOKEH_COUNT; i++) {
+      orbitRX[i]    = 10 + rng() * 40;
+      orbitRY[i]    = 8  + rng() * 32;
+      // Lissajous: slight irrational frequency ratio → organic figure patterns
+      const baseFreq = 0.018 + rng() * 0.04;
+      freqX[i]      = baseFreq;
+      freqY[i]      = baseFreq * (0.85 + rng() * 0.35); // slight mismatch
+      phaseOff[i]   = rng() * Math.PI * 2;
+      centerX[i]    = (rng() - 0.5) * 22;
+      centerY[i]    = (rng() - 0.5) * 18;
+      baseZ[i]      = -25 + rng() * 60;
+      zDriftAmp[i]  = 2 + rng() * 5;
+      zDriftFreq[i] = 0.06 + rng() * 0.12;
+      phases[i]     = rng() * Math.PI * 2;
 
-      // Initial positions
-      const angle = orbitPhase[i];
-      positions[i * 3] = orbitCenterX[i] + Math.cos(angle) * orbitRadiusX[i];
-      positions[i * 3 + 1] = orbitCenterY[i] + Math.sin(angle) * orbitRadiusY[i];
+      const angle = phaseOff[i];
+      positions[i * 3]     = centerX[i] + Math.cos(angle) * orbitRX[i];
+      positions[i * 3 + 1] = centerY[i] + Math.sin(angle) * orbitRY[i];
       positions[i * 3 + 2] = baseZ[i];
 
-      // Color
-      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-      colors[i * 3] = color.r;
-      colors[i * 3 + 1] = color.g;
-      colors[i * 3 + 2] = color.b;
+      const col = BOKEH_COLORS[Math.floor(rng() * BOKEH_COLORS.length)];
+      colors[i * 3]     = col.r;
+      colors[i * 3 + 1] = col.g;
+      colors[i * 3 + 2] = col.b;
 
-      // Size — bigger particles farther forward for depth perception
-      const depthFactor = (baseZ[i] + 20) / 50; // 0 (far) to 1 (near)
-      sizes[i] = (1.5 + Math.random() * 3) * (0.5 + depthFactor * 0.8);
+      const depth = (baseZ[i] + 25) / 60; // 0=far → 1=near
+      sizes[i] = (3.5 + rng() * 5.5) * (0.4 + depth * 1.0);
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    // ── Init SPARKLE layer ────────────────────────────────────────
+    for (let i = BOKEH_COUNT; i < TOTAL; i++) {
+      orbitRX[i]    = 4  + rng() * 18;
+      orbitRY[i]    = 3  + rng() * 15;
+      const baseFreq = 0.05 + rng() * 0.10;
+      freqX[i]      = baseFreq;
+      freqY[i]      = baseFreq * (0.7 + rng() * 0.6);
+      phaseOff[i]   = rng() * Math.PI * 2;
+      centerX[i]    = (rng() - 0.5) * 28;
+      centerY[i]    = (rng() - 0.5) * 22;
+      baseZ[i]      = -10 + rng() * 30;
+      zDriftAmp[i]  = 1 + rng() * 3;
+      zDriftFreq[i] = 0.12 + rng() * 0.20;
+      phases[i]     = rng() * Math.PI * 2;
 
-    // ── Custom shader for soft glowing circles ────────────────────
+      const angle = phaseOff[i];
+      positions[i * 3]     = centerX[i] + Math.cos(angle) * orbitRX[i];
+      positions[i * 3 + 1] = centerY[i] + Math.sin(angle) * orbitRY[i];
+      positions[i * 3 + 2] = baseZ[i];
+
+      const col = SPARKLE_COLORS[Math.floor(rng() * SPARKLE_COLORS.length)];
+      colors[i * 3]     = col.r;
+      colors[i * 3 + 1] = col.g;
+      colors[i * 3 + 2] = col.b;
+
+      const depth = (baseZ[i] + 10) / 30;
+      sizes[i] = (0.8 + rng() * 1.8) * (0.5 + depth * 0.8);
+    }
+
+    // ── Geometry ──────────────────────────────────────────────────
+    const geometry = new THREE.BufferGeometry();
+    const posAttrBuf = new THREE.BufferAttribute(positions, 3);
+    posAttrBuf.usage = THREE.DynamicDrawUsage;
+    geometry.setAttribute('position', posAttrBuf);
+    geometry.setAttribute('color',    new THREE.BufferAttribute(colors,  3));
+    geometry.setAttribute('size',     new THREE.BufferAttribute(sizes,   1));
+    geometry.setAttribute('phase',    new THREE.BufferAttribute(phases,  1));
+
+    // ── Shader — dual-ring cinematic bokeh ────────────────────────
     const material = new THREE.ShaderMaterial({
       uniforms: {
-        uTime: { value: 0 },
+        uTime:       { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
       },
-      vertexShader: `
+      vertexShader: /* glsl */`
         attribute float size;
-        varying vec3 vColor;
+        attribute float phase;
+        varying vec3  vColor;
         varying float vAlpha;
+        varying float vIsSparkle;
+        uniform float uTime;
         uniform float uPixelRatio;
 
         void main() {
-          vColor = color;
+          vColor     = color;
+          vIsSparkle = float(size < 2.0);
 
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           float dist = -mvPosition.z;
 
-          // Depth-based alpha — farther = more transparent
-          vAlpha = clamp(0.04 + (1.0 - dist / 80.0) * 0.1, 0.02, 0.14);
+          // Per-particle breathing — staggered by phase attribute
+          float breathe   = 0.65 + 0.35 * sin(uTime * 0.38 + phase);
+          float depthFade = clamp(1.0 - dist / 75.0, 0.0, 1.0);
+          float depthFade2 = depthFade * depthFade; // sharper depth falloff
 
-          gl_PointSize = size * uPixelRatio * (50.0 / dist);
-          gl_Position = projectionMatrix * mvPosition;
+          vAlpha = breathe * mix(0.22, 0.10, 1.0 - depthFade2);
+
+          gl_PointSize = size * uPixelRatio * (48.0 / max(dist, 4.0));
+          gl_Position  = projectionMatrix * mvPosition;
         }
       `,
-      fragmentShader: `
-        varying vec3 vColor;
+      fragmentShader: /* glsl */`
+        varying vec3  vColor;
         varying float vAlpha;
+        varying float vIsSparkle;
 
         void main() {
-          // Soft circle with gaussian falloff
-          float d = length(gl_PointCoord - vec2(0.5));
+          vec2  uv = gl_PointCoord - vec2(0.5);
+          float d  = length(uv);
           if (d > 0.5) discard;
-          float alpha = vAlpha * exp(-d * d * 8.0);
-          gl_FragColor = vec4(vColor, alpha);
+
+          float alpha;
+
+          if (vIsSparkle > 0.5) {
+            // Sparkles: tighter gaussian + bright core flash
+            float core  = exp(-d * d * 28.0);
+            float glow  = exp(-d * d * 6.0) * 0.4;
+            alpha = vAlpha * (core + glow);
+          } else {
+            // Bokeh: large soft outer glow + subtle warm core
+            float outerGlow = exp(-d * d * 2.8);          // wide, very soft
+            float innerCore = exp(-d * d * 18.0) * 0.35;  // tight bright center
+            alpha = vAlpha * (outerGlow + innerCore);
+          }
+
+          // Subtle warm highlight at center
+          vec3 col = vColor + exp(-d * d * 25.0) * vec3(0.08, 0.04, 0.04);
+
+          gl_FragColor = vec4(col, alpha);
         }
       `,
       transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      depthWrite:  false,
+      blending:    THREE.AdditiveBlending,
       vertexColors: true,
     });
 
@@ -166,40 +254,40 @@ export const LiveBackground3D: React.FC = () => {
 
     // ── Animation ─────────────────────────────────────────────────
     AnimationEngine.register({
-      id: 'live-bg-3d',
-      priority: 3,
-      budgetMs: 2,
-      minTier: 'medium' as QualityTier,
+      id:        'live-bg-3d',
+      priority:  3,
+      budgetMs:  3,
+      minTier:   'medium' as QualityTier,
 
-      tick(delta, timestamp) {
+      tick(_delta, timestamp) {
         const t = timestamp * 0.001;
         material.uniforms.uTime.value = t;
 
-        const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
+        const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
 
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const angle = orbitPhase[i] + t * orbitSpeed[i];
-          posAttr.array[i * 3] = orbitCenterX[i] + Math.cos(angle) * orbitRadiusX[i];
-          posAttr.array[i * 3 + 1] = orbitCenterY[i] + Math.sin(angle) * orbitRadiusY[i];
-          // Subtle z-wave for depth movement
-          posAttr.array[i * 3 + 2] = baseZ[i] + Math.sin(t * 0.15 + orbitPhase[i]) * 3;
+        for (let i = 0; i < TOTAL; i++) {
+          const ax = phaseOff[i] + t * freqX[i];
+          const ay = phaseOff[i] + t * freqY[i];
+
+          pos.array[i * 3]     = centerX[i] + Math.cos(ax) * orbitRX[i];
+          pos.array[i * 3 + 1] = centerY[i] + Math.sin(ay) * orbitRY[i];
+          pos.array[i * 3 + 2] = baseZ[i]   + Math.sin(t * zDriftFreq[i] + phaseOff[i]) * zDriftAmp[i];
         }
-        posAttr.needsUpdate = true;
+        pos.needsUpdate = true;
 
-        // Scroll parallax — shift camera slightly
-        camera.position.y = -scrollY * 0.008;
+        // Camera: scroll parallax + very slow gentle breath on Z
+        camera.position.y = -scrollY * 0.006;
+        camera.position.z = 55 + Math.sin(t * 0.07) * 3;
 
         renderer.render(scene, camera);
       },
     });
 
-    // ── Tier change listener — switch to CSS fallback if needed ───
+    // ── Tier watchdog — fall back if device gets hot ──────────────
     const tierCheck = setInterval(() => {
       const tier = AnimationEngine.tier;
-      if (tier === 'low' || tier === 'css-only') {
-        setUseFallback(true);
-      }
-    }, 2000);
+      if (tier === 'low' || tier === 'css-only') setUseFallback(true);
+    }, 3000);
 
     return () => {
       clearInterval(tierCheck);
@@ -212,9 +300,7 @@ export const LiveBackground3D: React.FC = () => {
     };
   }, []);
 
-  if (useFallback) {
-    return <LiveBackground />;
-  }
+  if (useFallback) return <LiveBackground />;
 
   return (
     <canvas

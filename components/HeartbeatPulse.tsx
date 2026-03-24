@@ -22,7 +22,7 @@ export const HeartbeatPulse: React.FC = () => {
       <div
         className="absolute top-1/2 left-[40%] -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full animate-heartbeat-1"
         style={{
-          background: 'radial-gradient(circle, rgba(244,63,94,0.12) 0%, rgba(244,63,94,0) 70%)',
+          background: 'radial-gradient(circle, rgba(251,207,232,0.10) 0%, rgba(251,207,232,0) 70%)',
           filter: 'blur(20px)',
         }}
       />

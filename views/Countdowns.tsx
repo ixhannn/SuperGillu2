@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight, Map } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -96,50 +96,34 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
     };
 
     return (
-        <div className="min-h-screen bg-indigo-950 text-white flex flex-col pb-32">
-            {/* Urban Header */}
-            <div className="relative h-64 overflow-hidden shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-b from-indigo-900 to-indigo-950"></div>
-                {/* Decorative Buildings/Skyline */}
-                <div className="absolute bottom-0 left-0 right-0 flex items-end gap-1 opacity-20 px-4">
-                    <div className="w-12 h-32 bg-white rounded-t-lg"></div>
-                    <div className="w-16 h-48 bg-white rounded-t-lg"></div>
-                    <div className="w-8 h-24 bg-white rounded-t-lg"></div>
-                    <div className="flex-1"></div>
-                    <div className="w-14 h-40 bg-white rounded-t-lg"></div>
-                    <div className="w-10 h-28 bg-white rounded-t-lg"></div>
-                </div>
-
-                <div className="relative z-10 p-6 pt-12">
-                    <button onClick={() => setView('home')} className="mb-6 p-2 bg-white/10 rounded-full transition-colors">
+        <div className="min-h-screen text-white flex flex-col pb-32">
+            {/* Header */}
+            <div className="p-6 pt-12 pb-8 sticky top-0 z-20" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setView('home')} className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full">
                         <ArrowLeft size={24} />
                     </button>
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 bg-indigo-500 rounded-2xl shadow-lg">
-                            <Map size={32} />
-                        </div>
-                        <div>
-                            <h2 className="text-3xl font-serif font-bold">Downtown</h2>
-                            <p className="text-indigo-300 text-sm font-medium tracking-wide uppercase">Your Town Square</p>
-                        </div>
+                    <div>
+                        <h2 className="text-2xl font-serif font-bold text-gray-100">Countdowns</h2>
+                        <p className="text-[10px] font-bold text-tulika-400 uppercase tracking-widest">Upcoming Moments</p>
                     </div>
                 </div>
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 px-6 -mt-12 relative z-20">
+            <div className="flex-1 px-6 pt-4 relative z-20">
                 {/* Main Event Card */}
                 {nextEvent && (
-                    <div className="bg-gradient-to-br from-indigo-800 to-purple-900 rounded-[2.5rem] p-8 shadow-2xl border border-white/10 mb-8 animate-elastic-pop">
+                    <div className="rounded-[2.5rem] p-8 shadow-2xl mb-8 animate-elastic-pop" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <div className="flex justify-between items-start mb-6">
-                            <div className="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold uppercase tracking-widest text-indigo-200">
-                                <Clock size={12} /> Next Destination
+                            <div className="flex items-center gap-2 px-3 py-1 bg-tulika-500/15 rounded-full text-[10px] font-bold uppercase tracking-widest text-tulika-400">
+                                <Clock size={12} /> Next Up
                             </div>
                             {getIcon(nextEvent.type)}
                         </div>
 
                         <h3 className="text-3xl font-serif font-bold mb-2">{nextEvent.title}</h3>
-                        <p className="text-indigo-200 text-sm mb-8">
+                        <p className="text-gray-400 text-sm mb-8">
                             {nextEvent.nextDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
                         </p>
 
@@ -148,8 +132,8 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                 )}
 
                 <div className="flex justify-between items-center mb-6">
-                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-indigo-300">Upcoming Landmarks</h4>
-                    <button onClick={() => setView('special-dates')} className="text-xs font-bold text-indigo-400 flex items-center gap-1">
+                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-400">Upcoming</h4>
+                    <button onClick={() => setView('special-dates')} className="text-xs font-bold text-tulika-400 flex items-center gap-1">
                         Edit List <ChevronRight size={14} />
                     </button>
                 </div>
@@ -169,26 +153,32 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                             </div>
                             <div className="flex-1 min-w-0">
                                 <h5 className="font-bold text-lg truncate">{event.title}</h5>
-                                <p className="text-xs text-indigo-400">
+                                <p className="text-xs text-gray-500">
                                     {event.nextDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 </p>
                             </div>
                             <div className="text-right">
-                                <span className="text-2xl font-bold font-mono text-indigo-300">
+                                <span className="text-2xl font-bold font-mono text-tulika-400">
                                     {differenceInDays(event.nextDate, new Date())}
                                 </span>
-                                <span className="block text-[8px] uppercase font-bold text-indigo-500">Days To Go</span>
+                                <span className="block text-[8px] uppercase font-bold text-gray-500">Days To Go</span>
                             </div>
                         </motion.div>
                     ))}
 
                     {allEvents.length === 0 && (
-                        <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10">
-                            <Calendar size={40} className="mx-auto mb-4 opacity-20" />
-                            <p className="text-indigo-400 italic">No landmarks in your town yet...</p>
+                        <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
+                            <div className="relative mb-6">
+                                <div className="absolute inset-0 bg-tulika-500/10 rounded-full blur-2xl animate-breathe-glow" />
+                                <div className="relative p-6 bg-white/5 rounded-full border border-white/10">
+                                    <Calendar size={40} className="text-gray-500" />
+                                </div>
+                            </div>
+                            <p className="font-serif text-gray-400 text-center text-lg mb-2">No countdowns yet</p>
+                            <p className="text-xs text-gray-500 mb-6">Add special dates to start counting down</p>
                             <button
                                 onClick={() => setView('special-dates')}
-                                className="mt-4 px-6 py-2 bg-indigo-500 rounded-full text-xs font-bold uppercase tracking-wider"
+                                className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-500/20 spring-press"
                             >
                                 Add Your First Date
                             </button>
@@ -201,7 +191,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
             <div className="fixed bottom-28 right-6">
                 <button
                     onClick={() => setView('special-dates')}
-                    className="p-4 bg-white text-indigo-900 rounded-2xl shadow-xl shadow-black/20 spring-press spring-hover transition-transform"
+                    className="p-4 bg-tulika-500 text-white rounded-2xl shadow-xl shadow-tulika-500/20 spring-press spring-hover transition-transform"
                 >
                     <Plus size={24} />
                 </button>

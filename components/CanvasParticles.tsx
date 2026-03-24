@@ -114,7 +114,7 @@ export const CanvasParticles: React.FC = () => {
       'rgba(251,113,133,',  /* tulika-400 */
       'rgba(253,164,175,',  /* tulika-300 */
       'rgba(254,205,211,',  /* tulika-200 */
-      'rgba(244,63,94,',    /* tulika-500 */
+      'rgba(249,168,212,',  /* baby pink */
       'rgba(255,228,230,',  /* tulika-100 */
     ];
 

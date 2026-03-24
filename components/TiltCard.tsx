@@ -113,7 +113,7 @@ export const TiltCard: React.FC<TiltCardProps> = ({
           x: shadowX,
           y: shadowY,
           filter: useTransform(shadowBlur, (b) => `blur(${b}px)`),
-          background: 'rgba(244, 63, 94, 0.12)',
+          background: 'rgba(251, 207, 232, 0.10)',
           opacity: isHovered ? 0.8 : 0.3,
           transition: 'opacity 0.3s',
         }}

@@ -47,7 +47,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, 
       <div
         className="fixed inset-0 text-gray-100 overflow-hidden flex flex-col"
         style={{
-          background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 25%, #1a0e1e 50%, #120a18 75%, #0d0810 100%)',
+          background: 'linear-gradient(168deg, #1a0c14 0%, #1f0e19 25%, #24111c 50%, #1c0d16 75%, #140a10 100%)',
         }}
       >
         {/* Page transition progress bar */}
@@ -75,19 +75,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, 
           aria-hidden="true"
           style={{
             background: `
-              radial-gradient(ellipse 120% 80% at 50% -10%, rgba(244,63,94,0.08) 0%, transparent 60%),
-              radial-gradient(ellipse 100% 60% at 50% 110%, rgba(139,92,246,0.06) 0%, transparent 50%)
+              radial-gradient(ellipse 120% 80% at 50% -10%, rgba(251,207,232,0.14) 0%, transparent 60%),
+              radial-gradient(ellipse 80% 50% at 30% 50%, rgba(249,168,212,0.08) 0%, transparent 50%),
+              radial-gradient(ellipse 100% 60% at 50% 110%, rgba(251,207,232,0.10) 0%, transparent 50%),
+              radial-gradient(ellipse 60% 40% at 70% 30%, rgba(244,114,182,0.05) 0%, transparent 50%)
             `,
           }}
         />
 
-        {/* Noise texture overlay for premium feel */}
+        {/* Soft diffusion layer — smooths out particle noise */}
         <div
-          className="fixed inset-0 pointer-events-none z-[3] opacity-[0.025]"
+          className="fixed inset-0 pointer-events-none z-[3]"
           aria-hidden="true"
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'repeat',
+            backdropFilter: 'blur(1.5px)',
+            WebkitBackdropFilter: 'blur(1.5px)',
           }}
         />
 

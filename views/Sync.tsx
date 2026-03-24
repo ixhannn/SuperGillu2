@@ -97,17 +97,17 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
   return (
     <div className="flex flex-col h-full min-h-screen pb-32">
-      <div className="p-4 flex items-center gap-4 border-b border-gray-100">
-        <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-600 rounded-full hover:bg-gray-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
+      <div className="p-4 flex items-center gap-4 sticky top-0 z-10" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <button onClick={() => setView('home')} aria-label="Go back" className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
           <ArrowLeft size={24} />
         </button>
-        <span className="font-semibold text-lg text-gray-800">Cloud Sync</span>
+        <span className="font-semibold text-lg text-gray-100">Cloud Sync</span>
       </div>
 
       <div className="flex-1 p-8 flex flex-col items-center justify-center text-center">
         
-        <div className={`w-32 h-32 rounded-full flex items-center justify-center mb-6 shadow-2xl transition-all ${
-            status.includes('Error') ? 'bg-red-50 text-red-500' : 'bg-tulika-50 text-tulika-500'
+        <div className={`w-32 h-32 rounded-full flex items-center justify-center mb-6 transition-all ${
+            status.includes('Error') ? 'bg-red-500/15 text-red-400' : 'bg-tulika-500/15 text-tulika-400'
         }`}>
             {isSyncing ? (
                 <RefreshCw size={48} className="animate-spin" />
@@ -118,7 +118,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
             )}
         </div>
 
-        <h2 className="text-2xl font-serif font-bold text-gray-800 mb-2">
+        <h2 className="text-2xl font-serif font-bold text-gray-100 mb-2">
             {status}
         </h2>
         
@@ -132,7 +132,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
         <div className="w-full max-w-xs space-y-4">
             <button 
                 onClick={forceSync}
-                className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-tulika-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+                className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-tulika-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
             >
                 <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
                 Sync Now
@@ -141,7 +141,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
             <button
                 onClick={migrateToStorage}
                 disabled={isMigrating}
-                className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50"
+                className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50"
             >
                 <div className="flex items-center gap-2">
                     <HardDriveUpload size={20} className={isMigrating ? "animate-pulse" : ""} />
@@ -153,28 +153,28 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
             <button
                 onClick={recoverImages}
                 disabled={isRecovering}
-                className="w-full bg-indigo-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full bg-indigo-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
                 <ImageDown size={20} className={isRecovering ? "animate-bounce" : ""} />
                 {isRecovering ? 'Recovering...' : 'Recover Images from Cloud'}
             </button>
 
             {/* Notification Permission Card */}
-            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center justify-between text-left">
+            <div className="p-4 rounded-2xl flex items-center justify-between text-left" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div className="flex-1 pr-4">
-                    <p className="text-sm font-bold text-gray-800">Push Notifications</p>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">
+                    <p className="text-sm font-bold text-gray-200">Push Notifications</p>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
                         {notifPermission === 'granted' ? 'Enabled' : notifPermission === 'denied' ? 'Disabled' : 'Not setup'}
                     </p>
                 </div>
                 {notifPermission === 'granted' ? (
-                    <div className="p-2 bg-green-100 text-green-600 rounded-full">
+                    <div className="p-2 bg-green-500/15 text-green-400 rounded-full">
                         <Bell size={20} />
                     </div>
                 ) : (
-                    <button 
+                    <button
                         onClick={requestPermission}
-                        className="p-2 bg-tulika-100 text-tulika-600 rounded-full transition-colors"
+                        className="p-2 bg-tulika-500/15 text-tulika-400 rounded-full transition-colors"
                     >
                         <BellOff size={20} />
                     </button>

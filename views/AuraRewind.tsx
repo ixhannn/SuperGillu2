@@ -124,28 +124,24 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 transition={{ duration: 2, ease: "easeInOut" }}
                 d={d}
                 fill={color}
-                className="mix-blend-multiply"
+                className="mix-blend-screen"
             />
         );
     };
 
     return (
-        <div className="min-h-screen bg-[#fdfbf7] p-6 pt-12 flex flex-col relative pb-32 overflow-hidden">
-            {/* Background Blobs */}
-            <div className="absolute top-[-10%] left-[-10%] w-[80%] h-[70%] bg-tulika-100/30 rounded-full blur-[120px] animate-breathe opacity-50"></div>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[70%] bg-pink-100/30 rounded-full blur-[120px] animate-breathe opacity-50" style={{ animationDelay: '-3s' }}></div>
-
+        <div className="min-h-screen p-6 pt-12 flex flex-col relative pb-32 overflow-hidden">
             <header className="mb-10 flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => setView('mood-calendar')} className="p-3 premium-glass rounded-full shadow-sm text-stone-500 spring-press">
+                    <button onClick={() => setView('mood-calendar')} className="p-3 bg-white/10 backdrop-blur-md border border-white/10 rounded-full shadow-sm text-gray-400 spring-press">
                         <ArrowLeft size={24} />
                     </button>
                     <div>
-                        <h1 className="font-serif text-3xl text-stone-900 font-bold">Aura Rewind</h1>
+                        <h1 className="font-serif text-3xl text-gray-100 font-bold">Aura Rewind</h1>
                         <p className="text-[10px] font-bold text-tulika-500 uppercase tracking-widest mt-0.5">{format(currentMonth, 'MMMM yyyy')}</p>
                     </div>
                 </div>
-                <button 
+                <button
                     onClick={async () => {
                         try {
                             if (navigator.share) {
@@ -158,7 +154,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                             }
                         } catch (e) { /* user cancelled share */ }
                     }}
-                    className="p-3 bg-stone-900 text-white rounded-full shadow-lg spring-press"
+                    className="p-3 bg-tulika-500 text-white rounded-full shadow-lg shadow-tulika-500/20 spring-press"
                 >
                     <Share2 size={20} />
                 </button>
@@ -168,18 +164,18 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 {stats.totalEntries === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
                         <div className="relative mb-6">
-                            <div className="absolute inset-0 bg-tulika-200/30 rounded-full blur-2xl animate-breathe-glow" />
-                            <div className="relative p-6 premium-glass rounded-full shadow-sm">
-                                <Palette size={40} className="text-stone-400" style={{ animation: 'breathe-glow 3s ease-in-out infinite' }} />
+                            <div className="absolute inset-0 bg-tulika-500/10 rounded-full blur-2xl animate-breathe-glow" />
+                            <div className="relative p-6 bg-white/5 border border-white/10 rounded-full shadow-sm">
+                                <Palette size={40} className="text-gray-500" style={{ animation: 'breathe-glow 3s ease-in-out infinite' }} />
                             </div>
                         </div>
-                        <p className="font-serif text-stone-600 text-center text-lg mb-2">
+                        <p className="font-serif text-gray-400 text-center text-lg mb-2">
                             Check in with your moods to see your aura story
                         </p>
-                        <p className="text-xs text-stone-400 mb-6">Your monthly rewind will bloom here</p>
+                        <p className="text-xs text-gray-500 mb-6">Your monthly rewind will bloom here</p>
                         <button
                             onClick={() => setView('mood-calendar')}
-                            className="px-6 py-3 bg-stone-900 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg spring-press"
+                            className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-500/20 spring-press"
                         >
                             Go to Aura Board
                         </button>
@@ -188,20 +184,20 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
 
                 {stats.totalEntries > 0 && <>
                 {/* Harmony Wave Card */}
-                <section className="premium-glass rounded-[2.5rem] p-8 shadow-xl shadow-tulika-100/20 overflow-hidden relative border-white">
+                <section className="rounded-[2.5rem] p-8 shadow-xl overflow-hidden relative" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-2">
                             <TrendingUp size={20} className="text-tulika-500" />
-                            <h2 className="font-bold text-stone-800 uppercase tracking-wider text-xs">Harmony Wave</h2>
+                            <h2 className="font-bold text-gray-200 uppercase tracking-wider text-xs">Harmony Wave</h2>
                         </div>
                         <div className="flex gap-4">
                             <div className="flex items-center gap-1.5">
                                 <div className="w-2 h-2 rounded-full bg-tulika-400"></div>
-                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-tighter">{profile.myName}</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{profile.myName}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <div className="w-2 h-2 rounded-full bg-pink-400"></div>
-                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-tighter">{profile.partnerName}</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{profile.partnerName}</span>
                             </div>
                         </div>
                     </div>
@@ -212,45 +208,45 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                             {renderWavePath(stats.partnerWave, '#f472b6', true)}
                         </svg>
                     </div>
-                    
-                    <p className="text-center text-[11px] font-medium text-stone-400 italic mt-4">
+
+                    <p className="text-center text-[11px] font-medium text-gray-400 italic mt-4">
                         "Your emotional pulses are beautifully aligned this month."
                     </p>
                 </section>
 
                 {/* Mood Distribution bubbles */}
                 <section className="grid grid-cols-2 gap-6">
-                    <motion.div 
+                    <motion.div
                         initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-                        className="premium-glass rounded-[2rem] p-6 shadow-lg border-white/60"
+                        className="rounded-[2rem] p-6 shadow-lg" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
                     >
-                        <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">{profile.myName}'s Vibe</h3>
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">{profile.myName}'s Vibe</h3>
                         <div className="flex flex-col gap-3">
                             {stats.myMoods.slice(0, 3).map(([mood, count]) => (
                                 <div key={mood} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <span className="text-lg">{moodThemes[mood]?.emoji || '✨'}</span>
-                                        <span className="text-xs font-bold text-stone-700 capitalize">{mood}</span>
+                                        <span className="text-xs font-bold text-gray-200 capitalize">{mood}</span>
                                     </div>
-                                    <span className="text-[10px] font-black text-stone-300 bg-stone-50 px-2 py-1 rounded-lg">{count}</span>
+                                    <span className="text-[10px] font-black text-gray-400 bg-white/10 px-2 py-1 rounded-lg">{count}</span>
                                 </div>
                             ))}
                         </div>
                     </motion.div>
 
-                    <motion.div 
+                    <motion.div
                         initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-                        className="premium-glass rounded-[2rem] p-6 shadow-lg border-white/60"
+                        className="rounded-[2rem] p-6 shadow-lg" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
                     >
-                        <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">{profile.partnerName}'s Vibe</h3>
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">{profile.partnerName}'s Vibe</h3>
                         <div className="flex flex-col gap-3">
                             {stats.partnerMoods.slice(0, 3).map(([mood, count]) => (
                                 <div key={mood} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <span className="text-lg">{moodThemes[mood]?.emoji || '✨'}</span>
-                                        <span className="text-xs font-bold text-stone-700 capitalize">{mood}</span>
+                                        <span className="text-xs font-bold text-gray-200 capitalize">{mood}</span>
                                     </div>
-                                    <span className="text-[10px] font-black text-stone-300 bg-stone-50 px-2 py-1 rounded-lg">{count}</span>
+                                    <span className="text-[10px] font-black text-gray-400 bg-white/10 px-2 py-1 rounded-lg">{count}</span>
                                 </div>
                             ))}
                         </div>
@@ -258,24 +254,23 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 </section>
 
                 {/* Sync Score */}
-                <section className="premium-glass rounded-[2rem] p-8 flex items-center justify-between shadow-xl border-white relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-tulika-100/20 to-pink-100/20 opacity-0 transition-opacity"></div>
+                <section className="rounded-[2rem] p-8 flex items-center justify-between shadow-xl relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
                     <div className="relative z-10">
-                        <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest mb-1 flex items-center gap-2">
+                        <h3 className="text-xs font-bold text-gray-200 uppercase tracking-widest mb-1 flex items-center gap-2">
                             <Heart size={16} className="text-pink-500 animate-pulse" />
                             Sync Score
                         </h3>
-                        <p className="text-[10px] text-stone-400 font-medium italic">Most aligned on {stats.bestAlignedDay}.</p>
+                        <p className="text-[10px] text-gray-400 font-medium italic">Most aligned on {stats.bestAlignedDay}.</p>
                     </div>
-                    <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full bg-white shadow-lg border-4 border-tulika-50">
-                        <span className="text-2xl font-black text-stone-800">{stats.syncScore}%</span>
+                    <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full bg-white/10 shadow-lg border-4 border-tulika-500/20">
+                        <span className="text-2xl font-black text-gray-100">{stats.syncScore}%</span>
                         <div className="absolute inset-0 rounded-full border-t-4 border-pink-400 animate-spin" style={{ animationDuration: '3s' }}></div>
                     </div>
                 </section>
 
                 {/* Shared Memory Highlight placeholder */}
-                <section className="bg-stone-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-tulika-400/30 rounded-full blur-3xl"></div>
+                <section className="rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden" style={{ background: 'rgba(251,207,232,0.06)', border: '1px solid rgba(251,207,232,0.10)' }}>
+                    <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-tulika-400/20 rounded-full blur-3xl"></div>
                     <div className="relative z-10">
                         <Sparkles size={24} className="text-tulika-300 mb-4" />
                         <h4 className="font-serif text-xl font-bold mb-2">The Monthly Glow</h4>

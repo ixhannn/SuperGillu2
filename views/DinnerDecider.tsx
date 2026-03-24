@@ -115,7 +115,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
   };
 
   // Colors for wheel segments
-  const COLORS = ['#f43f5e', '#fb7185', '#fecdd3', '#e11d48', '#fda4af', '#fff1f2'];
+  const COLORS = ['#f9a8d4', '#fbcfe8', '#fce7f3', '#ec4899', '#fda4af', '#fff1f2'];
 
   const getCoordinatesForPercent = (percent: number) => {
     const x = Math.cos(2 * Math.PI * percent);
