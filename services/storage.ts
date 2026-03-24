@@ -428,7 +428,22 @@ export const StorageService = {
 
         if (tableMap[table]) {
             const config = tableMap[table];
+            const list = DATA_CACHE[config.cache] as any[];
+            const isNew = !list.find(i => i.id === item.id);
+            
             await this._saveInternal(config.cache, config.key, item, config.prefix, undefined, 'sync');
+
+            // Send push notification if app is in background and item is new
+            if (isNew && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+                let msg = '';
+                if (table === 'memories') msg = 'A new memory was added to your vault!';
+                else if (table === 'notes') msg = 'Your partner left you a note 💌';
+                else if (table === 'daily_photos') msg = 'A new Daily Photo was shared 📸';
+                else if (table === 'keepsakes') msg = 'A new keepsake arrived in your box 🎁';
+                else if (table === 'comments') msg = 'Your partner commented on something 💬';
+                
+                if (msg) new Notification('Tulika', { body: msg, icon: '/icon.svg' });
+            }
         } else if (table === 'couple_profile') {
             const local = this.getCoupleProfile();
             if (item.anniversaryDate) {
@@ -594,6 +609,36 @@ export const StorageService = {
         notifyUpdate({ source: 'user', action: 'save', table: 'user_status', id: profile.myName, item: { id: profile.myName, ...s } });
     },
     getPartnerStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.PARTNER_STATUS) || '{"state":"awake","timestamp":""}'),
+
+    getBonsaiState: (): any => {
+        const profile = StorageService.getCoupleProfile();
+        return profile.bonsaiState || { level: 1, xp: 0, myLastWatered: '', partnerLastWatered: '' };
+    },
+    saveBonsaiState: (s: any, source: 'user' | 'sync' = 'user') => {
+        const profile = StorageService.getCoupleProfile();
+        profile.bonsaiState = s;
+        StorageService.saveCoupleProfile(profile, source);
+    },
+
+    addMissedAura: (payload: any) => {
+        const profile = StorageService.getCoupleProfile();
+        if (!profile.missedAuras) profile.missedAuras = [];
+        const msg = {
+            id: crypto.randomUUID(),
+            target: profile.partnerName,
+            timestamp: new Date().toISOString(),
+            payload
+        };
+        profile.missedAuras.push(msg);
+        StorageService.saveCoupleProfile(profile);
+    },
+
+    removeMissedAura: (id: string) => {
+        const profile = StorageService.getCoupleProfile();
+        if (!profile.missedAuras) return;
+        profile.missedAuras = profile.missedAuras.filter((a: any) => a.id !== id);
+        StorageService.saveCoupleProfile(profile);
+    },
 
     async exportAllData() {
         return {

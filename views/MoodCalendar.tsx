@@ -90,33 +90,33 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                 rightSlot={
                     <button
                         onClick={() => setView('aura-rewind')}
-                        className="flex flex-col items-center gap-1 p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl group spring-press shadow-xl"
+                        className="flex flex-col items-center gap-1 p-2 glass-card rounded-2xl group spring-press shadow-sm bg-white/50"
                     >
-                        <div className="bg-white/15 text-white p-2 rounded-xl transition-transform">
+                        <div className="bg-white text-gray-600 p-2 rounded-xl transition-transform shadow-inner">
                             <TrendingUp size={18} />
                         </div>
-                        <span className="text-[8px] font-black uppercase text-gray-400">Rewind</span>
+                        <span className="text-[8px] font-black uppercase text-gray-500">Rewind</span>
                     </button>
                 }
             />
 
             {/* Couple Aura Bloom */}
             <section className="mb-8 relative z-10">
-                <div className="rounded-[2rem] p-6 shadow-xl overflow-hidden relative" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="glass-card-hero p-6 rounded-[2.5rem] shadow-sm relative overflow-hidden ring-1 ring-gray-100">
                     <div className="flex items-center justify-between relative z-10">
                         <div className="flex -space-x-3">
-                           <div className={`w-14 h-14 rounded-full border-4 border-white/20 shadow-lg flex items-center justify-center text-2xl transition-all duration-500 scale-110 ${myMood ? moodThemes[myMood.mood]?.gradient : 'bg-gray-700'} bg-gradient-to-br text-white overflow-hidden`}>
+                           <div className={`w-14 h-14 rounded-full border-4 border-white shadow-lg flex items-center justify-center text-2xl transition-all duration-500 scale-110 ${myMood ? moodThemes[myMood.mood]?.gradient : 'bg-gray-200'} bg-gradient-to-br text-white overflow-hidden`}>
                                 {myMood ? moodThemes[myMood.mood].emoji : '?'}
                                 <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
                            </div>
-                           <div className={`w-14 h-14 rounded-full border-4 border-white/20 shadow-lg flex items-center justify-center text-2xl transition-all duration-500 ${partnerMood ? moodThemes[partnerMood.mood]?.gradient : 'bg-gray-700'} bg-gradient-to-br text-white overflow-hidden`}>
+                           <div className={`w-14 h-14 rounded-full border-4 border-white shadow-lg flex items-center justify-center text-2xl transition-all duration-500 ${partnerMood ? moodThemes[partnerMood.mood]?.gradient : 'bg-gray-200'} bg-gradient-to-br text-white overflow-hidden`}>
                                 {partnerMood ? moodThemes[partnerMood.mood].emoji : '?'}
                            </div>
                         </div>
 
                         <div className="flex-1 px-4">
-                            <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wide">Couple Aura</h3>
-                            <p className="text-xs text-gray-400 italic">
+                            <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide">Couple Aura</h3>
+                            <p className="text-xs text-gray-500 font-medium italic">
                                 {myMood && partnerMood ? "Your moods are blending beautifully..." : "Log your mood to see the aura bloom"}
                             </p>
                         </div>
@@ -132,13 +132,12 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                 </div>
             </section>
 
-            {/* Aura Grid */}
-            <main className="rounded-[2.5rem] p-6 shadow-xl flex-1 flex flex-col relative z-10 animate-spring-up overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <main className="glass-card p-6 rounded-[2.5rem] shadow-sm flex-1 flex flex-col relative z-10 animate-spring-up overflow-hidden border border-gray-100">
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="font-serif text-xl font-bold text-gray-100">{format(currentDate, 'MMMM yyyy')}</h2>
+                    <h2 className="font-serif text-2xl font-bold text-gray-900">{format(currentDate, 'MMMM yyyy')}</h2>
                     <div className="flex gap-2">
-                        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} aria-label="Previous month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white/10 rounded-full text-gray-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"><ChevronLeft size={20} /></button>
-                        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} aria-label="Next month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white/10 rounded-full text-gray-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"><ChevronRight size={20} /></button>
+                        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} aria-label="Previous month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white shadow-sm border border-gray-100 rounded-full text-gray-600 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"><ChevronLeft size={20} /></button>
+                        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} aria-label="Next month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white shadow-sm border border-gray-100 rounded-full text-gray-600 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"><ChevronRight size={20} /></button>
                     </div>
                 </div>
 
@@ -172,8 +171,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                                         <span className="text-[10px] font-bold text-gray-400">{format(day, 'd')}</span>
                                     </div>
                                 ) : (
-                                    <div className={`w-8 h-8 rounded-full border-2 ${isSelected ? 'border-tulika-500/40 bg-tulika-500/15' : 'border-white/10 bg-white/5'} flex items-center justify-center`}>
-                                        <span className={`text-xs ${isSelected ? 'text-tulika-400 font-bold' : 'text-gray-500'}`}>{format(day, 'd')}</span>
+                                    <div className={`w-8 h-8 rounded-full border-2 ${isSelected ? 'border-tulika-300 bg-tulika-50' : 'border-transparent bg-gray-50 hover:bg-gray-100'} flex items-center justify-center transition-colors cursor-pointer`}>
+                                        <span className={`text-xs ${isSelected ? 'text-tulika-600 font-bold' : 'text-gray-500 font-medium'}`}>{format(day, 'd')}</span>
                                     </div>
                                 )}
                             </div>
@@ -187,39 +186,38 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                 {isCheckingIn && (
                     <motion.div
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm p-4"
+                        className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 backdrop-blur-sm p-4"
                         onClick={() => setIsCheckingIn(false)}
                     >
                         <motion.div
                             initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
                             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                            className="rounded-t-[3rem] w-full max-w-lg p-8 pb-12 relative overflow-hidden"
-                            style={{ background: 'linear-gradient(168deg, #1a1225 0%, #1e1428 50%, #150f1e 100%)', border: '1px solid rgba(255,255,255,0.08)' }}
+                            className="rounded-t-[3rem] w-full max-w-lg p-8 pb-12 relative overflow-hidden bg-white/95 backdrop-blur-3xl shadow-2xl border-t border-gray-100 ring-1 ring-gray-100 shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.1)]"
                             onClick={e => e.stopPropagation()}
                         >
-                            <div className="w-12 h-1.5 bg-white/15 rounded-full mx-auto mb-8"></div>
-                            <h2 className="font-serif text-3xl font-bold text-gray-100 mb-2">How are you feeling?</h2>
-                            <p className="text-gray-400 text-sm mb-8 italic">Your mood will bloom on both your boards.</p>
+                            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8"></div>
+                            <h2 className="font-serif text-3xl font-bold text-gray-900 mb-2">How are you feeling?</h2>
+                            <p className="text-gray-500 text-sm mb-8 italic font-medium">Your mood will bloom on both your boards.</p>
 
                             <div className="grid grid-cols-4 gap-4 mb-8">
                                 {Object.entries(moodThemes).filter(([k]) => k !== 'default').map(([key, theme]) => (
                                     <button
                                         key={key}
                                         onClick={() => { feedback.tap(); setSelectedMood(key); }}
-                                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all ${selectedMood === key ? 'bg-white/10 scale-110 shadow-inner' : 'opacity-60 grayscale-[0.5]'}`}
+                                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all ${selectedMood === key ? 'bg-gray-50 scale-110 shadow-inner ring-1 ring-gray-100' : 'opacity-60 grayscale-[0.5]'}`}
                                     >
-                                        <div className={`w-12 h-12 rounded-full ${theme.gradient} bg-gradient-to-br shadow-lg flex items-center justify-center text-xl text-white`}>
+                                        <div className={`w-12 h-12 rounded-full ${theme.gradient} bg-gradient-to-br shadow-md flex items-center justify-center text-xl text-white`}>
                                             {theme.emoji}
                                         </div>
-                                        <span className="text-[10px] font-bold uppercase text-gray-400">{key}</span>
+                                        <span className="text-[10px] font-bold uppercase text-gray-500">{key}</span>
                                     </button>
                                 ))}
                             </div>
 
                             <div className="relative mb-8">
-                                <div className="absolute top-4 left-4 text-gray-500"><MessageCircle size={18} /></div>
+                                <div className="absolute top-4 left-4 text-gray-400"><MessageCircle size={18} /></div>
                                 <textarea
-                                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 pl-12 text-sm outline-none focus:ring-1 focus:ring-tulika-500/30 transition-all font-sans italic text-gray-200 placeholder:text-gray-500"
+                                    className="w-full bg-white shadow-inner border border-gray-100 rounded-2xl p-4 pl-12 text-sm outline-none focus:ring-2 focus:ring-tulika-500/30 transition-all font-sans italic text-gray-800 placeholder:text-gray-400"
                                     placeholder="Add a little note... (Optional)"
                                     rows={2}
                                     value={note}

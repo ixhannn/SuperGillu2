@@ -65,8 +65,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
         <motion.div
             layoutId={`photo-${photo.id}`}
             onClick={onClick}
-            className="relative group rounded-3xl overflow-hidden shadow-md aspect-[3/4] cursor-pointer spring-press transition-transform"
-            style={{ background: '#1a1a1a' }}
+            className="relative group overflow-hidden glass-card aspect-[3/4] cursor-pointer spring-press transition-transform"
         >
             {isLoading ? (
                 <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
@@ -111,7 +110,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
 
                 </div>
             ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center bg-gradient-to-br from-gray-800 to-gray-900">
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center bg-gray-50/50">
                     <Camera size={28} className="mb-3 opacity-30" />
                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Media Unavailable</span>
                 </div>
@@ -172,12 +171,12 @@ const CommentBubble: React.FC<{
             </div>
             {/* Content */}
             <div className="flex-1 min-w-0">
-                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-500/10 border border-tulika-500/20' : 'bg-white/5 border border-white/10'}`}>
+                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-500/10 border border-tulika-500/20' : 'bg-white border border-gray-100 shadow-sm'}`}>
                     <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[11px] font-bold text-gray-300">{comment.senderName}</span>
+                        <span className="text-[11px] font-bold text-gray-800">{comment.senderName}</span>
                         <span className="text-[9px] text-gray-400">{timeStr}</span>
                     </div>
-                    <p className="text-[13px] text-gray-200 leading-snug break-words">{comment.text}</p>
+                    <p className="text-[13px] text-gray-700 leading-snug break-words">{comment.text}</p>
                 </div>
                 <div className="flex items-center gap-4 mt-1 ml-1">
                     <button
@@ -286,13 +285,12 @@ const PostViewer: React.FC<{
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] flex flex-col"
-            style={{ background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 25%, #1a0e1e 50%, #120a18 75%, #0d0810 100%)' }}
+            className="fixed inset-0 z-[100] flex flex-col bg-gray-100/90 backdrop-blur-3xl animate-fade-in"
         >
             {/* ── Header ── */}
-            <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 bg-white/60 backdrop-blur-md border-b border-white/80 shadow-sm z-20">
                 <div className="flex items-center gap-3">
-                    <button onClick={onClose} className="p-1.5 text-gray-400 transition-colors">
+                    <button onClick={onClose} className="p-1.5 text-gray-600 transition-colors">
                         <ArrowLeft size={22} />
                     </button>
                     <div className="flex items-center gap-2.5">
@@ -300,10 +298,10 @@ const PostViewer: React.FC<{
                             {photo.senderId === myDeviceId ? profile.myName.charAt(0) : profile.partnerName.charAt(0)}
                         </div>
                         <div>
-                            <p className="text-sm font-bold text-gray-100 leading-tight">
+                            <p className="text-sm font-bold text-gray-800 leading-tight">
                                 {photo.senderId === myDeviceId ? profile.myName : profile.partnerName}
                             </p>
-                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                                 {dateStr} · {timeStr}
                             </p>
                         </div>
@@ -356,8 +354,8 @@ const PostViewer: React.FC<{
 
             {/* ── Caption ── */}
             {photo.caption && (
-                <div className="px-5 py-4 border-b border-white/8" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                    <p className="text-[15px] text-gray-200 leading-relaxed font-medium">{photo.caption}</p>
+                <div className="px-5 py-4 border-b border-gray-200/60 bg-white/40 shadow-sm z-10">
+                    <p className="text-[15px] text-gray-800 leading-relaxed font-medium">{photo.caption}</p>
                 </div>
             )}
 
@@ -404,7 +402,7 @@ const PostViewer: React.FC<{
             </div>
 
             {/* ── Comment Input Bar ── */}
-            <div className="flex-shrink-0 border-t border-white/8 px-4 py-3 safe-area-bottom" style={{ background: 'rgba(15,10,20,0.8)', backdropFilter: 'blur(12px)' }}>
+            <div className="flex-shrink-0 border-t border-gray-200/60 px-4 py-3 safe-area-bottom bg-white/60 backdrop-blur-md shadow-[0_-4px_24px_rgba(0,0,0,0.03)] z-20">
                 {replyTo && (
                     <div className="flex items-center justify-between mb-2 px-1">
                         <span className="text-[11px] text-tulika-500 font-bold">
@@ -563,14 +561,14 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 aria-label="Share a photo moment"
-                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-500/15 text-tulika-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2"
+                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-50 text-tulika-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 shadow-sm border border-tulika-100"
                             >
                                 <Camera size={20} />
                             </button>
                             <button
                                 onClick={() => videoInputRef.current?.click()}
                                 aria-label="Share a video moment"
-                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-500/15 text-blue-400 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 shadow-sm border border-blue-100"
                             >
                                 <Video size={20} />
                             </button>
@@ -604,10 +602,10 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
             {/* Upload Modal */}
             {isUploading && ReactDOM.createPortal(
-                <div className="fixed inset-0 z-50 flex flex-col" style={{ animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both', background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 25%, #1a0e1e 50%, #120a18 75%, #0d0810 100%)' }}>
-                    <div className="p-4 flex items-center justify-between border-b border-white/8">
-                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} /></button>
-                        <span className="font-bold text-sm uppercase tracking-widest text-gray-200">Post Moment</span>
+                <div className="fixed inset-0 z-50 flex flex-col bg-gray-50/95 backdrop-blur-3xl" style={{ animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
+                    <div className="p-4 flex items-center justify-between border-b border-gray-200/60 bg-white/50 shadow-sm">
+                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer text-gray-600 focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} /></button>
+                        <span className="font-bold text-sm uppercase tracking-widest text-gray-800">Post Moment</span>
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
@@ -636,7 +634,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                             value={caption}
                             onChange={e => setCaption(e.target.value)}
                             placeholder="Add a caption..."
-                            className="w-full bg-white/5 p-4 rounded-2xl font-medium outline-none text-gray-200 placeholder:text-gray-500 border border-white/10 focus:ring-2 focus:ring-tulika-500/30"
+                            className="w-full bg-white p-4 rounded-2xl font-medium outline-none text-gray-800 placeholder:text-gray-400 border border-gray-200 shadow-sm focus:ring-2 focus:ring-tulika-500/30"
                         />
                         <p className="mt-4 text-[10px] text-gray-400 text-center font-bold uppercase tracking-widest">
                             Visible for 24 hours

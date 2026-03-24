@@ -30,16 +30,16 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
 
             {variant === 'centered' ? (
                 <div className="text-center absolute left-1/2 -translate-x-1/2 pointer-events-none">
-                    <h2 className="font-serif font-bold text-2xl text-gray-100">{title}</h2>
+                    <h2 className="font-serif font-bold text-2xl text-gray-900">{title}</h2>
                     {subtitle && (
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-400">{subtitle}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-500">{subtitle}</p>
                     )}
                 </div>
             ) : (
                 <div className="flex-1 ml-2">
-                    <h2 className="font-serif font-bold text-xl text-gray-100">{title}</h2>
+                    <h2 className="font-serif font-bold text-xl text-gray-900">{title}</h2>
                     {subtitle && (
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-400">{subtitle}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-500">{subtitle}</p>
                     )}
                 </div>
             )}

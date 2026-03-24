@@ -278,8 +278,19 @@ class SyncServiceClass {
         syncEventTarget.dispatchEvent(new Event('together-session-end'));
     }
 
-    public sendSignal(type: string, payload: any = {}) {
-        this.channel?.send({ type: 'broadcast', event: 'signal', payload: { signalType: type, payload } });
+    public sendSignal(type: string, payload?: any) {
+        if (!this.isConnected || !this.channel) return;
+        const msg = { signalType: type, payload, timestamp: new Date().toISOString() };
+        this.channel.send({
+            type: 'broadcast',
+            event: 'signal',
+            payload: msg
+        });
+
+        // Offline Inbox
+        if (type === 'AURA_SIGNAL') {
+            StorageService.addMissedAura(payload);
+        }
     }
 
     private updateStatus(msg: string) {

@@ -8,6 +8,14 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(err => {
+      console.log('SW registration failed: ', err);
+    });
+  });
+}
+
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>

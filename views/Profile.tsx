@@ -401,7 +401,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
                         <div className="flex justify-between items-end">
                             <div>
-                                <p className="text-2xl font-mono font-bold text-gray-100">{storageInfo.used}</p>
+                                <p className="text-2xl font-mono font-bold text-gray-900">{storageInfo.used}</p>
                                 <p className="text-[10px] text-indigo-400">Total stored locally</p>
                             </div>
                             <div className="h-8 w-px bg-indigo-500/30"></div>
@@ -477,7 +477,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             <X size={20} />
                         </button>
 
-                        <h3 className="font-serif font-bold text-2xl text-center text-gray-100 mb-2">Who are you?</h3>
+                        <h3 className="font-serif font-bold text-2xl text-center text-gray-900 mb-2">Who are you?</h3>
                         <p className="text-center text-gray-400 text-sm mb-8">Select your identity to switch profiles.</p>
 
                         <div className="space-y-4">
@@ -487,7 +487,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             >
                                 <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl transition-transform">👩🏻</div>
                                 <div className="text-left">
-                                    <span className="block font-bold text-gray-100 text-lg transition-colors">Tulika</span>
+                                    <span className="block font-bold text-gray-900 text-lg transition-colors">Tulika</span>
                                     <span className="text-xs text-gray-400">Switch to Tulika's view</span>
                                 </div>
                             </button>
@@ -498,7 +498,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             >
                                 <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl transition-transform">👨🏻</div>
                                 <div className="text-left">
-                                    <span className="block font-bold text-gray-100 text-lg transition-colors">Ishan</span>
+                                    <span className="block font-bold text-gray-900 text-lg transition-colors">Ishan</span>
                                     <span className="text-xs text-gray-400">Switch to Ishan's view</span>
                                 </div>
                             </button>

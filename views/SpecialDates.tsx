@@ -96,17 +96,17 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
       />
 
       {showAdd && (
-        <div className="p-4 rounded-3xl shadow-lg mb-6 animate-pop-in" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="p-4 rounded-[2rem] shadow-sm mb-6 animate-pop-in glass-card">
           <input 
             type="text" 
             placeholder="Title (e.g. Anniversary)"
-            className="w-full mb-3 p-3 bg-white/5 rounded-xl border border-white/10 text-gray-200 placeholder:text-gray-500 focus:ring-1 focus:ring-tulika-500/50"
+            className="w-full mb-3 p-3 bg-white rounded-xl border border-gray-100 font-serif text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-tulika-500/50 shadow-inner"
             value={newTitle}
             onChange={e => setNewTitle(e.target.value)}
           />
           <input 
             type="date" 
-            className="w-full mb-4 p-3 bg-white/5 rounded-xl border border-white/10 text-gray-300 placeholder:text-gray-500 focus:ring-1 focus:ring-tulika-500/50"
+            className="w-full mb-4 p-3 bg-white rounded-xl border border-gray-100 font-serif text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-tulika-500/50 shadow-inner"
             value={newDate}
             onChange={e => setNewDate(e.target.value)}
           />
@@ -123,13 +123,13 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
         {dates.length === 0 && !showAdd && (
              <div className="flex flex-col items-center text-center py-16 animate-fade-in">
                 <div className="relative mb-5">
-                    <div className="absolute inset-0 bg-red-500/10 rounded-full blur-2xl animate-breathe-glow" />
-                    <div className="relative p-5 bg-red-500/10 rounded-full border border-red-500/20">
-                        <Calendar size={32} className="text-red-400/50" />
+                    <div className="absolute inset-0 bg-red-400/20 rounded-full blur-2xl animate-breathe-glow" />
+                    <div className="relative p-5 glass-card rounded-full text-red-500/80">
+                        <Calendar size={32} />
                     </div>
                 </div>
-                <p className="font-serif text-gray-400 text-lg mb-1">No important dates saved yet</p>
-                <p className="text-xs text-gray-500 mb-5">Mark the moments that matter</p>
+                <p className="font-serif text-gray-800 font-bold text-lg mb-1">No important dates saved yet</p>
+                <p className="text-xs text-gray-500 mb-5 font-medium">Mark the moments that matter</p>
                 <button
                     onClick={() => setShowAdd(true)}
                     className="px-5 py-2.5 bg-tulika-500 text-white rounded-full text-sm font-bold shadow-lg shadow-tulika-500/20 spring-press flex items-center gap-2"
@@ -161,16 +161,15 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                       handleDelete(item.id);
                     }
                   }}
-                  className="rounded-3xl p-5 shadow-sm flex items-center justify-between relative spring-press cursor-grab active:cursor-grabbing"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  className="rounded-[2rem] p-5 flex items-center justify-between relative spring-press cursor-grab active:cursor-grabbing glass-card"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-red-500/15 flex items-center justify-center text-red-400">
                       <Heart size={24} fill="currentColor" className="opacity-80" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-200">{item.title}</h3>
-                      <p className="text-xs text-gray-500">{new Date(item.date).toDateString()}</p>
+                      <h3 className="font-semibold text-gray-800">{item.title}</h3>
+                      <p className="text-xs text-gray-500 font-medium">{new Date(item.date).toDateString()}</p>
                     </div>
                   </div>
                   <div className="text-right">

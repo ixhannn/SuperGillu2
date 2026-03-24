@@ -61,8 +61,8 @@ export default {
                 },
             },
             fontFamily: {
-                sans: ['Inter', 'system-ui', 'sans-serif'],
-                serif: ['Playfair Display', 'Georgia', 'serif'],
+                sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+                serif: ['"Outfit"', 'Playfair Display', 'Georgia', 'serif'],
                 mono: ['JetBrains Mono', 'monospace'],
             },
             fontSize: {

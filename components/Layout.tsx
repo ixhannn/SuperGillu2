@@ -45,9 +45,9 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   return (
     <ConfettiContext.Provider value={{ trigger: () => {} }}>
       <div
-        className="fixed inset-0 text-gray-100 overflow-hidden flex flex-col"
+        className="fixed inset-0 text-gray-800 overflow-hidden flex flex-col"
         style={{
-          background: 'linear-gradient(168deg, #1a0c14 0%, #1f0e19 25%, #24111c 50%, #1c0d16 75%, #140a10 100%)',
+          background: 'linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%)',
         }}
       >
         {/* Page transition progress bar */}

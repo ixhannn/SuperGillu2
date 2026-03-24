@@ -85,11 +85,11 @@ const DarkGlassMaterial = shaderMaterial(
     uTime: 0,
     uMouse: new THREE.Vector2(0, 0),
     uNoiseScale: 0.8,
-    uNoiseSpeed: 0.3,
-    uNoiseStrength: 0.25,
+    uNoiseSpeed: 0.12, /* Slower, more hypnotic and soothing */
+    uNoiseStrength: 0.28,
     uFresnelPower: 3.0,
-    uRimColor: new THREE.Color('#ffffff'),
-    uAccentColor: new THREE.Color('#d4a574'),
+    uRimColor: new THREE.Color('#fbcfe8'), /* Soft pink rim */
+    uAccentColor: new THREE.Color('#fda4af'), /* Rose accent */
     uHeartBlend: 0.0,
   },
   // Vertex shader
@@ -170,12 +170,12 @@ const DarkGlassMaterial = shaderMaterial(
       float dust = smoothstep(0.97, 1.0, fract(sin(dot(vWorldPosition.xy * 40.0 + uTime * 0.1, vec2(12.9898, 78.233))) * 43758.5453));
       dust += smoothstep(0.98, 1.0, fract(sin(dot(vWorldPosition.yz * 30.0 - uTime * 0.05, vec2(39.346, 11.135))) * 43758.5453));
 
-      // Compose: very dark body + bright edges + caustics + dust
-      vec3 bodyColor = vec3(0.01, 0.01, 0.012);
-      vec3 rimLight = uRimColor * fresnel * 0.7;
-      vec3 causticLight = vec3(0.9, 0.85, 0.75) * caustic * fresnel;
-      vec3 specLight = vec3(1.0) * (spec1 * 0.4 + spec2 * 0.3);
-      vec3 dustLight = vec3(0.8, 0.75, 0.65) * dust * 0.6;
+      // Compose: deep hypnotic crimson/blood red body + bright soft luminous edges
+      vec3 bodyColor = vec3(0.55, 0.02, 0.15); // Deep soothing crimson/red
+      vec3 rimLight = uRimColor * fresnel * 0.85; // A bit stronger glow
+      vec3 causticLight = vec3(1.0, 0.4, 0.5) * caustic * fresnel; // Reddish caustics
+      vec3 specLight = vec3(1.0, 0.8, 0.9) * (spec1 * 0.4 + spec2 * 0.3); // Soft speculars
+      vec3 dustLight = vec3(1.0, 0.5, 0.6) * dust * 0.4; // Soft red dust
 
       vec3 color = bodyColor + rimLight + causticLight + specLight + dustLight + accent;
 

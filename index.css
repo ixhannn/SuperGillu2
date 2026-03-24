@@ -1,10 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ============================================
-   TULIKA — Premium Design System v3
-   Frosted white glass in soft pink light
+   TULIKA — Premium Design System v4 (Pro Max)
+   True geometric glass, massive radii, cinematic shadows
    ============================================ */
 
 /* ── DESIGN TOKENS ───────────────────────────────────────────────────────── */
@@ -22,12 +24,12 @@
   --color-nav-active:     #C4687E;
   --color-nav-inactive:   #C4B5BA;
 
-  /* The shadow system — always pink, never grey */
-  --shadow-xs:    0 2px 8px rgba(232, 160, 176, 0.08);
-  --shadow-sm:    0 4px 16px rgba(232, 160, 176, 0.12), 0 1px 4px rgba(232, 160, 176, 0.08);
-  --shadow-md:    0 8px 32px rgba(232, 160, 176, 0.16), 0 2px 8px rgba(232, 160, 176, 0.10);
-  --shadow-lg:    0 16px 48px rgba(232, 160, 176, 0.20), 0 4px 16px rgba(232, 160, 176, 0.12);
-  --shadow-float: 0 24px 64px rgba(232, 160, 176, 0.24), 0 8px 24px rgba(232, 160, 176, 0.14), 0 2px 6px rgba(232, 160, 176, 0.10);
+  /* The shadow system — ultra soft, expansive, cinematic */
+  --shadow-xs:    0 4px 12px rgba(232, 160, 176, 0.05);
+  --shadow-sm:    0 8px 24px rgba(232, 160, 176, 0.08), 0 2px 8px rgba(232, 160, 176, 0.04);
+  --shadow-md:    0 16px 40px rgba(232, 160, 176, 0.12), 0 4px 12px rgba(232, 160, 176, 0.06);
+  --shadow-lg:    0 32px 64px rgba(232, 160, 176, 0.16), 0 8px 24px rgba(232, 160, 176, 0.08);
+  --shadow-float: 0 40px 80px rgba(232, 160, 176, 0.20), 0 12px 36px rgba(232, 160, 176, 0.10), 0 4px 12px rgba(232, 160, 176, 0.06);
 
   /* Breathing rhythm — CSS custom-property consumers */
   --breath:               0.5;
@@ -47,12 +49,12 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 
-  /* Geometry */
-  --radius-card: 24px;
+  /* Geometry - Huge Apple-like Radii */
+  --radius-card: 32px;
   --radius-pill: 100px;
-  --glass-bg:     rgba(255, 252, 252, 0.72);
-  --glass-border: rgba(232, 160, 176, 0.15);
-  --glass-blur:   32px;
+  --glass-bg:     rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(255, 255, 255, 1);
+  --glass-blur:   48px;
 }
 
 /* ── SELECTION COLOR — even selected text is pink ────────────────────────── */
@@ -125,31 +127,31 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 
 /* Layer 2 — Primary cards */
 .glass-card {
-  background: rgba(255, 252, 252, 0.72);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  border-bottom-color: rgba(232, 160, 176, 0.15);
-  border-right-color: rgba(232, 160, 176, 0.10);
+  background: rgba(255, 255, 255, 0.80);
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 1);
+  border-bottom-color: rgba(255, 255, 255, 0.7);
+  border-right-color: rgba(255, 255, 255, 0.7);
   box-shadow:
     var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(232, 160, 176, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-card);
 }
 
 /* Layer 3 — Hero / elevated cards */
 .glass-card-hero {
-  background: rgba(255, 252, 252, 0.78);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  border-bottom-color: rgba(232, 160, 176, 0.18);
-  border-right-color: rgba(232, 160, 176, 0.12);
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 1);
+  border-bottom-color: rgba(255, 255, 255, 0.8);
+  border-right-color: rgba(255, 255, 255, 0.8);
   box-shadow:
     var(--shadow-lg),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(232, 160, 176, 0.10);
+    inset 0 1.5px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-card);
 }
 
@@ -177,13 +179,13 @@ canvas.fixed, .fixed[aria-hidden="true"] {
     inset 0 1px 0 rgba(255, 255, 255, 0.90);
 }
 
-/* ── BENTO CARD — lighter glass for grid items ────────────────────────────── */
+/* ── BENTO CARD — lighter glass for grid items ──────────────────────────────*/ /* Grid bento layout cards */
 .bento-card {
-  background: rgba(255, 252, 252, 0.60);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.75);
-  border-bottom-color: rgba(232, 160, 176, 0.12);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(32px) saturate(150%);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.90);
+  border-bottom-color: rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-card);
   box-shadow:
     var(--shadow-sm),
@@ -244,21 +246,24 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 /* ── VIEW HEADER — standardized sticky header for all views ───────────────── */
 .view-header {
   position: sticky;
-  top: 0;
+  top: max(env(safe-area-inset-top, 1rem), 1rem);
   z-index: 20;
-  padding: 1rem 1.5rem;
-  padding-top: max(env(safe-area-inset-top, 0px), 3rem);
-  background: rgba(15, 10, 20, 0.85);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 1rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 100px;
+  box-shadow: 0 8px 24px rgba(232, 160, 176, 0.15), inset 0 1px 0 rgba(255,255,255,1);
 }
 
 .view-header--borderless {
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  border-bottom: none;
+  border: none;
+  box-shadow: none;
 }
 
 /* ── 3D DEPTH SYSTEM ─────────────────────────────────────────────────────── */

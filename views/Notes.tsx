@@ -89,8 +89,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
         rightSlot={
           <button
             onClick={() => setIsEditing(true)}
-            className="text-white p-3 rounded-2xl spring-press"
-            style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)' }}
+            className="text-gray-600 p-3 rounded-2xl spring-press glass-card"
           >
             <Plus size={22} />
           </button>
@@ -100,17 +99,17 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
       <div className="px-5">
 
       {isEditing && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
-            <div className="w-full max-w-sm rounded-3xl p-6 animate-pop-in" style={{ background: 'rgba(20,15,28,0.92)', backdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
+            <div className="w-full max-w-sm p-6 animate-pop-in glass-card-hero">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-gray-100">New Note</h3>
+                    <h3 className="font-semibold text-gray-800">New Note</h3>
                     <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} className="text-gray-500" /></button>
                 </div>
                 <textarea 
                     autoFocus
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
-                    className="w-full h-40 bg-white/5 p-4 rounded-xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed text-gray-200 placeholder:text-gray-600"
+                    className="w-full h-40 bg-gray-100/50 p-4 rounded-2xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed text-gray-800 placeholder:text-gray-400 shadow-inner"
                     placeholder="Write something sweet..."
                 />
                 <button 
@@ -128,14 +127,13 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
           <motion.div
             key={note.id}
             variants={staggerItem}
-            className={`${note.color} p-4 rounded-3xl min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press ${longPressId === note.id ? 'scale-[1.02] ring-2 ring-red-400/40' : ''} transition-all`}
-            style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+            className={`${note.color} p-4 rounded-[2rem] min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press glass-card ${longPressId === note.id ? 'scale-[1.02] ring-2 ring-red-400/40' : ''} transition-all`}
             onPointerDown={() => handlePointerDown(note.id)}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
             onClick={() => { if (longPressId && longPressId !== note.id) setLongPressId(null); }}
           >
-            <p className="font-serif text-gray-200 leading-snug whitespace-pre-wrap text-sm">
+            <p className="font-serif text-gray-700 leading-snug whitespace-pre-wrap text-[15px] font-medium">
                 {note.content}
             </p>
             <div className="flex justify-between items-end mt-4">
@@ -168,12 +166,11 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
                       <PenLine size={36} className="text-yellow-400/40" />
                   </div>
               </div>
-              <p className="font-serif text-gray-400 text-lg mb-2">Write a little note...</p>
-              <p className="text-xs text-gray-500 mb-6">Leave sweet words for each other</p>
+              <p className="font-serif text-gray-800 font-bold text-lg mb-2">Write a little note...</p>
+              <p className="text-xs text-gray-500 mb-6 font-medium">Leave sweet words for each other</p>
               <button
                   onClick={() => setIsEditing(true)}
-                  className="px-6 py-3 bg-white/10 text-white rounded-full text-sm font-bold uppercase tracking-wider spring-press flex items-center gap-2"
-                  style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+                  className="px-6 py-3 glass-card text-tulika-600 font-bold uppercase tracking-wider spring-press flex items-center gap-2"
               >
                   <Plus size={18} /> Write a Note
               </button>

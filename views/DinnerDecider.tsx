@@ -139,7 +139,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
           {/* Spinning SVG */}
           <div
-            className="w-full h-full rounded-full overflow-hidden border-4 border-white/20 transition-transform duration-[3000ms] ease-[cubic-bezier(0.15,0.2,0.25,1)] transform-gpu"
+            className="w-full h-full rounded-full overflow-hidden border-4 border-gray-100 shadow-xl transition-transform duration-[3000ms] ease-[cubic-bezier(0.15,0.2,0.25,1)] transform-gpu"
             style={{ transform: `rotate(${rotation}deg) translateZ(0)`, willChange: 'transform' }}
           >
             <svg viewBox="-1 -1 2 2" className="w-full h-full transform -rotate-90">
@@ -190,8 +190,8 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
         {/* Winner Display */}
         {winner && (
-          <div className="mb-6 bg-tulika-500 text-white px-6 py-3 rounded-2xl animate-elastic-pop text-center">
-            <p className="text-xs uppercase font-bold opacity-80 mb-1">We are eating</p>
+          <div className="mb-6 bg-tulika-500 text-white px-6 py-4 rounded-2xl animate-elastic-pop text-center shadow-lg shadow-tulika-500/30 ring-1 ring-tulika-200">
+            <p className="text-xs uppercase font-bold opacity-90 mb-1 tracking-wider">We are eating</p>
             <p className="text-2xl font-serif font-bold">{winner}! 🍽️</p>
           </div>
         )}
@@ -199,7 +199,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
         <button
           onClick={startSpin}
           disabled={isSpinning || options.length < 2}
-          className="w-full max-w-xs bg-white/10 border border-white/12 text-white py-4 rounded-2xl font-bold spring-press transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8"
+          className="w-full max-w-xs bg-tulika-500 text-white py-4 rounded-2xl font-bold spring-press transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8 shadow-xl shadow-tulika-500/20 ring-1 ring-tulika-200"
         >
           <RotateCw size={20} className={isSpinning ? 'animate-spin' : ''} />
           {isSpinning ? 'Spinning...' : 'Spin the Wheel'}
@@ -214,11 +214,11 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
               onChange={(e) => setNewOption(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
               placeholder="Add food option..."
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-gray-200 placeholder-gray-500 focus:ring-2 focus:ring-tulika-200 outline-none"
+              className="flex-1 bg-white border border-gray-200 shadow-inner rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-tulika-500/50 outline-none"
             />
             <button
               onClick={handleAdd}
-              className="bg-tulika-500/15 text-tulika-400 p-3 rounded-xl border border-white/10"
+              className="bg-tulika-50 text-tulika-500 p-3 rounded-xl border border-tulika-100 shadow-sm"
             >
               <Plus size={24} />
             </button>
@@ -226,23 +226,23 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
           <motion.div className="space-y-2" variants={staggerContainer} initial="hidden" animate="show">
             {options.map(opt => (
-              <motion.div key={opt.id} variants={staggerItem} className="flex items-center justify-between bg-white/6 border border-white/8 p-3 rounded-xl spring-press">
-                <span className="font-medium text-gray-200">{opt.text}</span>
-                <button onClick={() => handleDelete(opt.id)} aria-label={`Delete ${opt.text}`} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-500 cursor-pointer focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:rounded-lg focus-visible:ring-offset-1">
+              <motion.div key={opt.id} variants={staggerItem} className="flex items-center justify-between bg-white border border-gray-100 shadow-sm p-3 rounded-xl spring-press">
+                <span className="font-medium text-gray-700">{opt.text}</span>
+                <button onClick={() => handleDelete(opt.id)} aria-label={`Delete ${opt.text}`} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:rounded-lg focus-visible:ring-offset-1">
                   <Trash2 size={18} />
                 </button>
               </motion.div>
             ))}
             {options.length === 0 && (
-              <div className="flex flex-col items-center text-center py-8 animate-fade-in">
+              <div className="flex flex-col items-center text-center py-8 animate-fade-in glass-card rounded-[2rem] mt-4 border border-gray-100 shadow-sm">
                 <div className="relative mb-4">
-                  <div className="absolute inset-0 bg-tulika-500/10 rounded-full blur-xl" />
-                  <div className="relative p-4 bg-white/5 rounded-full border border-white/10">
-                    <Utensils size={28} className="text-gray-500" style={{ animation: 'wiggle-spring 2s ease-in-out infinite' }} />
+                  <div className="absolute inset-0 bg-tulika-100 rounded-full blur-xl" />
+                  <div className="relative p-4 bg-white rounded-full border border-gray-100 shadow-inner">
+                    <Utensils size={28} className="text-gray-400" style={{ animation: 'wiggle-spring 2s ease-in-out infinite' }} />
                   </div>
                 </div>
-                <p className="text-sm font-medium text-gray-400 mb-1">Add some options to spin the wheel</p>
-                <p className="text-xs text-gray-500">You need at least 2 to get started</p>
+                <p className="text-sm font-bold text-gray-800 mb-1">Add some options to spin</p>
+                <p className="text-xs font-medium text-gray-500">You need at least 2 to get started</p>
               </div>
             )}
           </motion.div>

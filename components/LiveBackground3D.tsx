@@ -24,23 +24,23 @@ const BOKEH_COUNT   = 40;   // large, slow, dreamy
 const SPARKLE_COUNT = 20;   // small, faster, bright accents
 const TOTAL         = BOKEH_COUNT + SPARKLE_COUNT;
 
-// ── Color palette — weighted towards soft baby pink ───────────────
+// ── Color palette — deep, rich pinks for better contrast against light background ───────────────
 const BOKEH_COLORS = [
-  new THREE.Color('#fce7f3'), // lightest blush     — most common
-  new THREE.Color('#fbcfe8'), // soft blush
-  new THREE.Color('#fbcfe8'), // soft blush (double weight)
-  new THREE.Color('#f9a8d4'), // baby pink
-  new THREE.Color('#f9a8d4'), // baby pink (double weight)
-  new THREE.Color('#fda4af'), // rose blush
-  new THREE.Color('#f0abfc'), // lavender blush
-  new THREE.Color('#f472b6'), // pink (rare — accent)
+  new THREE.Color('#f472b6'), // pink
+  new THREE.Color('#f472b6'), // pink (double weight)
+  new THREE.Color('#ec4899'), // bright dark pink
+  new THREE.Color('#ec4899'), // bright dark pink (double weight)
+  new THREE.Color('#db2777'), // deep true pink
+  new THREE.Color('#db2777'), // deep true pink
+  new THREE.Color('#be185d'), // magenta pink
+  new THREE.Color('#9d174d'), // dark rose
 ];
 
 const SPARKLE_COLORS = [
-  new THREE.Color('#fce7f3'), // near-white blush
-  new THREE.Color('#fbcfe8'), // soft blush
-  new THREE.Color('#f9a8d4'), // baby pink
-  new THREE.Color('#ffffff'), // pure white sparkle
+  new THREE.Color('#f472b6'), // standard pink
+  new THREE.Color('#ec4899'), // bright dark pink
+  new THREE.Color('#db2777'), // deep true pink
+  new THREE.Color('#ffffff'), // pure white sparkle accent
 ];
 
 // ── Seeded random helper ───────────────────────────────────────────
@@ -230,7 +230,7 @@ export const LiveBackground3D: React.FC = () => {
       `,
       transparent: true,
       depthWrite:  false,
-      blending:    THREE.AdditiveBlending,
+      blending:    THREE.NormalBlending, // Fix: Changed from Additive to Normal so it doesn't blow out the light background to pure white
       vertexColors: true,
     });
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, ChevronRight, Zap, Award, Wind, Sun, Map } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, ChevronRight, Zap, Award, Wind, Sun, Map, TreeDeciduous } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -454,8 +454,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             }
                         </div>
                         <div className="text-left">
-                            <h1 className="font-serif text-headline text-gray-50 leading-none" style={{ fontSize: '1.625rem' }}>
-                                {profile.myName} <span className="text-tulika-400">&</span> {profile.partnerName}
+                            <h1 className="font-serif text-headline text-gray-800 leading-none" style={{ fontSize: '1.625rem' }}>
+                                {profile.myName} <span className="text-tulika-500">&</span> {profile.partnerName}
                             </h1>
                             {streak > 0 && (
                                 <div className="inline-flex items-center gap-1 bg-amber-100/80 text-amber-600 px-2 py-0.5 rounded-full mt-1">
@@ -738,7 +738,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </motion.div>
 
-                {/* Open When — amber "letter" aesthetic */}
+                {/* Open When — bento-card alignment */}
                 <motion.div variants={gridItemVariants}>
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
@@ -746,26 +746,22 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('open-when')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div
-                            className="accent-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press"
-                            style={{ '--accent-bg': 'rgba(251,191,36,0.06)', '--accent-border': 'rgba(251,191,36,0.10)', '--accent-shadow': 'rgba(251,191,36,0.08)' } as React.CSSProperties}
-                        >
+                        <div className="bento-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press">
                             <motion.div
                                 className="relative"
                                 animate={{ rotate: [-1, 1, -1] }}
                                 transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
                             >
-                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.08)' }}>
-                                    <Mail size={26} className="text-amber-300" />
+                                <div className="p-3.5 rounded-2xl relative z-10 bg-amber-50 border border-amber-100/50">
+                                    <Mail size={26} className="text-amber-400" />
                                 </div>
                             </motion.div>
-                            <span className="font-semibold text-sm text-gray-200">Open When</span>
-                            <div className="absolute bottom-0 left-4 right-4 h-[1px] bg-amber-300/10" />
+                            <span className="font-semibold text-sm text-gray-800">Open When</span>
                         </div>
                     </motion.div>
                 </motion.div>
 
-                {/* Dinner Decider — playful orange aesthetic */}
+                {/* Dinner Decider — bento-card alignment */}
                 <motion.div variants={gridItemVariants}>
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
@@ -773,20 +769,17 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('dinner-decider')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div
-                            className="accent-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press"
-                            style={{ '--accent-bg': 'rgba(251,146,60,0.06)', '--accent-border': 'rgba(251,146,60,0.10)', '--accent-shadow': 'rgba(251,146,60,0.08)' } as React.CSSProperties}
-                        >
+                        <div className="bento-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press">
                             <motion.div
                                 className="relative"
                                 animate={{ rotate: [0, 10, -10, 0], y: [0, -3, 0] }}
                                 transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
                             >
-                                <div className="p-3.5 rounded-2xl relative z-10" style={{ background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.08)' }}>
-                                    <Utensils size={26} className="text-orange-300" />
+                                <div className="p-3.5 rounded-2xl relative z-10 bg-orange-50 border border-orange-100/50">
+                                    <Utensils size={26} className="text-orange-400" />
                                 </div>
                             </motion.div>
-                            <span className="font-semibold text-sm text-gray-200">Dinner?</span>
+                            <span className="font-semibold text-sm text-gray-800">Dinner?</span>
                         </div>
                     </motion.div>
                 </motion.div>
@@ -816,6 +809,45 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                             </div>
                             <ChevronRight size={18} className="text-white/30 relative z-10" />
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Row: Aura Signal + Bonsai Bloom */}
+                <motion.div variants={gridItemVariants} className="col-span-1">
+                    <motion.div
+                        whileTap={{ scale: 0.97, y: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                        onClick={() => setView('aura-signal')}
+                        className="cursor-pointer h-full"
+                    >
+                        <div
+                            className="bento-card p-5 flex flex-col justify-center items-center text-center relative overflow-hidden h-28 spring-press border border-white/10"
+                            style={{ background: 'linear-gradient(135deg, #110A14 0%, #170E1A 100%)' }}
+                        >
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
+                            <Sparkles size={22} className="text-blue-300 mb-2" />
+                            <h3 className="font-serif font-bold text-base text-gray-900 leading-tight">Vibe Check</h3>
+                            <p className="text-[10px] text-gray-900 mt-1">Send a signal</p>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                <motion.div variants={gridItemVariants} className="col-span-1">
+                    <motion.div
+                        whileTap={{ scale: 0.97, y: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                        onClick={() => setView('bonsai-bloom')}
+                        className="cursor-pointer h-full"
+                    >
+                        <div
+                            className="bento-card p-5 flex flex-col justify-center items-center text-center relative overflow-hidden h-28 spring-press border border-emerald-900/30"
+                            style={{ background: 'linear-gradient(135deg, #064E3B 0%, #065F46 100%)' }}
+                        >
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-400/20 rounded-full blur-xl pointer-events-none" />
+                            <TreeDeciduous size={22} className="text-emerald-300 mb-2" />
+                            <h3 className="font-serif font-bold text-base text-gray-100 leading-tight">Bonsai</h3>
+                            <p className="text-[10px] text-emerald-200/60 mt-1">Shared Growth</p>
                         </div>
                     </motion.div>
                 </motion.div>

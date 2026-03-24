@@ -212,16 +212,16 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
         <>
             <div className="relative mb-6 group animate-slide-up">
             <div className={`
-                relative p-5 rounded-[2.5rem] border-2 transition-all duration-700 overflow-hidden
+                glass-card-hero relative p-6 transition-all duration-700 overflow-hidden
                 ${status.state === 'sleeping' 
-                    ? 'bg-slate-900 border-slate-800 text-slate-400 shadow-none' 
+                    ? 'bg-slate-900/80 border-slate-800/50 text-slate-300' 
                     : stats.equipped.environment === 'env_space'
-                        ? 'bg-[#0f1020] border-[#1a1b3a] shadow-xl text-tulika-50'
+                        ? 'bg-[#0f1020]/90 border-[#1a1b3a]/50 text-tulika-50'
                         : stats.equipped.environment === 'env_beach'
-                            ? 'bg-[#e0f7fa] border-[#b2ebf2] shadow-xl'
+                            ? 'bg-cyan-50/70 border-cyan-100/50 text-cyan-900'
                             : stats.equipped.environment === 'env_forest'
-                                ? 'bg-[#e8f5e9] border-[#c8e6c9] shadow-xl'
-                                : 'bg-white border-white shadow-xl shadow-tulika-100/50'}
+                                ? 'bg-green-50/70 border-green-100/50 text-emerald-900'
+                                : 'text-gray-800'}
                 ${action === 'nudge' ? 'ring-4 ring-tulika-400 ring-opacity-50' : ''}
             `}>
                 <div className={`absolute -right-4 -top-4 w-32 h-32 rounded-full blur-3xl opacity-20 transition-colors duration-1000 ${
@@ -237,10 +237,12 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                             onTouchEnd={handleNudgeEnd}
                             onClick={handlePet}
                             className={`
-                                w-24 h-24 rounded-[2rem] flex items-center justify-center text-6xl shadow-inner relative transition-all duration-500 cursor-pointer select-none
-                                ${status.state === 'sleeping' ? 'bg-slate-800' : 'bg-tulika-50'}
-                                ${action === 'petting' ? 'scale-110 rotate-3' : ''}
-                                ${action === 'feeding' ? 'animate-bounce' : ''}
+                                w-24 h-24 rounded-[1.75rem] flex items-center justify-center text-6xl relative transition-all duration-500 cursor-pointer select-none
+                                ${status.state === 'sleeping' 
+                                    ? 'bg-slate-800/80 shadow-inner' 
+                                    : 'bg-white/60 backdrop-blur-md border border-white/80 shadow-sm'}
+                                ${action === 'petting' ? 'scale-110 rotate-3 shadow-md' : ''}
+                                ${action === 'feeding' ? 'animate-bounce shadow-md' : ''}
                                 ${action === 'nudge' ? 'animate-wiggle' : ''}
                             `}
                         >
@@ -289,9 +291,9 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                             )}
                         </div>
                         
-                        <div className="mt-3 flex items-center gap-1.5 px-3 py-1 bg-white/50 rounded-full border border-gray-100 shadow-sm">
-                            <Zap size={10} className="text-orange-400" fill="currentColor" />
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Lv.{level}</span>
+                        <div className="mt-4 flex items-center gap-1.5 px-3 py-1.5 bg-white/70 backdrop-blur-sm rounded-full border border-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                            <Zap size={11} className="text-orange-400 drop-shadow-sm" fill="currentColor" />
+                            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Lv.{level}</span>
                         </div>
                     </div>
 
@@ -314,40 +316,44 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                             <div className="flex gap-1">
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handleNudgeStart(); setTimeout(handleNudgeEnd, 1000); }}
-                                    className={`p-2 rounded-xl transition-all ${status.state === 'sleeping' ? 'bg-slate-800 text-slate-600' : 'bg-tulika-50 text-tulika-500 active:scale-90'}`}
+                                    className={`p-2.5 rounded-2xl transition-all spring-press ${status.state === 'sleeping' ? 'bg-slate-800/80 text-slate-500' : 'bg-white/80 border border-white/60 shadow-sm text-tulika-500 hover:bg-white'}`}
                                     title="Nudge Partner"
                                 >
-                                    <Hand size={16} />
+                                    <Hand size={18} />
                                 </button>
                                 <button 
                                     onClick={handleFeed}
-                                    className={`p-2 rounded-xl transition-all ${status.state === 'sleeping' ? 'bg-slate-800 text-slate-600' : 'bg-orange-50 text-orange-500 active:scale-90'}`}
+                                    className={`p-2.5 rounded-2xl transition-all spring-press ${status.state === 'sleeping' ? 'bg-slate-800/80 text-slate-500' : 'bg-white/80 border border-white/60 shadow-sm text-orange-500 hover:bg-white'}`}
                                 >
-                                    <Utensils size={16} />
+                                    <Utensils size={18} />
                                 </button>
                                 <button 
                                     onClick={refreshAI}
                                     disabled={isAILoading}
-                                    className={`p-2 rounded-xl transition-all ${status.state === 'sleeping' ? 'bg-slate-800 text-slate-600' : 'bg-blue-50 text-blue-500 active:scale-90'}`}
+                                    className={`p-2.5 rounded-2xl transition-all spring-press ${status.state === 'sleeping' ? 'bg-slate-800/80 text-slate-500' : 'bg-white/80 border border-white/60 shadow-sm text-blue-500 hover:bg-white'}`}
                                     title="Refresh Dialogue"
                                 >
-                                    <MessageCircle size={16} className={isAILoading ? 'animate-spin' : ''} />
+                                    <MessageCircle size={18} className={isAILoading ? 'animate-spin' : ''} />
                                 </button>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); setShowShop(true); feedback.playPop(); }}
-                                    className={`p-2 rounded-xl transition-all ${status.state === 'sleeping' ? 'bg-slate-800 text-slate-600' : 'bg-yellow-50 text-yellow-500 active:scale-90'}`}
+                                    className={`p-2.5 rounded-2xl transition-all spring-press ${status.state === 'sleeping' ? 'bg-slate-800/80 text-slate-500' : 'bg-white/80 border border-white/60 shadow-sm text-yellow-500 hover:bg-white'}`}
                                     title="Pet Shop"
                                 >
-                                    <Store size={16} />
+                                    <Store size={18} />
                                 </button>
                             </div>
                         </div>
 
                         <div className={`
-                            flex-1 p-3 rounded-2xl rounded-tl-none relative transition-all duration-500
-                            ${isFlashback ? 'bg-blue-50 border-blue-100 text-blue-800 shadow-md' : status.state === 'sleeping' ? 'bg-slate-800 text-slate-400' : 'bg-gray-50 text-gray-600 border border-gray-100 shadow-sm'}
+                            flex-1 p-3.5 rounded-[1.25rem] rounded-tl-none relative transition-all duration-500 shadow-[0_4px_12px_rgba(0,0,0,0.03)]
+                            ${isFlashback 
+                                ? 'bg-blue-50 border border-blue-100/50 text-blue-900 shadow-md' 
+                                : status.state === 'sleeping' 
+                                    ? 'bg-slate-800/50 text-slate-400' 
+                                    : 'bg-white/80 backdrop-blur-md border border-white/80 text-gray-700'}
                         `}>
-                            <p className="text-xs font-medium leading-relaxed italic">
+                            <p className="text-[13px] font-medium leading-relaxed italic">
                                 "{dialogue}"
                             </p>
                         </div>

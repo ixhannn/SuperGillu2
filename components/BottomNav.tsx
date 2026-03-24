@@ -27,16 +27,16 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
       <div className="max-w-md mx-auto mb-4 pointer-events-auto">
         <div
           className="relative rounded-[1.75rem] flex items-center justify-around px-1.5 py-1.5"
-          style={{
-            background: 'linear-gradient(135deg, rgba(251,207,232,0.10) 0%, rgba(255,255,255,0.05) 50%, rgba(251,207,232,0.08) 100%)',
-            backdropFilter: 'blur(24px) saturate(160%)',
-            WebkitBackdropFilter: 'blur(24px) saturate(160%)',
-            border: '1px solid rgba(251,207,232,0.15)',
+            style={{
+            background: 'linear-gradient(135deg, rgba(232,160,176,0.15) 0%, rgba(255,255,255,0.95) 50%, rgba(232,160,176,0.12) 100%)',
+            backdropFilter: 'blur(32px) saturate(160%)',
+            WebkitBackdropFilter: 'blur(32px) saturate(160%)',
+            border: '1px solid rgba(255,255,255,0.8)',
             boxShadow: `
-              inset 0 1px 0 rgba(255,255,255,0.2),
-              inset 0 -1px 0 rgba(255,255,255,0.05),
-              0 8px 32px rgba(0,0,0,0.35),
-              0 2px 8px rgba(0,0,0,0.2)
+              inset 0 1px 0 rgba(255,255,255,0.9),
+              inset 0 -1px 0 rgba(255,255,255,0.4),
+              0 8px 32px rgba(232,160,176,0.25),
+              0 2px 8px rgba(232,160,176,0.1)
             `,
           }}
         >
@@ -44,7 +44,7 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
           <div
             className="absolute top-0 left-6 right-6 h-[1px] rounded-full pointer-events-none"
             style={{
-              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 30%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.35) 70%, transparent 100%)',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.8) 30%, rgba(255,255,255,1) 50%, rgba(255,255,255,0.8) 70%, transparent 100%)',
             }}
           />
 
@@ -80,13 +80,13 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
                     <div className="relative">
                       <Icon
                         size={21}
-                        strokeWidth={isActive ? 2.2 : 1.6}
+                        strokeWidth={isActive ? 2.5 : 1.8}
                         className="transition-all duration-300"
                         style={{
-                          color: isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.4)',
+                          color: isActive ? 'rgba(75, 85, 99, 0.95)' : 'rgba(107, 114, 128, 0.45)', /* gray-600 and gray-500 */
                         }}
                         fill={isActive ? 'currentColor' : 'none'}
-                        fillOpacity={isActive ? 0.15 : 0}
+                        fillOpacity={isActive ? 0.08 : 0}
                       />
 
                       {item.hasNotification && !isActive && (
@@ -103,8 +103,8 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: 2 }}
                           transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                          className="text-[9px] font-semibold tracking-[0.06em] mt-0.5"
-                          style={{ color: 'rgba(255,255,255,0.85)' }}
+                          className="text-[9px] font-semibold tracking-[0.05em] mt-0.5"
+                          style={{ color: 'rgba(75, 85, 99, 0.9)' }}
                         >
                           {item.label}
                         </motion.span>
@@ -117,9 +117,9 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
                         layoutId="nav-active-pill"
                         className="absolute inset-0.5 -z-10 rounded-2xl"
                         style={{
-                          background: 'rgba(255,255,255,0.1)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 0 12px rgba(251,207,232,0.06)',
+                          background: 'rgba(0,0,0,0.03)',
+                          border: '1px solid rgba(0,0,0,0.04)',
+                          boxShadow: 'inset 0 1px 0 rgba(0,0,0,0.02), 0 2px 8px rgba(232,160,176,0.1)',
                         }}
                         transition={{ type: 'spring', stiffness: 300, damping: 28, mass: 0.7 }}
                       />

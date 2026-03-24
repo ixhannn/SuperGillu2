@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Heart, Loader2 } from 'lucide-react';
 import { ViewState } from './types';
@@ -20,10 +19,13 @@ import { Countdowns } from './views/Countdowns';
 import { MoodCalendar } from './views/MoodCalendar';
 import { Auth } from './views/Auth';
 import { AuraRewind } from './views/AuraRewind';
-import { SyncService } from './services/sync';
+import { AuraSignal } from './views/AuraSignal';
+import { BonsaiBloom } from './views/BonsaiBloom';
+import { SyncService, syncEventTarget } from './services/sync';
 import { StorageService, storageEventTarget } from './services/storage';
 import { ThemeService } from './services/theme';
 import { SupabaseService } from './services/supabase';
+import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
 
 // Onboarding component for first-time identity selection
 const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => void }) => {
@@ -182,16 +184,116 @@ const App = () => {
       case 'countdowns':    return <Countdowns setView={navigateTo} />;
       case 'mood-calendar': return <MoodCalendar setView={navigateTo} />;
       case 'aura-rewind':   return <AuraRewind setView={navigateTo} />;
+      case 'aura-signal':   return <AuraSignal setView={navigateTo} />;
+      case 'bonsai-bloom':  return <BonsaiBloom setView={navigateTo} />;
       default:              return <Home setView={navigateTo} />;
     }
   };
 
   return (
-    <Layout currentView={currentView} setView={navigateTo}>
-      <ViewTransition viewKey={currentView}>
-        {renderView()}
-      </ViewTransition>
-    </Layout>
+    <>
+      <Layout currentView={currentView} setView={navigateTo}>
+        <ViewTransition viewKey={currentView}>
+          {renderView()}
+        </ViewTransition>
+      </Layout>
+      <AuraSignalReceiver />
+    </>
+  );
+};
+
+const AuraSignalReceiver = () => {
+  const [incoming, setIncoming] = useState<{ id?: string, color: string, title: string, message: string } | null>(null);
+
+  // Check Offine Inbox on mount and storage updates
+  useEffect(() => {
+    const checkInbox = () => {
+      const profile = StorageService.getCoupleProfile();
+      if (profile?.missedAuras && profile.missedAuras.length > 0) {
+        // Find signals targeted at ME
+        const myMissed = profile.missedAuras.filter((a: any) => a.target === profile.myName);
+        if (myMissed.length > 0) {
+          const latest = myMissed[myMissed.length - 1]; // Show most recent
+          setIncoming({ ...latest.payload, id: latest.id });
+        }
+      }
+    };
+    checkInbox();
+    storageEventTarget.addEventListener('storage-update', checkInbox);
+    return () => storageEventTarget.removeEventListener('storage-update', checkInbox);
+  }, []);
+
+  // Handle Realtime incoming signals
+  useEffect(() => {
+    const handleSignal = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail.signalType === 'AURA_SIGNAL' && detail.payload) {
+        setIncoming(detail.payload);
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]); 
+        
+        if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+           new Notification('Tulika - New Aura', { 
+               body: detail.payload.title, 
+               icon: '/icon.svg',
+               silent: false
+           });
+        }
+        
+        setTimeout(() => setIncoming(null), 6000); // Auto-dismiss
+      }
+    };
+    syncEventTarget.addEventListener('signal-received', handleSignal);
+    return () => syncEventTarget.removeEventListener('signal-received', handleSignal);
+  }, []);
+
+  const dismiss = () => {
+    if (incoming?.id) {
+       StorageService.removeMissedAura(incoming.id);
+    }
+    setIncoming(null);
+  };
+
+  return (
+    <AnimatePresence>
+      {incoming && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 1.1 }}
+          onClick={dismiss}
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-8 backdrop-blur-xl"
+          style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}
+        >
+          {/* Incoming Aura Liquid Background */}
+          <motion.div 
+            animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute inset-0 z-0 opacity-50 blur-[100px] pointer-events-none mix-blend-screen"
+            style={{ backgroundColor: incoming.color }}
+          />
+
+          <motion.div 
+            initial={{ y: 50, scale: 0.9 }}
+            animate={{ y: 0, scale: 1 }}
+            exit={{ y: -50, scale: 0.9 }}
+            transition={{ type: 'spring', damping: 20 }}
+            className="relative z-10 flex flex-col items-center text-center max-w-sm"
+          >
+            <div 
+              className="w-24 h-24 rounded-full mb-8 shadow-2xl animate-pulse-slow"
+              style={{ backgroundColor: incoming.color, boxShadow: `0 0 80px ${incoming.color}` }}
+            />
+            <h2 className="font-serif font-bold text-4xl text-white mb-3 tracking-tight drop-shadow-md">
+              {incoming.title}
+            </h2>
+            <p className="text-lg text-white/80 font-medium leading-relaxed drop-shadow-sm">
+              {incoming.message}
+            </p>
+            <p className="mt-12 text-xs text-white/40 uppercase tracking-widest font-bold">Tap to dismiss</p>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 

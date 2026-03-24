@@ -93,6 +93,8 @@ export interface CoupleProfile {
   anniversaryDate: string; // ISO string
   photo?: string; // Base64 data URI
   theme?: string; // 'rose', 'blue', 'green', 'orange', 'purple', 'dark'
+  missedAuras?: any[];
+  bonsaiState?: any;
 }
 
 export interface ShopItem {
@@ -127,4 +129,4 @@ export interface MoodEntry {
   note?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'bonsai-bloom';
