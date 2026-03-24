@@ -163,22 +163,26 @@ export const CanvasParticles: React.FC = () => {
         if (py[i] > h + 10) py[i] = -10;
       }
 
-      /* Phase 2: draw each particle individually (alpha varies per particle) */
+      /* Phase 2: draw each particle — slow twinkle, no per-frame string alloc */
       const TAU = Math.PI * 2;
       for (let i = 0; i < count; i++) {
         const colorIdx = i % colors.length;
-        const alpha = alphas[i] * (0.8 + Math.sin(time * 2 + i) * 0.2);
+        // Slow twinkle (0.5 Hz) — avoids visible flicker
+        const alpha = alphas[i] * (0.88 + Math.sin(time * 0.5 + i * 0.7) * 0.12);
         const size = sizes[i];
+        // Quantise alpha to 0.01 steps to reuse cached strings across frames
+        const a1 = ((alpha * 100 + 0.5) | 0) / 100;
 
         ctx.beginPath();
         ctx.arc(px[i], py[i], size, 0, TAU);
-        ctx.fillStyle = colors[colorIdx] + alpha.toFixed(2) + ')';
+        ctx.fillStyle = colors[colorIdx] + a1 + ')';
         ctx.fill();
 
         if (size > 2) {
+          const a2 = ((alpha * 12 + 0.5) | 0) / 100;
           ctx.beginPath();
           ctx.arc(px[i], py[i], size * 1.8, 0, TAU);
-          ctx.fillStyle = colors[colorIdx] + (alpha * 0.12).toFixed(3) + ')';
+          ctx.fillStyle = colors[colorIdx] + a2 + ')';
           ctx.fill();
         }
       }

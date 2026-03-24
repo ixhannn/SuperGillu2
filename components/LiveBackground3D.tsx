@@ -69,9 +69,9 @@ export const LiveBackground3D: React.FC = () => {
       canvas,
       alpha: true,
       antialias: false,
-      powerPreference: 'default',
+      powerPreference: 'high-performance',
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
     // ── Scene & Camera ────────────────────────────────────────────
     const scene = new THREE.Scene();
@@ -254,33 +254,28 @@ export const LiveBackground3D: React.FC = () => {
     window.addEventListener('scroll', onScroll, { passive: true });
 
     // ── Animation ─────────────────────────────────────────────────
-    let frameCount = 0;
+    const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
+    const posArr  = posAttr.array as Float32Array;
+
     AnimationEngine.register({
       id:        'live-bg-3d',
       priority:  3,
-      budgetMs:  3,
+      budgetMs:  4,
       minTier:   'medium' as QualityTier,
 
       tick(_delta, timestamp) {
-        frameCount++;
         const t = timestamp * 0.001;
         material.uniforms.uTime.value = t;
 
-        // Update positions every 2 frames — bokeh moves very slowly, halves CPU cost
-        if (frameCount % 2 === 0) {
-          const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
-          const arr = pos.array as Float32Array;
-
-          for (let i = 0; i < TOTAL; i++) {
-            const ax = phaseOff[i] + t * freqX[i];
-            const ay = phaseOff[i] + t * freqY[i];
-
-            arr[i * 3]     = centerX[i] + Math.cos(ax) * orbitRX[i];
-            arr[i * 3 + 1] = centerY[i] + Math.sin(ay) * orbitRY[i];
-            arr[i * 3 + 2] = baseZ[i]   + Math.sin(t * zDriftFreq[i] + phaseOff[i]) * zDriftAmp[i];
-          }
-          pos.needsUpdate = true;
+        // Always update every frame — no skip to avoid breathing/position desync blink
+        for (let i = 0; i < TOTAL; i++) {
+          const ax = phaseOff[i] + t * freqX[i];
+          const ay = phaseOff[i] + t * freqY[i];
+          posArr[i * 3]     = centerX[i] + Math.cos(ax) * orbitRX[i];
+          posArr[i * 3 + 1] = centerY[i] + Math.sin(ay) * orbitRY[i];
+          posArr[i * 3 + 2] = baseZ[i]   + Math.sin(t * zDriftFreq[i] + phaseOff[i]) * zDriftAmp[i];
         }
+        posAttr.needsUpdate = true;
 
         // Camera: scroll parallax + very slow gentle breath on Z
         camera.position.y = -scrollY * 0.006;

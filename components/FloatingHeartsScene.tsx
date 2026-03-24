@@ -6,8 +6,8 @@
 
 import React, { useRef, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
-import { shaderMaterial, Sparkles } from '@react-three/drei';
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import { shaderMaterial } from '@react-three/drei';
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 
 // ── GLSL Noise functions ────────────────────────────────────────────────
@@ -216,7 +216,7 @@ const RingRipple: React.FC<{ delay: number; maxScale: number }> = ({ delay, maxS
 
   return (
     <mesh ref={ref} rotation={[Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[0.95, 1.0, 128]} />
+      <ringGeometry args={[0.95, 1.0, 64]} />
       <meshBasicMaterial
         color="#ffffff"
         transparent
@@ -316,7 +316,7 @@ const DarkGlassBlob = () => {
 
   return (
     <mesh ref={meshRef}>
-      <icosahedronGeometry args={[1.6, 64]} />
+      <icosahedronGeometry args={[1.6, 32]} />
       <darkGlassMaterial
         ref={materialRef}
         transparent
@@ -329,7 +329,7 @@ const DarkGlassBlob = () => {
 
 // ── Floating dust motes ─────────────────────────────────────────────────
 const DustField = () => {
-  const count = 200;
+  const count = 80;
   const ref = useRef<THREE.Points>(null);
 
   const [positions, velocities] = useMemo(() => {
@@ -359,12 +359,10 @@ const DustField = () => {
       posAttr.array[ix + 1] += velocities[ix + 1];
       posAttr.array[ix + 2] += velocities[ix + 2];
 
-      // Soft boundary — wrap around
-      const dist = Math.sqrt(
-        posAttr.array[ix] ** 2 + posAttr.array[ix + 1] ** 2 + posAttr.array[ix + 2] ** 2
-      );
-      if (dist > 5) {
-        const scale = 1.8 / dist;
+      // Soft boundary — wrap around (distSq avoids sqrt per particle)
+      const distSq = posAttr.array[ix] ** 2 + posAttr.array[ix + 1] ** 2 + posAttr.array[ix + 2] ** 2;
+      if (distSq > 25) {
+        const scale = 1.8 / Math.sqrt(distSq);
         posAttr.array[ix] *= scale;
         posAttr.array[ix + 1] *= scale;
         posAttr.array[ix + 2] *= scale;
@@ -432,34 +430,29 @@ const Scene = () => (
     {/* The main dark glass blob */}
     <DarkGlassBlob />
 
-    {/* Concentric expanding rings — subtle */}
-    {Array.from({ length: 3 }, (_, i) => (
-      <RingRipple key={`ring-${i}`} delay={i * 1.2} maxScale={2.5 + i * 0.4} />
+    {/* Concentric expanding rings — reduced to 2 */}
+    {Array.from({ length: 2 }, (_, i) => (
+      <RingRipple key={`ring-${i}`} delay={i * 1.8} maxScale={2.5 + i * 0.4} />
     ))}
 
-    {/* Wispy orbital curves — fewer */}
-    {Array.from({ length: 3 }, (_, i) => (
-      <OrbitalLine key={`orbit-${i}`} index={i} total={3} />
+    {/* Wispy orbital curves — reduced to 2 */}
+    {Array.from({ length: 2 }, (_, i) => (
+      <OrbitalLine key={`orbit-${i}`} index={i} total={2} />
     ))}
 
     {/* Floating dust particles */}
     <DustField />
 
-    {/* Very subtle sparkle dust far away */}
-    <Sparkles count={30} scale={8} size={0.8} speed={0.05} opacity={0.15} color="#d4c5a9" />
-
     {/* Camera follows pointer */}
     <CameraRig />
 
-    {/* Post-processing */}
+    {/* Post-processing — no mipmapBlur, higher threshold */}
     <EffectComposer>
       <Bloom
-        intensity={0.8}
-        luminanceThreshold={0.2}
+        intensity={0.5}
+        luminanceThreshold={0.5}
         luminanceSmoothing={0.9}
-        mipmapBlur
       />
-      <Vignette darkness={0.4} offset={0.3} />
     </EffectComposer>
   </>
 );
@@ -468,12 +461,12 @@ export const FloatingHeartsScene: React.FC = () => (
   <div
     className="fixed inset-0 z-[1] pointer-events-none"
     aria-hidden="true"
-    style={{ opacity: 0.45, filter: 'blur(1.5px)' }}
+    style={{ opacity: 0.45 }}
   >
     <Canvas
       camera={{ position: [0, 0, 5], fov: 50 }}
-      dpr={[1, 1.5]}
-      gl={{ alpha: true, antialias: true, powerPreference: 'default' }}
+      dpr={[1, 1]}
+      gl={{ alpha: true, antialias: false, powerPreference: 'high-performance' }}
     >
       <Scene />
     </Canvas>
