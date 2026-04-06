@@ -71,7 +71,7 @@ export default {
                 'title': ['1.5rem', { lineHeight: '1.2', letterSpacing: '-0.02em', fontWeight: '600' }],
                 'body-lg': ['1.125rem', { lineHeight: '1.6', letterSpacing: '-0.01em' }],
                 'caption': ['0.6875rem', { lineHeight: '1.4', letterSpacing: '0.06em', fontWeight: '600' }],
-                'micro': ['0.5625rem', { lineHeight: '1.3', letterSpacing: '0.08em', fontWeight: '700' }],
+                'micro': ['0.625rem', { lineHeight: '1.3', letterSpacing: '0.06em', fontWeight: '700' }],
             },
             borderRadius: {
                 '4xl': '2rem',

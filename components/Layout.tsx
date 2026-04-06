@@ -1,10 +1,13 @@
-import React, { useRef, useEffect, useState, createContext, useContext, memo } from 'react';
+import React, { useRef, useEffect, useState, createContext, useContext, memo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BottomNav } from './BottomNav';
 import { LiveBackground3D } from './LiveBackground3D';
 import { FloatingHeartsScene } from './FloatingHeartsScene';
 import { TogetherMode } from './TogetherMode';
 import { DebugOverlay } from './DebugOverlay';
+import { DynamicToast } from './DynamicToast';
+import { TouchTrailCanvas } from './TouchTrailCanvas';
+import { PhysicsConfetti, ConfettiHandle } from './PhysicsConfetti';
 import { ViewState } from '../types';
 import { startBreathingRhythm } from '../utils/BreathingRhythm';
 
@@ -26,11 +29,30 @@ export const useConfetti = () => useContext(ConfettiContext);
 
 export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, notifications }) => {
   const mainRef = useRef<HTMLElement>(null);
+  const confettiRef = useRef<ConfettiHandle>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const prevView = useRef(currentView);
 
   useEffect(() => {
     startBreathingRhythm();
+  }, []);
+
+  // Global ink-ripple on every .spring-press tap
+  const handleRipple = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement).closest('.spring-press') as HTMLElement | null;
+    if (!target) return;
+    // Make host a positioned ripple container
+    if (getComputedStyle(target).position === 'static') {
+      target.style.position = 'relative';
+    }
+    target.style.overflow = 'hidden';
+    const rect = target.getBoundingClientRect();
+    const circle = document.createElement('span');
+    circle.className = 'ripple-ink-circle';
+    circle.style.left = `${e.clientX - rect.left}px`;
+    circle.style.top = `${e.clientY - rect.top}px`;
+    target.appendChild(circle);
+    circle.addEventListener('animationend', () => circle.remove(), { once: true });
   }, []);
 
   useEffect(() => {
@@ -43,19 +65,21 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   }, [currentView]);
 
   return (
-    <ConfettiContext.Provider value={{ trigger: () => {} }}>
+    <ConfettiContext.Provider value={{ trigger: (x, y) => confettiRef.current?.trigger(x, y) }}>
       <div
         className="fixed inset-0 text-gray-800 overflow-hidden flex flex-col"
         style={{
-          background: 'linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%)',
+          background: 'var(--theme-bg-main, linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%))',
+          color: 'var(--color-text-primary, #2D1F25)',
         }}
+        onPointerDown={handleRipple}
       >
         {/* Page transition progress bar */}
         <AnimatePresence>
           {isTransitioning && (
             <motion.div
               className="fixed top-0 left-0 right-0 h-[2px] z-[100]"
-              style={{ background: 'linear-gradient(90deg, #f43f5e, #e879f9, #f43f5e)' }}
+              style={{ background: 'var(--theme-progress-gradient, linear-gradient(90deg, #f43f5e, #e879f9, #f43f5e))' }}
               initial={{ scaleX: 0, transformOrigin: 'left' }}
               animate={{ scaleX: 1 }}
               exit={{ opacity: 0 }}
@@ -74,12 +98,7 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           className="fixed inset-0 pointer-events-none z-[2]"
           aria-hidden="true"
           style={{
-            background: `
-              radial-gradient(ellipse 120% 80% at 50% -10%, rgba(251,207,232,0.14) 0%, transparent 60%),
-              radial-gradient(ellipse 80% 50% at 30% 50%, rgba(249,168,212,0.08) 0%, transparent 50%),
-              radial-gradient(ellipse 100% 60% at 50% 110%, rgba(251,207,232,0.10) 0%, transparent 50%),
-              radial-gradient(ellipse 60% 40% at 70% 30%, rgba(244,114,182,0.05) 0%, transparent 50%)
-            `,
+            background: 'var(--theme-vignette, radial-gradient(ellipse 120% 80% at 50% -10%, rgba(251,207,232,0.14) 0%, transparent 60%), radial-gradient(ellipse 80% 50% at 30% 50%, rgba(249,168,212,0.08) 0%, transparent 50%), radial-gradient(ellipse 100% 60% at 50% 110%, rgba(251,207,232,0.10) 0%, transparent 50%), radial-gradient(ellipse 60% 40% at 70% 30%, rgba(244,114,182,0.05) 0%, transparent 50%))',
           }}
         />
 
@@ -101,6 +120,11 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
 
         {/* Dev debug overlay */}
         <DebugOverlay />
+
+        {/* Global effects */}
+        <DynamicToast />
+<TouchTrailCanvas />
+        <PhysicsConfetti ref={confettiRef} />
       </div>
     </ConfettiContext.Provider>
   );

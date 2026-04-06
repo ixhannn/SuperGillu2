@@ -89,7 +89,8 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
         rightSlot={
           <button
             onClick={() => setIsEditing(true)}
-            className="text-gray-600 p-3 rounded-2xl spring-press glass-card"
+            className="p-3 rounded-2xl spring-press glass-card"
+            style={{ color: 'var(--color-text-secondary)' }}
           >
             <Plus size={22} />
           </button>
@@ -99,22 +100,24 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
       <div className="px-5">
 
       {isEditing && (
-        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
             <div className="w-full max-w-sm p-6 animate-pop-in glass-card-hero">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-gray-800">New Note</h3>
-                    <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} className="text-gray-500" /></button>
+                    <h3 className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>New Note</h3>
+                    <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
                 </div>
-                <textarea 
+                <textarea
                     autoFocus
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
-                    className="w-full h-40 bg-gray-100/50 p-4 rounded-2xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed text-gray-800 placeholder:text-gray-400 shadow-inner"
+                    className="w-full h-40 p-4 rounded-2xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed focus:ring-2 focus:ring-tulika-500/30 shadow-inner"
                     placeholder="Write something sweet..."
+                    style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', color: 'var(--color-text-primary)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}
                 />
-                <button 
+                <button
                     onClick={handleSave}
-                    className="w-full bg-tulika-500 text-white py-3 rounded-xl font-semibold"
+                    className="w-full text-white py-3 rounded-xl font-semibold"
+                    style={{ background: 'var(--theme-nav-center-bg-active)' }}
                 >
                     Save Note
                 </button>
@@ -127,17 +130,17 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
           <motion.div
             key={note.id}
             variants={staggerItem}
-            className={`${note.color} p-4 rounded-[2rem] min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press glass-card ${longPressId === note.id ? 'scale-[1.02] ring-2 ring-red-400/40' : ''} transition-all`}
+            className={`${note.color} p-4 rounded-[2rem] min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press glass-card border border-white/30 ${longPressId === note.id ? 'scale-[1.02] ring-2 ring-red-400/40' : ''} transition-all`}
             onPointerDown={() => handlePointerDown(note.id)}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
             onClick={() => { if (longPressId && longPressId !== note.id) setLongPressId(null); }}
           >
-            <p className="font-serif text-gray-700 leading-snug whitespace-pre-wrap text-[15px] font-medium">
+            <p className="font-serif leading-snug whitespace-pre-wrap text-[15px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
                 {note.content}
             </p>
             <div className="flex justify-between items-end mt-4">
-                <span className="text-[10px] text-gray-500 font-medium">
+                <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                     {new Date(note.createdAt).toLocaleDateString()}
                 </span>
                 <AnimatePresence>
@@ -166,8 +169,8 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
                       <PenLine size={36} className="text-yellow-400/40" />
                   </div>
               </div>
-              <p className="font-serif text-gray-800 font-bold text-lg mb-2">Write a little note...</p>
-              <p className="text-xs text-gray-500 mb-6 font-medium">Leave sweet words for each other</p>
+              <p className="font-serif font-bold text-lg mb-2" style={{ color: 'var(--color-text-primary)' }}>Write a little note...</p>
+              <p className="text-xs mb-6 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Leave sweet words for each other</p>
               <button
                   onClick={() => setIsEditing(true)}
                   className="px-6 py-3 glass-card text-tulika-600 font-bold uppercase tracking-wider spring-press flex items-center gap-2"

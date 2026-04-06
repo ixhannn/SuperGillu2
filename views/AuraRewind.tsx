@@ -164,14 +164,14 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
                         <div className="relative mb-6">
                             <div className="absolute inset-0 bg-tulika-500/10 rounded-full blur-2xl animate-breathe-glow" />
-                            <div className="relative p-6 bg-white/5 border border-white/10 rounded-full shadow-sm">
-                                <Palette size={40} className="text-gray-500" style={{ animation: 'breathe-glow 3s ease-in-out infinite' }} />
+                            <div className="relative p-6 rounded-full shadow-sm" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
+                                <Palette size={40} style={{ animation: 'breathe-glow 3s ease-in-out infinite', color: 'var(--color-text-secondary)' }} />
                             </div>
                         </div>
-                        <p className="font-serif text-gray-400 text-center text-lg mb-2">
+                        <p className="font-serif text-center text-lg mb-2" style={{ color: 'var(--color-text-secondary)' }}>
                             Check in with your moods to see your aura story
                         </p>
-                        <p className="text-xs text-gray-500 mb-6">Your monthly rewind will bloom here</p>
+                        <p className="text-xs mb-6" style={{ color: 'var(--color-text-secondary)' }}>Your monthly rewind will bloom here</p>
                         <button
                             onClick={() => setView('mood-calendar')}
                             className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-500/20 spring-press"
@@ -183,20 +183,20 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
 
                 {stats.totalEntries > 0 && <>
                 {/* Harmony Wave Card */}
-                <section className="rounded-[2.5rem] p-8 shadow-xl overflow-hidden relative" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <section className="rounded-[2.5rem] p-8 shadow-xl overflow-hidden relative glass-card" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-2">
                             <TrendingUp size={20} className="text-tulika-500" />
-                            <h2 className="font-bold text-gray-200 uppercase tracking-wider text-xs">Harmony Wave</h2>
+                            <h2 className="font-bold uppercase tracking-wider text-xs" style={{ color: 'var(--color-text-primary)' }}>Harmony Wave</h2>
                         </div>
                         <div className="flex gap-4">
                             <div className="flex items-center gap-1.5">
                                 <div className="w-2 h-2 rounded-full bg-tulika-400"></div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{profile.myName}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{profile.myName}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <div className="w-2 h-2 rounded-full bg-pink-400"></div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{profile.partnerName}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{profile.partnerName}</span>
                             </div>
                         </div>
                     </div>
@@ -208,7 +208,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         </svg>
                     </div>
 
-                    <p className="text-center text-[11px] font-medium text-gray-400 italic mt-4">
+                    <p className="text-center text-[11px] font-medium italic mt-4" style={{ color: 'var(--color-text-secondary)' }}>
                         "Your emotional pulses are beautifully aligned this month."
                     </p>
                 </section>
@@ -217,17 +217,17 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 <section className="grid grid-cols-2 gap-6">
                     <motion.div
                         initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-                        className="rounded-[2rem] p-6 shadow-lg" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        className="rounded-[2rem] p-6 shadow-lg glass-card" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}
                     >
-                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">{profile.myName}'s Vibe</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--color-text-secondary)' }}>{profile.myName}'s Vibe</h3>
                         <div className="flex flex-col gap-3">
                             {stats.myMoods.slice(0, 3).map(([mood, count]) => (
                                 <div key={mood} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <span className="text-lg">{moodThemes[mood]?.emoji || '✨'}</span>
-                                        <span className="text-xs font-bold text-gray-200 capitalize">{mood}</span>
+                                        <span className="text-xs font-bold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mood}</span>
                                     </div>
-                                    <span className="text-[10px] font-black text-gray-400 bg-white/10 px-2 py-1 rounded-lg">{count}</span>
+                                    <span className="text-[10px] font-black px-2 py-1 rounded-lg" style={{ color: 'var(--color-text-secondary)', background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>{count}</span>
                                 </div>
                             ))}
                         </div>
@@ -235,17 +235,17 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
 
                     <motion.div
                         initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-                        className="rounded-[2rem] p-6 shadow-lg" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        className="rounded-[2rem] p-6 shadow-lg glass-card" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}
                     >
-                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">{profile.partnerName}'s Vibe</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--color-text-secondary)' }}>{profile.partnerName}'s Vibe</h3>
                         <div className="flex flex-col gap-3">
                             {stats.partnerMoods.slice(0, 3).map(([mood, count]) => (
                                 <div key={mood} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <span className="text-lg">{moodThemes[mood]?.emoji || '✨'}</span>
-                                        <span className="text-xs font-bold text-gray-200 capitalize">{mood}</span>
+                                        <span className="text-xs font-bold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mood}</span>
                                     </div>
-                                    <span className="text-[10px] font-black text-gray-400 bg-white/10 px-2 py-1 rounded-lg">{count}</span>
+                                    <span className="text-[10px] font-black px-2 py-1 rounded-lg" style={{ color: 'var(--color-text-secondary)', background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>{count}</span>
                                 </div>
                             ))}
                         </div>
@@ -253,27 +253,27 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 </section>
 
                 {/* Sync Score */}
-                <section className="rounded-[2rem] p-8 flex items-center justify-between shadow-xl relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <section className="rounded-[2rem] p-8 flex items-center justify-between shadow-xl relative overflow-hidden glass-card" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
                     <div className="relative z-10">
-                        <h3 className="text-xs font-bold text-gray-200 uppercase tracking-widest mb-1 flex items-center gap-2">
+                        <h3 className="text-xs font-bold uppercase tracking-widest mb-1 flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
                             <Heart size={16} className="text-pink-500 animate-pulse" />
                             Sync Score
                         </h3>
-                        <p className="text-[10px] text-gray-400 font-medium italic">Most aligned on {stats.bestAlignedDay}.</p>
+                        <p className="text-[10px] font-medium italic" style={{ color: 'var(--color-text-secondary)' }}>Most aligned on {stats.bestAlignedDay}.</p>
                     </div>
-                    <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full bg-white/10 shadow-lg border-4 border-tulika-500/20">
-                        <span className="text-2xl font-black text-gray-100">{stats.syncScore}%</span>
+                    <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full shadow-lg border-4 border-tulika-500/20" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>
+                        <span className="text-2xl font-black" style={{ color: 'var(--color-text-primary)' }}>{stats.syncScore}%</span>
                         <div className="absolute inset-0 rounded-full border-t-4 border-pink-400 animate-spin" style={{ animationDuration: '3s' }}></div>
                     </div>
                 </section>
 
                 {/* Shared Memory Highlight placeholder */}
-                <section className="rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden" style={{ background: 'rgba(251,207,232,0.06)', border: '1px solid rgba(251,207,232,0.10)' }}>
+                <section className="rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden glass-card" style={{ border: '1px solid rgba(var(--theme-particle-1-rgb),0.15)' }}>
                     <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-tulika-400/20 rounded-full blur-3xl"></div>
                     <div className="relative z-10">
                         <Sparkles size={24} className="text-tulika-300 mb-4" />
-                        <h4 className="font-serif text-xl font-bold mb-2">The Monthly Glow</h4>
-                        <p className="text-sm text-stone-300 leading-relaxed font-serif italic">
+                        <h4 className="font-serif text-xl font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>The Monthly Glow</h4>
+                        <p className="text-sm leading-relaxed font-serif italic" style={{ color: 'var(--color-text-secondary)' }}>
                             {stats.totalEntries > 0
                                 ? `"This month, ${profile.myName} felt mostly ${stats.topMyMood} while ${profile.partnerName}  was ${stats.topPartnerMood}. ${stats.syncScore >= 70 ? 'Your auras were beautifully aligned!' : 'Keep checking in with each other — your bond grows stronger each day.'}"`
                                 : '"Start logging your moods to see your monthly glow bloom here!"'

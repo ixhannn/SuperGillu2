@@ -120,29 +120,30 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
             key={env.id}
             variants={staggerItem}
             onClick={() => { feedback.tap(); openEnvelope(env); }}
-            className={`aspect-[4/3] rounded-[2rem] relative p-4 flex flex-col items-center justify-center text-center spring-press cursor-pointer glass-card border border-white shadow-sm ${
+            className={`aspect-[4/3] rounded-[2rem] relative p-4 flex flex-col items-center justify-center text-center spring-press cursor-pointer glass-card border border-white/40 shadow-sm ${
               env.isLocked ? 'opacity-95' : 'scale-[1.02] shadow-md ring-2 ring-tulika-200'
             }`}
           >
             {/* Envelope Flap decoration */}
             <div className={`absolute top-0 left-0 right-0 h-1/2 rounded-t-[2rem] opacity-20 pointer-events-none ${env.color.split(' ')[0]}`}></div>
             
-            <div className={`mb-3 p-3 rounded-full ${env.isLocked ? 'bg-gray-100' : env.color.split(' ')[0]}`}>
+            <div className={`mb-3 p-3 rounded-full ${env.isLocked ? '' : env.color.split(' ')[0]}`} style={env.isLocked ? { background: 'rgba(var(--theme-particle-2-rgb),0.10)' } : {}}>
               {env.isLocked ? (
-                <Mail size={24} className="text-gray-400" />
+                <Mail size={24} style={{ color: 'var(--color-text-secondary)' }} />
               ) : (
                 <MailOpen size={24} className={env.color.split(' ')[1]} />
               )}
             </div>
-            
-            <span className="text-xs font-bold text-gray-800 leading-tight px-1">
+
+            <span className="text-xs font-bold leading-tight px-1" style={{ color: 'var(--color-text-primary)' }}>
               {env.label}
             </span>
 
-            {/* Delete button (hidden unless long press or specific action in real app, simplified here) */}
-            <button 
+            {/* Delete button */}
+            <button
                onClick={(e) => handleDelete(env.id, e)}
-               className="absolute top-2 right-2 text-gray-400"
+               className="absolute top-2 right-2"
+               style={{ color: 'var(--color-text-secondary)' }}
             >
               <Trash2 size={14} />
             </button>
@@ -150,15 +151,15 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
         ))}
 
         {envelopes.length === 0 && (
-          <div className="col-span-2 flex flex-col items-center text-center py-16 border-2 border-dashed border-gray-200 rounded-[2.5rem] animate-fade-in glass-card">
+          <div className="col-span-2 flex flex-col items-center text-center py-16 rounded-[2.5rem] animate-fade-in glass-card" style={{ border: '2px dashed rgba(var(--theme-particle-2-rgb),0.25)' }}>
             <div className="relative mb-5">
               <div className="absolute inset-0 bg-tulika-200/40 rounded-full blur-2xl animate-breathe-glow" />
               <div className="relative p-5 glass-card rounded-full">
                 <Mail size={32} className="text-tulika-500" />
               </div>
             </div>
-            <p className="font-serif text-gray-900 font-bold text-lg mb-1">Write your first letter</p>
-            <p className="text-xs text-gray-500 font-medium mb-5">Letters for every moment</p>
+            <p className="font-serif font-bold text-lg mb-1" style={{ color: 'var(--color-text-primary)' }}>Write your first letter</p>
+            <p className="text-xs font-medium mb-5" style={{ color: 'var(--color-text-secondary)' }}>Letters for every moment</p>
             <button
               onClick={() => setIsCreating(true)}
               className="px-5 py-2.5 bg-tulika-500 text-white rounded-full text-sm font-bold spring-press"
@@ -182,35 +183,38 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
 
       {/* Create Modal */}
       {isCreating && (
-        <div className="fixed inset-0 bg-gray-50/90 backdrop-blur-3xl z-50 flex items-center justify-center p-6 animate-fade-in">
+        <div className="fixed inset-0 backdrop-blur-3xl z-50 flex items-center justify-center p-6 animate-fade-in" style={{ background: 'color-mix(in srgb, var(--color-surface) 90%, transparent)' }}>
           <div className="w-full max-w-sm p-6 animate-pop-in glass-card-hero">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="font-semibold text-lg text-gray-900 border-b-2 border-tulika-200 pb-1">Write a Letter</h3>
-              <button onClick={() => setIsCreating(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} className="text-gray-500" /></button>
+              <h3 className="font-semibold text-lg border-b-2 border-tulika-200 pb-1" style={{ color: 'var(--color-text-primary)' }}>Write a Letter</h3>
+              <button onClick={() => setIsCreating(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
             </div>
 
-            <div className="flex items-center gap-2 mb-4 bg-white shadow-sm p-3 rounded-xl border border-gray-200">
-              <span className="text-gray-500 text-sm font-medium whitespace-nowrap">Open when...</span>
+            <div className="flex items-center gap-2 mb-4 p-3 rounded-xl" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
+              <span className="text-sm font-medium whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>Open when...</span>
               <input
                 type="text"
                 autoFocus
                 placeholder="you miss me"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                className="bg-transparent w-full outline-none focus:outline-none text-gray-800 font-medium placeholder-gray-400"
+                className="bg-transparent w-full outline-none focus:outline-none font-medium"
+                style={{ color: 'var(--color-text-primary)' }}
               />
             </div>
 
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full h-48 bg-white shadow-inner p-4 rounded-2xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-tulika-500/30 mb-4 font-serif leading-relaxed text-gray-800 border border-gray-200 placeholder-gray-400"
+              className="w-full h-48 p-4 rounded-2xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-tulika-500/30 mb-4 font-serif leading-relaxed"
               placeholder="Write your heart out..."
+              style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
             />
 
             <button
               onClick={handleSave}
-              className="w-full bg-tulika-500 text-white py-3 rounded-xl font-semibold"
+              className="w-full text-white py-3 rounded-xl font-semibold"
+              style={{ background: 'var(--theme-nav-center-bg-active)' }}
             >
               Seal Envelope
             </button>
@@ -220,12 +224,12 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
 
       {/* Read Modal */}
       {readingId && currentLetter && (
-        <div className="fixed inset-0 z-50 flex flex-col animate-fade-in bg-gray-50/95 backdrop-blur-3xl">
+        <div className="fixed inset-0 z-50 flex flex-col animate-fade-in backdrop-blur-3xl" style={{ background: 'color-mix(in srgb, var(--color-surface) 95%, transparent)' }}>
           <div className="flex justify-between items-center p-6 pb-2">
-            <button onClick={() => setReadingId(null)} aria-label="Close letter" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-white border border-gray-200 shadow-sm rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2">
-              <X size={24} className="text-gray-500" />
+            <button onClick={() => setReadingId(null)} aria-label="Close letter" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center glass-card border border-white/40 shadow-sm rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}>
+              <X size={24} />
             </button>
-            <span className="text-xs font-bold uppercase tracking-widest text-gray-500 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
+            <span className="text-xs font-bold uppercase tracking-widest glass-card px-3 py-1 rounded-full border border-white/40 shadow-sm" style={{ color: 'var(--color-text-secondary)' }}>
               {currentLetter.openedAt ? new Date(currentLetter.openedAt).toLocaleDateString() : 'Just now'}
             </span>
           </div>
@@ -235,11 +239,11 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
                {/* Paper texture/lines */}
                <div className="absolute top-0 left-0 right-0 h-8 bg-tulika-100"></div>
 
-               <h2 className="font-bold text-2xl text-gray-900 mb-8 border-b-2 pb-4 border-tulika-200 leading-snug font-serif">
+               <h2 className="font-bold text-2xl mb-8 border-b-2 pb-4 border-tulika-200 leading-snug font-serif" style={{ color: 'var(--color-text-primary)' }}>
                  {currentLetter.label}
                </h2>
 
-               <div className="font-serif text-lg leading-relaxed text-gray-700 whitespace-pre-wrap">
+               <div className="font-serif text-lg leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-text-primary)' }}>
                  {currentLetter.content}
                </div>
 

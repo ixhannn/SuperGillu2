@@ -5,6 +5,7 @@ const SIGNED_URL_EXPIRY = 3600; // 1 hour in seconds
 
 // In-memory cache for signed URLs to avoid re-generating on every render
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const downloadedMediaCache = new Map<string, string>();
 
 function dataUriToBlob(dataUri: string): { blob: Blob; contentType: string } {
     const match = dataUri.match(/^data:([^;]+);base64,(.+)$/);
@@ -23,9 +24,15 @@ function dataUriToBlob(dataUri: string): { blob: Blob; contentType: string } {
 }
 
 export const MediaStorageService = {
-    buildPath(prefix: string, itemId: string, type: 'image' | 'video'): string {
+    async buildPath(prefix: string, itemId: string, type: 'image' | 'video'): Promise<string> {
         const ext = type === 'video' ? 'mp4' : 'jpg';
-        return `${prefix}/${itemId}/${type}.${ext}`;
+        const userId = await SupabaseService.getCurrentUserId();
+        return userId ? `${userId}/${prefix}/${itemId}/${type}.${ext}` : `${prefix}/${itemId}/${type}.${ext}`;
+    },
+
+    async isScopedToCurrentUser(storagePath: string): Promise<boolean> {
+        const userId = await SupabaseService.getCurrentUserId();
+        return !!userId && storagePath.startsWith(`${userId}/`);
     },
 
     async ensureBucket(): Promise<boolean> {
@@ -102,11 +109,45 @@ export const MediaStorageService = {
         }
     },
 
+    async getAccessibleUrl(storagePath: string): Promise<string | null> {
+        if (!storagePath) return null;
+
+        const signedUrl = await this.getSignedUrl(storagePath);
+        if (signedUrl) return signedUrl;
+        if (!SupabaseService.client) return null;
+
+        const cachedDownload = downloadedMediaCache.get(storagePath);
+        if (cachedDownload) return cachedDownload;
+
+        try {
+            const { data, error } = await SupabaseService.client.storage
+                .from(BUCKET)
+                .download(storagePath);
+
+            if (error || !data) {
+                console.warn('Storage download failed:', error?.message);
+                return null;
+            }
+
+            const objectUrl = URL.createObjectURL(data);
+            downloadedMediaCache.set(storagePath, objectUrl);
+            return objectUrl;
+        } catch (e) {
+            console.warn('Storage download exception:', e);
+            return null;
+        }
+    },
+
     async deleteMedia(storagePath: string): Promise<void> {
         if (!SupabaseService.client || !storagePath) return;
         try {
             await SupabaseService.client.storage.from(BUCKET).remove([storagePath]);
             signedUrlCache.delete(storagePath);
+            const objectUrl = downloadedMediaCache.get(storagePath);
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+                downloadedMediaCache.delete(storagePath);
+            }
         } catch (e) {
             console.warn('Storage delete failed:', e);
         }

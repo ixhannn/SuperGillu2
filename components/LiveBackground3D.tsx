@@ -18,30 +18,44 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { AnimationEngine, QualityTier } from '../utils/AnimationEngine';
 import { LiveBackground } from './LiveBackground';
+import { readThemeColorList } from '../utils/themeVars';
+
+export type ParticlePreset = 'spark' | 'plasma' | 'ink';
 
 // ── Particle counts ────────────────────────────────────────────────
 const BOKEH_COUNT   = 40;   // large, slow, dreamy
 const SPARKLE_COUNT = 20;   // small, faster, bright accents
 const TOTAL         = BOKEH_COUNT + SPARKLE_COUNT;
 
-// ── Color palette — deep, rich pinks for better contrast against light background ───────────────
-const BOKEH_COLORS = [
-  new THREE.Color('#f472b6'), // pink
-  new THREE.Color('#f472b6'), // pink (double weight)
-  new THREE.Color('#ec4899'), // bright dark pink
-  new THREE.Color('#ec4899'), // bright dark pink (double weight)
-  new THREE.Color('#db2777'), // deep true pink
-  new THREE.Color('#db2777'), // deep true pink
-  new THREE.Color('#be185d'), // magenta pink
-  new THREE.Color('#9d174d'), // dark rose
-];
-
-const SPARKLE_COLORS = [
-  new THREE.Color('#f472b6'), // standard pink
-  new THREE.Color('#ec4899'), // bright dark pink
-  new THREE.Color('#db2777'), // deep true pink
-  new THREE.Color('#ffffff'), // pure white sparkle accent
-];
+const PRESETS: Record<ParticlePreset, {
+  bokehColors: string[];
+  sparkleColors: string[];
+  bokehFreqMult: number;
+  sparkleFreqMult: number;
+  alphaScale: number;
+}> = {
+  spark: {
+    bokehColors: ['#f472b6', '#ec4899', '#db2777', '#be185d', '#9d174d'],
+    sparkleColors: ['#f472b6', '#ec4899', '#db2777', '#ffffff'],
+    bokehFreqMult: 1,
+    sparkleFreqMult: 1,
+    alphaScale: 1,
+  },
+  plasma: {
+    bokehColors: ['#f472b6', '#e879f9', '#c084fc', '#a855f7', '#7e22ce'],
+    sparkleColors: ['#f0abfc', '#e879f9', '#c084fc', '#ffffff'],
+    bokehFreqMult: 1.2,
+    sparkleFreqMult: 1.35,
+    alphaScale: 1.05,
+  },
+  ink: {
+    bokehColors: ['#374151', '#4b5563', '#6b7280', '#be185d', '#9d174d'],
+    sparkleColors: ['#6b7280', '#9ca3af', '#f9a8d4', '#ffffff'],
+    bokehFreqMult: 0.8,
+    sparkleFreqMult: 0.9,
+    alphaScale: 0.9,
+  },
+};
 
 // ── Seeded random helper ───────────────────────────────────────────
 const rng = (() => {
@@ -49,11 +63,19 @@ const rng = (() => {
   return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
 })();
 
-export const LiveBackground3D: React.FC = () => {
+interface LiveBackground3DProps {
+  preset?: ParticlePreset;
+}
+
+export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'spark' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [useFallback, setUseFallback] = useState(false);
 
   useEffect(() => {
+    const activePreset = PRESETS[preset];
+    let bokehColors = readThemeColorList('--theme-live-3d-bokeh', activePreset.bokehColors).map((c) => new THREE.Color(c));
+    let sparkleColors = readThemeColorList('--theme-live-3d-sparkle', activePreset.sparkleColors).map((c) => new THREE.Color(c));
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -101,7 +123,7 @@ export const LiveBackground3D: React.FC = () => {
       orbitRX[i]    = 10 + rng() * 40;
       orbitRY[i]    = 8  + rng() * 32;
       // Lissajous: slight irrational frequency ratio → organic figure patterns
-      const baseFreq = 0.018 + rng() * 0.04;
+      const baseFreq = (0.018 + rng() * 0.04) * activePreset.bokehFreqMult;
       freqX[i]      = baseFreq;
       freqY[i]      = baseFreq * (0.85 + rng() * 0.35); // slight mismatch
       phaseOff[i]   = rng() * Math.PI * 2;
@@ -117,7 +139,7 @@ export const LiveBackground3D: React.FC = () => {
       positions[i * 3 + 1] = centerY[i] + Math.sin(angle) * orbitRY[i];
       positions[i * 3 + 2] = baseZ[i];
 
-      const col = BOKEH_COLORS[Math.floor(rng() * BOKEH_COLORS.length)];
+      const col = bokehColors[Math.floor(rng() * bokehColors.length)];
       colors[i * 3]     = col.r;
       colors[i * 3 + 1] = col.g;
       colors[i * 3 + 2] = col.b;
@@ -130,7 +152,7 @@ export const LiveBackground3D: React.FC = () => {
     for (let i = BOKEH_COUNT; i < TOTAL; i++) {
       orbitRX[i]    = 4  + rng() * 18;
       orbitRY[i]    = 3  + rng() * 15;
-      const baseFreq = 0.05 + rng() * 0.10;
+      const baseFreq = (0.05 + rng() * 0.10) * activePreset.sparkleFreqMult;
       freqX[i]      = baseFreq;
       freqY[i]      = baseFreq * (0.7 + rng() * 0.6);
       phaseOff[i]   = rng() * Math.PI * 2;
@@ -146,7 +168,7 @@ export const LiveBackground3D: React.FC = () => {
       positions[i * 3 + 1] = centerY[i] + Math.sin(angle) * orbitRY[i];
       positions[i * 3 + 2] = baseZ[i];
 
-      const col = SPARKLE_COLORS[Math.floor(rng() * SPARKLE_COLORS.length)];
+      const col = sparkleColors[Math.floor(rng() * sparkleColors.length)];
       colors[i * 3]     = col.r;
       colors[i * 3 + 1] = col.g;
       colors[i * 3 + 2] = col.b;
@@ -154,6 +176,25 @@ export const LiveBackground3D: React.FC = () => {
       const depth = (baseZ[i] + 10) / 30;
       sizes[i] = (0.8 + rng() * 1.8) * (0.5 + depth * 0.8);
     }
+
+    const rebuildThemePalettes = () => {
+      bokehColors = readThemeColorList('--theme-live-3d-bokeh', activePreset.bokehColors).map((c) => new THREE.Color(c));
+      sparkleColors = readThemeColorList('--theme-live-3d-sparkle', activePreset.sparkleColors).map((c) => new THREE.Color(c));
+
+      for (let i = 0; i < BOKEH_COUNT; i++) {
+        const col = bokehColors[Math.floor(rng() * bokehColors.length)];
+        colors[i * 3] = col.r;
+        colors[i * 3 + 1] = col.g;
+        colors[i * 3 + 2] = col.b;
+      }
+
+      for (let i = BOKEH_COUNT; i < TOTAL; i++) {
+        const col = sparkleColors[Math.floor(rng() * sparkleColors.length)];
+        colors[i * 3] = col.r;
+        colors[i * 3 + 1] = col.g;
+        colors[i * 3 + 2] = col.b;
+      }
+    };
 
     // ── Geometry ──────────────────────────────────────────────────
     const geometry = new THREE.BufferGeometry();
@@ -169,6 +210,7 @@ export const LiveBackground3D: React.FC = () => {
       uniforms: {
         uTime:       { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
+        uAlphaScale: { value: activePreset.alphaScale },
       },
       vertexShader: /* glsl */`
         attribute float size;
@@ -178,6 +220,7 @@ export const LiveBackground3D: React.FC = () => {
         varying float vIsSparkle;
         uniform float uTime;
         uniform float uPixelRatio;
+        uniform float uAlphaScale;
 
         void main() {
           vColor     = color;
@@ -191,8 +234,8 @@ export const LiveBackground3D: React.FC = () => {
           float depthFade = clamp(1.0 - dist / 75.0, 0.0, 1.0);
           float depthFade2 = depthFade * depthFade;
 
-          // Much higher alpha for visible, punchy orbs
-          vAlpha = breathe * mix(0.72, 0.45, 1.0 - depthFade2);
+          // Subtle — lower alpha for a dreamy, soft-focus feel
+          vAlpha = breathe * mix(0.32, 0.18, 1.0 - depthFade2) * uAlphaScale;
 
           gl_PointSize = size * uPixelRatio * (52.0 / max(dist, 4.0));
           gl_Position  = projectionMatrix * mvPosition;
@@ -236,6 +279,16 @@ export const LiveBackground3D: React.FC = () => {
 
     const particles = new THREE.Points(geometry, material);
     scene.add(particles);
+
+    const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute;
+    const themeObserver = new MutationObserver(() => {
+      rebuildThemePalettes();
+      colorAttr.needsUpdate = true;
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'data-theme'],
+    });
 
     // ── Resize ────────────────────────────────────────────────────
     const resize = () => {
@@ -293,6 +346,7 @@ export const LiveBackground3D: React.FC = () => {
 
     return () => {
       clearInterval(tierCheck);
+      themeObserver.disconnect();
       AnimationEngine.unregister('live-bg-3d');
       window.removeEventListener('resize', resize);
       window.removeEventListener('scroll', onScroll);
@@ -300,7 +354,7 @@ export const LiveBackground3D: React.FC = () => {
       material.dispose();
       renderer.dispose();
     };
-  }, []);
+  }, [preset]);
 
   if (useFallback) return <LiveBackground />;
 
@@ -309,7 +363,7 @@ export const LiveBackground3D: React.FC = () => {
       ref={canvasRef}
       aria-hidden="true"
       className="fixed inset-0 z-0 pointer-events-none"
-      style={{ display: 'block', width: '100vw', height: '100vh' }}
+      style={{ display: 'block', width: '100vw', height: '100vh', filter: 'blur(18px)', transform: 'scale(1.04)' }}
     />
   );
 };

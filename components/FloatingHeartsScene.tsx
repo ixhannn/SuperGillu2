@@ -9,6 +9,7 @@ import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
 import { shaderMaterial } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
+import { readThemeVar } from '../utils/themeVars';
 
 // ── GLSL Noise functions ────────────────────────────────────────────────
 const noiseGLSL = /* glsl */ `
@@ -280,7 +281,7 @@ const OrbitalLine: React.FC<{ index: number; total: number }> = ({ index, total 
 };
 
 // ── Main morphing dark glass blob ───────────────────────────────────────
-const DarkGlassBlob = () => {
+const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ rimColor, accentColor }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<any>(null);
   const mouse = useRef(new THREE.Vector2(0, 0));
@@ -294,6 +295,12 @@ const DarkGlassBlob = () => {
     window.addEventListener('pointermove', onMove, { passive: true });
     return () => window.removeEventListener('pointermove', onMove);
   }, []);
+
+  useEffect(() => {
+    if (!materialRef.current) return;
+    materialRef.current.uRimColor = new THREE.Color(rimColor);
+    materialRef.current.uAccentColor = new THREE.Color(accentColor);
+  }, [rimColor, accentColor]);
 
   useFrame(({ clock }) => {
     if (!materialRef.current || !meshRef.current) return;
@@ -328,7 +335,7 @@ const DarkGlassBlob = () => {
 };
 
 // ── Floating dust motes ─────────────────────────────────────────────────
-const DustField = () => {
+const DustField: React.FC<{ dustColor: string }> = ({ dustColor }) => {
   const count = 80;
   const ref = useRef<THREE.Points>(null);
 
@@ -381,7 +388,7 @@ const DustField = () => {
         />
       </bufferGeometry>
       <pointsMaterial
-        color="#d4c5a9"
+        color={dustColor}
         size={0.015}
         transparent
         opacity={0.4}
@@ -420,15 +427,23 @@ const CameraRig = () => {
 };
 
 // ── Scene composition ───────────────────────────────────────────────────
-const Scene = () => (
+interface FloatingThemeColors {
+  rimColor: string;
+  accentColor: string;
+  dustColor: string;
+  lightA: string;
+  lightB: string;
+}
+
+const Scene: React.FC<{ theme: FloatingThemeColors }> = ({ theme }) => (
   <>
     {/* Minimal lighting — the shader does most of the work */}
     <ambientLight intensity={0.05} />
-    <pointLight position={[3, 3, 4]} intensity={0.3} color="#f5e6d3" distance={12} decay={2} />
-    <pointLight position={[-3, -2, 2]} intensity={0.15} color="#ffffff" distance={10} decay={2} />
+    <pointLight position={[3, 3, 4]} intensity={0.3} color={theme.lightA} distance={12} decay={2} />
+    <pointLight position={[-3, -2, 2]} intensity={0.15} color={theme.lightB} distance={10} decay={2} />
 
     {/* The main dark glass blob */}
-    <DarkGlassBlob />
+    <DarkGlassBlob rimColor={theme.rimColor} accentColor={theme.accentColor} />
 
     {/* Concentric expanding rings — reduced to 2 */}
     {Array.from({ length: 2 }, (_, i) => (
@@ -441,7 +456,7 @@ const Scene = () => (
     ))}
 
     {/* Floating dust particles */}
-    <DustField />
+    <DustField dustColor={theme.dustColor} />
 
     {/* Camera follows pointer */}
     <CameraRig />
@@ -457,18 +472,48 @@ const Scene = () => (
   </>
 );
 
-export const FloatingHeartsScene: React.FC = () => (
-  <div
-    className="fixed inset-0 z-[1] pointer-events-none"
-    aria-hidden="true"
-    style={{ opacity: 0.45 }}
-  >
-    <Canvas
-      camera={{ position: [0, 0, 5], fov: 50 }}
-      dpr={[1, 1]}
-      gl={{ alpha: true, antialias: false, powerPreference: 'high-performance' }}
+export const FloatingHeartsScene: React.FC = () => {
+  const [theme, setTheme] = React.useState<FloatingThemeColors>(() => ({
+    rimColor: readThemeVar('--theme-floating-rim', '#fbcfe8'),
+    accentColor: readThemeVar('--theme-floating-accent', '#fda4af'),
+    dustColor: readThemeVar('--theme-floating-dust', '#d4c5a9'),
+    lightA: readThemeVar('--theme-floating-light-a', '#f5e6d3'),
+    lightB: readThemeVar('--theme-floating-light-b', '#ffffff'),
+  }));
+
+  useEffect(() => {
+    const syncTheme = () => {
+      setTheme({
+        rimColor: readThemeVar('--theme-floating-rim', '#fbcfe8'),
+        accentColor: readThemeVar('--theme-floating-accent', '#fda4af'),
+        dustColor: readThemeVar('--theme-floating-dust', '#d4c5a9'),
+        lightA: readThemeVar('--theme-floating-light-a', '#f5e6d3'),
+        lightB: readThemeVar('--theme-floating-light-b', '#ffffff'),
+      });
+    };
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'data-theme'],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-[1] pointer-events-none"
+      aria-hidden="true"
+      style={{ opacity: 0.45 }}
     >
-      <Scene />
-    </Canvas>
-  </div>
-);
+      <Canvas
+        camera={{ position: [0, 0, 5], fov: 50 }}
+        dpr={[1, 1]}
+        gl={{ alpha: true, antialias: false, powerPreference: 'high-performance' }}
+      >
+        <Scene theme={theme} />
+      </Canvas>
+    </div>
+  );
+};

@@ -5,6 +5,7 @@ import { X, Volume2, VolumeX, Wind, Heart, Cloud } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
+import { ConstellationCanvas } from '../components/ConstellationCanvas';
 
 interface QuietModeProps {
   setView: (view: ViewState) => void;
@@ -260,8 +261,15 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
             }}
         ></div>
         
+        {/* Constellation star field — only when no photo */}
+        {!currentImage && (
+            <div className="absolute inset-0 z-[1] opacity-60">
+                <ConstellationCanvas />
+            </div>
+        )}
+
         {/* Overlay Gradient for Text Readability */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 z-[2]"></div>
         
         {/* Content Layer */}
         <div 

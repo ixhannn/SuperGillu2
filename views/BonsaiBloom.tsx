@@ -1,314 +1,410 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
-import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { Droplet, Sparkles, Navigation, Info, TreeDeciduous, Wind } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Droplet, Wind, Sparkles } from 'lucide-react';
 import { feedback } from '../utils/feedback';
 import { ViewHeader } from '../components/ViewHeader';
 import { isSameDay } from 'date-fns';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, Float, ContactShadows, Sparkles as DreiSparkles } from '@react-three/drei';
+import * as THREE from 'three';
 
 export interface BonsaiState {
-    level: number;
-    xp: number;
-    myLastWatered: string;
-    partnerLastWatered: string;
+    level: number; xp: number;
+    myLastWatered: string; partnerLastWatered: string;
+}
+interface BonsaiBloomProps { setView: (view: ViewState) => void; }
+
+type SceneErrorBoundaryProps = {
+    growth: number;
+    isWatering: boolean;
+    children: React.ReactNode;
+};
+
+type SceneErrorBoundaryState = {
+    hasError: boolean;
+};
+
+function hasWebGLSupport(): boolean {
+    try {
+        const canvas = document.createElement('canvas');
+        return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+    } catch {
+        return false;
+    }
 }
 
-interface BonsaiBloomProps {
-    setView: (view: ViewState) => void;
-}
+const TreeModel = ({ growth, isWatering }: { growth: number; isWatering: boolean }) => {
+    const targetScale = 0.5 + growth * 0.5;
+    const treeGroupRef = useRef<THREE.Group>(null);
+    const canopyRef1 = useRef<THREE.Mesh>(null);
+    const canopyRef2 = useRef<THREE.Mesh>(null);
+    const canopyRef3 = useRef<THREE.Mesh>(null);
 
-// Glowing particles inside the terrarium
-const TerrariumParticles = () => {
+    useFrame((state) => {
+        if (treeGroupRef.current) {
+            treeGroupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.05);
+        }
+        const t = state.clock.getElapsedTime();
+        const breathe = 1 + Math.sin(t * 2) * 0.02;
+        if (canopyRef1.current) canopyRef1.current.scale.setScalar(breathe);
+        if (canopyRef2.current) canopyRef2.current.scale.setScalar(breathe * 0.98);
+        if (canopyRef3.current) canopyRef3.current.scale.setScalar(breathe * 1.02);
+    });
+
     return (
-        <div className="absolute inset-0 z-10 overflow-hidden rounded-full pointer-events-none mix-blend-screen mask-radial">
-            {[...Array(15)].map((_, i) => (
-                <motion.div
-                    key={i}
-                    animate={{
-                        y: [-10, -150],
-                        x: [Math.sin(i) * 20, Math.cos(i) * 30],
-                        opacity: [0, 0.8, 0],
-                        scale: [0, 1.5, 0]
-                    }}
-                    transition={{
-                        duration: 4 + Math.random() * 4,
-                        repeat: Infinity,
-                        ease: 'easeOut',
-                        delay: Math.random() * 5
-                    }}
-                    className="absolute bottom-10 w-1.5 h-1.5 rounded-full blur-[1px] bg-emerald-300"
-                    style={{ left: `${40 + (Math.random() * 20)}%` }}
+        <group position={[0, -1.2, 0]}>
+            {/* The Pot */}
+            <mesh position={[0, 0.2, 0]} castShadow receiveShadow>
+                <cylinderGeometry args={[1.2, 0.9, 0.4, 32]} />
+                <meshStandardMaterial color="#1a141c" roughness={0.8} />
+            </mesh>
+            {/* Soil */}
+            <mesh position={[0, 0.41, 0]} receiveShadow>
+                <cylinderGeometry args={[1.1, 1.1, 0.02, 32]} />
+                <meshStandardMaterial color="#2d1c16" roughness={1} />
+            </mesh>
+
+            {/* Scale-animated tree container */}
+            <group ref={treeGroupRef} position={[0, 0.41, 0]}>
+                
+                {/* Main Trunk */}
+                <mesh position={[0, 1.2, 0]} castShadow receiveShadow>
+                    <cylinderGeometry args={[0.15, 0.25, 2.4, 8]} />
+                    <meshStandardMaterial color="#301E17" roughness={0.9} />
+                </mesh>
+
+                {/* Branch Right */}
+                <group position={[0.1, 1.4, 0]} rotation={[0, 0, -0.6]}>
+                    <mesh position={[0, 0.6, 0]} castShadow receiveShadow>
+                        <cylinderGeometry args={[0.08, 0.12, 1.2, 6]} />
+                        <meshStandardMaterial color="#301E17" roughness={0.9} />
+                    </mesh>
+                    <mesh ref={canopyRef1} position={[0, 1.2, 0]} castShadow receiveShadow>
+                        <sphereGeometry args={[0.9, 16, 16]} />
+                        <meshStandardMaterial color="#ff7eb3" roughness={0.5} />
+                    </mesh>
+                </group>
+
+                {/* Branch Left */}
+                <group position={[-0.1, 1.8, 0.2]} rotation={[0.3, 0, 0.5]}>
+                    <mesh position={[0, 0.5, 0]} castShadow receiveShadow>
+                        <cylinderGeometry args={[0.06, 0.1, 1, 6]} />
+                        <meshStandardMaterial color="#301E17" roughness={0.9} />
+                    </mesh>
+                    <mesh ref={canopyRef2} position={[0, 1.1, 0]} castShadow receiveShadow>
+                        <sphereGeometry args={[0.7, 16, 16]} />
+                        <meshStandardMaterial color="#ff7eb3" roughness={0.5} />
+                    </mesh>
+                </group>
+
+                {/* Top/Back Foliage */}
+                <mesh ref={canopyRef3} position={[0, 2.5, -0.2]} castShadow receiveShadow>
+                    <sphereGeometry args={[1.1, 16, 16]} />
+                    <meshStandardMaterial color="#ff5e9e" roughness={0.5} />
+                </mesh>
+            </group>
+
+            {/* Watering Sparkles */}
+            {isWatering && (
+                <DreiSparkles position={[0, 2, 0]} count={50} scale={3} size={4} speed={2} opacity={0.6} color="#ffa6c9" />
+            )}
+        </group>
+    );
+};
+
+class SceneErrorBoundary extends React.Component<SceneErrorBoundaryProps, SceneErrorBoundaryState> {
+    constructor(props: SceneErrorBoundaryProps) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError(): SceneErrorBoundaryState {
+        return { hasError: true };
+    }
+
+    componentDidCatch() {
+        // Keep this view alive by falling back to SVG tree if WebGL scene crashes.
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return <BasicTreeFallback growth={this.props.growth} isWatering={this.props.isWatering} />;
+        }
+        return this.props.children;
+    }
+}
+
+/* -- R3F Canvas Component --------------------------------- */
+const BonsaiScene: React.FC<{ growth: number; isWatering: boolean }> = ({ growth, isWatering }) => {
+    return (
+        <div className="absolute inset-0 pt-24 pb-32 pointer-events-none">
+            <Canvas shadows camera={{ position: [0, 1, 6], fov: 45 }} className="pointer-events-auto">
+                <ambientLight intensity={0.6} />
+                <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow shadow-mapSize={1024} />
+                <spotLight position={[-5, 5, -5]} intensity={0.5} color="#ffebf0" />
+
+                <Float speed={2} rotationIntensity={0.1} floatIntensity={0.2}>
+                    <TreeModel growth={growth} isWatering={isWatering} />
+                </Float>
+
+                <ContactShadows position={[0, -1.8, 0]} opacity={0.5} scale={10} blur={2} far={4} color="#000000" />
+                
+                <OrbitControls 
+                    enableZoom={false} 
+                    enablePan={false} 
+                    autoRotate 
+                    autoRotateSpeed={1.0} 
+                    maxPolarAngle={Math.PI / 2 + 0.1} 
+                    minPolarAngle={Math.PI / 3} 
                 />
-            ))}
+            </Canvas>
         </div>
     );
 };
 
-// A breathtaking minimalist tree constructed from premium overlapping glows and shapes
-const EtherealTree = ({ level, isWatering }: { level: number, isWatering: boolean }) => {
-    const scaleMultiplier = Math.min(1 + (level * 0.1), 1.5);
-    
+const BasicTreeFallback: React.FC<{ growth: number; isWatering: boolean }> = ({ growth, isWatering }) => {
+    const canopyScale = 0.8 + growth * 0.35;
+    const trunkScale = 0.75 + growth * 0.25;
+
     return (
-        <motion.div 
-            animate={{ 
-                scaleY: [1, 1.01, 1],
-                rotate: isWatering ? [-0.5, 0.5, -0.5] : [0, 0, 0]
-            }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            className="relative z-20 flex flex-col items-center justify-end origin-bottom"
-            style={{ transform: `scale(${scaleMultiplier})` }}
-        >
-            {/* The Ethereal Canopy */}
-            <div className="relative w-40 h-40 flex items-center justify-center -mb-8">
-                {/* Core Glow */}
-                <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-2xl" />
-                
-                {/* Geometric/Ethereal Leaves representation */}
-                <motion.div 
-                    animate={{ rotate: 360 }} 
-                    transition={{ duration: 60, repeat: Infinity, ease: 'linear' }}
-                    className="absolute w-32 h-32 border border-emerald-400/30 rounded-full flex items-center justify-center"
-                >
-                    <div className="w-2 h-2 bg-emerald-300 rounded-full absolute -top-1 blur-[1px]" />
-                    <div className="w-1 h-1 bg-emerald-200 rounded-full absolute -bottom-0.5 blur-[1px]" />
-                </motion.div>
+        <div className="absolute inset-0 pt-24 pb-32 flex items-center justify-center">
+            <svg viewBox="0 0 400 520" className="w-full h-full max-w-[420px]">
+                <defs>
+                    <radialGradient id="fallbackGlow" cx="50%" cy="55%" r="50%">
+                        <stop offset="0%" stopColor="rgba(255,120,170,0.2)" />
+                        <stop offset="100%" stopColor="rgba(255,120,170,0)" />
+                    </radialGradient>
+                </defs>
 
-                <motion.div 
-                    animate={{ rotate: -360 }} 
-                    transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
-                    className="absolute w-24 h-24 border border-emerald-300/40 rounded-full flex items-center justify-center"
-                >
-                    <div className="w-1.5 h-1.5 bg-emerald-100 rounded-full absolute -left-0.5 blur-[1px]" />
-                </motion.div>
+                <ellipse cx="200" cy="300" rx="140" ry="120" fill="url(#fallbackGlow)" />
 
-                <TreeDeciduous size={48} className="text-emerald-300 drop-shadow-[0_0_15px_rgba(110,231,183,1)] relative z-10" strokeWidth={1.5} />
-            </div>
+                <g transform={`translate(200 330) scale(${trunkScale})`}>
+                    <rect x="-16" y="-160" width="32" height="170" rx="14" fill="#301E17" />
+                    <rect x="8" y="-130" width="20" height="90" rx="10" transform="rotate(28)" fill="#301E17" />
+                    <rect x="-28" y="-110" width="18" height="85" rx="9" transform="rotate(-30)" fill="#301E17" />
+                </g>
 
-            {/* The base/roots indicator */}
-            <div className="w-16 h-2 bg-gradient-to-r from-transparent via-emerald-800/80 to-transparent blur-sm rounded-full" />
-            <div className="w-8 h-1 bg-emerald-600/50 blur-[1px] rounded-full mt-1" />
-        </motion.div>
+                <g transform={`translate(200 170) scale(${canopyScale})`}>
+                    <circle cx="0" cy="20" r="70" fill="#ff5e9e" />
+                    <circle cx="-58" cy="36" r="48" fill="#ff7eb3" />
+                    <circle cx="56" cy="38" r="50" fill="#ff7eb3" />
+                </g>
+
+                <ellipse cx="200" cy="410" rx="110" ry="32" fill="#120d0f" />
+                <ellipse cx="200" cy="410" rx="118" ry="36" fill="none" stroke="#3d2633" strokeWidth="4" />
+
+                {isWatering && (
+                    <g fill="#ffa6c9" opacity="0.8">
+                        <circle cx="150" cy="120" r="4" />
+                        <circle cx="180" cy="105" r="3" />
+                        <circle cx="220" cy="112" r="4" />
+                        <circle cx="248" cy="130" r="3" />
+                    </g>
+                )}
+            </svg>
+        </div>
     );
 };
 
+/* -- Main View --------------------------------------------------- */
 export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
     const [state, setState] = useState<BonsaiState>({ level: 1, xp: 0, myLastWatered: '', partnerLastWatered: '' });
     const [holdProgress, setHoldProgress] = useState(0);
-    const holdIntervalRef = useRef<any>(null);
-
-    const now = new Date();
-
-    useEffect(() => {
-        const load = () => {
-            // @ts-ignore
-            const s = StorageService.getBonsaiState?.() || { level: 1, xp: 0, myLastWatered: '', partnerLastWatered: '' };
-            setState(s);
-        };
-        load();
-        storageEventTarget.addEventListener('storage-update', load);
-        return () => storageEventTarget.removeEventListener('storage-update', load);
-    }, []);
-
-    const myWa = state.myLastWatered ? new Date(state.myLastWatered) : null;
-    const ptWa = state.partnerLastWatered ? new Date(state.partnerLastWatered) : null;
-    const iWateredToday = myWa ? isSameDay(myWa, now) : false;
-    const partnerWateredToday = ptWa ? isSameDay(ptWa, now) : false;
-    const bothWateredToday = iWateredToday && partnerWateredToday;
-
-    const startWatering = () => {
-        if (iWateredToday) return;
-        feedback.tap();
-        let progress = 0;
-        holdIntervalRef.current = setInterval(() => {
-            progress += 1.2; // ~83 ticks (~830ms)
-            setHoldProgress(progress);
-            if (progress % 15 === 0 && navigator.vibrate) navigator.vibrate([10]); // Deep throb
-            
-            if (progress >= 100) {
-                clearInterval(holdIntervalRef.current);
-                completeWatering();
-            }
-        }, 10);
+    const [webglAvailable, setWebglAvailable] = useState(true);
+    const holdRef = useRef<any>(null);
+    const resetHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const storage = StorageService as typeof StorageService & {
+        getBonsaiState?: () => BonsaiState;
+        saveBonsaiState?: (value: BonsaiState) => void;
     };
 
-    const cancelWatering = () => {
-        if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
-        if (holdProgress < 100) setHoldProgress(0);
+    useEffect(() => {
+        if (storage.getBonsaiState) {
+            setState(storage.getBonsaiState());
+        }
+        const handler = () => {
+            if (storage.getBonsaiState) setState(storage.getBonsaiState());
+        };
+        storageEventTarget.addEventListener("bonsaiUpdated", handler);
+        return () => storageEventTarget.removeEventListener("bonsaiUpdated", handler);
+    }, []);
+
+    useEffect(() => {
+        setWebglAvailable(hasWebGLSupport());
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (holdRef.current) {
+                clearInterval(holdRef.current);
+                holdRef.current = null;
+            }
+            if (resetHoldTimeoutRef.current) {
+                clearTimeout(resetHoldTimeoutRef.current);
+                resetHoldTimeoutRef.current = null;
+            }
+        };
+    }, []);
+
+    const isWateredToday = isSameDay(new Date(), state.myLastWatered ? new Date(state.myLastWatered) : new Date(0));
+    
+    const normalizedGrowth = Math.min(1, (state.level * 100 + state.xp) / 1000);
+    const isWatering = holdProgress > 0;
+
+    const startWatering = (e: React.TouchEvent | React.MouseEvent) => {
+        if (isWateredToday || holdRef.current) return;
+        e.preventDefault();
+        
+        if (resetHoldTimeoutRef.current) {
+            clearTimeout(resetHoldTimeoutRef.current);
+            resetHoldTimeoutRef.current = null;
+        }
+        
+        feedback.impact('light');
+
+        holdRef.current = setInterval(() => {
+            setHoldProgress((previous) => {
+                const next = Math.min(100, previous + 5);
+
+                if (next % 20 === 0) {
+                    feedback.impact('light');
+                }
+
+                if (next >= 100) {
+                    if (holdRef.current) {
+                        clearInterval(holdRef.current);
+                        holdRef.current = null;
+                    }
+                    completeWatering();
+                }
+
+                return next;
+            });
+        }, 50);
+    };
+
+    const stopWatering = () => {
+        if (!holdRef.current) return;
+        clearInterval(holdRef.current);
+        holdRef.current = null;
+        
+        resetHoldTimeoutRef.current = setTimeout(() => {
+            setHoldProgress(0);
+            resetHoldTimeoutRef.current = null;
+        }, 500);
     };
 
     const completeWatering = () => {
-        feedback.celebrate();
-        const newState = { ...state, myLastWatered: now.toISOString() };
-        newState.xp += 10;
-        if (partnerWateredToday) newState.xp += 15;
-
-        let leveledUp = false;
-        if (newState.xp >= newState.level * 100) {
-            newState.level += 1;
-            newState.xp = 0;
-            leveledUp = true;
+        feedback.notification('success');
+        
+        let newXp = state.xp + 20;
+        let newLvl = state.level;
+        if (newXp >= 100) {
+            newXp = 0;
+            newLvl += 1;
         }
 
-        // @ts-ignore
-        StorageService.saveBonsaiState?.(newState);
+        const newState: BonsaiState = {
+            ...state,
+            level: newLvl,
+            xp: newXp,
+            myLastWatered: new Date().toISOString()
+        };
+
+        if (storage.saveBonsaiState) {
+            storage.saveBonsaiState(newState);
+        }
         setState(newState);
-        
-        // Let progress ring stay full briefly, then fade out
-        setTimeout(() => setHoldProgress(0), 1000);
+        if (resetHoldTimeoutRef.current) {
+            clearTimeout(resetHoldTimeoutRef.current);
+        }
+        resetHoldTimeoutRef.current = setTimeout(() => {
+            setHoldProgress(0);
+            resetHoldTimeoutRef.current = null;
+        }, 1000);
     };
 
-    const xpTarget = state.level * 100;
-    const progressPercent = Math.min(100, Math.max(0, (state.xp / xpTarget) * 100));
-
     return (
-        <div className="flex flex-col min-h-screen relative overflow-hidden bg-[#0A0D10] select-none text-slate-100">
-            
-            {/* Premium Cinematic Background */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-                <div className="absolute top-0 right-0 w-[40rem] h-[40rem] bg-emerald-900/10 rounded-full blur-[120px]" />
-                <div className="absolute -bottom-40 -left-20 w-[40rem] h-[40rem] bg-teal-900/20 rounded-full blur-[100px]" />
-                
-                {/* SVG Noise Overlay for premium matte finish */}
-                <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
-            </div>
-            
-            <div className="relative z-20 pb-10 flex flex-col h-full min-h-screen">
-                <div className="px-6 py-4 pt-12">
-                    <ViewHeader title="Shared Growth" onBack={() => setView('home')} variant="transparent" />
+        <div className="relative w-full h-full bg-[#0a0508] overflow-hidden select-none">
+            {webglAvailable ? (
+                <SceneErrorBoundary growth={normalizedGrowth} isWatering={isWatering}>
+                    <BonsaiScene growth={normalizedGrowth} isWatering={isWatering} />
+                </SceneErrorBoundary>
+            ) : (
+                <BasicTreeFallback growth={normalizedGrowth} isWatering={isWatering} />
+            )}
+
+            {/* UI Top Layer (pointer-events-none to let touch pass to canvas) */}
+            <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
+                <div className="pointer-events-auto">
+                    <ViewHeader title="Bonsai Bloom" onBack={() => setView('home')} />
                 </div>
 
-                <div className="flex-1 flex flex-col items-center justify-center -mt-10 relative px-6">
-                    
-                    {/* The Glass Terrarium (Central Focus) */}
-                    <div className="relative flex items-center justify-center w-[22rem] h-[22rem]">
-                        
-                        {/* Terrarium Sphere / Dome */}
-                        <div className="absolute inset-0 rounded-full border border-white/10 bg-gradient-to-b from-white/5 to-transparent backdrop-blur-md shadow-[0_30px_60px_rgba(0,0,0,0.5),inset_0_2px_20px_rgba(255,255,255,0.05)] overflow-hidden flex items-center justify-center">
-                            
-                            {/* Inner depth shadow */}
-                            <div className="absolute inset-0 rounded-full shadow-[inset_0_-20px_50px_rgba(0,0,0,0.8)] pointer-events-none" />
-                            
-                            {/* Tree Element */}
-                            <EtherealTree level={state.level} isWatering={holdProgress > 0 && holdProgress < 100} />
-                            
-                            {/* Ambient Particles */}
-                            <TerrariumParticles />
-
-                            {/* Water pouring effect */}
-                            <AnimatePresence>
-                                {holdProgress > 0 && holdProgress < 100 && (
-                                    <motion.div 
-                                        initial={{ opacity: 0, scaleY: 0 }}
-                                        animate={{ opacity: 1, scaleY: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        className="absolute top-0 w-32 h-64 bg-gradient-to-b from-blue-400/0 via-blue-400/20 to-transparent blur-md origin-top mix-blend-screen"
-                                    />
-                                )}
-                            </AnimatePresence>
-                        </div>
-
-                        {/* Ring Progress mapping to XP */}
-                        <svg className="absolute -inset-4 w-[24rem] h-[24rem] -rotate-90 pointer-events-none drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-                            <circle cx="192" cy="192" r="184" className="stroke-white/5" strokeWidth="2" fill="none" />
-                            <motion.circle 
-                                cx="192" cy="192" r="184" 
-                                className="stroke-emerald-400" 
-                                strokeWidth="4" 
-                                fill="none" 
-                                strokeLinecap="round"
-                                strokeDasharray={1156} 
-                                strokeDashoffset={1156 - (1156 * progressPercent) / 100} 
-                                transition={{ duration: 1.5, ease: "easeOut" }}
-                            />
-                        </svg>
-
-                        {/* Level Badge Float */}
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-black/40 backdrop-blur-xl border border-white/10 rounded-full shadow-xl">
-                            <span className="font-serif font-bold text-emerald-300 text-sm tracking-widest uppercase">Lvl {state.level}</span>
-                        </div>
-                    </div>
-
-                    {/* Quick Stats Grid */}
-                    <div className="w-full max-w-sm mt-12 grid grid-cols-2 gap-4">
-                        <div className="bg-white/5 border border-white/5 rounded-3xl p-5 backdrop-blur-sm flex flex-col items-center justify-center relative overflow-hidden group">
-                            <div className={`absolute inset-0 bg-gradient-to-t from-emerald-500/10 to-transparent transition-opacity duration-700 ${iWateredToday ? 'opacity-100' : 'opacity-0'}`} />
-                            <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500 mb-2 relative z-10">You</span>
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-700 relative z-10 ${iWateredToday ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)]' : 'bg-white/10 text-gray-400'}`}>
-                                <Droplet size={18} fill={iWateredToday ? "currentColor" : "none"} />
-                            </div>
-                        </div>
-                        
-                        <div className="bg-white/5 border border-white/5 rounded-3xl p-5 backdrop-blur-sm flex flex-col items-center justify-center relative overflow-hidden">
-                            <div className={`absolute inset-0 bg-gradient-to-t from-emerald-500/10 to-transparent transition-opacity duration-700 ${partnerWateredToday ? 'opacity-100' : 'opacity-0'}`} />
-                            <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500 mb-2 relative z-10">Tulika</span>
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-700 relative z-10 ${partnerWateredToday ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)]' : 'bg-white/10 text-gray-400'}`}>
-                                <Droplet size={18} fill={partnerWateredToday ? "currentColor" : "none"} />
-                            </div>
-                        </div>
+                {/* Level Badge */}
+                <div className="mt-8 flex justify-center w-full pointer-events-none">
+                    <div className="bg-black/30 backdrop-blur-xl px-5 py-2.5 rounded-full border border-pink-500/20 flex items-center space-x-3 shadow-[0_0_20px_rgba(255,100,150,0.1)]">
+                        <Sparkles className="w-4 h-4 text-pink-400" />
+                        <span className="text-white/90 font-medium tracking-wide">Lvl {state.level}</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-pink-500/50" />
+                        <span className="text-white/60 font-medium">{state.xp}/100 XP</span>
                     </div>
                 </div>
 
-                {/* The Sleek Circular Hold Button Area */}
-                <div className="fixed bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black via-black/80 to-transparent z-40 flex items-center justify-center pb-8 pointer-events-none">
-                    
-                    <div className="relative pointer-events-auto">
-                        
-                        {/* Hold Progress Ring */}
-                        <svg className="absolute -inset-4 w-28 h-28 -rotate-90 pointer-events-none">
-                            <circle cx="56" cy="56" r="50" className="stroke-transparent" strokeWidth="4" fill="none" />
-                            <motion.circle 
-                                cx="56" cy="56" r="50" 
-                                className="stroke-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.8)]" 
-                                strokeWidth="4" fill="none" strokeLinecap="round"
-                                strokeDasharray={314} 
-                                strokeDashoffset={314 - (314 * holdProgress) / 100} 
-                            />
-                        </svg>
+                <div className="flex-1" />
 
-                        <motion.button
-                            onPointerDown={startWatering}
-                            onPointerUp={cancelWatering}
-                            onPointerLeave={cancelWatering}
-                            onContextMenu={(e) => e.preventDefault()}
-                            disabled={iWateredToday}
-                            whileTap={{ scale: iWateredToday ? 1 : 0.92 }}
-                            className={`w-20 h-20 rounded-full flex flex-col items-center justify-center relative overflow-hidden shadow-2xl transition-all duration-300
-                                ${iWateredToday 
-                                    ? 'bg-white/5 border border-white/10 text-emerald-400 cursor-not-allowed opacity-80' 
-                                    : 'bg-white/10 border border-white/20 text-white hover:bg-white/15 active:bg-blue-500/20 active:border-blue-400'
-                                }
-                            `}
-                        >
-                            <div className="absolute inset-0 bg-black mix-blend-overlay opacity-30" />
-                            
-                            {iWateredToday ? (
-                                <Droplet size={28} fill="currentColor" className="relative z-10" />
-                            ) : (
-                                <>
-                                    <Droplet size={24} className={`relative z-10 transition-transform ${holdProgress > 0 ? '-translate-y-1 text-blue-300' : ''}`} />
-                                    <span className={`text-[9px] font-bold uppercase tracking-widest mt-1 relative z-10 transition-opacity ${holdProgress > 0 ? 'opacity-100 text-blue-200' : 'opacity-60'}`}>
-                                        Hold
-                                    </span>
-                                </>
-                            )}
-
-                            {/* Inner Water Fill Effect during hold */}
+                {/* Watering Button Area */}
+                <div className="pb-12 flex justify-center w-full pointer-events-auto">
+                    <AnimatePresence mode="wait">
+                        {!isWateredToday ? (
                             <motion.div 
-                                className="absolute bottom-0 left-0 right-0 bg-blue-500/40 mix-blend-screen"
-                                style={{ height: `${holdProgress}%` }}
-                                transition={{ duration: 0.1 }}
-                            />
-                        </motion.button>
-                    </div>
+                                key="water-btn"
+                                initial={{ scale: 0.8, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.8, opacity: 0 }}
+                                className="relative flex items-center justify-center"
+                                onPointerDown={startWatering}
+                                onPointerUp={stopWatering}
+                                onPointerLeave={stopWatering}
+                                onPointerCancel={stopWatering}
+                                style={{ touchAction: 'none' }}
+                            >
+                                <svg className="absolute w-24 h-24 -rotate-90 pointer-events-none">
+                                    <circle cx="48" cy="48" r="44" stroke="rgba(255,255,255,0.1)" strokeWidth="3" fill="none" />
+                                    <motion.circle 
+                                        cx="48" cy="48" r="44" 
+                                        stroke="url(#waterGrad)" strokeWidth="4" fill="none" strokeLinecap="round"
+                                        strokeDasharray="276"
+                                        animate={{ strokeDashoffset: 276 - (276 * holdProgress) / 100 }}
+                                        transition={{ duration: 0.1 }}
+                                    />
+                                    <defs>
+                                        <linearGradient id="waterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stopColor="#ff7eb3" />
+                                            <stop offset="100%" stopColor="#ff1493" />
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
 
-                    {/* Helper text floating nearby */}
-                    <div className="absolute bottom-6 w-full text-center pointer-events-none">
-                        <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
-                            {iWateredToday ? `${partnerWateredToday ? 'Both watered today' : 'Waiting for partner'}` : 'Nourish Daily'}
-                        </span>
-                    </div>
-
+                                <motion.div 
+                                    className="w-16 h-16 bg-gradient-to-br from-pink-400 to-rose-600 rounded-full flex items-center justify-center shadow-lg cursor-pointer"
+                                    animate={{ scale: holdProgress > 0 ? 0.9 : 1 }}
+                                >
+                                    <Droplet className="w-7 h-7 text-white fill-white/20" />
+                                </motion.div>
+                            </motion.div>
+                        ) : (
+                            <motion.div
+                                key="watered-msg"
+                                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                                className="bg-white/5 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 flex items-center space-x-3 text-pink-200/80 pointer-events-none"
+                            >
+                                <Wind className="w-5 h-5 opacity-60" />
+                                <span className="text-sm font-medium tracking-wide">Tree is flourishing today</span>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
         </div>

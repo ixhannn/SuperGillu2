@@ -2,7 +2,7 @@ import { StorageService } from './storage';
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 
-const MIGRATION_KEY = 'tulika_media_migrated_v1';
+const MIGRATION_KEY = 'tulika_media_migrated_v2';
 
 interface MigrationResult {
     migrated: number;
@@ -57,21 +57,27 @@ export const MediaMigrationService = {
             for (const item of items) {
                 try {
                     let updated = false;
+                    const imageNeedsScopedPath = !!item.storagePath && !(await MediaStorageService.isScopedToCurrentUser(item.storagePath));
+                    const videoNeedsScopedPath = !!item.videoStoragePath && !(await MediaStorageService.isScopedToCurrentUser(item.videoStoragePath));
 
                     // Migrate image
-                    if (item.imageId && !item.storagePath) {
+                    if (item.imageId && (!item.storagePath || imageNeedsScopedPath)) {
                         const base64 = await StorageService.getImage(item.imageId);
                         // If not in local, check cloud JSON
                         const finalBase64 = base64 || findCloudBase64(cloudItems, item.id, 'image');
 
                         if (finalBase64 && finalBase64.startsWith('data:')) {
-                            const path = MediaStorageService.buildPath(table.prefix, item.id, 'image');
+                            const path = await MediaStorageService.buildPath(table.prefix, item.id, 'image');
                             const uploaded = await MediaStorageService.uploadMedia(finalBase64, path);
                             if (uploaded) {
+                                const previousPath = item.storagePath;
                                 item.storagePath = uploaded;
                                 updated = true;
                                 result.migrated++;
                                 onProgress?.(`Uploaded image: ${item.id}`);
+                                if (previousPath && previousPath !== uploaded) {
+                                    MediaStorageService.deleteMedia(previousPath);
+                                }
                             } else {
                                 result.failed++;
                             }
@@ -83,17 +89,21 @@ export const MediaMigrationService = {
                     }
 
                     // Migrate video
-                    if (item.videoId && !item.videoStoragePath) {
+                    if (item.videoId && (!item.videoStoragePath || videoNeedsScopedPath)) {
                         const base64 = await StorageService.getImage(item.videoId);
                         const finalBase64 = base64 || findCloudBase64(cloudItems, item.id, 'video');
 
                         if (finalBase64 && finalBase64.startsWith('data:')) {
-                            const path = MediaStorageService.buildPath(table.prefix, item.id, 'video');
+                            const path = await MediaStorageService.buildPath(table.prefix, item.id, 'video');
                             const uploaded = await MediaStorageService.uploadMedia(finalBase64, path);
                             if (uploaded) {
+                                const previousPath = item.videoStoragePath;
                                 item.videoStoragePath = uploaded;
                                 updated = true;
                                 result.migrated++;
+                                if (previousPath && previousPath !== uploaded) {
+                                    MediaStorageService.deleteMedia(previousPath);
+                                }
                             } else {
                                 result.failed++;
                             }

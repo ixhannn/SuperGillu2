@@ -15,6 +15,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { AnimationEngine } from '../utils/AnimationEngine';
+import { readThemeRgbTriplet } from '../utils/themeVars';
 
 // ─── Tuning ────────────────────────────────────────────────────────────────────
 const STAR_COUNT       = 180;
@@ -134,6 +135,25 @@ export const ConstellationCanvas: React.FC = () => {
     // Two control points that drift on slow noise
     let cp1x = 0, cp1y = 0, cp2x = 0, cp2y = 0;
 
+    let starLinkRgb = '253,164,175';
+    let starCoreRgb = '253,164,175';
+    let partnerARgb = '244,63,94';
+    let partnerBRgb = '251,191,36';
+
+    const syncThemeColors = () => {
+      starLinkRgb = readThemeRgbTriplet('--theme-star-link-rgb', '253,164,175');
+      starCoreRgb = readThemeRgbTriplet('--theme-star-core-rgb', '253,164,175');
+      partnerARgb = readThemeRgbTriplet('--theme-partner-a-rgb', '244,63,94');
+      partnerBRgb = readThemeRgbTriplet('--theme-partner-b-rgb', '251,191,36');
+    };
+    syncThemeColors();
+
+    const themeObserver = new MutationObserver(syncThemeColors);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'data-theme'],
+    });
+
     // ── Main tick ─────────────────────────────────────────────────
     AnimationEngine.register({
       id: 'constellation',
@@ -220,7 +240,7 @@ export const ConstellationCanvas: React.FC = () => {
               if (d2 > CONNECTION_DIST * CONNECTION_DIST) continue;
               const alpha = (1 - Math.sqrt(d2) / CONNECTION_DIST) * 0.18;
               ctx.beginPath();
-              ctx.strokeStyle = `rgba(253,164,175,${alpha.toFixed(3)})`;
+              ctx.strokeStyle = `rgba(${starLinkRgb},${alpha.toFixed(3)})`;
               ctx.moveTo(a.x, a.y);
               ctx.lineTo(b.x, b.y);
               ctx.stroke();
@@ -235,9 +255,9 @@ export const ConstellationCanvas: React.FC = () => {
         ctx.moveTo(stars[0].x, stars[0].y);
         ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, stars[1].x, stars[1].y);
         const grad = ctx.createLinearGradient(stars[0].x, stars[0].y, stars[1].x, stars[1].y);
-        grad.addColorStop(0,   `rgba(244,63,94,${threadAlpha})`);
-        grad.addColorStop(0.5, `rgba(251,191,36,${threadAlpha * 0.6})`);
-        grad.addColorStop(1,   `rgba(251,191,36,${threadAlpha})`);
+        grad.addColorStop(0,   `rgba(${partnerARgb},${threadAlpha})`);
+        grad.addColorStop(0.5, `rgba(${partnerBRgb},${threadAlpha * 0.6})`);
+        grad.addColorStop(1,   `rgba(${partnerBRgb},${threadAlpha})`);
         ctx.strokeStyle = grad;
         ctx.lineWidth = threadWidth;
         ctx.stroke();
@@ -250,7 +270,7 @@ export const ConstellationCanvas: React.FC = () => {
             // Normal star
             ctx.beginPath();
             ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(253,164,175,${s.opacity})`;
+            ctx.fillStyle = `rgba(${starCoreRgb},${s.opacity})`;
             ctx.fill();
           } else {
             // Partner star — heartbeat scale + glow
@@ -261,7 +281,7 @@ export const ConstellationCanvas: React.FC = () => {
 
             // Outer glow
             const glow = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, gR);
-            const col0 = s.isPartner === 0 ? '244,63,94' : '251,191,36';
+            const col0 = s.isPartner === 0 ? partnerARgb : partnerBRgb;
             glow.addColorStop(0,   `rgba(${col0},${(0.35 + hb * 0.4).toFixed(3)})`);
             glow.addColorStop(0.4, `rgba(${col0},${(0.12 + hb * 0.15).toFixed(3)})`);
             glow.addColorStop(1,   `rgba(${col0},0)`);
@@ -273,7 +293,7 @@ export const ConstellationCanvas: React.FC = () => {
             // Core
             ctx.beginPath();
             ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-            ctx.fillStyle = s.isPartner === 0 ? `rgba(244,63,94,0.95)` : `rgba(251,191,36,0.95)`;
+            ctx.fillStyle = s.isPartner === 0 ? `rgba(${partnerARgb},0.95)` : `rgba(${partnerBRgb},0.95)`;
             ctx.fill();
 
             // Perfect sync shockwave
@@ -300,9 +320,9 @@ export const ConstellationCanvas: React.FC = () => {
             const r = maxR * wave * 2;
             const a = (0.5 - wave) * 0.06;
             const bloom = ctx.createRadialGradient(midX, midY, 0, midX, midY, r);
-            bloom.addColorStop(0,   `rgba(244,63,94,${a.toFixed(4)})`);
-            bloom.addColorStop(0.5, `rgba(251,113,133,${(a * 0.5).toFixed(4)})`);
-            bloom.addColorStop(1,   `rgba(244,63,94,0)`);
+            bloom.addColorStop(0,   `rgba(${partnerARgb},${a.toFixed(4)})`);
+            bloom.addColorStop(0.5, `rgba(${starCoreRgb},${(a * 0.5).toFixed(4)})`);
+            bloom.addColorStop(1,   `rgba(${partnerARgb},0)`);
             ctx.fillStyle = bloom;
             ctx.fillRect(0, 0, W, H);
           }
@@ -315,6 +335,7 @@ export const ConstellationCanvas: React.FC = () => {
     return () => {
       AnimationEngine.unregister('constellation');
       ro.disconnect();
+      themeObserver.disconnect();
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup',   onPointerUp);

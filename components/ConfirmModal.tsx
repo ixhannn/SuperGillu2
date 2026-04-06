@@ -41,7 +41,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                         animate={{ scale: 1, opacity: 1, y: 0 }}
                         exit={{ scale: 0.95, opacity: 0, y: 4 }}
                         transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-                        className="bg-white w-full max-w-sm rounded-[1.75rem] p-7 shadow-elevated"
+                        className="glass-card-hero w-full max-w-sm rounded-[1.75rem] p-7 shadow-elevated"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center gap-3 mb-4">
@@ -50,15 +50,16 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                                     <AlertTriangle size={18} />
                                 </div>
                             )}
-                            <h3 className="font-serif font-bold text-lg text-gray-900">{title}</h3>
+                            <h3 className="font-serif font-bold text-lg" style={{ color: 'var(--color-text-primary)' }}>{title}</h3>
                         </div>
 
-                        <p className="text-sm text-warmgray-500 leading-relaxed mb-7">{message}</p>
+                        <p className="text-sm leading-relaxed mb-7" style={{ color: 'var(--color-text-secondary)' }}>{message}</p>
 
                         <div className="flex gap-3">
                             <button
                                 onClick={onCancel}
-                                className="flex-1 py-3 rounded-2xl font-bold text-sm bg-warmgray-100 text-warmgray-600 spring-press"
+                                className="flex-1 py-3 rounded-2xl font-bold text-sm spring-press"
+                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', color: 'var(--color-text-secondary)' }}
                             >
                                 {cancelLabel}
                             </button>

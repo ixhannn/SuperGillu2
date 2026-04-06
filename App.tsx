@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Heart, Loader2 } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { ViewState } from './types';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Home } from './views/Home';
 import { AddMemory } from './views/AddMemory';
@@ -20,28 +21,36 @@ import { MoodCalendar } from './views/MoodCalendar';
 import { Auth } from './views/Auth';
 import { AuraRewind } from './views/AuraRewind';
 import { AuraSignal } from './views/AuraSignal';
+import { PresenceRoom } from './views/PresenceRoom';
 import { BonsaiBloom } from './views/BonsaiBloom';
+import { Us } from './views/Us';
+import { OurRoom } from './views/OurRoom';
+import { Canvas } from './views/Canvas';
+import { PrivacyPolicy } from './views/PrivacyPolicy';
+import { TermsOfService } from './views/TermsOfService';
 import { SyncService, syncEventTarget } from './services/sync';
 import { StorageService, storageEventTarget } from './services/storage';
-import { ThemeService } from './services/theme';
+import { ThemeService, THEMES, ThemeId } from './services/theme';
 import { SupabaseService } from './services/supabase';
+import { Haptics } from './services/haptics';
+import { Audio } from './services/audio';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
 
 // Onboarding component for first-time identity selection
 const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => void }) => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden animate-fade-in"
-      style={{ background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 30%, #1a0e1e 55%, #120a18 75%, #0d0810 100%)' }}>
-      <div className="absolute top-[-10%] right-[-10%] w-72 h-72 bg-tulika-500/15 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-72 h-72 bg-violet-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+      style={{ background: 'var(--theme-bg-main)', color: 'var(--color-text-primary)' }}>
+      <div className="absolute top-[-10%] right-[-10%] w-72 h-72 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--theme-orb-1)' }} />
+      <div className="absolute bottom-[-10%] left-[-10%] w-72 h-72 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--theme-orb-2)', animationDelay: '1s' }} />
 
       <div className="relative z-10 text-center w-full max-sm:max-w-xs">
         <div className="w-20 h-20 bg-white rounded-full mx-auto mb-8 shadow-elevated flex items-center justify-center text-tulika-500 animate-pop-in border-[3px] border-tulika-100/60">
           <Heart size={40} fill="currentColor" className="animate-pulse-slow" />
         </div>
 
-        <h1 className="text-headline font-serif text-gray-100 mb-2">Almost there</h1>
-        <p className="text-gray-400 mb-12 font-medium text-sm">One last step.<br />Who are you?</p>
+        <h1 className="text-headline font-serif mb-2" style={{ color: 'var(--color-text-primary)' }}>Almost there</h1>
+        <p className="mb-12 font-medium text-sm" style={{ color: 'var(--color-text-secondary)' }}>One last step.<br />Who are you?</p>
 
         <div className="grid gap-3.5 w-full">
           <button
@@ -50,8 +59,8 @@ const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => v
           >
             <div className="w-12 h-12 rounded-full bg-tulika-50 flex items-center justify-center text-2xl transition-transform">👩🏻</div>
             <div className="text-left">
-              <span className="block font-bold text-gray-100 text-base">Tulika</span>
-              <span className="text-micro text-gray-400 tracking-wider">Switch to your profile</span>
+              <span className="block font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>Tulika</span>
+              <span className="text-micro tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Switch to your profile</span>
             </div>
           </button>
 
@@ -61,8 +70,8 @@ const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => v
           >
             <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl transition-transform">👨🏻</div>
             <div className="text-left">
-              <span className="block font-bold text-gray-100 text-base">Ishan</span>
-              <span className="text-micro text-gray-400 tracking-wider">Switch to your profile</span>
+              <span className="block font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>Ishan</span>
+              <span className="text-micro tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Switch to your profile</span>
             </div>
           </button>
         </div>
@@ -71,11 +80,23 @@ const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => v
   );
 };
 
+const RouteLoader = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center"
+    style={{ background: 'var(--theme-bg-main)', color: 'var(--color-text-primary)' }}>
+    <div className="relative">
+      <Heart size={44} className="text-tulika-200 animate-ping absolute inset-0" fill="currentColor" />
+      <Heart size={44} className="text-tulika-500 relative z-10 animate-pulse" fill="currentColor" />
+    </div>
+    <p className="mt-8 text-tulika-600 font-serif font-bold tracking-widest uppercase text-micro animate-pulse">
+      Opening Your Vault
+    </p>
+  </div>
+);
+
 // Main App Component with Default Export
 const App = () => {
   const [currentView, setCurrentView] = useState<ViewState>('home');
 
-  // Trigger chromatic aberration on every view change
   const navigateTo = useCallback((view: ViewState) => {
     setCurrentView(view);
   }, []);
@@ -94,30 +115,51 @@ const App = () => {
         const hasOnboarded = localStorage.getItem('tulika_onboarded') === 'true' || localStorage.getItem('tulika_manual_override') === 'true';
         setShowOnboarding(!hasOnboarded);
 
-        // 3. Apply stored theme
-        ThemeService.applyTheme(profile.theme || 'rose');
+        // 3. Apply theme from URL override first, then fallback to stored profile theme.
+        const params = new URLSearchParams(window.location.search);
+        const forcedTheme = params.get('theme');
+        const hasForcedTheme = !!forcedTheme && (forcedTheme in THEMES);
+        const themeToApply = (hasForcedTheme ? forcedTheme : (profile.theme || 'rose')) as ThemeId;
+
+        ThemeService.applyTheme(themeToApply);
+
+        if (hasForcedTheme) {
+          const cleanedUrl = new URL(window.location.href);
+          cleanedUrl.searchParams.delete('theme');
+          window.history.replaceState({}, '', cleanedUrl.toString());
+        }
 
         // 4. Initialize Cloud Services (Supabase Auth)
         if (SupabaseService.init()) {
           try {
             const { data: { session } } = await SupabaseService.client!.auth.getSession();
+            SupabaseService.setCachedUserId(session?.user?.id || null);
             setIsAuthenticated(!!session);
 
             // Listen for realtime auth changes
             SupabaseService.client!.auth.onAuthStateChange((event, session) => {
+              SupabaseService.setCachedUserId(session?.user?.id || null);
               setIsAuthenticated(!!session);
+              if (session) {
+                SyncService.init().catch((syncError) => {
+                  console.error("Sync Initialization failed:", syncError);
+                });
+              }
             });
           } catch (authError) {
             console.error("Supabase Auth failed:", authError);
+            SupabaseService.setCachedUserId(null);
             setIsAuthenticated(false);
           }
         }
 
         // 5. Initialize Sync (Realtime Channels)
-        try {
-          await SyncService.init();
-        } catch (syncError) {
-          console.error("Sync Initialization failed:", syncError);
+        if (SupabaseService.isConfigured()) {
+          try {
+            await SyncService.init();
+          } catch (syncError) {
+            console.error("Sync Initialization failed:", syncError);
+          }
         }
       } catch (err) {
         console.error("Initialization error:", err);
@@ -142,23 +184,27 @@ const App = () => {
 
   // Global Loading State
   if (!isInitialized) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center"
-        style={{ background: 'linear-gradient(168deg, #0f0a12 0%, #150d1a 30%, #1a0e1e 55%, #0d0810 100%)' }}>
-        <div className="relative">
-          <Heart size={44} className="text-tulika-200 animate-ping absolute inset-0" fill="currentColor" />
-          <Heart size={44} className="text-tulika-500 relative z-10 animate-pulse" fill="currentColor" />
-        </div>
-        <p className="mt-8 text-tulika-600 font-serif font-bold tracking-widest uppercase text-micro animate-pulse">
-          Opening Your Vault
-        </p>
-      </div>
-    );
+    return <RouteLoader />;
   }
 
   // Cloud Authentication Check
   if (!isAuthenticated && SupabaseService.isConfigured()) {
-    return <Auth onLogin={handleLoginSuccess} />;
+    return (
+      <ErrorBoundary>
+        <Auth
+          onLogin={handleLoginSuccess}
+          onPrivacyPolicy={() => setCurrentView('privacy-policy')}
+          onTerms={() => setCurrentView('terms-of-service')}
+        />
+        {(currentView === 'privacy-policy' || currentView === 'terms-of-service') && (
+          <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: 'var(--theme-bg-main)' }}>
+            {currentView === 'privacy-policy'
+              ? <PrivacyPolicy setView={navigateTo} onBack={() => setCurrentView('home')} />
+              : <TermsOfService setView={navigateTo} onBack={() => setCurrentView('home')} />}
+          </div>
+        )}
+      </ErrorBoundary>
+    );
   }
 
   // First-time Onboarding Check
@@ -185,25 +231,31 @@ const App = () => {
       case 'mood-calendar': return <MoodCalendar setView={navigateTo} />;
       case 'aura-rewind':   return <AuraRewind setView={navigateTo} />;
       case 'aura-signal':   return <AuraSignal setView={navigateTo} />;
+      case 'presence-room': return <PresenceRoom setView={navigateTo} />;
       case 'bonsai-bloom':  return <BonsaiBloom setView={navigateTo} />;
+      case 'us':            return <Us setView={navigateTo} />;
+      case 'our-room':      return <OurRoom setView={navigateTo} />;
+      case 'canvas':        return <Canvas setView={navigateTo} />;
+      case 'privacy-policy': return <PrivacyPolicy setView={navigateTo} />;
+      case 'terms-of-service': return <TermsOfService setView={navigateTo} />;
       default:              return <Home setView={navigateTo} />;
     }
   };
 
   return (
-    <>
+    <ErrorBoundary>
       <Layout currentView={currentView} setView={navigateTo}>
         <ViewTransition viewKey={currentView}>
           {renderView()}
         </ViewTransition>
       </Layout>
       <AuraSignalReceiver />
-    </>
+    </ErrorBoundary>
   );
 };
 
 const AuraSignalReceiver = () => {
-  const [incoming, setIncoming] = useState<{ id?: string, color: string, title: string, message: string } | null>(null);
+  const [incoming, setIncoming] = useState<{ id?: string, color: string, title: string, subtitle?: string, message: string, afterglow?: string } | null>(null);
 
   // Check Offine Inbox on mount and storage updates
   useEffect(() => {
@@ -229,8 +281,9 @@ const AuraSignalReceiver = () => {
       const detail = (e as CustomEvent).detail;
       if (detail.signalType === 'AURA_SIGNAL' && detail.payload) {
         setIncoming(detail.payload);
-        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]); 
-        
+        Haptics.doubleBeat();
+        Audio.play('heartbeat');
+
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
            new Notification('Tulika - New Aura', { 
                body: detail.payload.title, 
@@ -286,9 +339,19 @@ const AuraSignalReceiver = () => {
             <h2 className="font-serif font-bold text-4xl text-white mb-3 tracking-tight drop-shadow-md">
               {incoming.title}
             </h2>
+            {incoming.subtitle && (
+              <p className="text-sm uppercase tracking-[0.28em] text-white/45 font-semibold mb-3">
+                {incoming.subtitle}
+              </p>
+            )}
             <p className="text-lg text-white/80 font-medium leading-relaxed drop-shadow-sm">
               {incoming.message}
             </p>
+            {incoming.afterglow && (
+              <p className="mt-5 text-sm text-white/60 font-medium max-w-xs">
+                {incoming.afterglow}
+              </p>
+            )}
             <p className="mt-12 text-xs text-white/40 uppercase tracking-widest font-bold">Tap to dismiss</p>
           </motion.div>
         </motion.div>

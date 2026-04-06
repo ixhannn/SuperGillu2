@@ -11,6 +11,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { AnimationEngine } from '../utils/AnimationEngine';
+import { readThemeRgbTriplet } from '../utils/themeVars';
 
 interface HeartbeatResonanceProps {
   className?: string;
@@ -44,6 +45,23 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
     let waveActive = false;
     let waveAlpha = 0;
     let justSynced = false;
+
+    let resonanceARgb = '244,63,94';
+    let resonanceBRgb = '251,191,36';
+    let starCoreRgb = '253,164,175';
+
+    const syncThemeColors = () => {
+      resonanceARgb = readThemeRgbTriplet('--theme-resonance-a-rgb', '244,63,94');
+      resonanceBRgb = readThemeRgbTriplet('--theme-resonance-b-rgb', '251,191,36');
+      starCoreRgb = readThemeRgbTriplet('--theme-star-core-rgb', '253,164,175');
+    };
+    syncThemeColors();
+
+    const themeObserver = new MutationObserver(syncThemeColors);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'data-theme'],
+    });
 
     // Double-bump heartbeat waveform (lub-dub)
     const hbPulse = (t: number, period: number): number => {
@@ -105,10 +123,10 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
           const midX = (x0 + x1) / 2;
           const midY = (y0 + y1) / 2;
           const bloom = ctx.createRadialGradient(midX, midY, 0, midX, midY, waveR);
-          bloom.addColorStop(0,   `rgba(244,63,94,${(waveAlpha * 0.4).toFixed(3)})`);
-          bloom.addColorStop(0.3, `rgba(251,113,133,${(waveAlpha * 0.25).toFixed(3)})`);
-          bloom.addColorStop(0.7, `rgba(244,63,94,${(waveAlpha * 0.08).toFixed(3)})`);
-          bloom.addColorStop(1,   `rgba(244,63,94,0)`);
+          bloom.addColorStop(0,   `rgba(${resonanceARgb},${(waveAlpha * 0.4).toFixed(3)})`);
+          bloom.addColorStop(0.3, `rgba(${starCoreRgb},${(waveAlpha * 0.25).toFixed(3)})`);
+          bloom.addColorStop(0.7, `rgba(${resonanceARgb},${(waveAlpha * 0.08).toFixed(3)})`);
+          bloom.addColorStop(1,   `rgba(${resonanceARgb},0)`);
           ctx.fillStyle = bloom;
           ctx.fillRect(0, 0, W, H);
 
@@ -152,15 +170,15 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
           ctx.fill();
         };
 
-        drawCore(x0, y0, hb0, 'rgba(244,63,94,0.95)',  '244,63,94');
-        drawCore(x1, y1, hb1, 'rgba(251,191,36,0.95)', '251,191,36');
+        drawCore(x0, y0, hb0, `rgba(${resonanceARgb},0.95)`, resonanceARgb);
+        drawCore(x1, y1, hb1, `rgba(${resonanceBRgb},0.95)`, resonanceBRgb);
 
         // ── Thread between them (brightens as sync increases) ─────
         const threadAlpha = 0.15 + syncT * 0.6;
         const thread = ctx.createLinearGradient(x0, y0, x1, y1);
-        thread.addColorStop(0,   `rgba(244,63,94,${threadAlpha})`);
+        thread.addColorStop(0,   `rgba(${resonanceARgb},${threadAlpha})`);
         thread.addColorStop(0.5, `rgba(255,255,255,${threadAlpha * 0.8})`);
-        thread.addColorStop(1,   `rgba(251,191,36,${threadAlpha})`);
+        thread.addColorStop(1,   `rgba(${resonanceBRgb},${threadAlpha})`);
         ctx.beginPath();
         ctx.moveTo(x0, y0);
         // Slight sway
@@ -172,7 +190,7 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
 
         // ── Sync progress indicator — tiny text ──────────────────
         if (syncT > 0 && syncT < 0.99 && import.meta.env.DEV) {
-          ctx.fillStyle = 'rgba(244,63,94,0.4)';
+          ctx.fillStyle = `rgba(${resonanceARgb},0.4)`;
           ctx.font = '10px monospace';
           ctx.fillText(`sync ${(syncT * 100).toFixed(0)}%`, cx - 20, cy + H * 0.25);
         }
@@ -182,6 +200,7 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
     return () => {
       AnimationEngine.unregister('heartbeat-resonance');
       ro.disconnect();
+      themeObserver.disconnect();
     };
   }, []);
 

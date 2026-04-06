@@ -133,14 +133,14 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
         {/* The Wheel */}
         <div className="relative w-72 h-72 mb-8 mt-4">
           {/* Pointer */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 -mt-4 z-20 text-gray-100">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 -mt-4 z-20">
             <div className="w-0 h-0 border-l-[15px] border-l-transparent border-r-[15px] border-r-transparent border-t-[30px] border-t-tulika-600 filter drop-shadow-md"></div>
           </div>
 
           {/* Spinning SVG */}
           <div
-            className="w-full h-full rounded-full overflow-hidden border-4 border-gray-100 shadow-xl transition-transform duration-[3000ms] ease-[cubic-bezier(0.15,0.2,0.25,1)] transform-gpu"
-            style={{ transform: `rotate(${rotation}deg) translateZ(0)`, willChange: 'transform' }}
+            className="w-full h-full rounded-full overflow-hidden border-4 shadow-xl transition-transform duration-[3000ms] ease-[cubic-bezier(0.15,0.2,0.25,1)] transform-gpu"
+            style={{ transform: `rotate(${rotation}deg) translateZ(0)`, willChange: 'transform', borderColor: 'rgba(var(--theme-particle-2-rgb),0.20)' }}
           >
             <svg viewBox="-1 -1 2 2" className="w-full h-full transform -rotate-90">
               {options.map((opt, i) => {
@@ -214,11 +214,13 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
               onChange={(e) => setNewOption(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
               placeholder="Add food option..."
-              className="flex-1 bg-white border border-gray-200 shadow-inner rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-tulika-500/50 outline-none"
+              className="flex-1 shadow-inner rounded-xl px-4 py-3 focus:ring-2 focus:ring-tulika-500/50 outline-none"
+              style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
             />
             <button
               onClick={handleAdd}
-              className="bg-tulika-50 text-tulika-500 p-3 rounded-xl border border-tulika-100 shadow-sm"
+              className="text-tulika-500 p-3 rounded-xl shadow-sm"
+              style={{ background: 'rgba(var(--theme-particle-1-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.20)' }}
             >
               <Plus size={24} />
             </button>
@@ -226,23 +228,23 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
           <motion.div className="space-y-2" variants={staggerContainer} initial="hidden" animate="show">
             {options.map(opt => (
-              <motion.div key={opt.id} variants={staggerItem} className="flex items-center justify-between bg-white border border-gray-100 shadow-sm p-3 rounded-xl spring-press">
-                <span className="font-medium text-gray-700">{opt.text}</span>
-                <button onClick={() => handleDelete(opt.id)} aria-label={`Delete ${opt.text}`} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:rounded-lg focus-visible:ring-offset-1">
+              <motion.div key={opt.id} variants={staggerItem} className="flex items-center justify-between glass-card shadow-sm p-3 rounded-xl spring-press" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
+                <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{opt.text}</span>
+                <button onClick={() => handleDelete(opt.id)} aria-label={`Delete ${opt.text}`} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center hover:text-red-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:rounded-lg focus-visible:ring-offset-1" style={{ color: 'var(--color-text-secondary)' }}>
                   <Trash2 size={18} />
                 </button>
               </motion.div>
             ))}
             {options.length === 0 && (
-              <div className="flex flex-col items-center text-center py-8 animate-fade-in glass-card rounded-[2rem] mt-4 border border-gray-100 shadow-sm">
+              <div className="flex flex-col items-center text-center py-8 animate-fade-in glass-card rounded-[2rem] mt-4 shadow-sm" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
                 <div className="relative mb-4">
                   <div className="absolute inset-0 bg-tulika-100 rounded-full blur-xl" />
-                  <div className="relative p-4 bg-white rounded-full border border-gray-100 shadow-inner">
-                    <Utensils size={28} className="text-gray-400" style={{ animation: 'wiggle-spring 2s ease-in-out infinite' }} />
+                  <div className="relative p-4 rounded-full shadow-inner" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
+                    <Utensils size={28} style={{ animation: 'wiggle-spring 2s ease-in-out infinite', color: 'var(--color-text-secondary)' }} />
                   </div>
                 </div>
-                <p className="text-sm font-bold text-gray-800 mb-1">Add some options to spin</p>
-                <p className="text-xs font-medium text-gray-500">You need at least 2 to get started</p>
+                <p className="text-sm font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Add some options to spin</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>You need at least 2 to get started</p>
               </div>
             )}
           </motion.div>

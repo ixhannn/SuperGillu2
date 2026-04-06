@@ -56,7 +56,7 @@ export const DynamicToast: React.FC = () => {
               filter: 'blur(4px)',
               transition: { duration: 0.2 }
             }}
-            className="pointer-events-auto flex items-center gap-3 bg-white/80 backdrop-blur-xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] px-4 py-3 rounded-full"
+            className="pointer-events-auto flex items-center gap-3 glass-card backdrop-blur-xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] px-4 py-3 rounded-full"
           >
             {/* Dynamic shape expansion animation */}
             <motion.div
@@ -68,9 +68,10 @@ export const DynamicToast: React.FC = () => {
               {getIcon(currentToast.type)}
             </motion.div>
             
-            <motion.span 
+            <motion.span
               layoutId="toast-text"
-              className="text-sm font-medium text-gray-800 pr-1 truncate max-w-[200px]"
+              className="text-sm font-medium pr-1 truncate max-w-[200px]"
+              style={{ color: 'var(--color-text-primary)' }}
             >
               {currentToast.message}
             </motion.span>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, ChevronRight, Zap, Award, Wind, Sun, Map, TreeDeciduous } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, ChevronRight, Zap, Award, Wind, Sun, Map, TreeDeciduous, PawPrint } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -230,6 +230,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
     const [headerOpacity, setHeaderOpacity] = useState(0);
+    const [showPet, setShowPet] = useState(false);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
@@ -504,10 +505,51 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </motion.div>
             )}
 
-            {/* ── PET SECTION ─────────────────────────────────────────── */}
+            {/* ── PET BUTTON ─────────────────────────────────────────── */}
             <ScrollReveal variant="fadeUp" delay={0.1}>
-                <CouplePet memories={memories} notes={notes} status={myStatus} partnerName={profile.partnerName} />
+                <motion.button
+                    onClick={() => setShowPet(true)}
+                    className="w-full flex items-center gap-3 px-4 py-3 mb-4 spring-press"
+                    whileTap={{ scale: 0.97 }}
+                    style={{
+                        minHeight: '56px',
+                        borderRadius: '1.25rem',
+                        background: 'rgba(253,164,175,0.10)',
+                        border: '1px solid rgba(253,164,175,0.22)',
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
+                    }}
+                >
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'rgba(236,72,153,0.12)', border: '1px solid rgba(236,72,153,0.2)' }}>
+                        <PawPrint size={15} style={{ color: '#ec4899' }} />
+                    </div>
+                    <span className="flex-1 text-left font-serif font-semibold text-[0.9rem]" style={{ color: 'var(--color-text-primary)' }}>
+                        {StorageService.getPetStats().name}
+                    </span>
+                    <ChevronRight size={14} style={{ color: 'var(--color-text-secondary)', opacity: 0.4 }} />
+                </motion.button>
             </ScrollReveal>
+
+            {/* ── PET FULLSCREEN OVERLAY ───────────────────────────────── */}
+            <AnimatePresence>
+                {showPet && (
+                    <motion.div
+                        initial={{ opacity: 0, y: '100%' }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: '100%' }}
+                        transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+                        className="fixed inset-0 z-50"
+                    >
+                        <CouplePet
+                            memories={memories}
+                            notes={notes}
+                            status={myStatus}
+                            partnerName={profile.partnerName}
+                            onClose={() => setShowPet(false)}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* ── DAYS TOGETHER — Hero Card ────────────────────────────── */}
             <ScrollReveal variant="fadeScale">
@@ -827,8 +869,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         >
                             <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
                             <Sparkles size={22} className="text-blue-300 mb-2" />
-                            <h3 className="font-serif font-bold text-base text-gray-900 leading-tight">Vibe Check</h3>
-                            <p className="text-[10px] text-gray-900 mt-1">Send a signal</p>
+                            <h3 className="font-serif font-bold text-base text-gray-100 leading-tight">Vibe Check</h3>
+                            <p className="text-[10px] text-blue-200/60 mt-1">Send a signal</p>
                         </div>
                     </motion.div>
                 </motion.div>

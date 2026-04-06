@@ -8,6 +8,7 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
+import { useConfetti } from '../components/Layout';
 
 interface AddMemoryProps {
   setView: (view: ViewState) => void;
@@ -28,6 +29,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const [selectedMood, setSelectedMood] = useState('love');
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confetti = useConfetti();
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,6 +90,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
     await StorageService.saveMemory(newMemory);
     feedback.celebrate();
+    confetti.trigger();
     setView('timeline');
   };
 
@@ -103,9 +106,8 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
           <button
             onClick={handleSave}
             disabled={isDisabled}
-            className={`px-5 py-1.5 rounded-full text-sm font-bold transition-all spring-press ${
-              isDisabled ? 'bg-white/10 text-gray-500' : 'bg-tulika-500 text-white shadow-tulika-500/20'
-            }`}
+            className="px-5 py-1.5 rounded-full text-sm font-bold transition-all spring-press text-white disabled:opacity-40"
+            style={{ background: 'var(--theme-nav-center-bg-active)' }}
           >
             {isSaving ? 'Saving...' : 'Save'}
           </button>
@@ -114,14 +116,14 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
       <div className="flex-1 overflow-y-auto p-5 pb-32">
         <div className="mb-6 animate-slide-up">
-          <label className="text-micro text-gray-400 uppercase tracking-widest mb-3 block">Mood</label>
+          <label className="text-micro uppercase tracking-widest mb-3 block" style={{ color: 'var(--color-text-secondary)' }}>Mood</label>
           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
             {Moods.map((m, i) => (
               <button
                 key={m.id}
                 onClick={() => { feedback.tap(); setSelectedMood(m.id); }}
                 className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl transition-all opacity-0 animate-pop-in ${
-                  selectedMood === m.id ? 'bg-tulika-500/20 border-2 border-tulika-400 scale-110' : 'bg-white/5 border border-transparent'
+                  selectedMood === m.id ? 'bg-tulika-500/20 border-2 border-tulika-400 scale-110' : 'border border-transparent'
                 }`}
                 style={{ animationDelay: `${i * 50}ms`, animationFillMode: 'forwards' }}
               >
@@ -132,10 +134,10 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         </div>
 
         <div className="mb-6 animate-slide-up animate-delay-100">
-          <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Media</label>
-          <div className={`relative rounded-3xl overflow-hidden transition-all ${
-              image || video ? 'aspect-auto' : 'bg-white/5 border-2 border-dashed border-white/15 p-8'
-            }`}
+          <label className="text-xs font-bold uppercase tracking-wider mb-3 block" style={{ color: 'var(--color-text-secondary)' }}>Media</label>
+          <div
+            className={`relative rounded-3xl overflow-hidden transition-all ${image || video ? 'aspect-auto' : 'p-8'}`}
+            style={!image && !video ? { background: 'rgba(var(--theme-particle-2-rgb),0.07)', border: '2px dashed rgba(var(--theme-particle-2-rgb),0.22)' } : {}}
           >
             {image && !video ? (
               // Standard Photo
@@ -165,15 +167,15 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
               <div className="flex gap-4 justify-center">
                   <div 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center justify-center text-gray-400 gap-2 cursor-pointer p-4 rounded-xl transition-all active:scale-95"
+                    className="flex flex-col items-center justify-center gap-2 cursor-pointer p-4 rounded-xl transition-all active:scale-95" style={{ color: 'var(--color-text-secondary)' }}
                   >
                     <Camera size={32} />
                     <span className="text-xs font-medium">Photo</span>
                   </div>
-                  <div className="w-px bg-white/10 my-2"></div>
+                  <div className="w-px my-2" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.18)' }}></div>
                   <div
                     onClick={() => videoInputRef.current?.click()}
-                    className="flex flex-col items-center justify-center text-gray-400 gap-2 cursor-pointer p-4 rounded-xl transition-all active:scale-95"
+                    className="flex flex-col items-center justify-center gap-2 cursor-pointer p-4 rounded-xl transition-all active:scale-95" style={{ color: 'var(--color-text-secondary)' }}
                   >
                     <Video size={32} />
                     <span className="text-xs font-medium">Video</span>
@@ -186,12 +188,13 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         </div>
 
         <div className="mb-6 animate-slide-up animate-delay-200">
-          <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Note</label>
+          <label className="text-xs font-bold uppercase tracking-wider mb-3 block" style={{ color: 'var(--color-text-secondary)' }}>Note</label>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Write something..."
-            className="w-full h-40 p-4 bg-white/5 rounded-3xl border border-white/10 text-gray-200 placeholder:text-gray-500 text-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-tulika-500/30 transition-all resize-none"
+            className="w-full h-40 p-4 rounded-3xl text-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-tulika-500/30 transition-all resize-none"
+            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.07)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)', color: 'var(--color-text-primary)' }}
           />
         </div>
       </div>

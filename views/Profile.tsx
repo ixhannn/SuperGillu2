@@ -1,14 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users } from 'lucide-react';
+import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users, Volume2, VolumeX, Vibrate, Zap } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { ThemeService, THEMES, ThemeId } from '../services/theme';
 import { SupabaseService } from '../services/supabase';
+import { Haptics } from '../services/haptics';
+import { Audio } from '../services/audio';
 
 interface ProfileProps {
     setView: (view: ViewState) => void;
 }
+
+const THEME_DESCRIPTIONS: Record<ThemeId, string> = {
+    rose: 'Classic romance',
+    'baby-pink': 'Soft romantic',
+    'warm-beige': 'Cozy warmth',
+    teal: 'Fresh calm',
+    ocean: 'Serene blue',
+    rosewood: 'Deep romance',
+    sunset: 'Golden hour',
+    lavender: 'Dreamy violet',
+    'starry-night': 'Under the stars',
+};
+
+const FROSTED_PANEL_STYLE: React.CSSProperties = {
+    background: 'color-mix(in srgb, var(--color-surface) 82%, transparent)',
+    border: '1px solid color-mix(in srgb, var(--color-text-primary) 14%, transparent)',
+    boxShadow: '0 14px 36px color-mix(in srgb, var(--color-text-primary) 10%, transparent)',
+};
 
 export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const [profile, setProfile] = useState<CoupleProfile>({
@@ -19,6 +39,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     });
     const [isSaving, setIsSaving] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
+    const [hapticsOn, setHapticsOn] = useState(Haptics.isEnabled());
+    const [audioOn, setAudioOn] = useState(Audio.isEnabled());
     const [showIdentityModal, setShowIdentityModal] = useState(false);
     const [storageInfo, setStorageInfo] = useState<{ used: string, type: string }>({ used: '0 KB', type: 'Checking...' });
     const [musicMeta, setMusicMeta] = useState<{ name: string } | null>(null);
@@ -47,6 +69,10 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
         const meta = StorageService.getTogetherMusicMetadata();
         setMusicMeta(meta);
+
+        return () => {
+            ThemeService.cleanup();
+        };
     }, []);
 
     const handleChange = (field: keyof CoupleProfile, value: string) => {
@@ -56,7 +82,29 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const handleThemeChange = (themeId: ThemeId) => {
         handleChange('theme', themeId);
         ThemeService.applyTheme(themeId);
+        Haptics.select();
+        Audio.play('select');
     };
+
+    const handleToggleHaptics = () => {
+        const next = !hapticsOn;
+        Haptics.setEnabled(next);
+        setHapticsOn(next);
+        if (next) { Haptics.success(); Audio.play('toggleOn'); }
+        else { Audio.play('toggleOff'); }
+    };
+
+    const handleToggleAudio = () => {
+        const next = !audioOn;
+        Audio.setEnabled(next);
+        setAudioOn(next);
+        if (next) { Haptics.toggleOn(); Audio.play('toggleOn'); }
+        else { Haptics.toggleOff(); Audio.play('toggleOff'); }
+    };
+
+    const currentThemeId = profile.theme || 'rose';
+    const activeThemeId = (currentThemeId in THEMES ? currentThemeId : 'rose') as ThemeId;
+    const activeTheme = THEMES[activeThemeId];
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -132,6 +180,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
     const save = () => {
         setIsSaving(true);
+        Haptics.success();
+        Audio.play('confirm');
         StorageService.saveCoupleProfile(profile);
         setTimeout(() => {
             setIsSaving(false);
@@ -221,8 +271,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     <button
                         onClick={save}
                         disabled={isSaving}
-                        className={`px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all ${isSaving ? 'bg-green-500 text-white' : 'bg-tulika-500 text-white'
-                            }`}
+                        className="px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all text-white"
+                        style={{ background: 'var(--theme-nav-center-bg-active)' }}
                     >
                         {isSaving ? (
                             <>
@@ -246,7 +296,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center text-tulika-200">
                             <Heart size={48} className="mb-1" fill="currentColor" />
-                            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Upload</span>
+                            <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Upload</span>
                         </div>
                     )}
 
@@ -264,63 +314,175 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                 </div>
 
                 <div className="w-full space-y-6">
-                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">My Name</label>
+                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-[var(--color-text-secondary)] transition-shadow" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-xs font-bold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-secondary)' }}>My Name</label>
                         <input
                             type="text"
                             value={profile.myName}
                             onChange={(e) => handleChange('myName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-xl text-gray-200 outline-none placeholder-gray-500"
+                            className="w-full bg-transparent font-serif text-xl outline-none"
+                            style={{ color: 'var(--color-text-primary)' }}
                             placeholder="E.g. Romeo"
                         />
                     </div>
 
-                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Partner's Name</label>
+                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-[var(--color-text-secondary)] transition-shadow" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-xs font-bold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-secondary)' }}>Partner's Name</label>
                         <input
                             type="text"
                             value={profile.partnerName}
                             onChange={(e) => handleChange('partnerName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-xl text-gray-200 outline-none placeholder-gray-500"
+                            className="w-full bg-transparent font-serif text-xl outline-none"
+                            style={{ color: 'var(--color-text-primary)' }}
                             placeholder="E.g. Juliet"
                         />
                     </div>
 
-                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-tulika-200 transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Relationship Start Date</label>
+                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-[var(--color-text-secondary)] transition-shadow" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-xs font-bold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-secondary)' }}>Relationship Start Date</label>
                         <input
                             type="date"
                             value={profile.anniversaryDate ? new Date(profile.anniversaryDate).toISOString().split('T')[0] : ''}
                             onChange={(e) => handleChange('anniversaryDate', new Date(e.target.value).toISOString())}
-                            className="w-full bg-transparent font-medium text-lg text-gray-200 outline-none"
+                            className="w-full bg-transparent font-medium text-lg outline-none"
+                            style={{ color: 'var(--color-text-primary)' }}
                         />
                     </div>
 
                     {/* Theme Selector */}
-                    <div className="p-4 rounded-2xl transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
-                            <Palette size={14} /> App Theme
-                        </label>
-                        <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
+                    <div className="rounded-2xl overflow-hidden" style={FROSTED_PANEL_STYLE}>
+                        {/* Header */}
+                        <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+                            <Palette size={14} style={{ color: activeTheme.palette[500] }} />
+                            <label className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-secondary)' }}>
+                                Theme Studio
+                            </label>
+                        </div>
+
+                        {/* Active theme hero */}
+                        <div className="mx-4 mb-4 rounded-2xl overflow-hidden relative" style={{
+                            background: `linear-gradient(145deg, ${activeTheme.palette[200]} 0%, ${activeTheme.palette[400]} 50%, ${activeTheme.palette[600]} 100%)`,
+                            boxShadow: `0 16px 40px ${activeTheme.palette[400]}44, 0 4px 12px ${activeTheme.palette[300]}33`,
+                        }}>
+                            <div className="absolute inset-0 pointer-events-none" style={{
+                                background: 'linear-gradient(135deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.08) 40%, transparent 70%)',
+                            }} />
+                            <div className="absolute bottom-0 left-0 right-0 h-1/2 pointer-events-none" style={{
+                                background: 'linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 100%)',
+                            }} />
+                            <div className="relative px-4 py-4">
+                                <div className="flex items-start justify-between mb-3">
+                                    <div>
+                                        <p className="text-[10px] uppercase tracking-[0.22em] font-semibold" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                                            Active Theme
+                                        </p>
+                                        <p className="text-lg font-bold text-white leading-tight mt-0.5">
+                                            {activeTheme.label}
+                                        </p>
+                                        <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                                            {THEME_DESCRIPTIONS[activeThemeId]}
+                                        </p>
+                                    </div>
+                                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold" style={{
+                                        background: 'rgba(255,255,255,0.22)',
+                                        color: 'white',
+                                        border: '1px solid rgba(255,255,255,0.3)',
+                                    }}>
+                                        <Check size={10} />
+                                        Live
+                                    </span>
+                                </div>
+                                <div className="flex gap-2">
+                                    {([activeTheme.palette[100], activeTheme.palette[200], activeTheme.palette[300], activeTheme.palette[400], activeTheme.palette[500], activeTheme.palette[600]] as string[]).map((shade, i) => (
+                                        <span
+                                            key={`active-dot-${i}`}
+                                            className="rounded-full"
+                                            style={{
+                                                width: 22,
+                                                height: 22,
+                                                backgroundColor: shade,
+                                                border: '2px solid rgba(255,255,255,0.4)',
+                                                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Theme grid — 3 columns */}
+                        <div className="grid grid-cols-3 gap-2.5 px-4 pb-4">
                             {Object.entries(THEMES).map(([id, theme]) => {
                                 const isSelected = (profile.theme || 'rose') === id;
                                 return (
                                     <button
                                         key={id}
                                         onClick={() => handleThemeChange(id as ThemeId)}
-                                        className={`flex flex-col items-center gap-2 flex-shrink-0 transition-all duration-300 ${isSelected ? 'scale-110' : 'opacity-60'}`}
+                                        aria-label={`${theme.label} theme - ${THEME_DESCRIPTIONS[id as ThemeId]}`}
+                                        aria-pressed={isSelected}
+                                        className="relative overflow-hidden focus-visible:outline-none"
+                                        style={{
+                                            borderRadius: 14,
+                                            aspectRatio: '1 / 1',
+                                            background: `linear-gradient(145deg, ${theme.palette[200]} 0%, ${theme.palette[400]} 55%, ${theme.palette[600]} 100%)`,
+                                            border: isSelected ? 'none' : `1.5px solid ${theme.palette[400]}55`,
+                                            boxShadow: isSelected
+                                                ? `0 0 0 2.5px white, 0 0 0 4.5px ${theme.palette[500]}, 0 10px 28px ${theme.palette[400]}55`
+                                                : `0 6px 18px ${theme.palette[400]}40, 0 2px 6px ${theme.palette[300]}30`,
+                                            transform: isSelected ? 'scale(1.06)' : 'scale(1)',
+                                            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                                        }}
                                     >
-                                        <div
-                                            className="w-12 h-12 rounded-full border-4 flex items-center justify-center transition-all"
-                                            style={{
-                                                backgroundColor: theme.palette[500],
-                                                borderColor: isSelected ? theme.palette[200] : 'transparent'
-                                            }}
+                                        {/* Top-left shimmer */}
+                                        <div className="absolute inset-0 pointer-events-none" style={{
+                                            background: 'linear-gradient(135deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.05) 45%, transparent 100%)',
+                                        }} />
+                                        {/* Bottom name fade */}
+                                        <div className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none" style={{
+                                            background: 'linear-gradient(to top, rgba(0,0,0,0.32) 0%, transparent 100%)',
+                                            borderBottomLeftRadius: 14,
+                                            borderBottomRightRadius: 14,
+                                        }} />
+                                        {/* Stacked palette dots — top right */}
+                                        {!isSelected && (
+                                            <div className="absolute top-2 right-2 flex">
+                                                {[theme.palette[300], theme.palette[400], theme.palette[500]].map((c, i) => (
+                                                    <span
+                                                        key={i}
+                                                        className="rounded-full"
+                                                        style={{
+                                                            width: 11,
+                                                            height: 11,
+                                                            backgroundColor: c,
+                                                            border: '1.5px solid rgba(255,255,255,0.5)',
+                                                            marginLeft: i > 0 ? -4 : 0,
+                                                            zIndex: 3 - i,
+                                                            position: 'relative',
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                        {/* Selected check */}
+                                        {isSelected && (
+                                            <span
+                                                className="absolute top-2 right-2 flex items-center justify-center rounded-full"
+                                                style={{
+                                                    width: 20,
+                                                    height: 20,
+                                                    background: 'rgba(255,255,255,0.35)',
+                                                    border: '1px solid rgba(255,255,255,0.55)',
+                                                }}
+                                            >
+                                                <Check size={11} style={{ color: 'white' }} />
+                                            </span>
+                                        )}
+                                        {/* Name at bottom */}
+                                        <span
+                                            className="absolute bottom-2 left-2 right-2 text-[10px] font-bold leading-tight"
+                                            style={{ color: 'rgba(255,255,255,0.95)', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}
                                         >
-                                            {isSelected && <Check size={20} className="text-white" />}
-                                        </div>
-                                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isSelected ? 'text-gray-200' : 'text-gray-500'}`}>
-                                            {theme.label.split(' ')[0]}
+                                            {theme.label}
                                         </span>
                                     </button>
                                 );
@@ -329,29 +491,30 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     </div>
 
                     {/* Music Upload */}
-                    <div className="p-4 rounded-2xl transition-shadow" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
+                    <div className="p-4 rounded-2xl transition-shadow" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-xs font-bold uppercase tracking-wider block mb-3 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
                             <Music size={14} /> Together Song
                         </label>
 
                         {musicMeta ? (
-                            <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
+                            <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.14)' }}>
                                 <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="bg-tulika-500/15 p-2.5 rounded-full text-tulika-400 flex-shrink-0">
+                                    <div className="p-2.5 rounded-full flex-shrink-0" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.15)', color: 'var(--color-nav-active)' }}>
                                         <Music size={20} />
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-sm font-bold text-gray-200 truncate pr-2 leading-tight">
+                                        <p className="text-sm font-bold truncate pr-2 leading-tight" style={{ color: 'var(--color-text-primary)' }}>
                                             {musicMeta.name}
                                         </p>
-                                        <p className="text-[10px] text-tulika-500 font-bold uppercase tracking-wide">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-nav-active)' }}>
                                             Custom Song Active
                                         </p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={handleRemoveMusic}
-                                    className="text-gray-400 p-2 rounded-full transition-all"
+                                    className="p-2 rounded-full transition-all"
+                                    style={{ color: 'var(--color-text-secondary)' }}
                                     title="Remove song"
                                 >
                                     <Trash2 size={18} />
@@ -362,7 +525,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                 <div className="flex items-center gap-4">
                                     <button
                                         onClick={() => musicInputRef.current?.click()}
-                                        className="flex-1 bg-white/10 border border-white/10 text-gray-200 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                        className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                        style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)', color: 'var(--color-text-primary)' }}
                                     >
                                         <Upload size={16} /> Upload Song
                                     </button>
@@ -380,7 +544,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                         <AlertCircle size={10} /> {musicError}
                                     </p>
                                 ) : (
-                                    <p className="text-[10px] text-gray-400 mt-2 leading-tight">
+                                    <p className="text-[10px] mt-2 leading-tight" style={{ color: 'var(--color-text-secondary)' }}>
                                         This song will play when both of you are online at the same time. Max 10MB.
                                     </p>
                                 )}
@@ -388,33 +552,97 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                         )}
                     </div>
 
+                    {/* Feel Settings — Haptics & Sound */}
+                    <div className="p-5 rounded-2xl" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-xs font-bold uppercase tracking-[0.16em] block mb-4 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                            <Zap size={13} /> Feel & Sound
+                        </label>
+
+                        {/* Haptics Toggle */}
+                        <div className="flex items-center justify-between py-3 border-b" style={{ borderColor: 'color-mix(in srgb, var(--color-text-primary) 10%, transparent)' }}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: `rgba(var(--theme-particle-1-rgb), 0.14)` }}>
+                                    <Vibrate size={15} style={{ color: 'var(--color-nav-active)' }} />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Haptic Feedback</p>
+                                    <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>Physical touch responses</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleToggleHaptics}
+                                className="relative w-12 h-6 rounded-full transition-all duration-300 spring-press"
+                                style={{
+                                    background: hapticsOn ? `rgba(var(--theme-particle-1-rgb), 1)` : 'rgba(0,0,0,0.15)',
+                                    boxShadow: hapticsOn ? `0 2px 12px rgba(var(--theme-particle-1-rgb), 0.4)` : 'none',
+                                }}
+                                aria-pressed={hapticsOn}
+                            >
+                                <span
+                                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300"
+                                    style={{ left: hapticsOn ? '26px' : '2px' }}
+                                />
+                            </button>
+                        </div>
+
+                        {/* Audio Toggle */}
+                        <div className="flex items-center justify-between py-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: `rgba(var(--theme-particle-1-rgb), 0.14)` }}>
+                                    {audioOn
+                                        ? <Volume2 size={15} style={{ color: 'var(--color-nav-active)' }} />
+                                        : <VolumeX size={15} style={{ color: 'var(--color-text-secondary)' }} />
+                                    }
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>UI Sounds</p>
+                                    <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>Clicks, swooshes & chimes</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleToggleAudio}
+                                className="relative w-12 h-6 rounded-full transition-all duration-300 spring-press"
+                                style={{
+                                    background: audioOn ? `rgba(var(--theme-particle-1-rgb), 1)` : 'rgba(0,0,0,0.15)',
+                                    boxShadow: audioOn ? `0 2px 12px rgba(var(--theme-particle-1-rgb), 0.4)` : 'none',
+                                }}
+                                aria-pressed={audioOn}
+                            >
+                                <span
+                                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300"
+                                    style={{ left: audioOn ? '26px' : '2px' }}
+                                />
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Storage Status */}
-                    <div className="p-5 rounded-2xl mt-4" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                    <div className="p-5 rounded-2xl mt-4" style={FROSTED_PANEL_STYLE}>
                         <div className="flex justify-between items-center mb-4">
-                            <label className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
+                            <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
                                 <HardDrive size={14} /> Storage Vault
                             </label>
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300 bg-white/10 px-2 py-1 rounded-md">
+                            <div className="flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', color: 'var(--color-nav-active)' }}>
                                 <ShieldCheck size={12} /> {storageInfo.type}
                             </div>
                         </div>
 
                         <div className="flex justify-between items-end">
                             <div>
-                                <p className="text-2xl font-mono font-bold text-gray-900">{storageInfo.used}</p>
-                                <p className="text-[10px] text-indigo-400">Total stored locally</p>
+                                <p className="text-2xl font-mono font-bold" style={{ color: 'var(--color-text-primary)' }}>{storageInfo.used}</p>
+                                <p className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>Total stored locally</p>
                             </div>
-                            <div className="h-8 w-px bg-indigo-500/30"></div>
+                            <div className="h-8 w-px" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.25)' }}></div>
                             <div className="text-right">
-                                <p className="text-xs text-indigo-400 font-medium">Database Active</p>
-                                <p className="text-[10px] text-indigo-500">IndexedDB Engine</p>
+                                <p className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Database Active</p>
+                                <p className="text-[10px]" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>IndexedDB Engine</p>
                             </div>
                         </div>
                     </div>
 
                     {/* Data & Backup Section */}
-                    <div className="p-5 rounded-2xl mt-4" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-4 flex items-center gap-2">
+                    <div className="p-5 rounded-2xl mt-4" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-xs font-bold uppercase tracking-wider block mb-4 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
                             <Database size={14} /> Backup & Restore
                         </label>
 
@@ -422,7 +650,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             <button
                                 onClick={handleDownloadBackup}
                                 disabled={isBackingUp}
-                                className="flex-1 bg-white/10 border border-white/10 text-gray-200 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
+                                className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
+                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)', color: 'var(--color-text-primary)' }}
                             >
                                 {isBackingUp ? <Download size={20} className="animate-bounce" /> : <Download size={20} />}
                                 <span>{isBackingUp ? 'Exporting...' : 'Backup'}</span>
@@ -430,7 +659,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
                             <button
                                 onClick={() => backupInputRef.current?.click()}
-                                className="flex-1 bg-white/10 border border-white/10 text-gray-200 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
+                                className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
+                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)', color: 'var(--color-text-primary)' }}
                             >
                                 <Upload size={20} />
                                 <span>Restore</span>
@@ -443,22 +673,23 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                 onChange={handleRestoreBackup}
                             />
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
+                        <p className="text-[10px] mt-3 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
                             Download a copy of your memories to keep them safe forever. You can restore this file anytime if you switch devices.
                         </p>
                     </div>
 
-                    <div className="w-full mt-8 border-t border-white/8 pt-8 space-y-3">
+                    <div className="w-full mt-8 pt-8 space-y-3" style={{ borderTop: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
                         <button
                             onClick={handleSwitchIdentityClick}
-                            className="w-full flex items-center justify-center gap-2 text-gray-200 font-bold text-sm bg-white/10 border border-white/10 py-3 rounded-xl transition-colors"
+                            className="w-full flex items-center justify-center gap-2 font-bold text-sm py-3 rounded-xl transition-colors spring-press"
+                            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.16)', color: 'var(--color-text-primary)' }}
                         >
                             <Users size={16} /> Switch Identity
                         </button>
 
                         <button
                             onClick={handleSignOut}
-                            className="w-full flex items-center justify-center gap-2 text-red-400 font-bold text-sm bg-red-500/15 py-3 rounded-xl transition-colors"
+                            className="w-full flex items-center justify-center gap-2 text-red-500 font-bold text-sm bg-red-500/10 py-3 rounded-xl transition-colors spring-press"
                         >
                             <LogOut size={16} /> Sign Out
                         </button>
@@ -469,37 +700,40 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
             {/* Identity Switch Modal */}
             {showIdentityModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-backdrop-enter" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)' }}>
-                    <div className="w-full max-w-sm rounded-[2rem] p-6 animate-modal-enter relative" style={{ background: 'rgba(20,15,28,0.92)', backdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div className="glass-card-hero w-full max-w-sm p-6 animate-modal-enter relative">
                         <button
                             onClick={() => setShowIdentityModal(false)}
-                            className="absolute top-4 right-4 p-2 bg-white/10 rounded-full text-gray-400 transition-colors"
+                            className="absolute top-4 right-4 p-2 rounded-full transition-colors spring-press"
+                            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', color: 'var(--color-text-secondary)' }}
                         >
                             <X size={20} />
                         </button>
 
-                        <h3 className="font-serif font-bold text-2xl text-center text-gray-900 mb-2">Who are you?</h3>
-                        <p className="text-center text-gray-400 text-sm mb-8">Select your identity to switch profiles.</p>
+                        <h3 className="font-serif font-bold text-2xl text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>Who are you?</h3>
+                        <p className="text-center text-sm mb-8" style={{ color: 'var(--color-text-secondary)' }}>Select your identity to switch profiles.</p>
 
                         <div className="space-y-4">
                             <button
                                 onClick={() => handleIdentitySelect('Tulika')}
-                                className="w-full p-4 rounded-2xl border border-tulika-500/20 bg-tulika-500/10 flex items-center gap-4 transition-all group spring-press"
+                                className="w-full p-4 rounded-2xl flex items-center gap-4 transition-all group spring-press"
+                                style={{ background: 'rgba(var(--theme-particle-1-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.18)' }}
                             >
-                                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl transition-transform">👩🏻</div>
+                                <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-transform" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.15)' }}>👩🏻</div>
                                 <div className="text-left">
-                                    <span className="block font-bold text-gray-900 text-lg transition-colors">Tulika</span>
-                                    <span className="text-xs text-gray-400">Switch to Tulika's view</span>
+                                    <span className="block font-bold text-lg transition-colors" style={{ color: 'var(--color-text-primary)' }}>Tulika</span>
+                                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Switch to Tulika's view</span>
                                 </div>
                             </button>
 
                             <button
                                 onClick={() => handleIdentitySelect('Ishan')}
-                                className="w-full p-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 flex items-center gap-4 transition-all group spring-press"
+                                className="w-full p-4 rounded-2xl flex items-center gap-4 transition-all group spring-press"
+                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)' }}
                             >
-                                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl transition-transform">👨🏻</div>
+                                <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-transform" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.15)' }}>👨🏻</div>
                                 <div className="text-left">
-                                    <span className="block font-bold text-gray-900 text-lg transition-colors">Ishan</span>
-                                    <span className="text-xs text-gray-400">Switch to Ishan's view</span>
+                                    <span className="block font-bold text-lg transition-colors" style={{ color: 'var(--color-text-primary)' }}>Ishan</span>
+                                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Switch to Ishan's view</span>
                                 </div>
                             </button>
                         </div>

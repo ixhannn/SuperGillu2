@@ -1,26 +1,23 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Lock, Check, Sparkles, ShoppingCart } from 'lucide-react';
+import { X, Lock, Check, Sparkles, ShoppingCart, Eye } from 'lucide-react';
 import { PetStats, ShopItem } from '../types';
 import { StorageService } from '../services/storage';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 
-const SHOP_ITEMS: ShopItem[] = [
-    // Hats
-    { id: 'hat_crown', name: 'Royal Crown', price: 150, category: 'hat', emoji: '👑' },
-    { id: 'hat_party', name: 'Party Hat', price: 50, category: 'hat', emoji: '🥳' },
-    { id: 'hat_cowboy', name: 'Cowboy Hat', price: 100, category: 'hat', emoji: '🤠' },
-    { id: 'hat_wizard', name: 'Wizard Hat', price: 200, category: 'hat', emoji: '🧙‍♂️' },
-    { id: 'hat_halo', name: 'Angel Halo', price: 300, category: 'hat', emoji: '😇' },
-    // Accessories
-    { id: 'acc_glasses', name: 'Cool Shades', price: 75, category: 'accessory', emoji: '🕶️' },
-    { id: 'acc_scarf', name: 'Cozy Scarf', price: 80, category: 'accessory', emoji: '🧣' },
-    { id: 'acc_bow', name: 'Cute Bow', price: 60, category: 'accessory', emoji: '🎀' },
-    // Environments (Backgrounds)
-    { id: 'env_space', name: 'Galaxy', price: 500, category: 'environment', emoji: '🌌' },
-    { id: 'env_beach', name: 'Beach Day', price: 400, category: 'environment', emoji: '🏖️' },
-    { id: 'env_forest', name: 'Enchanted Forest', price: 350, category: 'environment', emoji: '🌲' },
+const PET_SHOP_ITEMS: ShopItem[] = [
+    { id: 'hat_crown', name: 'Tiny Crown', price: 70, category: 'hat', emoji: '👑' },
+    { id: 'hat_party', name: 'Party Hat', price: 45, category: 'hat', emoji: '🥳' },
+    { id: 'hat_cowboy', name: 'Cowboy Hat', price: 55, category: 'hat', emoji: '🤠' },
+    { id: 'hat_wizard', name: 'Wizard Hat', price: 65, category: 'hat', emoji: '🧙‍♂️' },
+    { id: 'hat_halo', name: 'Angel Halo', price: 80, category: 'hat', emoji: '😇' },
+    { id: 'acc_glasses', name: 'Cool Glasses', price: 50, category: 'accessory', emoji: '🕶️' },
+    { id: 'acc_scarf', name: 'Soft Scarf', price: 45, category: 'accessory', emoji: '🧣' },
+    { id: 'acc_bow', name: 'Sweet Bow', price: 40, category: 'accessory', emoji: '🎀' },
+    { id: 'env_forest', name: 'Forest Mood', price: 95, category: 'environment', emoji: '🌲' },
+    { id: 'env_beach', name: 'Beach Mood', price: 95, category: 'environment', emoji: '🏖️' },
+    { id: 'env_space', name: 'Space Mood', price: 120, category: 'environment', emoji: '🌌' },
 ];
 
 interface PetShopProps {
@@ -32,6 +29,25 @@ interface PetShopProps {
 export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats }) => {
     const [activeTab, setActiveTab] = useState<'hat' | 'accessory' | 'environment'>('hat');
     const [purchasingId, setPurchasingId] = useState<string | null>(null);
+    const [showAffordableFirst, setShowAffordableFirst] = useState(true);
+
+    const previewItem = useMemo(() => {
+        const equippedId = stats.equipped[activeTab as keyof typeof stats.equipped];
+        return PET_SHOP_ITEMS.find(item => item.id === equippedId);
+    }, [activeTab, stats.equipped]);
+
+    const visibleItems = useMemo(() => {
+        const items = PET_SHOP_ITEMS.filter(i => i.category === activeTab);
+        if (!showAffordableFirst) return items;
+        return [...items].sort((a, b) => {
+            const aOwned = stats.inventory.includes(a.id);
+            const bOwned = stats.inventory.includes(b.id);
+            const aAffordable = stats.coins >= a.price || aOwned;
+            const bAffordable = stats.coins >= b.price || bOwned;
+            if (aAffordable !== bAffordable) return aAffordable ? -1 : 1;
+            return a.price - b.price;
+        });
+    }, [activeTab, showAffordableFirst, stats.coins, stats.inventory]);
 
     const handleBuy = (item: ShopItem) => {
         if (stats.coins < item.price) {
@@ -130,14 +146,30 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                     ))}
                 </div>
 
+                <div className="px-4 pb-3 bg-white/50 border-b border-gray-100 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-400">Preview</p>
+                        <p className="text-xs font-semibold text-gray-700 truncate">
+                            {previewItem ? `${previewItem.name} equipped` : `No ${activeTab} equipped`}
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setShowAffordableFirst(prev => !prev)}
+                        className={`px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all ${showAffordableFirst ? 'bg-tulika-100 text-tulika-700' : 'bg-gray-100 text-gray-500'}`}
+                    >
+                        <Eye size={12} /> Affordable First
+                    </button>
+                </div>
+
                 {/* Grid */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     <div className="grid grid-cols-2 gap-3 pb-8">
                         <AnimatePresence mode="popLayout">
-                            {SHOP_ITEMS.filter(i => i.category === activeTab).map(item => {
+                            {visibleItems.map(item => {
                                 const isOwned = stats.inventory.includes(item.id);
                                 const isEquipped = stats.equipped[item.category as keyof typeof stats.equipped] === item.id;
                                 const isPurchasing = purchasingId === item.id;
+                                const coinsNeeded = Math.max(0, item.price - stats.coins);
 
                                 return (
                                     <motion.div 
@@ -168,6 +200,9 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
 
                                         <span className="text-4xl mb-3 mt-2 block drop-shadow-md">{item.emoji}</span>
                                         <h4 className="font-bold text-gray-800 text-sm mb-1">{item.name}</h4>
+                                        {!isOwned && coinsNeeded > 0 && (
+                                            <p className="text-[10px] text-rose-500 font-semibold">Need {coinsNeeded} more</p>
+                                        )}
                                         
                                         <div className="mt-auto pt-4 w-full">
                                             {!isOwned ? (

@@ -1,0 +1,20 @@
+{
+  "name": "Tulika",
+  "short_name": "Tulika",
+  "description": "A private memory app for couples.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdf4f8",
+  "theme_color": "#ec4899",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["lifestyle", "social"],
+  "lang": "en"
+}

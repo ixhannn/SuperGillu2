@@ -10,28 +10,76 @@ interface AuraSignalProps {
     setView: (view: ViewState) => void;
 }
 
-const SIGNALS = [
+const SIGNAL_GROUPS = [
     {
-        id: 'red', color: '#ef4444', glow: 'rgba(239, 68, 68, 0.4)',
-        title: 'I need space', subtitle: 'But I still love you.',
-        message: 'Need some quiet time to myself right now. Love you.'
+        id: 'comfort',
+        label: 'Comfort',
+        signals: [
+            {
+                id: 'blue', color: '#3b82f6', glow: 'rgba(59, 130, 246, 0.4)',
+                title: 'I need a hug', subtitle: 'No fixing. Just you.',
+                message: 'Feeling low and I just want your softness right now.',
+                afterglow: 'A small reminder that you are my safe place.',
+            },
+            {
+                id: 'yellow', color: '#eab308', glow: 'rgba(234, 179, 8, 0.42)',
+                title: 'Anxious', subtitle: 'Stay close to me.',
+                message: 'My mind feels loud. Your presence would calm me down.',
+                afterglow: 'You do not have to solve it. Just stay with me.',
+            },
+            {
+                id: 'red', color: '#ef4444', glow: 'rgba(239, 68, 68, 0.4)',
+                title: 'I need space', subtitle: 'Still yours. Just overwhelmed.',
+                message: 'I need a little quiet, but I still want to feel your love.',
+                afterglow: 'Distance from noise, not distance from us.',
+            },
+        ],
     },
     {
-        id: 'blue', color: '#3b82f6', glow: 'rgba(59, 130, 246, 0.4)',
-        title: 'I need a hug', subtitle: "Please don't ask what's wrong.",
-        message: 'Feeling down and just need a hug. No questions please.'
+        id: 'love',
+        label: 'Love',
+        signals: [
+            {
+                id: 'green', color: '#22c55e', glow: 'rgba(34, 197, 94, 0.4)',
+                title: 'Thinking of you', subtitle: 'You crossed my heart again.',
+                message: 'Nothing urgent. I just wanted you to feel me thinking of you.',
+                afterglow: 'A soft little thread between us.',
+            },
+            {
+                id: 'rose', color: '#ec4899', glow: 'rgba(236, 72, 153, 0.42)',
+                title: 'Miss you badly', subtitle: 'Come closer somehow.',
+                message: 'The distance feels heavy tonight. I really miss you.',
+                afterglow: 'Until I can hold you, let this reach you first.',
+            },
+            {
+                id: 'violet', color: '#8b5cf6', glow: 'rgba(139, 92, 246, 0.4)',
+                title: 'Proud of you', subtitle: 'I see your effort.',
+                message: 'I am proud of the way you are showing up, even from far away.',
+                afterglow: 'You are deeply loved for who you are becoming.',
+            },
+        ],
     },
     {
-        id: 'yellow', color: '#eab308', glow: 'rgba(234, 179, 8, 0.4)',
-        title: 'Anxious', subtitle: 'Feeling overwhelmed.',
-        message: 'Feeling really anxious and overwhelmed right now.'
+        id: 'ritual',
+        label: 'Ritual',
+        signals: [
+            {
+                id: 'amber', color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.4)',
+                title: 'Need your voice', subtitle: 'Call me when you can.',
+                message: 'I want the comfort of hearing you, even for a minute.',
+                afterglow: 'Some nights your voice is the whole medicine.',
+            },
+            {
+                id: 'teal', color: '#14b8a6', glow: 'rgba(20, 184, 166, 0.4)',
+                title: 'Goodnight, love', subtitle: 'Fall asleep with me in mind.',
+                message: 'Sending you my last soft thought before sleep.',
+                afterglow: 'Let this be the feeling that stays beside you tonight.',
+            },
+        ],
     },
-    {
-        id: 'green', color: '#22c55e', glow: 'rgba(34, 197, 94, 0.4)',
-        title: 'Thinking of you', subtitle: 'Just sending love.',
-        message: 'Just wanted to let you know I am thinking of you right now.'
-    }
 ];
+
+const SIGNALS = SIGNAL_GROUPS.flatMap((group) => group.signals);
 
 // Moving background blobs for the fluid effect
 const FluidBackground = ({ color }: { color: string }) => {
@@ -69,6 +117,7 @@ const FluidBackground = ({ color }: { color: string }) => {
 
 export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
     const [selected, setSelected] = useState<string | null>(null);
+    const [activeGroup, setActiveGroup] = useState<string>(SIGNAL_GROUPS[0].id);
     const [sent, setSent] = useState(false);
     const [holdProgress, setHoldProgress] = useState(0);
     const holdIntervalRef = useRef<any>(null);
@@ -109,7 +158,9 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
         SyncService.sendSignal('AURA_SIGNAL', {
             color: activeSignal.color,
             title: activeSignal.title,
-            message: activeSignal.message
+            subtitle: activeSignal.subtitle,
+            message: activeSignal.message,
+            afterglow: activeSignal.afterglow,
         });
         feedback.celebrate();
         setSent(true);
@@ -131,16 +182,68 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                 <ViewHeader title="Aura Signal" onBack={() => setView('home')} variant="transparent" />
 
                 <div className="text-center mt-2 mb-8 relative z-20">
-                    <h2 className="font-serif text-4xl font-extrabold text-gray-900 mb-2 drop-shadow-sm">
+                    <h2 className="font-serif text-4xl font-extrabold mb-2 drop-shadow-sm" style={{ color: 'var(--color-text-primary)' }}>
                         Vibe Check
                     </h2>
-                    <p className="text-gray-600 text-sm font-medium px-4">
-                        When words are too hard to find, send an aura instead.
+                    <p className="text-sm font-medium px-4" style={{ color: 'var(--color-text-secondary)' }}>
+                        Send a felt presence, not just a message.
                     </p>
                 </div>
 
+                <div className="w-full max-w-sm mx-auto relative z-20 mb-5">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                        {SIGNAL_GROUPS.map((group) => (
+                            <button
+                                key={group.id}
+                                onClick={() => { feedback.light(); setActiveGroup(group.id); }}
+                                className="px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.22em] font-bold whitespace-nowrap transition-all"
+                                style={{
+                                    background: activeGroup === group.id ? 'rgba(17,24,39,0.88)' : 'rgba(255,255,255,0.64)',
+                                    color: activeGroup === group.id ? '#fff' : 'var(--color-text-secondary)',
+                                    border: activeGroup === group.id ? '1px solid rgba(17,24,39,0.88)' : '1px solid rgba(255,255,255,0.8)',
+                                }}
+                            >
+                                {group.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {activeSignal && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="w-full max-w-sm mx-auto mb-5 rounded-[1.75rem] p-5 relative overflow-hidden"
+                        style={{
+                            background: 'rgba(255,255,255,0.68)',
+                            border: '1px solid rgba(255,255,255,0.82)',
+                            boxShadow: `0 14px 50px ${activeSignal.glow}`,
+                            backdropFilter: 'blur(18px)',
+                        }}
+                    >
+                        <div
+                            className="absolute -right-16 -top-16 w-36 h-36 rounded-full blur-3xl opacity-50"
+                            style={{ backgroundColor: activeSignal.color }}
+                        />
+                        <div className="relative z-10">
+                            <p className="text-[10px] uppercase tracking-[0.28em] font-bold mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                                They will feel
+                            </p>
+                            <h3 className="font-serif text-2xl font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                                {activeSignal.title}
+                            </h3>
+                            <p className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>
+                                {activeSignal.subtitle}
+                            </p>
+                            <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                                {activeSignal.afterglow}
+                            </p>
+                        </div>
+                    </motion.div>
+                )}
+
                 <div className="flex-1 flex flex-col justify-center gap-4 max-w-sm mx-auto w-full relative z-20 pb-40">
-                    {SIGNALS.map((signal, index) => {
+                    {SIGNAL_GROUPS.find((group) => group.id === activeGroup)!.signals.map((signal, index) => {
                         const isSelected = selected === signal.id;
                         const isOtherSelected = selected && !isSelected;
 
@@ -161,10 +264,11 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                                     y: 0
                                 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 25, delay: index * 0.08 }}
-                                className={`w-full relative overflow-hidden rounded-[1.75rem] p-5 text-left transition-all duration-500 border
-                                    ${isSelected ? 'glass-card border-gray-100 ring-2 ring-tulika-200' : 'bg-white border-gray-100 shadow-sm'}
+                                className={`w-full relative overflow-hidden rounded-[1.75rem] p-5 text-left transition-all duration-500
+                                    ${isSelected ? 'glass-card ring-2 ring-tulika-200' : 'glass-card shadow-sm'}
                                 `}
                                 style={{
+                                    border: isSelected ? `1px solid rgba(var(--theme-particle-2-rgb),0.15)` : `1px solid rgba(var(--theme-particle-2-rgb),0.10)`,
                                     boxShadow: isSelected ? `0 12px 40px ${signal.glow}` : 'none'
                                 }}
                             >
@@ -192,10 +296,10 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                                         </div>
                                     </div>
                                     <div>
-                                        <h3 className={`font-serif font-bold text-xl mb-0.5 ${isSelected ? 'text-gray-900 drop-shadow-sm' : 'text-gray-800'}`}>
+                                        <h3 className={`font-serif font-bold text-xl mb-0.5 ${isSelected ? 'drop-shadow-sm' : ''}`} style={{ color: 'var(--color-text-primary)' }}>
                                             {signal.title}
                                         </h3>
-                                        <p className={`text-sm ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                                        <p className={`text-sm ${isSelected ? 'font-medium' : ''}`} style={{ color: isSelected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>
                                             {signal.subtitle}
                                         </p>
                                     </div>
@@ -216,6 +320,9 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                         transition={{ type: 'spring', damping: 22 }}
                         className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-gray-50/95 via-gray-50/80 to-transparent z-40 flex flex-col items-center justify-end pb-12 pointer-events-none"
                     >
+                        <p className="mb-4 text-[11px] uppercase tracking-[0.28em] font-bold pointer-events-none" style={{ color: 'var(--color-text-secondary)' }}>
+                            Hold to send your presence
+                        </p>
                         {/* The charging orb */}
                         <div className="relative flex items-center justify-center pointer-events-auto">
                             

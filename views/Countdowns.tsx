@@ -33,9 +33,9 @@ const LiveCountdown = ({ targetDate }: { targetDate: Date }) => {
                 { label: 'Min', value: timeLeft.minutes || 0 },
                 { label: 'Sec', value: timeLeft.seconds || 0 },
             ].map(unit => (
-                <div key={unit.label} className="bg-white/60 shadow-sm border border-gray-100 backdrop-blur-md rounded-xl p-2 flex flex-col items-center">
-                    <span className="text-xl font-bold font-mono text-gray-800" style={{ animation: 'numberRoll 0.5s cubic-bezier(0.23, 1, 0.32, 1) both' }}>{String(unit.value).padStart(2, '0')}</span>
-                    <span className="text-[8px] uppercase font-bold text-gray-500 tracking-tighter">{unit.label}</span>
+                <div key={unit.label} className="glass-card shadow-sm backdrop-blur-md rounded-xl p-2 flex flex-col items-center" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
+                    <span className="text-xl font-bold font-mono" style={{ animation: 'numberRoll 0.5s cubic-bezier(0.23, 1, 0.32, 1) both', color: 'var(--color-text-primary)' }}>{String(unit.value).padStart(2, '0')}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{unit.label}</span>
                 </div>
             ))}
         </div>
@@ -97,7 +97,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
     };
 
     return (
-        <div className="min-h-screen text-gray-800 flex flex-col pb-32">
+        <div className="min-h-screen flex flex-col pb-32">
             {/* Header */}
             <ViewHeader title="Countdowns" subtitle="Upcoming Moments" onBack={() => setView('home')} variant="simple" />
 
@@ -112,8 +112,8 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                             {getIcon(nextEvent.type)}
                         </div>
 
-                        <h3 className="text-3xl font-serif font-bold mb-2 text-gray-900">{nextEvent.title}</h3>
-                        <p className="text-gray-500 text-sm mb-8 font-medium">
+                        <h3 className="text-3xl font-serif font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>{nextEvent.title}</h3>
+                        <p className="text-sm mb-8 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                             {nextEvent.nextDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
                         </p>
 
@@ -122,7 +122,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                 )}
 
                 <div className="flex justify-between items-center mb-6">
-                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500">Upcoming</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-secondary)' }}>Upcoming</h4>
                     <button onClick={() => setView('special-dates')} className="text-xs font-bold text-tulika-400 flex items-center gap-1">
                         Edit List <ChevronRight size={14} />
                     </button>
@@ -142,8 +142,8 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                                 {getIcon(event.type)}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h5 className="font-bold text-lg truncate">{event.title}</h5>
-                                <p className="text-xs text-gray-500">
+                                <h5 className="font-bold text-lg truncate" style={{ color: 'var(--color-text-primary)' }}>{event.title}</h5>
+                                <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                                     {event.nextDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 </p>
                             </div>
@@ -151,7 +151,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                                 <span className="text-2xl font-bold font-mono text-tulika-400">
                                     {differenceInDays(event.nextDate, new Date())}
                                 </span>
-                                <span className="block text-[8px] uppercase font-bold text-gray-500">Days To Go</span>
+                                <span className="block text-[10px] uppercase font-bold" style={{ color: 'var(--color-text-secondary)' }}>Days To Go</span>
                             </div>
                         </motion.div>
                     ))}
@@ -164,8 +164,8 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                                     <Calendar size={40} />
                                 </div>
                             </div>
-                            <p className="font-serif text-gray-800 text-center font-bold text-lg mb-2">No countdowns yet</p>
-                            <p className="text-xs text-gray-500 mb-6 font-medium">Add special dates to start counting down</p>
+                            <p className="font-serif text-center font-bold text-lg mb-2" style={{ color: 'var(--color-text-primary)' }}>No countdowns yet</p>
+                            <p className="text-xs mb-6 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Add special dates to start counting down</p>
                             <button
                                 onClick={() => setView('special-dates')}
                                 className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-500/20 spring-press"

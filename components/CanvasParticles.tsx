@@ -11,6 +11,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { PerformanceManager } from '../services/performance';
+import { readThemeRgbTriplet } from '../utils/themeVars';
 
 /* ─── Simplex-like noise for flow field ─── */
 function noise2D(x: number, y: number): number {
@@ -109,14 +110,24 @@ export const CanvasParticles: React.FC = () => {
     let rafId: number;
     let lastFrame = performance.now();
 
-    /* Rose palette colors for particles */
-    const colors = [
-      'rgba(251,113,133,',  /* tulika-400 */
-      'rgba(253,164,175,',  /* tulika-300 */
-      'rgba(254,205,211,',  /* tulika-200 */
-      'rgba(249,168,212,',  /* baby pink */
-      'rgba(255,228,230,',  /* tulika-100 */
-    ];
+    let colors = ['251,113,133', '253,164,175', '254,205,211', '249,168,212', '255,228,230'];
+
+    const syncThemeColors = () => {
+      colors = [
+        readThemeRgbTriplet('--theme-particle-1-rgb', '251,113,133'),
+        readThemeRgbTriplet('--theme-particle-2-rgb', '253,164,175'),
+        readThemeRgbTriplet('--theme-particle-3-rgb', '254,205,211'),
+        readThemeRgbTriplet('--theme-particle-4-rgb', '249,168,212'),
+        readThemeRgbTriplet('--theme-particle-5-rgb', '255,228,230'),
+      ];
+    };
+    syncThemeColors();
+
+    const themeObserver = new MutationObserver(syncThemeColors);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'data-theme'],
+    });
 
     const animate = () => {
       rafId = requestAnimationFrame(animate);
@@ -175,14 +186,14 @@ export const CanvasParticles: React.FC = () => {
 
         ctx.beginPath();
         ctx.arc(px[i], py[i], size, 0, TAU);
-        ctx.fillStyle = colors[colorIdx] + a1 + ')';
+        ctx.fillStyle = `rgba(${colors[colorIdx]},${a1})`;
         ctx.fill();
 
         if (size > 2) {
           const a2 = ((alpha * 12 + 0.5) | 0) / 100;
           ctx.beginPath();
           ctx.arc(px[i], py[i], size * 1.8, 0, TAU);
-          ctx.fillStyle = colors[colorIdx] + a2 + ')';
+          ctx.fillStyle = `rgba(${colors[colorIdx]},${a2})`;
           ctx.fill();
         }
       }
@@ -197,6 +208,7 @@ export const CanvasParticles: React.FC = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
+      themeObserver.disconnect();
     };
   }, []);
 

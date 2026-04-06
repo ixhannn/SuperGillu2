@@ -87,14 +87,67 @@ export interface DinnerOption {
   text: string;
 }
 
+export interface QuestionEntry {
+  date: string; // YYYY-MM-DD
+  question: string;
+  answers: Record<string, string>; // { [name]: answer text }
+  revealedAt?: string; // ISO string — when both answered
+}
+
+export interface StreakData {
+  checkIns: Record<string, string>; // { [name]: 'YYYY-MM-DD' }
+  count: number;
+  lastMutualDate: string; // 'YYYY-MM-DD'
+  bestStreak: number;
+  lastBrokenCount?: number; // streak count when it last broke
+  lastBrokenDate?: string;  // date it broke
+}
+
 export interface CoupleProfile {
   myName: string;
   partnerName: string;
   anniversaryDate: string; // ISO string
   photo?: string; // Base64 data URI
   theme?: string; // 'rose', 'blue', 'green', 'orange', 'purple', 'dark'
+  partnerUserId?: string; // Set after QR pairing — real Supabase user ID of partner
   missedAuras?: any[];
   bonsaiState?: any;
+  presenceTraces?: PresenceTrace[];
+  nightlights?: NightlightEntry[];
+  streakData?: StreakData;
+  questions?: QuestionEntry[];
+}
+
+export interface PresenceTrace {
+  id: string;
+  senderName: string;
+  targetName: string;
+  title: string;
+  subtitle: string;
+  note: string;
+  color: string;
+  createdAt: string; // ISO string
+  expiresAt?: string; // ISO string
+}
+
+export interface NightlightEntry {
+  id: string;
+  senderName: string;
+  targetName: string;
+  nightKey: string; // Local YYYY-MM-DD for the sender's night
+  intentId: string;
+  title: string;
+  subtitle: string;
+  detail: string;
+  note: string;
+  color: string;
+  palette: [string, string, string];
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+  openedAt?: string; // ISO string
+  feltAt?: string; // ISO string
+  whisperAudio?: string; // Data URI
+  whisperDurationSec?: number;
 }
 
 export interface ShopItem {
@@ -111,7 +164,16 @@ export interface PetStats {
   lastFed: string; // ISO String
   lastPetted: string; // ISO String
   happiness: number; // 0-100
+  xp: number;
   lastMemoryPrompt?: string; // ISO String of last AI flashback
+  lastCareDate?: string; // ISO string for daily care streak logic
+  lastBondDate?: string; // ISO string for daily bond streak logic
+  lastSignalSentAt?: string; // ISO string
+  lastSignalReceivedAt?: string; // ISO string
+  lastInteractionAt?: string; // ISO string
+  careStreak: number;
+  presenceStreak: number;
+  bondMoments: number;
   coins: number;
   inventory: string[];
   equipped: {
@@ -129,4 +191,17 @@ export interface MoodEntry {
   note?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'bonsai-bloom';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service';
+
+export interface RoomFurniture {
+  uid: string;
+  itemId: string;
+  gx: number;
+  gy: number;
+  placedBy: string;
+}
+
+export interface RoomState {
+  furniture: RoomFurniture[];
+  coins: number;
+}

@@ -1,4 +1,4 @@
-import { StorageService, storageEventTarget, StorageUpdateDetail } from './storage';
+import { StorageService, storageEventTarget, StorageUpdateDetail, getPendingDeletes, isDeletedLocally } from './storage';
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 import { MediaMigrationService } from './mediaMigration';
@@ -13,10 +13,34 @@ class SyncServiceClass {
     private channel: RealtimeChannel | null = null;
     private ROOM_ID = 'tulika_global_room';
     private presenceInterval: any = null;
+    private realtimeChannels: RealtimeChannel[] = [];
+    private storageListener: ((e: Event) => void) | null = null;
 
     private isPartnerPresent = false;
     private amILeader = false;
     private activeSessionId: string | null = null;
+
+    private cleanupRealtimeState() {
+        if (this.presenceInterval) {
+            clearInterval(this.presenceInterval);
+            this.presenceInterval = null;
+        }
+
+        if (this.storageListener) {
+            storageEventTarget.removeEventListener('storage-update', this.storageListener);
+            this.storageListener = null;
+        }
+
+        this.realtimeChannels.forEach((channel) => {
+            try {
+                channel.unsubscribe();
+            } catch (e) {
+                console.warn('Channel unsubscribe failed', e);
+            }
+        });
+        this.realtimeChannels = [];
+        this.channel = null;
+    }
 
     public async init() {
         if (!SupabaseService.init()) {
@@ -24,6 +48,17 @@ class SyncServiceClass {
             return;
         }
 
+        const userId = await SupabaseService.getCurrentUserId();
+        if (!userId) {
+            this.cleanupRealtimeState();
+            this.isConnected = false;
+            this.updateStatus('Offline (Login Required)');
+            return;
+        }
+
+        await SupabaseService.claimLegacyRows();
+
+        this.cleanupRealtimeState();
         this.isConnected = true;
         this.setupRealtimeSubscription();
         this.updateStatus('Connected');
@@ -42,15 +77,16 @@ class SyncServiceClass {
         }, 5000);
 
         // BIND LOCAL CHANGES TO CLOUD PUSH
-        storageEventTarget.addEventListener('storage-update', (e: any) => {
-            const detail = e.detail as StorageUpdateDetail;
+        this.storageListener = (e: Event) => {
+            const detail = (e as any).detail as StorageUpdateDetail;
             if (detail.source === 'user') {
                 this.handleLocalChange(detail);
             } else if (detail.source === 'sync' && detail.action === 'save') {
                 // NOTIFICATION TRIGGER: Only for synced items from partner
                 this.triggerSystemNotification(detail);
             }
-        });
+        };
+        storageEventTarget.addEventListener('storage-update', this.storageListener);
 
         // Reconcile cloud with protection
         this.reconcileCloud();
@@ -108,7 +144,19 @@ class SyncServiceClass {
 
     private async reconcileCloud() {
         try {
-            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'couple_profile', 'pet_stats', 'together_music'];
+            // Re-send any deletions that may have failed previously (offline, crash, etc.)
+            // Tombstones are NEVER removed — they permanently block resurrection from partner's cache
+            const pending = getPendingDeletes();
+            for (const { table, id } of pending) {
+                try {
+                    await SupabaseService.deleteItem(table, id);
+                    // Intentionally NOT calling removePendingDelete — tombstone stays forever
+                } catch {
+                    // Keep in queue — will retry next reconcile
+                }
+            }
+
+            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music'];
 
             for (const table of tables) {
                 try {
@@ -128,6 +176,10 @@ class SyncServiceClass {
                             const local = await StorageService.getTogetherMusic();
                             const meta = StorageService.getTogetherMusicMetadata();
                             if (local) await SupabaseService.saveSingle(table, { music_base64: local, meta });
+                        } else if (table === 'user_status') {
+                            const local = StorageService.getStatus();
+                            const profile = StorageService.getCoupleProfile();
+                            await SupabaseService.upsertItem(table, { id: profile.myName, ...local });
                         } else {
                             const listKeyMap: Record<string, any[]> = {
                                 memories: StorageService.getMemories(),
@@ -137,12 +189,13 @@ class SyncServiceClass {
                                 daily_photos: StorageService.getDailyPhotos(),
                                 keepsakes: StorageService.getKeepsakes(),
                                 dinner_options: StorageService.getDinnerOptions(),
-                                comments: StorageService.getComments()
+                                comments: StorageService.getComments(),
+                                mood_entries: StorageService.getMoodEntries()
                             };
                             const mediaPrefixes: Record<string, string> = {
                                 memories: 'mem', daily_photos: 'daily', keepsakes: 'keep'
                             };
-                            const localItems = listKeyMap[table] || [];
+                            const localItems = (listKeyMap[table] || []).filter((it: any) => !isDeletedLocally(table, it.id));
                             for (const it of localItems) {
                                 const toUpload = mediaPrefixes[table]
                                     ? await StorageService._getItemWithImages(it, mediaPrefixes[table])
@@ -151,8 +204,14 @@ class SyncServiceClass {
                             }
                         }
                     } else {
-                        // CLOUD HAS DATA: Pull it down
+                        // CLOUD HAS DATA: Pull it down, skipping locally-deleted items
                         for (const item of cloudItems) {
+                            if (item?.id && isDeletedLocally(table, item.id)) {
+                                // Re-send delete to cloud in case it didn't go through
+                                await SupabaseService.deleteItem(table, item.id);
+                                // Intentionally NOT calling removePendingDelete — tombstone stays forever
+                                continue;
+                            }
                             await StorageService.handleCloudUpdate(table, item);
                         }
                     }
@@ -168,8 +227,7 @@ class SyncServiceClass {
             // Auto-migrate existing base64 data to Supabase Storage
             if (!MediaMigrationService.isMigrated()) {
                 this.updateStatus('Migrating media...');
-                const result = await MediaMigrationService.migrateAll();
-                console.log('Media migration:', result);
+                await MediaMigrationService.migrateAll();
                 this.updateStatus('Cloud Synced');
             }
         } catch (e) {
@@ -192,6 +250,7 @@ class SyncServiceClass {
                 }
             } else if (detail.action === 'delete') {
                 await SupabaseService.deleteItem(detail.table, detail.id);
+                // Intentionally NOT calling removePendingDelete — tombstone stays forever
             }
             this.lastSyncTime = new Date().toLocaleTimeString();
             syncEventTarget.dispatchEvent(new Event('sync-update'));
@@ -217,18 +276,22 @@ class SyncServiceClass {
                 syncEventTarget.dispatchEvent(new CustomEvent('signal-received', { detail: payload.payload }));
             })
             .subscribe();
+        this.realtimeChannels.push(this.channel);
 
-        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'couple_profile', 'pet_stats', 'user_status', 'together_music'];
+        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music'];
         tables.forEach(table => {
-            SupabaseService.client?.channel(`public:${table}`)
+            const tableChannel = SupabaseService.client?.channel(`public:${table}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
                     if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                        // Skip if locally tombstoned — the delete is still propagating to cloud
+                        if (payload.new?.id && isDeletedLocally(table, payload.new.id)) return;
                         StorageService.handleCloudUpdate(table, payload.new);
                     } else if (payload.eventType === 'DELETE') {
                         StorageService.handleCloudDelete(table, payload.old.id);
                     }
                 })
                 .subscribe();
+            if (tableChannel) this.realtimeChannels.push(tableChannel);
         });
     }
 

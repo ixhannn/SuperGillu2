@@ -110,7 +110,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
 
                 </div>
             ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center bg-gray-50/50">
+                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center" style={{ color: 'var(--color-text-secondary)', background: 'rgba(var(--theme-particle-2-rgb),0.08)' }}>
                     <Camera size={28} className="mb-3 opacity-30" />
                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Media Unavailable</span>
                 </div>
@@ -171,24 +171,27 @@ const CommentBubble: React.FC<{
             </div>
             {/* Content */}
             <div className="flex-1 min-w-0">
-                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-500/10 border border-tulika-500/20' : 'bg-white border border-gray-100 shadow-sm'}`}>
+                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-500/10 border border-tulika-500/20' : ''}`}
+                    style={!isMine ? { background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.14)' } : {}}>
                     <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[11px] font-bold text-gray-800">{comment.senderName}</span>
-                        <span className="text-[9px] text-gray-400">{timeStr}</span>
+                        <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{comment.senderName}</span>
+                        <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{timeStr}</span>
                     </div>
-                    <p className="text-[13px] text-gray-700 leading-snug break-words">{comment.text}</p>
+                    <p className="text-[13px] leading-snug break-words" style={{ color: 'var(--color-text-primary)' }}>{comment.text}</p>
                 </div>
                 <div className="flex items-center gap-4 mt-1 ml-1">
                     <button
                         onClick={() => onReply(comment)}
-                        className="text-[10px] font-bold text-gray-400 uppercase tracking-wider transition-colors flex items-center gap-1"
+                        className="text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1"
+                        style={{ color: 'var(--color-text-secondary)' }}
                     >
                         <Reply size={10} /> Reply
                     </button>
                     {isMine && (
                         <button
                             onClick={() => onDelete(comment.id)}
-                            className="text-[10px] font-bold text-gray-600 uppercase tracking-wider transition-colors"
+                            className="text-[10px] font-bold uppercase tracking-wider transition-colors"
+                            style={{ color: 'var(--color-text-secondary)' }}
                         >
                             Delete
                         </button>
@@ -285,12 +288,14 @@ const PostViewer: React.FC<{
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] flex flex-col bg-gray-100/90 backdrop-blur-3xl animate-fade-in"
+            className="fixed inset-0 z-[100] flex flex-col backdrop-blur-3xl animate-fade-in"
+            style={{ background: 'color-mix(in srgb, var(--color-surface) 95%, transparent)' }}
         >
             {/* ── Header ── */}
-            <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 bg-white/60 backdrop-blur-md border-b border-white/80 shadow-sm z-20">
+            <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 backdrop-blur-md z-20"
+                style={{ background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)', borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
                 <div className="flex items-center gap-3">
-                    <button onClick={onClose} className="p-1.5 text-gray-600 transition-colors">
+                    <button onClick={onClose} className="p-1.5 transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
                         <ArrowLeft size={22} />
                     </button>
                     <div className="flex items-center gap-2.5">
@@ -298,10 +303,10 @@ const PostViewer: React.FC<{
                             {photo.senderId === myDeviceId ? profile.myName.charAt(0) : profile.partnerName.charAt(0)}
                         </div>
                         <div>
-                            <p className="text-sm font-bold text-gray-800 leading-tight">
+                            <p className="text-sm font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>
                                 {photo.senderId === myDeviceId ? profile.myName : profile.partnerName}
                             </p>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>
                                 {dateStr} · {timeStr}
                             </p>
                         </div>
@@ -345,7 +350,7 @@ const PostViewer: React.FC<{
                         )}
                     </>
                 ) : (
-                    <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                    <div className="flex flex-col items-center justify-center py-16" style={{ color: 'var(--color-text-secondary)' }}>
                         <Camera size={32} className="mb-2 opacity-30" />
                         <span className="text-xs font-bold uppercase tracking-widest opacity-40">Media Unavailable</span>
                     </div>
@@ -354,18 +359,18 @@ const PostViewer: React.FC<{
 
             {/* ── Caption ── */}
             {photo.caption && (
-                <div className="px-5 py-4 border-b border-gray-200/60 bg-white/40 shadow-sm z-10">
-                    <p className="text-[15px] text-gray-800 leading-relaxed font-medium">{photo.caption}</p>
+                <div className="px-5 py-4 z-10" style={{ borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)' }}>
+                    <p className="text-[15px] leading-relaxed font-medium" style={{ color: 'var(--color-text-primary)' }}>{photo.caption}</p>
                 </div>
             )}
 
             {/* ── Comments Section ── */}
             <div className="flex-1 overflow-y-auto px-4 py-4">
                 {comments.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 opacity-40">
-                        <MessageCircle size={28} className="mb-2 text-gray-500" />
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No comments yet</p>
-                        <p className="text-[11px] text-gray-600 mt-1">Be the first to react!</p>
+                    <div className="flex flex-col items-center justify-center py-12 opacity-50">
+                        <MessageCircle size={28} className="mb-2" style={{ color: 'var(--color-text-secondary)' }} />
+                        <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>No comments yet</p>
+                        <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-secondary)' }}>Be the first to react!</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -402,14 +407,14 @@ const PostViewer: React.FC<{
             </div>
 
             {/* ── Comment Input Bar ── */}
-            <div className="flex-shrink-0 border-t border-gray-200/60 px-4 py-3 safe-area-bottom bg-white/60 backdrop-blur-md shadow-[0_-4px_24px_rgba(0,0,0,0.03)] z-20">
+            <div className="flex-shrink-0 px-4 py-3 safe-area-bottom backdrop-blur-md z-20" style={{ borderTop: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)' }}>
                 {replyTo && (
                     <div className="flex items-center justify-between mb-2 px-1">
                         <span className="text-[11px] text-tulika-500 font-bold">
                             <Reply size={10} className="inline mr-1" />
                             Replying to {replyTo.senderName}
                         </span>
-                        <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-1">
+                        <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-1" style={{ color: 'var(--color-text-secondary)' }}>
                             <X size={14} />
                         </button>
                     </div>
@@ -425,7 +430,8 @@ const PostViewer: React.FC<{
                         onChange={e => setCommentText(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleSubmitComment(); }}
                         placeholder={replyTo ? `Reply to ${replyTo.senderName}...` : "Add a comment..."}
-                        className="flex-1 bg-white/5 rounded-full px-4 py-2.5 text-sm text-gray-200 outline-none focus:ring-2 focus:ring-tulika-500/30 focus:bg-white/10 transition-all placeholder:text-gray-500"
+                        className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-tulika-500/30 transition-all"
+                        style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', color: 'var(--color-text-primary)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}
                     />
                     <button
                         onClick={handleSubmitComment}
@@ -593,7 +599,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                         ))}
                     </motion.div>
                 ) : (
-                    <div className="h-full flex flex-col items-center justify-center py-20 text-gray-500">
+                    <div className="h-full flex flex-col items-center justify-center py-20" style={{ color: 'var(--color-text-secondary)' }}>
                         <Sparkles size={48} className="mb-4" />
                         <p className="font-serif text-center">Share a moment that<br />disappears in 24 hours.</p>
                     </div>
@@ -602,10 +608,10 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
             {/* Upload Modal */}
             {isUploading && ReactDOM.createPortal(
-                <div className="fixed inset-0 z-50 flex flex-col bg-gray-50/95 backdrop-blur-3xl" style={{ animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
-                    <div className="p-4 flex items-center justify-between border-b border-gray-200/60 bg-white/50 shadow-sm">
-                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer text-gray-600 focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"><X size={24} /></button>
-                        <span className="font-bold text-sm uppercase tracking-widest text-gray-800">Post Moment</span>
+                <div className="fixed inset-0 z-50 flex flex-col backdrop-blur-3xl" style={{ background: 'var(--color-surface)', animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
+                    <div className="p-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)' }}>
+                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer spring-press focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
+                        <span className="font-bold text-sm uppercase tracking-widest" style={{ color: 'var(--color-text-primary)' }}>Post Moment</span>
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
@@ -634,9 +640,10 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                             value={caption}
                             onChange={e => setCaption(e.target.value)}
                             placeholder="Add a caption..."
-                            className="w-full bg-white p-4 rounded-2xl font-medium outline-none text-gray-800 placeholder:text-gray-400 border border-gray-200 shadow-sm focus:ring-2 focus:ring-tulika-500/30"
+                            className="w-full p-4 rounded-2xl font-medium outline-none focus:ring-2 focus:ring-tulika-500/30"
+                            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.16)', color: 'var(--color-text-primary)' }}
                         />
-                        <p className="mt-4 text-[10px] text-gray-400 text-center font-bold uppercase tracking-widest">
+                        <p className="mt-4 text-[10px] text-center font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>
                             Visible for 24 hours
                         </p>
                     </div>

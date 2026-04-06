@@ -22,7 +22,7 @@ export const HeartbeatPulse: React.FC = () => {
       <div
         className="absolute top-1/2 left-[40%] -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full animate-heartbeat-1"
         style={{
-          background: 'radial-gradient(circle, rgba(251,207,232,0.10) 0%, rgba(251,207,232,0) 70%)',
+          background: 'radial-gradient(circle, rgba(var(--theme-heart-a-rgb, 251,207,232),0.10) 0%, rgba(var(--theme-heart-a-rgb, 251,207,232),0) 70%)',
           filter: 'blur(20px)',
         }}
       />
@@ -30,7 +30,7 @@ export const HeartbeatPulse: React.FC = () => {
       <div
         className="absolute top-1/2 left-[60%] -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full animate-heartbeat-2"
         style={{
-          background: 'radial-gradient(circle, rgba(251,113,133,0.1) 0%, rgba(251,113,133,0) 70%)',
+          background: 'radial-gradient(circle, rgba(var(--theme-heart-b-rgb, 251,113,133),0.1) 0%, rgba(var(--theme-heart-b-rgb, 251,113,133),0) 70%)',
           filter: 'blur(16px)',
         }}
       />
