@@ -57,6 +57,24 @@ class SyncServiceClass {
         }
 
         await SupabaseService.claimLegacyRows();
+        const coupleId = await SupabaseService.getCurrentCoupleId();
+        if (!coupleId) {
+            this.cleanupRealtimeState();
+            this.isConnected = false;
+            this.updateStatus('Offline (Couple Setup Failed)');
+            return;
+        }
+        await SupabaseService.backfillRowsToCouple(coupleId);
+        const profile = StorageService.getCoupleProfile();
+        const linked = await SupabaseService.getLinkedPartner(coupleId);
+        const nextProfile = {
+            ...profile,
+            coupleId,
+            partnerUserId: linked?.partnerUserId || profile.partnerUserId,
+        };
+        if (profile.coupleId !== nextProfile.coupleId || profile.partnerUserId !== nextProfile.partnerUserId) {
+            StorageService.saveCoupleProfile(nextProfile, 'sync');
+        }
 
         this.cleanupRealtimeState();
         this.isConnected = true;
@@ -156,7 +174,7 @@ class SyncServiceClass {
                 }
             }
 
-            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music'];
+            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones'];
 
             for (const table of tables) {
                 try {
@@ -176,6 +194,9 @@ class SyncServiceClass {
                             const local = await StorageService.getTogetherMusic();
                             const meta = StorageService.getTogetherMusicMetadata();
                             if (local) await SupabaseService.saveSingle(table, { music_base64: local, meta });
+                        } else if (table === 'our_room_state') {
+                            const local = StorageService.getRoomState();
+                            await SupabaseService.saveSingle(table, local);
                         } else if (table === 'user_status') {
                             const local = StorageService.getStatus();
                             const profile = StorageService.getCoupleProfile();
@@ -190,7 +211,10 @@ class SyncServiceClass {
                                 keepsakes: StorageService.getKeepsakes(),
                                 dinner_options: StorageService.getDinnerOptions(),
                                 comments: StorageService.getComments(),
-                                mood_entries: StorageService.getMoodEntries()
+                                mood_entries: StorageService.getMoodEntries(),
+                                us_bucket_items: StorageService.getUsBucketItems(),
+                                us_wishlist_items: StorageService.getUsWishlistItems(),
+                                us_milestones: StorageService.getUsMilestones()
                             };
                             const mediaPrefixes: Record<string, string> = {
                                 memories: 'mem', daily_photos: 'daily', keepsakes: 'keep'
@@ -239,7 +263,7 @@ class SyncServiceClass {
         if (!this.isConnected) return;
         try {
             if (detail.action === 'save' && detail.item) {
-                if (['couple_profile', 'pet_stats', 'together_music'].includes(detail.table)) {
+                if (['couple_profile', 'pet_stats', 'together_music', 'our_room_state'].includes(detail.table)) {
                     await SupabaseService.saveSingle(detail.table, detail.item);
                 } else {
                     // Strip base64 blobs from cloud payload when Storage path exists
@@ -278,16 +302,21 @@ class SyncServiceClass {
             .subscribe();
         this.realtimeChannels.push(this.channel);
 
-        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music'];
+        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones'];
         tables.forEach(table => {
             const tableChannel = SupabaseService.client?.channel(`public:${table}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
                     if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                        const logicalId = payload.new?.data?.id || payload.new?.id;
                         // Skip if locally tombstoned — the delete is still propagating to cloud
-                        if (payload.new?.id && isDeletedLocally(table, payload.new.id)) return;
-                        StorageService.handleCloudUpdate(table, payload.new);
+                        if (logicalId && isDeletedLocally(table, logicalId)) return;
+                        StorageService.handleCloudUpdate(table, payload.new?.data ?? payload.new);
                     } else if (payload.eventType === 'DELETE') {
-                        StorageService.handleCloudDelete(table, payload.old.id);
+                        const rawId = payload.old?.data?.id || payload.old?.id;
+                        const logicalId = (typeof rawId === 'string' && rawId.includes(':'))
+                            ? rawId.slice(rawId.indexOf(':') + 1)
+                            : rawId;
+                        if (logicalId) StorageService.handleCloudDelete(table, logicalId);
                     }
                 })
                 .subscribe();

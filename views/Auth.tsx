@@ -17,18 +17,61 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_KEY?.trim() ||
     localStorage.getItem('tulika_sb_key') ||
     'sb_publishable_KRRnxuRIWdlgHbn_g65dfQ_Mzzg5Vjl';
 
-async function authProxy(type: 'login' | 'signup' | 'reset', email: string, password?: string): Promise<{ data?: any; error?: string; retry_after_seconds?: number; status: number }> {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/auth-proxy`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ type, email, password }),
+async function authProxy(
+    type: 'login' | 'signup' | 'reset',
+    email: string,
+    password?: string,
+): Promise<{ data?: any; error?: string; retry_after_seconds?: number; status: number; proxyUnavailable?: boolean }> {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/auth-proxy`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ type, email, password }),
+        });
+
+        let body: any = {};
+        try {
+            body = await res.json();
+        } catch {
+            return {
+                error: 'Auth gateway unavailable.',
+                status: res.status,
+                proxyUnavailable: true,
+            };
+        }
+
+        return { ...body, status: res.status };
+    } catch {
+        return {
+            error: 'Auth gateway unavailable.',
+            status: 0,
+            proxyUnavailable: true,
+        };
+    }
+}
+
+async function directAuthFallback(type: 'login' | 'signup' | 'reset', email: string, password?: string) {
+    const sb = SupabaseService.client;
+    if (!sb) return { error: 'Supabase client is not configured.' };
+
+    if (type === 'login') {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password: password ?? '' });
+        return error ? { error: error.message } : { data };
+    }
+
+    if (type === 'signup') {
+        const { data, error } = await sb.auth.signUp({ email, password: password ?? '' });
+        return error ? { error: error.message } : { data };
+    }
+
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
     });
-    const body = await res.json();
-    return { ...body, status: res.status };
+    return error ? { error: error.message } : { data: {} };
 }
 
 interface AuthProps {
@@ -107,7 +150,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         setError(null);
         setSuccessMsg(null);
         try {
-            const result = await authProxy('reset', email);
+            let result = await authProxy('reset', email);
+            if (result.proxyUnavailable) {
+                result = { ...(await directAuthFallback('reset', email)), status: 200 };
+            }
             if (result.status === 429) {
                 setRateLimitSecs(result.retry_after_seconds ?? 600);
             } else if (result.error) {
@@ -127,7 +173,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         setLoading(true);
         setError(null);
         try {
-            const result = await authProxy(isSignUp ? 'signup' : 'login', email, password);
+            let result = await authProxy(isSignUp ? 'signup' : 'login', email, password);
+            if (result.proxyUnavailable) {
+                result = { ...(await directAuthFallback(isSignUp ? 'signup' : 'login', email, password)), status: 200 };
+            }
             if (result.status === 429) {
                 setRateLimitSecs(result.retry_after_seconds ?? 600);
             } else if (result.error) {

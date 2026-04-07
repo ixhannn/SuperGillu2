@@ -109,6 +109,7 @@ export interface CoupleProfile {
   anniversaryDate: string; // ISO string
   photo?: string; // Base64 data URI
   theme?: string; // 'rose', 'blue', 'green', 'orange', 'purple', 'dark'
+  coupleId?: string; // Shared couple tenant ID used for cloud sync
   partnerUserId?: string; // Set after QR pairing — real Supabase user ID of partner
   missedAuras?: any[];
   bonsaiState?: any;
@@ -201,7 +202,45 @@ export interface RoomFurniture {
   placedBy: string;
 }
 
+export interface RoomPlacedItem {
+  uid: string;
+  itemId: string;
+  x: number; // percentage (0-100) within room plane
+  y: number; // percentage (0-100) within room plane
+  z?: number;
+  scale?: number;
+  rotation?: number;
+  placedBy: string;
+}
+
 export interface RoomState {
-  furniture: RoomFurniture[];
+  placedItems: RoomPlacedItem[];
   coins: number;
+  roomName: string;
+  wallpaper: 'plain' | 'stripes' | 'polka' | 'hearts' | 'stars' | 'wood';
+  floor: 'hardwood' | 'carpet' | 'tiles' | 'cloud' | 'grass' | 'marble';
+  ambient: 'warm' | 'cool' | 'rainbow';
+  furniture?: RoomFurniture[]; // legacy field (migration only)
+}
+
+export interface UsBucketItem {
+  id: string;
+  text: string;
+  addedBy: string;
+  completedAt?: string;
+}
+
+export interface UsWishlistItem {
+  id: string;
+  text: string;
+  ownerName: string;
+  gifted?: boolean;
+}
+
+export interface UsMilestone {
+  id: string;
+  title: string;
+  date: string;
+  emoji: string;
+  description?: string;
 }

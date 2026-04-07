@@ -1,16 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ViewState } from '../types';
+import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
-import { StorageService } from '../services/storage';
+import { StorageService, storageEventTarget } from '../services/storage';
 
 interface UsProps { setView: (view: ViewState) => void; }
-interface BucketItem { id: string; text: string; addedBy: string; completedAt?: string; }
-interface WishlistItem { id: string; text: string; owner: 'me' | 'partner'; gifted?: boolean; }
-interface Milestone { id: string; title: string; date: string; emoji: string; description?: string; }
 
-const DEFAULT_MILESTONES: Milestone[] = [
+const DEFAULT_MILESTONES: UsMilestone[] = [
     { id: 'first-date', title: 'First Date', date: '', emoji: '✨', description: 'Where it all began' },
     { id: 'first-trip', title: 'First Trip Together', date: '', emoji: '✈️', description: '' },
     { id: 'first-home', title: 'Moved In Together', date: '', emoji: '🏠', description: '' },
@@ -44,13 +41,33 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
     const profile = StorageService.getCoupleProfile();
     const [activeTab, setActiveTab] = useState<Tab>('bucket');
 
+    useEffect(() => {
+        const onStorage = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            if (!detail) return;
+            if (['us_bucket_items', 'us_wishlist_items', 'us_milestones', 'init'].includes(detail.table)) {
+                setBucketItems(StorageService.getUsBucketItems());
+                setWishItems(StorageService.getUsWishlistItems());
+                const syncedMilestones = StorageService.getUsMilestones();
+                setMilestones(syncedMilestones.length ? syncedMilestones : DEFAULT_MILESTONES);
+            }
+        };
+        storageEventTarget.addEventListener('storage-update', onStorage);
+        return () => storageEventTarget.removeEventListener('storage-update', onStorage);
+    }, []);
+
     // ── Bucket List ──────────────────────────────────────────────────────
-    const [bucketItems, setBucketItems] = useState<BucketItem[]>(() => {
-        try { return JSON.parse(localStorage.getItem('tulika_bucket') || '[]'); } catch { return []; }
-    });
+    const [bucketItems, setBucketItems] = useState<UsBucketItem[]>(() => StorageService.getUsBucketItems());
     const [bucketInput, setBucketInput] = useState('');
     const [showCompleted, setShowCompleted] = useState(false);
-    const saveBucket = (items: BucketItem[]) => { setBucketItems(items); localStorage.setItem('tulika_bucket', JSON.stringify(items)); };
+    const saveBucket = (items: UsBucketItem[]) => {
+        const prev = bucketItems;
+        setBucketItems(items);
+        const prevIds = new Set(prev.map((i) => i.id));
+        const nextIds = new Set(items.map((i) => i.id));
+        for (const item of items) StorageService.saveUsBucketItem(item);
+        for (const old of prev) if (!nextIds.has(old.id) && prevIds.has(old.id)) StorageService.deleteUsBucketItem(old.id);
+    };
     const addBucketItem = () => { const t = bucketInput.trim(); if (!t) return; saveBucket([{ id: Date.now().toString(), text: t, addedBy: profile.myName }, ...bucketItems]); setBucketInput(''); };
     const toggleBucket = (id: string) => saveBucket(bucketItems.map(i => i.id === id ? { ...i, completedAt: i.completedAt ? undefined : new Date().toISOString() } : i));
     const deleteBucket = (id: string) => saveBucket(bucketItems.filter(i => i.id !== id));
@@ -59,29 +76,44 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
     const pct = bucketItems.length > 0 ? Math.round((completed.length / bucketItems.length) * 100) : 0;
 
     // ── Wishlist ─────────────────────────────────────────────────────────
-    const [wishItems, setWishItems] = useState<WishlistItem[]>(() => {
-        try { return JSON.parse(localStorage.getItem('tulika_wishlist') || '[]'); } catch { return []; }
-    });
+    const [wishItems, setWishItems] = useState<UsWishlistItem[]>(() => StorageService.getUsWishlistItems());
     const [wishTab, setWishTab] = useState<'me' | 'partner'>('me');
     const [myWishInput, setMyWishInput] = useState('');
     const [partnerWishInput, setPartnerWishInput] = useState('');
-    const saveWish = (items: WishlistItem[]) => { setWishItems(items); localStorage.setItem('tulika_wishlist', JSON.stringify(items)); };
-    const addWish = (owner: 'me' | 'partner', text: string) => { if (!text.trim()) return; saveWish([...wishItems, { id: Date.now().toString(), text: text.trim(), owner }]); };
+    const saveWish = (items: UsWishlistItem[]) => {
+        const prev = wishItems;
+        setWishItems(items);
+        const nextIds = new Set(items.map((i) => i.id));
+        for (const item of items) StorageService.saveUsWishlistItem(item);
+        for (const old of prev) if (!nextIds.has(old.id)) StorageService.deleteUsWishlistItem(old.id);
+    };
+    const addWish = (owner: 'me' | 'partner', text: string) => {
+        if (!text.trim()) return;
+        const ownerName = owner === 'me' ? profile.myName : profile.partnerName;
+        saveWish([...wishItems, { id: Date.now().toString(), text: text.trim(), ownerName }]);
+    };
     const toggleGifted = (id: string) => saveWish(wishItems.map(i => i.id === id ? { ...i, gifted: !i.gifted } : i));
     const deleteWish = (id: string) => saveWish(wishItems.filter(i => i.id !== id));
-    const myWishes = wishItems.filter(i => i.owner === 'me');
-    const partnerWishes = wishItems.filter(i => i.owner === 'partner');
+    const myWishes = wishItems.filter(i => i.ownerName === profile.myName);
+    const partnerWishes = wishItems.filter(i => i.ownerName === profile.partnerName);
 
     // ── Milestones ───────────────────────────────────────────────────────
-    const [milestones, setMilestones] = useState<Milestone[]>(() => {
-        try { return JSON.parse(localStorage.getItem('tulika_milestones') || 'null') || DEFAULT_MILESTONES; } catch { return DEFAULT_MILESTONES; }
+    const [milestones, setMilestones] = useState<UsMilestone[]>(() => {
+        const synced = StorageService.getUsMilestones();
+        return synced.length ? synced : DEFAULT_MILESTONES;
     });
     const [showMsForm, setShowMsForm] = useState(false);
     const [msTitle, setMsTitle] = useState('');
     const [msDate, setMsDate] = useState('');
     const [msEmoji, setMsEmoji] = useState('✨');
     const [msDesc, setMsDesc] = useState('');
-    const saveMilestones = (items: Milestone[]) => { setMilestones(items); localStorage.setItem('tulika_milestones', JSON.stringify(items)); };
+    const saveMilestones = (items: UsMilestone[]) => {
+        const prev = milestones;
+        setMilestones(items);
+        const nextIds = new Set(items.map((i) => i.id));
+        for (const item of items) StorageService.saveUsMilestone(item);
+        for (const old of prev) if (!nextIds.has(old.id)) StorageService.deleteUsMilestone(old.id);
+    };
     const addMilestone = () => {
         if (!msTitle.trim() || !msDate) return;
         const updated = [...milestones, { id: Date.now().toString(), title: msTitle.trim(), date: msDate, emoji: msEmoji, description: msDesc.trim() }]

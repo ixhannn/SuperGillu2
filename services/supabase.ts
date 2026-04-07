@@ -6,8 +6,9 @@ const KEYS = { URL: 'tulika_sb_url', KEY: 'tulika_sb_key' };
 const ENV_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || '';
 const ENV_KEY = import.meta.env.VITE_SUPABASE_KEY?.trim() || '';
 let cachedUserId: string | null = null;
+let cachedCoupleId: string | null = null;
 
-const buildTenantRowId = (userId: string, logicalId: string) => `${userId}:${logicalId}`;
+const buildTenantRowId = (tenantId: string, logicalId: string) => `${tenantId}:${logicalId}`;
 
 export const SupabaseService = {
     client: null as SupabaseClient | null,
@@ -35,6 +36,7 @@ export const SupabaseService = {
 
     setCachedUserId: (userId: string | null) => {
         cachedUserId = userId;
+        if (!userId) cachedCoupleId = null;
     },
 
     getCurrentUserId: async (): Promise<string | null> => {
@@ -56,9 +58,31 @@ export const SupabaseService = {
         }
     },
 
+    getCurrentCoupleId: async (): Promise<string | null> => {
+        if (cachedCoupleId) return cachedCoupleId;
+        if (!SupabaseService.client) return null;
+
+        try {
+            const { data, error } = await SupabaseService.client.rpc('ensure_user_couple');
+            if (error || !data) {
+                console.warn('Supabase ensure_user_couple failed:', error);
+                return null;
+            }
+            cachedCoupleId = String(data);
+            return cachedCoupleId;
+        } catch (e) {
+            console.warn('Supabase ensure_user_couple exception:', e);
+            return null;
+        }
+    },
+
+    setCachedCoupleId: (coupleId: string | null) => {
+        cachedCoupleId = coupleId;
+    },
+
     getTenantRowId: async (logicalId: string) => {
-        const userId = await SupabaseService.getCurrentUserId();
-        return userId ? buildTenantRowId(userId, logicalId) : logicalId;
+        const coupleId = await SupabaseService.getCurrentCoupleId();
+        return coupleId ? buildTenantRowId(coupleId, logicalId) : logicalId;
     },
 
     claimLegacyRows: async () => {
@@ -83,11 +107,13 @@ export const SupabaseService = {
         if (!SupabaseService.client) return;
         try {
             const userId = await SupabaseService.getCurrentUserId();
-            if (!userId) return;
+            const coupleId = await SupabaseService.getCurrentCoupleId();
+            if (!userId || !coupleId) return;
 
             const { error } = await SupabaseService.client.from(table).upsert({
-                id: buildTenantRowId(userId, item.id),
+                id: buildTenantRowId(coupleId, item.id),
                 user_id: userId,
+                couple_id: coupleId,
                 data: item
             });
             if (error) console.warn(`Supabase upsert failed for ${table}:`, error);
@@ -109,8 +135,8 @@ export const SupabaseService = {
 
     fetchAll: async (table: string): Promise<any[] | null> => {
         if (!SupabaseService.client) return [];
-        const userId = await SupabaseService.getCurrentUserId();
-        if (!userId) return [];
+        const coupleId = await SupabaseService.getCurrentCoupleId();
+        if (!coupleId) return [];
 
         const { data, error } = await SupabaseService.client.from(table).select('*');
         if (error) return null; // Return null so we know it failed (e.g. table missing)
@@ -129,13 +155,51 @@ export const SupabaseService = {
     saveSingle: async (table: string, data: any) => {
         if (!SupabaseService.client) return;
         const userId = await SupabaseService.getCurrentUserId();
-        if (!userId) return;
+        const coupleId = await SupabaseService.getCurrentCoupleId();
+        if (!userId || !coupleId) return;
 
         const { error } = await SupabaseService.client.from(table).upsert({
-            id: buildTenantRowId(userId, 'singleton'),
+            id: buildTenantRowId(coupleId, 'singleton'),
             user_id: userId,
+            couple_id: coupleId,
             data
         });
         if (error) throw error;
+    },
+
+    backfillRowsToCouple: async (coupleId: string) => {
+        if (!SupabaseService.client || !coupleId) return false;
+        try {
+            const { error } = await SupabaseService.client.rpc('backfill_user_rows_to_couple', { target_couple_id: coupleId });
+            if (error) {
+                console.warn('Supabase backfill_user_rows_to_couple failed:', error);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.warn('Supabase backfill_user_rows_to_couple exception:', e);
+            return false;
+        }
+    },
+
+    getLinkedPartner: async (coupleId: string): Promise<{ partnerUserId: string | null } | null> => {
+        if (!SupabaseService.client || !coupleId) return null;
+        const userId = await SupabaseService.getCurrentUserId();
+        if (!userId) return null;
+
+        try {
+            const { data, error } = await SupabaseService.client
+                .from('couple_memberships')
+                .select('user_id')
+                .eq('couple_id', coupleId)
+                .neq('user_id', userId)
+                .limit(1);
+
+            if (error || !data || data.length === 0) return { partnerUserId: null };
+            return { partnerUserId: data[0].user_id ?? null };
+        } catch (e) {
+            console.warn('Supabase getLinkedPartner exception:', e);
+            return null;
+        }
     }
 };

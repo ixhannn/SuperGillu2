@@ -1,4 +1,4 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 
@@ -28,6 +28,10 @@ const CACHE_KEYS = {
     TOGETHER_MUSIC_META: 'tulika_together_music_meta',
     MOOD_ENTRIES: 'tulika_mood_entries',
     PENDING_DELETES: 'tulika_pending_deletes',
+    OUR_ROOM_STATE: 'tulika_room_state_v2',
+    US_BUCKET_ITEMS: 'tulika_us_bucket_items',
+    US_WISHLIST_ITEMS: 'tulika_us_wishlist_items',
+    US_MILESTONES: 'tulika_us_milestones',
 };
 
 /* ─── Pending delete tombstones ─── */
@@ -67,6 +71,9 @@ const DATA_CACHE = {
     keepsakes: [] as Keepsake[],
     comments: [] as Comment[],
     moodEntries: [] as MoodEntry[],
+    usBucketItems: [] as UsBucketItem[],
+    usWishlistItems: [] as UsWishlistItem[],
+    usMilestones: [] as UsMilestone[],
 };
 
 const MEDIA_MEMORY_CACHE = new Map<string, string>();
@@ -84,6 +91,26 @@ const SANITIZED_TEXT_KEYS = new Set([
     'partnerName',
     'name'
 ]);
+
+const ROOM_WALLPAPERS = new Set(['plain', 'stripes', 'polka', 'hearts', 'stars', 'wood']);
+const ROOM_FLOORS = new Set(['hardwood', 'carpet', 'tiles', 'cloud', 'grass', 'marble']);
+const ROOM_AMBIENTS = new Set(['warm', 'cool', 'rainbow']);
+const LEGACY_ROOM_ITEM_MAP: Record<string, string> = {
+    frame: 'photo_frames',
+    candle: 'candle_cluster',
+    sofa: 'fluffy_couch',
+    lamp: 'floor_lamp',
+    plant: 'succulent_set',
+    table: 'coffee_table_round',
+    tv: 'tv_stand_screen',
+    books: 'book_stack',
+    rug: 'throw_blanket',
+    bed: 'double_bed',
+    piano: 'record_player',
+    blossom: 'flower_bouquet',
+    crystal: 'portal_door',
+    cat: 'cute_robot',
+};
 
 const sanitizeUserString = (value: string) => (
     value
@@ -198,7 +225,10 @@ export const StorageService = {
                 load(CACHE_KEYS.DINNER_OPTIONS, 'dinnerOptions'),
                 load(CACHE_KEYS.KEEPSAKES, 'keepsakes'),
                 load(CACHE_KEYS.COMMENTS, 'comments'),
-                load(CACHE_KEYS.MOOD_ENTRIES, 'moodEntries')
+                load(CACHE_KEYS.MOOD_ENTRIES, 'moodEntries'),
+                load(CACHE_KEYS.US_BUCKET_ITEMS, 'usBucketItems'),
+                load(CACHE_KEYS.US_WISHLIST_ITEMS, 'usWishlistItems'),
+                load(CACHE_KEYS.US_MILESTONES, 'usMilestones')
             ]);
 
             const restoreLocalBackup = async (key: string) => {
@@ -214,7 +244,11 @@ export const StorageService = {
                 restoreLocalBackup(CACHE_KEYS.USER_STATUS),
                 restoreLocalBackup(CACHE_KEYS.PARTNER_STATUS),
                 restoreLocalBackup(CACHE_KEYS.TOGETHER_MUSIC_META),
-                restoreLocalBackup(CACHE_KEYS.MOOD_ENTRIES)
+                restoreLocalBackup(CACHE_KEYS.MOOD_ENTRIES),
+                restoreLocalBackup(CACHE_KEYS.OUR_ROOM_STATE),
+                restoreLocalBackup(CACHE_KEYS.US_BUCKET_ITEMS),
+                restoreLocalBackup(CACHE_KEYS.US_WISHLIST_ITEMS),
+                restoreLocalBackup(CACHE_KEYS.US_MILESTONES)
             ]);
 
             // Sync music
@@ -503,7 +537,9 @@ export const StorageService = {
 
     async handleCloudUpdate(table: string, data: any) {
         const item = data.data || data;
-        if (!item || !item.id) return;
+        if (!item) return;
+        const singletonTables = new Set(['couple_profile', 'pet_stats', 'together_music', 'our_room_state']);
+        if (!singletonTables.has(table) && !item.id) return;
 
         // Never restore a tombstoned item — it was deleted locally and cloud hasn't caught up yet
         if (isDeletedLocally(table, item.id)) return;
@@ -517,7 +553,10 @@ export const StorageService = {
             keepsakes: { cache: 'keepsakes', key: CACHE_KEYS.KEEPSAKES, prefix: 'keep' },
             dinner_options: { cache: 'dinnerOptions', key: CACHE_KEYS.DINNER_OPTIONS },
             comments: { cache: 'comments', key: CACHE_KEYS.COMMENTS },
-            mood_entries: { cache: 'moodEntries', key: CACHE_KEYS.MOOD_ENTRIES }
+            mood_entries: { cache: 'moodEntries', key: CACHE_KEYS.MOOD_ENTRIES },
+            us_bucket_items: { cache: 'usBucketItems', key: CACHE_KEYS.US_BUCKET_ITEMS },
+            us_wishlist_items: { cache: 'usWishlistItems', key: CACHE_KEYS.US_WISHLIST_ITEMS },
+            us_milestones: { cache: 'usMilestones', key: CACHE_KEYS.US_MILESTONES }
         };
 
         if (tableMap[table]) {
@@ -566,6 +605,31 @@ export const StorageService = {
                 }
                 notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton' });
             }
+        } else if (table === 'our_room_state') {
+            const sanitized = sanitizeUserContent(item) as Partial<RoomState>;
+            const legacyFurniture = Array.isArray((sanitized as any).furniture) ? (sanitized as any).furniture : [];
+            const migratedPlaced = legacyFurniture.map((f: any, idx: number) => ({
+                uid: f.uid || crypto.randomUUID(),
+                itemId: LEGACY_ROOM_ITEM_MAP[f.itemId] || f.itemId || 'fluffy_couch',
+                x: Math.max(8, Math.min(92, 18 + ((f.gx ?? 0) * 12))),
+                y: Math.max(12, Math.min(90, 20 + ((f.gy ?? 0) * 10))),
+                z: idx,
+                placedBy: f.placedBy || '',
+            }));
+            const nextState: RoomState = {
+                placedItems: Array.isArray(sanitized.placedItems)
+                    ? sanitized.placedItems.map((it: any) => ({ ...it, itemId: LEGACY_ROOM_ITEM_MAP[it.itemId] || it.itemId || 'fluffy_couch' }))
+                    : migratedPlaced,
+                coins: Number.isFinite(sanitized.coins) ? Number(sanitized.coins) : 500,
+                roomName: sanitized.roomName || 'P1 Room',
+                wallpaper: ROOM_WALLPAPERS.has(String(sanitized.wallpaper)) ? sanitized.wallpaper : 'plain',
+                floor: ROOM_FLOORS.has(String(sanitized.floor)) ? sanitized.floor : 'carpet',
+                ambient: ROOM_AMBIENTS.has(String(sanitized.ambient)) ? sanitized.ambient : 'warm',
+            };
+            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(nextState));
+            localStorage.setItem('tulika_room_state', JSON.stringify(nextState));
+            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, nextState);
+            notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton', item: nextState });
         }
     },
 
@@ -577,7 +641,10 @@ export const StorageService = {
             notes: { cache: 'notes', key: CACHE_KEYS.NOTES },
             dates: { cache: 'specialDates', key: CACHE_KEYS.DATES },
             envelopes: { cache: 'envelopes', key: CACHE_KEYS.ENVELOPES },
-            comments: { cache: 'comments', key: CACHE_KEYS.COMMENTS }
+            comments: { cache: 'comments', key: CACHE_KEYS.COMMENTS },
+            us_bucket_items: { cache: 'usBucketItems', key: CACHE_KEYS.US_BUCKET_ITEMS },
+            us_wishlist_items: { cache: 'usWishlistItems', key: CACHE_KEYS.US_WISHLIST_ITEMS },
+            us_milestones: { cache: 'usMilestones', key: CACHE_KEYS.US_MILESTONES }
         };
         if (tableToStorage[table]) {
             const cfg = tableToStorage[table];
@@ -598,6 +665,19 @@ export const StorageService = {
             await deleteRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META);
             localStorage.removeItem(CACHE_KEYS.TOGETHER_MUSIC_META);
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
+        } else if (table === 'our_room_state') {
+            const defaultRoom: RoomState = {
+                placedItems: [],
+                coins: 500,
+                roomName: 'P1 Room',
+                wallpaper: 'plain',
+                floor: 'carpet',
+                ambient: 'warm',
+            };
+            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(defaultRoom));
+            localStorage.setItem('tulika_room_state', JSON.stringify(defaultRoom));
+            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, defaultRoom);
+            notifyUpdate({ source: 'sync', action: 'delete', table, id: 'singleton' });
         }
     },
 
@@ -922,14 +1002,160 @@ export const StorageService = {
     },
 
     getRoomState: (): RoomState => {
+        const fallback: RoomState = {
+            placedItems: [],
+            coins: 500,
+            roomName: 'P1 Room',
+            wallpaper: 'plain',
+            floor: 'carpet',
+            ambient: 'warm',
+        };
         try {
-            const raw = localStorage.getItem('tulika_room_state');
-            return raw ? JSON.parse(raw) : { furniture: [], coins: 500 };
-        } catch { return { furniture: [], coins: 500 }; }
+            const raw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('tulika_room_state');
+            if (!raw) return fallback;
+            const parsed = JSON.parse(raw) as Partial<RoomState> & { furniture?: any[] };
+            const legacyFurniture = Array.isArray(parsed.furniture) ? parsed.furniture : [];
+            const migratedPlaced = legacyFurniture.map((f: any, idx: number) => ({
+                uid: f.uid || crypto.randomUUID(),
+                itemId: LEGACY_ROOM_ITEM_MAP[f.itemId] || f.itemId || 'fluffy_couch',
+                x: Math.max(8, Math.min(92, 18 + ((f.gx ?? 0) * 12))),
+                y: Math.max(12, Math.min(90, 20 + ((f.gy ?? 0) * 10))),
+                z: idx,
+                placedBy: f.placedBy || '',
+            }));
+            return {
+                placedItems: Array.isArray(parsed.placedItems)
+                    ? parsed.placedItems.map((it: any) => ({ ...it, itemId: LEGACY_ROOM_ITEM_MAP[it.itemId] || it.itemId || 'fluffy_couch' }))
+                    : migratedPlaced,
+                coins: Number.isFinite(parsed.coins) ? Number(parsed.coins) : 500,
+                roomName: parsed.roomName || 'P1 Room',
+                wallpaper: ROOM_WALLPAPERS.has(String(parsed.wallpaper)) ? parsed.wallpaper : 'plain',
+                floor: ROOM_FLOORS.has(String(parsed.floor)) ? parsed.floor : 'carpet',
+                ambient: ROOM_AMBIENTS.has(String(parsed.ambient)) ? parsed.ambient : 'warm',
+            };
+        } catch {
+            return fallback;
+        }
     },
 
-    saveRoomState: (state: RoomState): void => {
-        localStorage.setItem('tulika_room_state', JSON.stringify(state));
+    saveRoomState: (state: RoomState, source: 'user' | 'sync' = 'user'): void => {
+        const nextState = sanitizeUserContent(state);
+        localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(nextState));
+        localStorage.setItem('tulika_room_state', JSON.stringify(nextState)); // legacy key mirror
+        writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, nextState);
+        notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
+    },
+
+    getUsBucketItems: (): UsBucketItem[] => {
+        if (DATA_CACHE.usBucketItems.length > 0) return DATA_CACHE.usBucketItems;
+        const raw = localStorage.getItem(CACHE_KEYS.US_BUCKET_ITEMS) || localStorage.getItem('tulika_bucket');
+        try {
+            const parsed = raw ? JSON.parse(raw) : [];
+            DATA_CACHE.usBucketItems = Array.isArray(parsed) ? parsed : [];
+            return DATA_CACHE.usBucketItems;
+        } catch {
+            DATA_CACHE.usBucketItems = [];
+            return [];
+        }
+    },
+
+    saveUsBucketItem: (item: UsBucketItem, source: 'user' | 'sync' = 'user') => {
+        const sanitized = sanitizeUserContent(item);
+        const list = StorageService.getUsBucketItems();
+        const idx = list.findIndex((it) => it.id === sanitized.id);
+        if (idx >= 0) list[idx] = sanitized;
+        else list.unshift(sanitized);
+        DATA_CACHE.usBucketItems = list;
+        localStorage.setItem(CACHE_KEYS.US_BUCKET_ITEMS, JSON.stringify(list));
+        localStorage.setItem('tulika_bucket', JSON.stringify(list)); // legacy key mirror
+        writeRaw(STORES.DATA, CACHE_KEYS.US_BUCKET_ITEMS, list);
+        notifyUpdate({ source, action: 'save', table: 'us_bucket_items', id: sanitized.id, item: sanitized });
+    },
+
+    deleteUsBucketItem: (id: string, source: 'user' | 'sync' = 'user') => {
+        if (source === 'user') addPendingDelete('us_bucket_items', id);
+        DATA_CACHE.usBucketItems = StorageService.getUsBucketItems().filter((it) => it.id !== id);
+        localStorage.setItem(CACHE_KEYS.US_BUCKET_ITEMS, JSON.stringify(DATA_CACHE.usBucketItems));
+        localStorage.setItem('tulika_bucket', JSON.stringify(DATA_CACHE.usBucketItems));
+        writeRaw(STORES.DATA, CACHE_KEYS.US_BUCKET_ITEMS, DATA_CACHE.usBucketItems);
+        notifyUpdate({ source, action: 'delete', table: 'us_bucket_items', id });
+    },
+
+    getUsWishlistItems: (): UsWishlistItem[] => {
+        if (DATA_CACHE.usWishlistItems.length > 0) return DATA_CACHE.usWishlistItems;
+        const raw = localStorage.getItem(CACHE_KEYS.US_WISHLIST_ITEMS) || localStorage.getItem('tulika_wishlist');
+        try {
+            const parsed = raw ? JSON.parse(raw) : [];
+            const profile = StorageService.getCoupleProfile();
+            const normalized = (Array.isArray(parsed) ? parsed : []).map((item: any) => {
+                if (item.ownerName) return item;
+                if (item.owner === 'me') return { ...item, ownerName: profile.myName };
+                if (item.owner === 'partner') return { ...item, ownerName: profile.partnerName };
+                return { ...item, ownerName: profile.myName };
+            });
+            DATA_CACHE.usWishlistItems = normalized;
+            return DATA_CACHE.usWishlistItems;
+        } catch {
+            DATA_CACHE.usWishlistItems = [];
+            return [];
+        }
+    },
+
+    saveUsWishlistItem: (item: UsWishlistItem, source: 'user' | 'sync' = 'user') => {
+        const sanitized = sanitizeUserContent(item);
+        const list = StorageService.getUsWishlistItems();
+        const idx = list.findIndex((it) => it.id === sanitized.id);
+        if (idx >= 0) list[idx] = sanitized;
+        else list.unshift(sanitized);
+        DATA_CACHE.usWishlistItems = list;
+        localStorage.setItem(CACHE_KEYS.US_WISHLIST_ITEMS, JSON.stringify(list));
+        localStorage.setItem('tulika_wishlist', JSON.stringify(list)); // legacy key mirror
+        writeRaw(STORES.DATA, CACHE_KEYS.US_WISHLIST_ITEMS, list);
+        notifyUpdate({ source, action: 'save', table: 'us_wishlist_items', id: sanitized.id, item: sanitized });
+    },
+
+    deleteUsWishlistItem: (id: string, source: 'user' | 'sync' = 'user') => {
+        if (source === 'user') addPendingDelete('us_wishlist_items', id);
+        DATA_CACHE.usWishlistItems = StorageService.getUsWishlistItems().filter((it) => it.id !== id);
+        localStorage.setItem(CACHE_KEYS.US_WISHLIST_ITEMS, JSON.stringify(DATA_CACHE.usWishlistItems));
+        localStorage.setItem('tulika_wishlist', JSON.stringify(DATA_CACHE.usWishlistItems));
+        writeRaw(STORES.DATA, CACHE_KEYS.US_WISHLIST_ITEMS, DATA_CACHE.usWishlistItems);
+        notifyUpdate({ source, action: 'delete', table: 'us_wishlist_items', id });
+    },
+
+    getUsMilestones: (): UsMilestone[] => {
+        if (DATA_CACHE.usMilestones.length > 0) return DATA_CACHE.usMilestones;
+        const raw = localStorage.getItem(CACHE_KEYS.US_MILESTONES) || localStorage.getItem('tulika_milestones');
+        try {
+            const parsed = raw ? JSON.parse(raw) : [];
+            DATA_CACHE.usMilestones = Array.isArray(parsed) ? parsed : [];
+            return DATA_CACHE.usMilestones;
+        } catch {
+            DATA_CACHE.usMilestones = [];
+            return [];
+        }
+    },
+
+    saveUsMilestone: (item: UsMilestone, source: 'user' | 'sync' = 'user') => {
+        const sanitized = sanitizeUserContent(item);
+        const list = StorageService.getUsMilestones();
+        const idx = list.findIndex((it) => it.id === sanitized.id);
+        if (idx >= 0) list[idx] = sanitized;
+        else list.push(sanitized);
+        DATA_CACHE.usMilestones = list;
+        localStorage.setItem(CACHE_KEYS.US_MILESTONES, JSON.stringify(list));
+        localStorage.setItem('tulika_milestones', JSON.stringify(list)); // legacy key mirror
+        writeRaw(STORES.DATA, CACHE_KEYS.US_MILESTONES, list);
+        notifyUpdate({ source, action: 'save', table: 'us_milestones', id: sanitized.id, item: sanitized });
+    },
+
+    deleteUsMilestone: (id: string, source: 'user' | 'sync' = 'user') => {
+        if (source === 'user') addPendingDelete('us_milestones', id);
+        DATA_CACHE.usMilestones = StorageService.getUsMilestones().filter((it) => it.id !== id);
+        localStorage.setItem(CACHE_KEYS.US_MILESTONES, JSON.stringify(DATA_CACHE.usMilestones));
+        localStorage.setItem('tulika_milestones', JSON.stringify(DATA_CACHE.usMilestones));
+        writeRaw(STORES.DATA, CACHE_KEYS.US_MILESTONES, DATA_CACHE.usMilestones);
+        notifyUpdate({ source, action: 'delete', table: 'us_milestones', id });
     },
 
     async exportAllData() {

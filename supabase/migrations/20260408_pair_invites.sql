@@ -15,21 +15,26 @@ CREATE TABLE IF NOT EXISTS pair_invites (
 ALTER TABLE pair_invites ENABLE ROW LEVEL SECURITY;
 
 -- Only the owner can insert their own row
+DROP POLICY IF EXISTS "pair_invites_insert" ON pair_invites;
 CREATE POLICY "pair_invites_insert"
   ON pair_invites FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
--- Any authenticated user can read (needed to claim)
+-- Read only own or claimed invites
+DROP POLICY IF EXISTS "pair_invites_select" ON pair_invites;
 CREATE POLICY "pair_invites_select"
   ON pair_invites FOR SELECT TO authenticated
-  USING (true);
+  USING (auth.uid() = user_id OR auth.uid() = claimed_by);
 
 -- Any authenticated user can claim an unclaimed, unexpired row
+DROP POLICY IF EXISTS "pair_invites_update" ON pair_invites;
 CREATE POLICY "pair_invites_update"
   ON pair_invites FOR UPDATE TO authenticated
-  USING (claimed_by IS NULL AND expires_at > NOW());
+  USING (claimed_by IS NULL AND expires_at > NOW())
+  WITH CHECK (claimed_by = auth.uid() AND expires_at > NOW());
 
 -- Owner can delete their own rows (e.g. refresh generates a new one)
+DROP POLICY IF EXISTS "pair_invites_delete" ON pair_invites;
 CREATE POLICY "pair_invites_delete"
   ON pair_invites FOR DELETE TO authenticated
   USING (auth.uid() = user_id);

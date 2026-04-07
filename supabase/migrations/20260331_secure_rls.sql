@@ -21,6 +21,10 @@ declare
   ];
 begin
   foreach table_name in array app_tables loop
+    if to_regclass(format('public.%I', table_name)) is null then
+      continue;
+    end if;
+
     execute format('alter table if exists public.%I add column if not exists user_id uuid', table_name);
     execute format('alter table if exists public.%I alter column user_id set default auth.uid()', table_name);
     execute format('create index if not exists %I on public.%I (user_id)', table_name || '_user_id_idx', table_name);

@@ -26,13 +26,13 @@ function dataUriToBlob(dataUri: string): { blob: Blob; contentType: string } {
 export const MediaStorageService = {
     async buildPath(prefix: string, itemId: string, type: 'image' | 'video'): Promise<string> {
         const ext = type === 'video' ? 'mp4' : 'jpg';
-        const userId = await SupabaseService.getCurrentUserId();
-        return userId ? `${userId}/${prefix}/${itemId}/${type}.${ext}` : `${prefix}/${itemId}/${type}.${ext}`;
+        const coupleId = await SupabaseService.getCurrentCoupleId();
+        return coupleId ? `${coupleId}/${prefix}/${itemId}/${type}.${ext}` : `${prefix}/${itemId}/${type}.${ext}`;
     },
 
     async isScopedToCurrentUser(storagePath: string): Promise<boolean> {
-        const userId = await SupabaseService.getCurrentUserId();
-        return !!userId && storagePath.startsWith(`${userId}/`);
+        const coupleId = await SupabaseService.getCurrentCoupleId();
+        return !!coupleId && storagePath.startsWith(`${coupleId}/`);
     },
 
     async ensureBucket(): Promise<boolean> {

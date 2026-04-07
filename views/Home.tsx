@@ -1,16 +1,16 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, ChevronRight, Zap, Award, Wind, Sun, Map, TreeDeciduous, PawPrint } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
 import { differenceInDays, getYear, intervalToDuration, isAfter, setYear } from 'date-fns';
-import { CouplePet } from '../components/CouplePet';
 import { MagneticButton } from '../components/MagneticButton';
 import { HolographicCard } from '../components/HolographicCard';
 import { TiltCard } from '../components/TiltCard';
 import { ParticleHeart } from '../components/CrystalHeart';
+import { DailyQuestion } from '../components/DailyQuestion';
 
 interface HomeProps {
     setView: (view: ViewState) => void;
@@ -230,7 +230,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
     const [headerOpacity, setHeaderOpacity] = useState(0);
-    const [showPet, setShowPet] = useState(false);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
@@ -478,13 +477,21 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.2 }}
                     onClick={() => setView('sync')}
-                    className={`p-2.5 rounded-full spring-press transition-all ${
+                    className={`spring-press transition-all rounded-2xl px-3 py-2 min-w-[7.25rem] flex items-center justify-center gap-2 border ${
                         isConnected
-                            ? 'bg-sage-100/80 text-sage-500 shadow-sm'
-                            : 'glass-card text-gray-400'
+                            ? 'bg-gradient-to-br from-sage-200/90 to-sage-100/85 text-sage-700 border-sage-300/70 shadow-[0_8px_20px_rgba(86,140,112,0.22)]'
+                            : 'bg-white/72 text-tulika-700 border-white/80 shadow-[0_8px_20px_rgba(236,72,153,0.16)] backdrop-blur-md'
                     }`}
+                    aria-label="Open cloud sync"
                 >
-                    <RefreshCw size={18} />
+                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${
+                        isConnected ? 'bg-sage-50/85 text-sage-600' : 'bg-white/85 text-tulika-600'
+                    }`}>
+                        {isConnected ? <RefreshCw size={14} /> : <Cloud size={14} />}
+                    </span>
+                    <span className="text-[11px] font-extrabold tracking-wider uppercase">
+                        {isConnected ? 'Synced' : 'Sync'}
+                    </span>
                 </motion.button>
             </div>
 
@@ -504,52 +511,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </motion.div>
             )}
-
-            {/* ── PET BUTTON ─────────────────────────────────────────── */}
-            <ScrollReveal variant="fadeUp" delay={0.1}>
-                <motion.button
-                    onClick={() => setShowPet(true)}
-                    className="w-full flex items-center gap-3 px-4 py-3 mb-4 spring-press"
-                    whileTap={{ scale: 0.97 }}
-                    style={{
-                        minHeight: '56px',
-                        borderRadius: '1.25rem',
-                        background: 'rgba(253,164,175,0.10)',
-                        border: '1px solid rgba(253,164,175,0.22)',
-                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
-                    }}
-                >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{ background: 'rgba(236,72,153,0.12)', border: '1px solid rgba(236,72,153,0.2)' }}>
-                        <PawPrint size={15} style={{ color: '#ec4899' }} />
-                    </div>
-                    <span className="flex-1 text-left font-serif font-semibold text-[0.9rem]" style={{ color: 'var(--color-text-primary)' }}>
-                        {StorageService.getPetStats().name}
-                    </span>
-                    <ChevronRight size={14} style={{ color: 'var(--color-text-secondary)', opacity: 0.4 }} />
-                </motion.button>
-            </ScrollReveal>
-
-            {/* ── PET FULLSCREEN OVERLAY ───────────────────────────────── */}
-            <AnimatePresence>
-                {showPet && (
-                    <motion.div
-                        initial={{ opacity: 0, y: '100%' }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: '100%' }}
-                        transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-                        className="fixed inset-0 z-50"
-                    >
-                        <CouplePet
-                            memories={memories}
-                            notes={notes}
-                            status={myStatus}
-                            partnerName={profile.partnerName}
-                            onClose={() => setShowPet(false)}
-                        />
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
             {/* ── DAYS TOGETHER — Hero Card ────────────────────────────── */}
             <ScrollReveal variant="fadeScale">
@@ -602,7 +563,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
-            <SectionDivider label="Quick Actions" />
             {/* ── ACTION BUTTONS — Heartbeat & Surprise ────────────────── */}
             <ScrollReveal variant="popIn">
                 <div className="mb-5 flex gap-3 relative z-10">
@@ -627,7 +587,75 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
-            <SectionDivider label="Coming Up" />
+            {/* ── STATUS PILLS ─────────────────────────────────────────── */}
+            <div className="flex gap-3 mb-5 relative z-10">
+                {/* Partner status pill */}
+                <div
+                    className="flex-1 flex items-center gap-2.5 px-4 py-4"
+                    style={partnerStatus.state === 'sleeping' ? {
+                        borderRadius: '100px',
+                        background: 'linear-gradient(180deg, rgba(50,44,40,0.98) 0%, rgba(28,25,23,0.98) 100%)',
+                        border: '1px solid rgba(80,70,60,0.40)',
+                        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.12), 0 4px 12px rgba(0,0,0,0.18)',
+                    } : {
+                        borderRadius: '100px',
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.78) 100%)',
+                        backdropFilter: 'blur(20px) saturate(140%)',
+                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        border: '1px solid rgba(255,255,255,0.95)',
+                        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), inset 0 0 18px rgba(255,255,255,0.55), 0 2px 10px rgba(232,160,176,0.08)',
+                    }}
+                >
+                    <div className="relative flex-shrink-0">
+                        {partnerStatus.state === 'sleeping'
+                            ? <Moon size={14} className="text-amber-300" fill="currentColor" />
+                            : <Sun size={14} className="text-amber-400 animate-spin-slow" />
+                        }
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                        <span className={`text-xs font-semibold leading-tight ${partnerStatus.state === 'sleeping' ? 'text-warmgray-100' : 'text-gray-700'}`}>
+                            {profile.partnerName} · {partnerStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}
+                        </span>
+                        <span className={`text-[10px] mt-0.5 leading-tight truncate ${partnerStatus.state === 'sleeping' ? 'text-warmgray-400' : 'text-gray-400'}`}>
+                            {getStatusDisplay(partnerStatus)}
+                        </span>
+                    </div>
+                </div>
+                {/* My status pill */}
+                <div
+                    onClick={toggleMyStatus}
+                    className="flex-1 flex items-center gap-2.5 px-4 py-4 cursor-pointer spring-press"
+                    style={myStatus.state === 'sleeping' ? {
+                        borderRadius: '100px',
+                        background: 'linear-gradient(180deg, rgba(175,20,55,0.95) 0%, rgba(130,14,42,0.98) 100%)',
+                        border: '1px solid rgba(220,40,80,0.30)',
+                        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.18), 0 4px 14px rgba(159,18,57,0.35)',
+                    } : {
+                        borderRadius: '100px',
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.78) 100%)',
+                        backdropFilter: 'blur(20px) saturate(140%)',
+                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        border: '1px solid rgba(255,255,255,0.95)',
+                        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), inset 0 0 18px rgba(255,255,255,0.55), 0 2px 10px rgba(232,160,176,0.08)',
+                    }}
+                >
+                    <div className="relative flex-shrink-0">
+                        {myStatus.state === 'sleeping'
+                            ? <Moon size={14} className="text-tulika-200" fill="currentColor" />
+                            : <Sun size={14} className="text-amber-400 animate-spin-slow" />
+                        }
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                        <span className={`text-xs font-semibold leading-tight ${myStatus.state === 'sleeping' ? 'text-white' : 'text-gray-700'}`}>
+                            You · {myStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}
+                        </span>
+                        <span className={`text-[10px] mt-0.5 leading-tight ${myStatus.state === 'sleeping' ? 'text-tulika-300/60' : 'text-gray-400'}`}>
+                            tap to switch
+                        </span>
+                    </div>
+                </div>
+            </div>
+
             {/* ── COUNTDOWN CARD ───────────────────────────────────────── */}
             <ScrollReveal variant="slideFromRight">
                 <TiltCard
@@ -670,7 +698,11 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </TiltCard>
             </ScrollReveal>
 
-            {onThisDayMemory && <SectionDivider label="Throwback" />}
+            {/* ── TODAY'S QUESTION ─────────────────────────────────────── */}
+            <div className="mb-5 relative z-10">
+                <DailyQuestion profile={profile} onUpdate={() => {}} />
+            </div>
+
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
             {onThisDayMemory && (
                 <ScrollReveal variant="tiltUp">
@@ -716,7 +748,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </ScrollReveal>
             )}
 
-            <SectionDivider label="Your Space" />
             {/* ── STATUS & FEATURE BENTO GRID ──────────────────────────── */}
             <motion.div
                 className="grid grid-cols-2 gap-3 relative z-10 mb-16"
@@ -726,60 +757,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 variants={gridContainerVariants}
                 style={{ transformPerspective: 900 }}
             >
-                {/* Partner status */}
-                <motion.div
-                    variants={gridItemVariants}
-                    className={`col-span-1 p-5 rounded-[1.5rem] flex flex-col justify-between spring-press relative ${
-                        partnerStatus.state === 'sleeping'
-                            ? 'bg-warmgray-900/95 text-warmgray-100 border border-warmgray-700/30'
-                            : 'bento-card'
-                    }`}
-                    style={partnerStatus.state === 'sleeping' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.15)' } : {}}
-                >
-                    <div className="flex items-center justify-between mb-3">
-                        <span className="text-micro uppercase tracking-widest opacity-60">Partner</span>
-                        <div className="relative">
-                            {partnerStatus.state === 'sleeping'
-                                ? <Moon size={15} className="text-amber-300" fill="currentColor" />
-                                : <Sun size={15} className="text-amber-400 animate-spin-slow" />
-                            }
-                            {partnerStatus.state === 'sleeping' && (
-                                <span className="absolute -top-2 -right-2 text-[8px] text-amber-300/50 animate-bounce" style={{ animationDuration: '3s' }}>z</span>
-                            )}
-                        </div>
-                    </div>
-                    <div>
-                        <p className="font-serif font-bold leading-tight text-[0.95rem]">{profile.partnerName} is {partnerStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}</p>
-                        <p className="text-micro opacity-50 mt-1.5">{getStatusDisplay(partnerStatus)}</p>
-                    </div>
-                </motion.div>
-
-                {/* My status */}
-                <motion.div
-                    variants={gridItemVariants}
-                    onClick={toggleMyStatus}
-                    className={`col-span-1 p-5 rounded-[1.5rem] flex flex-col justify-between cursor-pointer spring-press relative ${
-                        myStatus.state === 'sleeping'
-                            ? 'bg-tulika-800 text-white border border-tulika-700/30'
-                            : 'bento-card text-tulika-600'
-                    }`}
-                    style={myStatus.state === 'sleeping' ? { boxShadow: '0 4px 16px rgba(136,19,55,0.2)' } : {}}
-                >
-                    <div className="flex items-center justify-between mb-3">
-                        <span className="text-micro uppercase tracking-widest opacity-60">You</span>
-                        <div className="relative">
-                            {myStatus.state === 'sleeping' ? <Moon size={15} fill="currentColor" /> : <Sun size={15} />}
-                            {myStatus.state === 'sleeping' && (
-                                <span className="absolute -top-2 -right-2 text-[8px] text-tulika-300/50 animate-bounce" style={{ animationDuration: '3s' }}>z</span>
-                            )}
-                        </div>
-                    </div>
-                    <div>
-                        <p className="font-serif font-bold leading-tight text-[0.95rem]">{myStatus.state === 'sleeping' ? 'Sleeping' : 'Awake'}</p>
-                        <p className="text-micro opacity-50 mt-1.5">Tap to switch</p>
-                    </div>
-                </motion.div>
-
                 {/* Open When — bento-card alignment */}
                 <motion.div variants={gridItemVariants}>
                     <motion.div
@@ -788,17 +765,14 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('open-when')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div className="bento-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press">
-                            <motion.div
-                                className="relative"
-                                animate={{ rotate: [-1, 1, -1] }}
-                                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                            >
-                                <div className="p-3.5 rounded-2xl relative z-10 bg-amber-50 border border-amber-100/50">
-                                    <Mail size={26} className="text-amber-400" />
+                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                            <div className="mb-3">
+                                <div className="p-2.5 rounded-xl inline-block bg-blue-50 border border-blue-100/50">
+                                    <Mail size={22} className="text-blue-500" />
                                 </div>
-                            </motion.div>
+                            </div>
                             <span className="font-semibold text-sm text-gray-800">Open When</span>
+                            <span className="text-xs text-gray-400 mt-1">Letters for any moment</span>
                         </div>
                     </motion.div>
                 </motion.div>
@@ -811,115 +785,54 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('dinner-decider')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div className="bento-card p-6 flex flex-col items-center justify-center gap-2.5 h-full relative overflow-hidden spring-press">
-                            <motion.div
-                                className="relative"
-                                animate={{ rotate: [0, 10, -10, 0], y: [0, -3, 0] }}
-                                transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                            >
-                                <div className="p-3.5 rounded-2xl relative z-10 bg-orange-50 border border-orange-100/50">
-                                    <Utensils size={26} className="text-orange-400" />
+                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                            <div className="mb-3">
+                                <div className="p-2.5 rounded-xl inline-block bg-orange-50 border border-orange-100/50">
+                                    <Utensils size={22} className="text-orange-400" />
                                 </div>
-                            </motion.div>
+                            </div>
                             <span className="font-semibold text-sm text-gray-800">Dinner?</span>
+                            <span className="text-xs text-gray-400 mt-1">Can't decide? We will.</span>
                         </div>
                     </motion.div>
                 </motion.div>
 
-                {/* Mood Board — full width */}
-                <motion.div variants={gridItemVariants} className="col-span-2">
+                {/* Mood Board */}
+                <motion.div variants={gridItemVariants} className="col-span-1">
                     <motion.div
-                        whileTap={{ scale: 0.97, y: 1 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                        whileTap={{ scale: 0.93, y: 2 }}
+                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
                         onClick={() => setView('mood-calendar')}
-                        className="cursor-pointer"
+                        className="w-full h-full cursor-pointer"
                     >
-                        <div
-                            className="relative overflow-hidden p-5 rounded-[1.5rem] flex items-center justify-between aurora-card border border-white/15"
-                            style={{
-                                background: 'linear-gradient(135deg, #f9a8d4 0%, #ec4899 40%, #f472b6 100%)',
-                                boxShadow: '0 4px 20px rgba(236,72,153,0.2)',
-                            }}
-                        >
-                            <div className="relative z-10 flex items-center gap-4">
-                                <div className="bg-white/15 p-3 rounded-2xl border border-white/10">
-                                    <Sparkles size={22} className="text-white" />
-                                </div>
-                                <div>
-                                    <span className="block font-serif font-bold text-lg text-white leading-tight">Mood Board</span>
-                                    <span className="text-micro text-white/60 uppercase tracking-widest">Daily colors & memories</span>
+                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                            <div className="mb-3">
+                                <div className="p-2.5 rounded-xl inline-block bg-pink-50 border border-pink-100/50">
+                                    <Sparkles size={22} className="text-pink-500" />
                                 </div>
                             </div>
-                            <ChevronRight size={18} className="text-white/30 relative z-10" />
+                            <span className="font-semibold text-sm text-gray-800">Mood Board</span>
+                            <span className="text-xs text-gray-400 mt-1">Daily colors & feelings</span>
                         </div>
                     </motion.div>
                 </motion.div>
 
-                {/* Row: Aura Signal + Bonsai Bloom */}
+                {/* Bonsai Bloom */}
                 <motion.div variants={gridItemVariants} className="col-span-1">
                     <motion.div
-                        whileTap={{ scale: 0.97, y: 1 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-                        onClick={() => setView('aura-signal')}
-                        className="cursor-pointer h-full"
-                    >
-                        <div
-                            className="bento-card p-5 flex flex-col justify-center items-center text-center relative overflow-hidden h-28 spring-press border border-white/10"
-                            style={{ background: 'linear-gradient(135deg, #110A14 0%, #170E1A 100%)' }}
-                        >
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
-                            <Sparkles size={22} className="text-blue-300 mb-2" />
-                            <h3 className="font-serif font-bold text-base text-gray-100 leading-tight">Vibe Check</h3>
-                            <p className="text-[10px] text-blue-200/60 mt-1">Send a signal</p>
-                        </div>
-                    </motion.div>
-                </motion.div>
-
-                <motion.div variants={gridItemVariants} className="col-span-1">
-                    <motion.div
-                        whileTap={{ scale: 0.97, y: 1 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                        whileTap={{ scale: 0.93, y: 2 }}
+                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
                         onClick={() => setView('bonsai-bloom')}
-                        className="cursor-pointer h-full"
+                        className="w-full h-full cursor-pointer"
                     >
-                        <div
-                            className="bento-card p-5 flex flex-col justify-center items-center text-center relative overflow-hidden h-28 spring-press border border-emerald-900/30"
-                            style={{ background: 'linear-gradient(135deg, #064E3B 0%, #065F46 100%)' }}
-                        >
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-400/20 rounded-full blur-xl pointer-events-none" />
-                            <TreeDeciduous size={22} className="text-emerald-300 mb-2" />
-                            <h3 className="font-serif font-bold text-base text-gray-100 leading-tight">Bonsai</h3>
-                            <p className="text-[10px] text-emerald-200/60 mt-1">Shared Growth</p>
-                        </div>
-                    </motion.div>
-                </motion.div>
-
-                {/* Quiet Mode — full width */}
-                <motion.div variants={gridItemVariants} className="col-span-2">
-                    <motion.div
-                        whileTap={{ scale: 0.97, y: 1 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-                        onClick={() => setView('quiet-mode')}
-                        className="cursor-pointer"
-                    >
-                        <div
-                            className="relative overflow-hidden p-5 rounded-[1.5rem] flex items-center justify-between aurora-card border border-white/8"
-                            style={{
-                                background: 'linear-gradient(140deg, #1c1917 0%, #292524 50%, #3a1520 100%)',
-                                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-                            }}
-                        >
-                            <div className="absolute right-0 top-0 w-40 h-40 bg-tulika-500/8 rounded-full blur-3xl" />
-                            <div className="relative z-10 flex items-center gap-4">
-                                <div className="bg-white/8 p-3 rounded-2xl border border-white/8">
-                                    <Wind size={22} className="text-tulika-200/80" />
-                                </div>
-                                <div>
-                                    <span className="block font-serif font-bold text-lg text-rose-50 leading-tight">Quiet Mode</span>
-                                    <span className="text-micro text-rose-300/50 uppercase tracking-widest">Just memories, no noise</span>
+                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                            <div className="mb-3">
+                                <div className="p-2.5 rounded-xl inline-block bg-emerald-50 border border-emerald-100/50">
+                                    <TreeDeciduous size={22} className="text-emerald-500" />
                                 </div>
                             </div>
-                            <ChevronRight size={18} className="text-white/15 relative z-10" />
+                            <span className="font-semibold text-sm text-gray-800">Bonsai</span>
+                            <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
                         </div>
                     </motion.div>
                 </motion.div>

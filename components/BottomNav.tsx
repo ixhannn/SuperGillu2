@@ -1,5 +1,5 @@
 import React, { useMemo, memo, useCallback } from 'react';
-import { Home, Plus, Gift, Archive, Sparkles, Heart } from 'lucide-react';
+import { Home, Plus, Archive, Sparkles, Heart, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState } from '../types';
 import { Haptics } from '../services/haptics';
@@ -29,7 +29,7 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
 
   const navItems = useMemo(() => [
     { id: 'home', icon: Home, label: 'Home' },
-    { id: 'keepsakes', icon: Gift, label: 'Box', hasNotification: notifications?.keepsakes },
+    { id: 'us', icon: Users, label: 'Us' },
     { id: 'add-memory', icon: Plus, label: 'Add', isCenter: true },
     { id: 'daily-moments', icon: Sparkles, label: 'Moments', hasNotification: notifications?.moments },
     { id: 'timeline', icon: Archive, label: 'Memories', hasNotification: notifications?.timeline },
@@ -74,11 +74,11 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
                     className="w-12 h-12 rounded-[1.1rem] flex items-center justify-center relative"
                     style={{
                       background: isActive
-                        ? 'var(--theme-nav-center-bg-active, linear-gradient(135deg, #ec4899 0%, #db2777 100%))'
-                        : 'var(--theme-nav-center-bg-inactive, linear-gradient(135deg, rgba(236,72,153,0.85) 0%, rgba(219,39,119,0.85) 100%))',
+                        ? 'linear-gradient(135deg, #c2410c 0%, #ea580c 100%)'
+                        : 'linear-gradient(135deg, #c2410c 0%, #ea580c 100%)',
                       boxShadow: isActive
-                        ? 'var(--theme-nav-center-shadow-active, 0 4px 20px rgba(251,207,232,0.35), 0 2px 8px rgba(251,207,232,0.2), inset 0 1px 0 rgba(255,255,255,0.25))'
-                        : 'var(--theme-nav-center-shadow-inactive, 0 4px 16px rgba(251,207,232,0.2), inset 0 1px 0 rgba(255,255,255,0.2))',
+                        ? '0 4px 20px rgba(234,88,12,0.45), 0 2px 8px rgba(234,88,12,0.25), inset 0 1px 0 rgba(255,255,255,0.25)'
+                        : '0 4px 16px rgba(234,88,12,0.30), inset 0 1px 0 rgba(255,255,255,0.20)',
                     }}
                   >
                     <Plus size={22} strokeWidth={2.5} className="text-white" />

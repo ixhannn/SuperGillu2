@@ -43,6 +43,8 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [countdown, setCountdown] = useState(0);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [scanMsg, setScanMsg]     = useState('');
+  const [manualCode, setManualCode] = useState('');
+  const [manualClaiming, setManualClaiming] = useState(false);
   const [linkedPartner, setLinkedPartner] = useState(() => {
     const p = StorageService.getCoupleProfile();
     return p.partnerUserId ? (p.partnerName || 'your partner') : '';
@@ -54,7 +56,12 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const streamRef    = useRef<MediaStream | null>(null);
   const rafRef       = useRef<number>(0);
   const claimingRef  = useRef(false);
+  const lastScanAttemptRef = useRef(0);
   const cdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastExpiredInviteRef = useRef<string>('');
+
+  const normalizeCode = (value: string) =>
+    value.replace(/^TULIKA:/i, '').replace(/\s+/g, '').trim().toUpperCase().slice(0, 8);
 
   // ── Sync event listener ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -68,7 +75,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
   // ── On mount: auto-generate QR if not yet linked ─────────────────────────────
   useEffect(() => {
-    if (!linkedPartner) generateQR();
+    if (!linkedPartner) generateQR(false);
     return () => {
       stopCamera();
       if (cdIntervalRef.current) clearInterval(cdIntervalRef.current);
@@ -77,13 +84,14 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   }, []);
 
   // ── QR generation ────────────────────────────────────────────────────────────
-  const generateQR = useCallback(async () => {
+  const generateQR = useCallback(async (forceRotate: boolean = false) => {
     setQrLoading(true);
-    setInvite(null);
-    setQrImg('');
-    if (cdIntervalRef.current) clearInterval(cdIntervalRef.current);
+    if (cdIntervalRef.current) {
+      clearInterval(cdIntervalRef.current);
+      cdIntervalRef.current = null;
+    }
 
-    const result = await PairingService.createInvite();
+    const result = await PairingService.createInvite({ forceRotate });
     if (!result) {
       setQrLoading(false);
       toast.show('Could not generate QR. Are you signed in?', 'error');
@@ -113,14 +121,19 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       const secs = Math.max(0, Math.round((result.expiresAt.getTime() - Date.now()) / 1000));
       setCountdown(secs);
       if (secs === 0) {
-        if (cdIntervalRef.current) clearInterval(cdIntervalRef.current);
+        if (intervalId) clearInterval(intervalId);
+        if (cdIntervalRef.current === intervalId) cdIntervalRef.current = null;
         setQrImg('');
         setInvite(null);
-        toast.show('QR expired — tap refresh for a new one.', 'info');
+        if (lastExpiredInviteRef.current !== result.code) {
+          lastExpiredInviteRef.current = result.code;
+          toast.show('QR expired — tap refresh for a new one.', 'info');
+        }
       }
     };
     tick();
-    cdIntervalRef.current = setInterval(tick, 1000);
+    const intervalId = setInterval(tick, 1000);
+    cdIntervalRef.current = intervalId;
   }, []);
 
   // ── Camera helpers ────────────────────────────────────────────────────────────
@@ -137,24 +150,44 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     setScanPhase('requesting');
     setScanMsg('');
     claimingRef.current = false;
+    stopCamera();
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScanPhase('error');
+      setScanMsg('Camera API is not available in this environment. Open Tulika in a regular browser and try again.');
+      return;
+    }
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-    } catch {
+      // Try rear camera first, then fallback to any available camera.
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+    } catch (err: any) {
       setScanPhase('error');
-      setScanMsg('Camera access denied. Please allow camera permissions and try again.');
+      const name = err?.name || '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setScanMsg('Camera permission was blocked. Allow camera access (and if using IDE preview, try opening localhost in your browser).');
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        setScanMsg('No compatible camera found. Try another device/browser.');
+      } else {
+        setScanMsg('Could not start camera preview. Try opening localhost in a regular browser.');
+      }
       return;
     }
 
     streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-    }
     setScanPhase('scanning');
+    lastScanAttemptRef.current = 0;
 
     const scan = () => {
       if (claimingRef.current) return;
@@ -164,14 +197,25 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
         rafRef.current = requestAnimationFrame(scan);
         return;
       }
-      canvas.width  = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const now = Date.now();
+      if (now - lastScanAttemptRef.current < 140) {
+        rafRef.current = requestAnimationFrame(scan);
+        return;
+      }
+      lastScanAttemptRef.current = now;
+
+      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      }
       const ctx = canvas.getContext('2d');
       if (!ctx) { rafRef.current = requestAnimationFrame(scan); return; }
 
       ctx.drawImage(video, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth',
+      });
 
       if (code && code.data.startsWith(QR_PREFIX)) {
         claimingRef.current = true;
@@ -185,13 +229,32 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     rafRef.current = requestAnimationFrame(scan);
   };
 
+  // Attach stream after scanning UI mounts the <video> element.
+  useEffect(() => {
+    if (scanPhase !== 'scanning' || !streamRef.current || !videoRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    video.muted = true;
+    video.autoplay = true;
+    video.setAttribute('playsinline', 'true');
+    video.play().catch(() => {});
+  }, [scanPhase]);
+
   // ── Claim invite ──────────────────────────────────────────────────────────────
   const handleClaim = async (rawCode: string) => {
     stopCamera();
     setScanPhase('claiming');
     setScanMsg('Linking accounts…');
 
-    const result = await PairingService.claimInvite(rawCode);
+    let result;
+    try {
+      result = await PairingService.claimInvite(normalizeCode(rawCode));
+    } catch {
+      setScanPhase('error');
+      setScanMsg('Could not complete linking. Please check your internet and try again.');
+      claimingRef.current = false;
+      return;
+    }
 
     if (result.ok === false) {
       const msgs: Record<string, string> = {
@@ -210,15 +273,36 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     const profile = StorageService.getCoupleProfile();
     const updated = {
       ...profile,
+      coupleId: result.coupleId,
       partnerUserId: result.partnerUserId,
       partnerName:   result.partnerName || profile.partnerName,
     };
     StorageService.saveCoupleProfile(updated);
+    SupabaseService.setCachedCoupleId(result.coupleId);
+    await SyncService.init();
+    setManualCode('');
     setLinkedPartner(result.partnerName || updated.partnerName || 'your partner');
 
     setScanPhase('success');
     setScanMsg(`Linked to ${result.partnerName || 'your partner'}!`);
     toast.show(`Connected with ${result.partnerName || 'your partner'}! 🎉`, 'success');
+  };
+
+  const handleManualClaim = async () => {
+    const code = normalizeCode(manualCode);
+    if (code.length !== 8) {
+      toast.show('Enter the full 8-character partner code.', 'error');
+      return;
+    }
+    if (manualClaiming) return;
+    setManualClaiming(true);
+    claimingRef.current = true;
+    try {
+      await handleClaim(code);
+    } finally {
+      setManualClaiming(false);
+      claimingRef.current = false;
+    }
   };
 
   // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -298,6 +382,16 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     return `${m}:${s}`;
   };
 
+  const copyInviteCode = async () => {
+    if (!invite?.code) return;
+    try {
+      await navigator.clipboard.writeText(invite.code);
+      toast.show('Code copied.', 'success');
+    } catch {
+      toast.show('Could not copy code.', 'error');
+    }
+  };
+
   // ── Sub-renders ───────────────────────────────────────────────────────────────
   const renderShowQR = () => {
     if (qrLoading) return (
@@ -309,12 +403,12 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
     if (!qrImg || !invite) return (
       <div className="flex flex-col items-center py-6 gap-4">
-        <p className="text-xs text-center" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-xs text-center" style={{ color: 'var(--color-text-primary)', opacity: 0.8 }}>
           {linkedPartner ? 'Generate a new QR to re-link accounts.' : 'Generate a QR code for your partner to scan.'}
         </p>
-        <button onClick={generateQR}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
-          style={{ background: 'rgba(var(--theme-particle-1-rgb),0.18)', color: 'var(--color-nav-active)' }}>
+        <button onClick={() => generateQR(true)}
+          className="liquid-glass-btn liquid-glass-btn--rose flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all"
+          style={{ color: '#fff' }}>
           <QrCode size={16} /> Generate QR
         </button>
       </div>
@@ -335,16 +429,29 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           </span>
           <span className="text-[10px] uppercase tracking-widest font-bold"
             style={{ color: 'var(--color-text-secondary)' }}>remaining</span>
-          <button onClick={generateQR}
+        <button onClick={() => generateQR(true)}
             className="ml-1 p-1.5 rounded-lg transition-all active:scale-90"
             style={{ background: 'rgba(var(--theme-particle-3-rgb),0.15)' }}
-            title="Refresh QR">
+          title="Refresh QR"
+          aria-label="Refresh QR code">
             <RotateCcw size={13} style={{ color: 'var(--color-text-secondary)' }} />
           </button>
         </div>
 
+        <div className="w-full rounded-xl px-3 py-2 flex items-center justify-between"
+          style={{ background: 'rgba(var(--theme-particle-3-rgb),0.12)' }}>
+          <span className="text-sm font-mono tracking-[0.2em]" style={{ color: 'var(--color-text-primary)' }}>
+            {invite.code.slice(0, 4)}-{invite.code.slice(4)}
+          </span>
+          <button onClick={copyInviteCode}
+            className="liquid-glass-btn text-[11px] font-bold px-2.5 py-1.5 rounded-lg"
+            style={{ background: 'rgba(var(--theme-particle-1-rgb),0.16)', color: 'var(--color-nav-active)' }}>
+            Copy
+          </button>
+        </div>
+
         <p className="text-[11px] text-center leading-relaxed"
-          style={{ color: 'var(--color-text-secondary)' }}>
+          style={{ color: 'var(--color-text-primary)', opacity: 0.78 }}>
           Ask your partner to tap <strong style={{ color: 'var(--color-text-primary)' }}>"Scan Partner's QR"</strong> and point their camera at this code.
         </p>
       </div>
@@ -358,10 +465,10 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           <UserCheck size={28} className="text-green-400" />
         </div>
         <p className="font-bold text-sm" style={{ color: 'var(--color-text-primary)' }}>{scanMsg}</p>
-        <p className="text-[11px] text-center leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-[11px] text-center leading-relaxed" style={{ color: 'var(--color-text-primary)', opacity: 0.78 }}>
           Your accounts are now linked. Moments and memories will sync between you.
         </p>
-        <button onClick={() => { setScanPhase('idle'); setScanMsg(''); claimingRef.current = false; }}
+        <button onClick={() => { setScanPhase('idle'); setScanMsg(''); claimingRef.current = false; setManualCode(''); }}
           className="text-xs mt-1 underline underline-offset-2"
           style={{ color: 'var(--color-text-secondary)' }}>
           Scan again
@@ -375,29 +482,54 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           <AlertTriangle size={28} className="text-red-400" />
         </div>
         <p className="text-sm font-bold text-red-400">Pairing Failed</p>
-        <p className="text-[11px] text-center leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-[11px] text-center leading-relaxed" style={{ color: 'var(--color-text-primary)', opacity: 0.78 }}>
           {scanMsg}
         </p>
         <button
-          onClick={() => { setScanPhase('idle'); setScanMsg(''); claimingRef.current = false; }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 mt-1"
-          style={{ background: 'rgba(var(--theme-particle-1-rgb),0.18)', color: 'var(--color-nav-active)' }}>
+          onClick={() => { setScanPhase('idle'); setScanMsg(''); claimingRef.current = false; setManualCode(''); }}
+          className="liquid-glass-btn liquid-glass-btn--rose flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all mt-1"
+          style={{ color: '#fff' }}>
           <RotateCcw size={14} /> Try Again
         </button>
+        <div className="w-full mt-2">
+          <p className="text-[10px] uppercase tracking-widest text-center mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            or enter code manually
+          </p>
+          <div className="flex gap-2">
+            <input
+              id="partner-code-error"
+              aria-label="Partner code"
+              value={manualCode}
+              onChange={(e) => setManualCode(normalizeCode(e.target.value))}
+              placeholder="8-char code"
+              className="flex-1 px-3 py-2 rounded-lg text-xs font-mono tracking-wider uppercase"
+              style={{ background: 'rgba(var(--theme-particle-3-rgb),0.10)', color: 'var(--color-text-primary)' }}
+              maxLength={8}
+            />
+            <button
+              onClick={handleManualClaim}
+              disabled={manualClaiming}
+              className="liquid-glass-btn liquid-glass-btn--rose px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-60"
+              style={{ color: '#fff' }}
+            >
+              {manualClaiming ? 'Linking…' : 'Link'}
+            </button>
+          </div>
+        </div>
       </div>
     );
 
     if (scanPhase === 'claiming') return (
       <div className="flex flex-col items-center gap-3 py-8">
         <RefreshCw size={28} className="animate-spin" style={{ color: 'var(--color-nav-active)' }} />
-        <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{scanMsg}</p>
+        <p className="text-xs" style={{ color: 'var(--color-text-primary)', opacity: 0.78 }}>{scanMsg}</p>
       </div>
     );
 
     if (scanPhase === 'requesting') return (
       <div className="flex flex-col items-center gap-3 py-8">
         <Camera size={28} style={{ color: 'var(--color-nav-active)' }} />
-        <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Requesting camera access…</p>
+        <p className="text-xs" style={{ color: 'var(--color-text-primary)', opacity: 0.78 }}>Requesting camera access…</p>
       </div>
     );
 
@@ -405,7 +537,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       <div className="flex flex-col items-center gap-3">
         {/* Camera viewport */}
         <div className="relative w-full rounded-xl overflow-hidden" style={{ aspectRatio: '4/3', background: '#000' }}>
-          <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+          <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
           {/* Dimmed overlay with cut-out */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-48 h-48 rounded-2xl"
@@ -423,13 +555,14 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           {/* Close */}
           <button onClick={() => { stopCamera(); setScanPhase('idle'); }}
             className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.5)' }}>
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+            aria-label="Close camera">
             <X size={14} className="text-white" />
           </button>
         </div>
         {/* Hidden canvas for frame extraction */}
         <canvas ref={canvasRef} className="hidden" />
-        <p className="text-[11px] text-center" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-[11px] text-center" style={{ color: 'var(--color-text-primary)', opacity: 0.78 }}>
           Align your partner's QR code within the frame
         </p>
       </div>
@@ -438,113 +571,81 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     // idle
     return (
       <div className="flex flex-col items-center gap-4 py-4">
-        <p className="text-xs text-center" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-xs text-center" style={{ color: 'var(--color-text-primary)', opacity: 0.8 }}>
           Ask your partner to open their QR, then scan it here.
         </p>
         <button onClick={startCamera}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
-          style={{ background: 'rgba(var(--theme-particle-1-rgb),0.18)', color: 'var(--color-nav-active)' }}>
+          className="liquid-glass-btn liquid-glass-btn--rose flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all"
+          style={{ color: '#fff' }}>
           <Camera size={16} /> Open Camera
         </button>
+        <div className="w-full">
+          <p className="text-[10px] uppercase tracking-widest text-center mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            or enter code manually
+          </p>
+          <div className="flex gap-2">
+            <input
+              id="partner-code-idle"
+              aria-label="Partner code"
+              value={manualCode}
+              onChange={(e) => setManualCode(normalizeCode(e.target.value))}
+              placeholder="8-char code"
+              className="flex-1 px-3 py-2 rounded-lg text-xs font-mono tracking-wider uppercase"
+              style={{ background: 'rgba(var(--theme-particle-3-rgb),0.10)', color: 'var(--color-text-primary)' }}
+              maxLength={8}
+            />
+            <button
+              onClick={handleManualClaim}
+              disabled={manualClaiming}
+              className="liquid-glass-btn liquid-glass-btn--rose px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-60"
+              style={{ color: '#fff' }}
+            >
+              {manualClaiming ? 'Linking…' : 'Link'}
+            </button>
+          </div>
+        </div>
       </div>
     );
   };
 
   // ── Main render ───────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full min-h-screen pb-32">
+    <div className="flex flex-col h-full min-h-screen pb-24">
       <ViewHeader title="Cloud Sync ★" onBack={() => setView('home')} variant="simple" />
 
-      <div className="flex-1 p-8 flex flex-col items-center justify-center text-center">
-
-        <div className={`w-32 h-32 rounded-full flex items-center justify-center mb-6 transition-all ${
-          status.includes('Error') ? 'bg-red-500/15 text-red-400' : 'bg-tulika-500/15 text-tulika-400'
-        }`}>
-          {isSyncing ? (
-            <RefreshCw size={48} className="animate-spin" />
-          ) : status.includes('Error') ? (
-            <AlertTriangle size={48} />
-          ) : (
-            <Cloud size={48} />
-          )}
-        </div>
-
-        <h2 className="text-2xl font-serif font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>
-          {status}
-        </h2>
-
-        {lastSync && (
-          <div className="flex items-center gap-2 text-sm mb-8" style={{ color: 'var(--color-text-secondary)' }}>
-            <CheckCircle size={14} />
-            <span>Last updated: {lastSync}</span>
-          </div>
-        )}
-
-        <div className="w-full max-w-xs space-y-4">
-          <button
-            onClick={forceSync}
-            className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-tulika-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
-            Sync Now
-          </button>
-
-          <button
-            onClick={migrateToStorage}
-            disabled={isMigrating}
-            className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50"
-          >
-            <div className="flex items-center gap-2">
-              <HardDriveUpload size={20} className={isMigrating ? 'animate-pulse' : ''} />
-              {isMigrating ? 'Migrating...' : 'Upload Images to Cloud'}
-            </div>
-            {migrationStatus && <span className="text-[10px] opacity-80">{migrationStatus}</span>}
-          </button>
-
-          <button
-            onClick={recoverImages}
-            disabled={isRecovering}
-            className="w-full bg-indigo-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            <ImageDown size={20} className={isRecovering ? 'animate-bounce' : ''} />
-            {isRecovering ? 'Recovering...' : 'Recover Images from Cloud'}
-          </button>
-
-          {/* Push Notifications */}
-          <div className="p-4 rounded-2xl flex items-center justify-between text-left"
-            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.07)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
-            <div className="flex-1 pr-4">
-              <p className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Push Notifications</p>
-              <p className="text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--color-text-secondary)' }}>
-                {notifPermission === 'granted' ? 'Enabled' : notifPermission === 'denied' ? 'Disabled' : 'Not setup'}
-              </p>
-            </div>
-            {notifPermission === 'granted' ? (
-              <div className="p-2 bg-green-500/15 text-green-400 rounded-full">
-                <Bell size={20} />
+      <div className="flex-1 px-4 pt-4 pb-10 overflow-y-auto">
+        <div className="w-full max-w-md mx-auto space-y-4">
+          <section className="sync-surface-solid rounded-2xl p-4 text-left">
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                status.includes('Error') ? 'bg-red-500/15 text-red-400' : 'bg-tulika-500/15 text-tulika-400'
+              }`}>
+                {isSyncing ? <RefreshCw size={20} className="animate-spin" /> : status.includes('Error') ? <AlertTriangle size={20} /> : <Cloud size={20} />}
               </div>
-            ) : (
-              <button onClick={requestPermission}
-                className="p-2 bg-tulika-500/15 text-tulika-400 rounded-full transition-colors">
-                <BellOff size={20} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--color-text-primary)', opacity: 0.72 }}>Status</p>
+                <p className="text-base font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{status}</p>
+                {lastSync && (
+                  <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--color-text-primary)', opacity: 0.78 }}>
+                    <CheckCircle size={12} /> Last updated: {lastSync}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={forceSync}
+                className="liquid-glass-btn liquid-glass-btn--rose px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                style={{ color: '#fff' }}
+              >
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                Sync
               </button>
-            )}
-          </div>
+            </div>
+          </section>
 
-          <p className="text-xs leading-relaxed px-4" style={{ color: 'var(--color-text-secondary)' }}>
-            Your memories are automatically backed up to the secure cloud. Notifications appear when your partner adds content.
-          </p>
-
-          {/* ── QR Pairing Card ── */}
-          <div className="w-full rounded-2xl overflow-hidden text-left"
-            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.07)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
-
-            {/* Card header */}
+          <section className="sync-surface-solid rounded-2xl overflow-hidden text-left">
             <div className="px-4 pt-4 pb-2 flex items-center gap-2">
               <QrCode size={14} style={{ color: 'var(--color-nav-active)' }} />
-              <p className="text-sm font-bold flex-1" style={{ color: 'var(--color-text-primary)' }}>
-                Pair with Partner
-              </p>
+              <p className="text-sm font-bold flex-1" style={{ color: 'var(--color-text-primary)' }}>Pairing Hub</p>
               {linkedPartner && (
                 <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-green-400">
                   <UserCheck size={11} /> Linked
@@ -552,47 +653,122 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
               )}
             </div>
 
-            {/* Linked-partner status */}
             {linkedPartner && (
               <div className="mx-4 mb-3 px-3 py-2 rounded-xl flex items-center gap-2"
                 style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)' }}>
                 <UserCheck size={13} className="text-green-400 shrink-0" />
                 <span className="text-xs flex-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Connected to{' '}
-                  <strong style={{ color: 'var(--color-text-primary)' }}>{linkedPartner}</strong>
+                  Connected to <strong style={{ color: 'var(--color-text-primary)' }}>{linkedPartner}</strong>
                 </span>
               </div>
             )}
 
-            {/* Tabs */}
-            <div className="flex mx-4 mb-3 rounded-xl overflow-hidden"
-              style={{ background: 'rgba(var(--theme-particle-3-rgb),0.10)' }}>
+            <div className="sync-surface-glass-accent flex mx-4 mb-3 rounded-xl overflow-hidden">
               {(['show', 'scan'] as const).map(tab => (
                 <button key={tab}
                   onClick={() => switchTab(tab)}
                   className="flex-1 py-2 text-xs font-bold transition-all"
                   style={{
                     background: pairTab === tab ? 'rgba(var(--theme-particle-1-rgb),0.22)' : 'transparent',
-                    color: pairTab === tab ? 'var(--color-nav-active)' : 'var(--color-text-secondary)',
+                    color: pairTab === tab ? 'var(--color-nav-active)' : 'var(--color-text-primary)',
+                    opacity: pairTab === tab ? 1 : 0.72,
                   }}>
                   {tab === 'show' ? 'My QR' : "Scan Partner's QR"}
                 </button>
               ))}
             </div>
 
-            {/* Tab content */}
-            <div className="px-4 pb-4">
-              {pairTab === 'show' ? renderShowQR() : renderScanQR()}
-            </div>
-          </div>
-        </div>
+            <div className="px-4 pb-4">{pairTab === 'show' ? renderShowQR() : renderScanQR()}</div>
+          </section>
 
-        <button
-          onClick={() => setShowLogoutConfirm(true)}
-          className="mt-auto text-red-400 text-sm font-medium py-8"
-        >
-          Log Out
-        </button>
+          <section className="sync-surface-solid rounded-2xl p-4 text-left space-y-3">
+          <p className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Cloud Tools</p>
+          <p className="text-[11px] -mt-1" style={{ color: 'var(--color-text-primary)', opacity: 0.72 }}>
+            Keep media safe and restore across devices.
+          </p>
+            <button
+              onClick={migrateToStorage}
+              disabled={isMigrating}
+              className="liquid-glass-btn sync-cloud-btn sync-cloud-btn--upload w-full py-3.5 px-4 rounded-xl font-bold transition-all flex items-center justify-between gap-3 disabled:opacity-50"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="liquid-btn-icon-orb shrink-0">
+                  <HardDriveUpload size={17} className={isMigrating ? 'animate-pulse' : ''} />
+                </span>
+                <div className="min-w-0 text-left">
+                  <p className="sync-cloud-title text-sm font-extrabold leading-tight tracking-wide">
+                    {isMigrating ? 'Migrating images…' : 'Upload Images'}
+                  </p>
+                  <p className="sync-cloud-subtitle text-[10px] uppercase tracking-widest">
+                    Push local media to cloud storage
+                  </p>
+                </div>
+              </div>
+              <span className="sync-cloud-chip text-[10px] uppercase tracking-widest shrink-0">
+                {isMigrating ? 'Working' : 'Cloud'}
+              </span>
+            </button>
+            {migrationStatus && (
+              <p className="text-[10px] px-2 mt-1 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                {migrationStatus}
+              </p>
+            )}
+            <button
+              onClick={recoverImages}
+              disabled={isRecovering}
+              className="liquid-glass-btn sync-cloud-btn sync-cloud-btn--recover w-full py-3.5 px-4 rounded-xl font-bold transition-all flex items-center justify-between gap-3 disabled:opacity-50"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="liquid-btn-icon-orb shrink-0">
+                  <ImageDown size={17} className={isRecovering ? 'animate-bounce' : ''} />
+                </span>
+                <div className="min-w-0 text-left">
+                  <p className="sync-cloud-title text-sm font-extrabold leading-tight tracking-wide">
+                    {isRecovering ? 'Recovering images…' : 'Recover Images'}
+                  </p>
+                  <p className="sync-cloud-subtitle text-[10px] uppercase tracking-widest">
+                    Pull available media from cloud
+                  </p>
+                </div>
+              </div>
+              <span className="sync-cloud-chip text-[10px] uppercase tracking-widest shrink-0">
+                {isRecovering ? 'Working' : 'Restore'}
+              </span>
+            </button>
+          </section>
+
+          <section className="sync-surface-solid rounded-2xl p-4 text-left">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 pr-4">
+                <p className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Notifications</p>
+                <p className="text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--color-text-primary)', opacity: 0.72 }}>
+                  {notifPermission === 'granted' ? 'Enabled' : notifPermission === 'denied' ? 'Disabled' : 'Not setup'}
+                </p>
+              </div>
+              {notifPermission === 'granted' ? (
+                <div className="p-2 bg-green-500/15 text-green-400 rounded-full">
+                  <Bell size={18} />
+                </div>
+              ) : (
+                <button onClick={requestPermission}
+                  aria-label="Enable notifications"
+                  className="p-2 bg-tulika-500/15 text-tulika-400 rounded-full transition-colors">
+                  <BellOff size={18} />
+                </button>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl p-4 text-center"
+            style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.18)' }}>
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="text-red-400 text-sm font-bold"
+            >
+              Log Out
+            </button>
+          </section>
+        </div>
 
         <ConfirmModal
           isOpen={showLogoutConfirm}
