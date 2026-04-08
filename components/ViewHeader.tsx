@@ -1,10 +1,11 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { useNavigation } from '../App';
 
 interface ViewHeaderProps {
     title: string;
     subtitle?: string;
-    onBack: () => void;
+    onBack?: () => void;
     variant?: 'simple' | 'centered' | 'transparent';
     rightSlot?: React.ReactNode;
     borderless?: boolean;
@@ -18,13 +19,16 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
     rightSlot,
     borderless = false,
 }) => {
+    const { goBack } = useNavigation();
+    const handleBack = onBack ?? goBack;
+
     return (
         <div className={`view-header ${(borderless || variant === 'transparent') ? 'view-header--borderless' : ''} flex items-center justify-between`}>
             <button
-                onClick={onBack}
+                onClick={handleBack}
                 aria-label="Go back"
-                className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2"
-            style={{ color: 'var(--color-text-secondary)' }}
+                className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2 spring-press"
+                style={{ color: 'var(--color-text-secondary)' }}
             >
                 <ArrowLeft size={24} />
             </button>

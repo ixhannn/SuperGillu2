@@ -17,6 +17,7 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
     // Pulling down 150px will fade the background to 0
     const bgOpacity = useTransform(y, [0, 150], [1, 0]);
 
+    return (
         <AnimatePresence>
             {isOpen && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 pointer-events-none">
@@ -52,4 +53,5 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
                 document.body
             )}
         </AnimatePresence>
+    );
 };

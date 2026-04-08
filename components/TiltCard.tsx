@@ -51,11 +51,13 @@ export const TiltCard: React.FC<TiltCardProps> = ({
   );
 
   const handlePointerEnterCapture = useCallback(() => {
-    // Cache rect on enter — avoids calling getBoundingClientRect on every move
+    // Only capture on devices that support true hover
+    if (!window.matchMedia('(any-hover: hover)').matches) return;
     if (cardRef.current) rectRef.current = cardRef.current.getBoundingClientRect();
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!window.matchMedia('(any-hover: hover)').matches) return;
     const rect = rectRef.current;
     if (!rect) return;
     const centerX = rect.left + rect.width / 2;
@@ -70,6 +72,7 @@ export const TiltCard: React.FC<TiltCardProps> = ({
   }, [maxTilt, rotateX, rotateY, glareX, glareY]);
 
   const handlePointerLeave = useCallback(() => {
+    if (!window.matchMedia('(any-hover: hover)').matches) return;
     rotateX.set(0);
     rotateY.set(0);
     glareX.set(50);
@@ -77,10 +80,13 @@ export const TiltCard: React.FC<TiltCardProps> = ({
     setIsHovered(false);
   }, [rotateX, rotateY, glareX, glareY]);
 
-  // Device orientation (gyroscope) for mobile — RAF-throttled
+  // Device orientation (gyroscope) for mobile — RAF-throttled + tier-checked
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
+      // Skip expensive orientation updates if device is struggling
+      if (typeof document !== 'undefined' && document.documentElement.dataset.tier === 'low') return;
       if (e.beta === null || e.gamma === null) return;
+      
       cancelAnimationFrame(orientRafRef.current);
       orientRafRef.current = requestAnimationFrame(() => {
         const tiltX = Math.max(-maxTilt, Math.min(maxTilt, (e.beta! - 45) * 0.3));
@@ -90,7 +96,7 @@ export const TiltCard: React.FC<TiltCardProps> = ({
       });
     };
 
-    if (typeof DeviceOrientationEvent !== 'undefined') {
+    if (typeof DeviceOrientationEvent !== 'undefined' && window.matchMedia('(any-pointer: coarse)').matches) {
       window.addEventListener('deviceorientation', handleOrientation, { passive: true });
     }
 

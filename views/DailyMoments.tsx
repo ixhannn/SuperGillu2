@@ -501,6 +501,12 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
+            const profile = StorageService.getCoupleProfile();
+            if (!profile.isPremium) {
+                toast.show("Video uploads are a premium feature. Please upgrade to use this.", 'error');
+                return;
+            }
+
             if (isVideoTooLarge(file)) {
                 toast.show("Video too large (Max 25MB)", 'error');
                 return;

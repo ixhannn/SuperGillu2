@@ -1,6 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
 import { Heart } from 'lucide-react';
 import { ViewState } from './types';
+
+// Navigation context for back navigation
+export const NavigationContext = createContext<{
+  navigateTo: (view: ViewState) => void;
+  goBack: () => void;
+  canGoBack: boolean;
+  currentView: ViewState;
+}>({
+  navigateTo: () => {},
+  goBack: () => {},
+  canGoBack: false,
+  currentView: 'home',
+});
+export const useNavigation = () => useContext(NavigationContext);
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Home } from './views/Home';
@@ -96,10 +110,48 @@ const RouteLoader = () => (
 // Main App Component with Default Export
 const App = () => {
   const [currentView, setCurrentView] = useState<ViewState>('home');
+  const historyStack = useRef<ViewState[]>([]);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  // Register main scroll container from Layout
+  const registerScrollRef = useCallback((el: HTMLElement | null) => {
+    mainScrollRef.current = el;
+  }, []);
 
   const navigateTo = useCallback((view: ViewState) => {
-    setCurrentView(view);
+    setCurrentView(prev => {
+      if (prev !== view) {
+        // Push current view to history (unless it's the same or going to home resets)
+        historyStack.current.push(prev);
+        // Cap history at 20 entries
+        if (historyStack.current.length > 20) {
+          historyStack.current.shift();
+        }
+      }
+      return view;
+    });
+    // Scroll to top
+    requestAnimationFrame(() => {
+      if (mainScrollRef.current) {
+        mainScrollRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      }
+    });
   }, []);
+
+  const goBack = useCallback(() => {
+    const prev = historyStack.current.pop();
+    const destination = prev ?? 'home';
+    setCurrentView(destination);
+    // Scroll to top
+    requestAnimationFrame(() => {
+      if (mainScrollRef.current) {
+        mainScrollRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      }
+    });
+  }, []);
+
+  const canGoBack = historyStack.current.length > 0;
+
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -243,14 +295,16 @@ const App = () => {
   };
 
   return (
-    <ErrorBoundary>
-      <Layout currentView={currentView} setView={navigateTo}>
-        <ViewTransition viewKey={currentView}>
-          {renderView()}
-        </ViewTransition>
-      </Layout>
-      <AuraSignalReceiver />
-    </ErrorBoundary>
+    <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
+      <ErrorBoundary>
+        <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef}>
+          <ViewTransition viewKey={currentView}>
+            {renderView()}
+          </ViewTransition>
+        </Layout>
+        <AuraSignalReceiver />
+      </ErrorBoundary>
+    </NavigationContext.Provider>
   );
 };
 

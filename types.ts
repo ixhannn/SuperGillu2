@@ -109,6 +109,7 @@ export interface CoupleProfile {
   anniversaryDate: string; // ISO string
   photo?: string; // Base64 data URI
   theme?: string; // 'rose', 'blue', 'green', 'orange', 'purple', 'dark'
+  isPremium?: boolean; // Premium status for unlocking features like video uploads
   coupleId?: string; // Shared couple tenant ID used for cloud sync
   partnerUserId?: string; // Set after QR pairing — real Supabase user ID of partner
   missedAuras?: any[];
@@ -274,6 +275,48 @@ export interface RoomState {
   stats?: Partial<RoomRunStats>;
   unlockedThemes?: string[];
   furniture?: RoomFurniture[]; // legacy field (migration only)
+}
+
+// ── Couple Room v2 (emotional, non-gamified) ────────────────────────
+
+export interface RoomNote {
+  id: string;
+  text: string;
+  author: string;
+  createdAt: string;
+  color: string;
+}
+
+export interface RoomGift {
+  id: string;
+  from: string;
+  emoji: string;
+  message: string;
+  createdAt: string;
+  opened: boolean;
+}
+
+export interface RoomMilestoneItem {
+  milestoneId: string;
+  unlockedAt: string;
+  itemId: string;
+}
+
+export interface CoupleRoomState {
+  placedItems: RoomPlacedItem[];
+  roomName: string;
+  wallpaper: string;
+  floor: string;
+  ambient: string;
+  notes: RoomNote[];
+  gifts: RoomGift[];
+  milestoneItems: RoomMilestoneItem[];
+  lastActorName?: string;
+  lastActionText?: string;
+  lastTouchedAt?: string;
+  seasonalUnlocks?: string[];
+  lastVisitedAt?: string;
+  createdAt: string;
 }
 
 export interface UsBucketItem {

@@ -195,7 +195,7 @@ class SyncServiceClass {
                             const meta = StorageService.getTogetherMusicMetadata();
                             if (local) await SupabaseService.saveSingle(table, { music_base64: local, meta });
                         } else if (table === 'our_room_state') {
-                            const local = StorageService.getRoomState();
+                            const local = StorageService.getCoupleRoomState();
                             await SupabaseService.saveSingle(table, local);
                         } else if (table === 'user_status') {
                             const local = StorageService.getStatus();

@@ -1,7 +1,9 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState } from '../types';
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
+import { normalizeCoupleRoom, migrateFromOldRoom } from '../components/room/roomSoul';
+
 
 // ENSURING WE STAY ON V11 FOR DATA CONTINUITY
 const DB_NAME = 'TulikaVault_v11';
@@ -96,6 +98,7 @@ const SANITIZED_TEXT_KEYS = new Set([
 const ROOM_WALLPAPERS = new Set(['plain', 'stripes', 'polka', 'hearts', 'stars', 'wood']);
 const ROOM_FLOORS = new Set(['hardwood', 'carpet', 'tiles', 'cloud', 'grass', 'marble']);
 const ROOM_AMBIENTS = new Set(['warm', 'cool', 'rainbow']);
+const COUPLE_ROOM_KEY = 'tulika_couple_room_v2';
 const LEGACY_ROOM_ITEM_MAP: Record<string, string> = {
     frame: 'photo_frames',
     candle: 'candle_cluster',
@@ -112,6 +115,20 @@ const LEGACY_ROOM_ITEM_MAP: Record<string, string> = {
     crystal: 'portal_door',
     cat: 'cute_robot',
 };
+
+const toLegacyRoomState = (room: Partial<CoupleRoomState>): RoomState => normalizeRoomState({
+    placedItems: Array.isArray(room?.placedItems)
+        ? room.placedItems.map((item: any) => ({
+            ...item,
+            itemId: LEGACY_ROOM_ITEM_MAP[item.itemId] || item.itemId || 'fluffy_couch'
+        }))
+        : [],
+    coins: 500,
+    roomName: room.roomName || 'Our Room',
+    wallpaper: ROOM_WALLPAPERS.has(String(room.wallpaper)) ? room.wallpaper as any : 'plain',
+    floor: ROOM_FLOORS.has(String(room.floor)) ? room.floor as any : 'carpet',
+    ambient: ROOM_AMBIENTS.has(String(room.ambient)) ? room.ambient as any : 'warm',
+});
 
 const sanitizeUserString = (value: string) => (
     value
@@ -607,30 +624,19 @@ export const StorageService = {
                 notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton' });
             }
         } else if (table === 'our_room_state') {
-            const sanitized = sanitizeUserContent(item) as Partial<RoomState>;
-            const legacyFurniture = Array.isArray((sanitized as any).furniture) ? (sanitized as any).furniture : [];
-            const migratedPlaced = legacyFurniture.map((f: any, idx: number) => ({
-                uid: f.uid || crypto.randomUUID(),
-                itemId: LEGACY_ROOM_ITEM_MAP[f.itemId] || f.itemId || 'fluffy_couch',
-                x: Math.max(8, Math.min(92, 18 + ((f.gx ?? 0) * 12))),
-                y: Math.max(12, Math.min(90, 20 + ((f.gy ?? 0) * 10))),
-                z: idx,
-                placedBy: f.placedBy || '',
-            }));
-            const nextState: RoomState = {
-                placedItems: Array.isArray(sanitized.placedItems)
-                    ? sanitized.placedItems.map((it: any) => ({ ...it, itemId: LEGACY_ROOM_ITEM_MAP[it.itemId] || it.itemId || 'fluffy_couch' }))
-                    : migratedPlaced,
-                coins: Number.isFinite(sanitized.coins) ? Number(sanitized.coins) : 500,
-                roomName: sanitized.roomName || 'P1 Room',
-                wallpaper: ROOM_WALLPAPERS.has(String(sanitized.wallpaper)) ? sanitized.wallpaper : 'plain',
-                floor: ROOM_FLOORS.has(String(sanitized.floor)) ? sanitized.floor : 'carpet',
-                ambient: ROOM_AMBIENTS.has(String(sanitized.ambient)) ? sanitized.ambient : 'warm',
-            };
-            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(nextState));
-            localStorage.setItem('tulika_room_state', JSON.stringify(nextState));
-            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, nextState);
-            notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton', item: nextState });
+            const sanitized = sanitizeUserContent(item);
+            const nextCoupleRoom = Array.isArray((sanitized as any)?.notes) || Array.isArray((sanitized as any)?.gifts)
+                ? normalizeCoupleRoom(sanitized as Partial<CoupleRoomState>)
+                : migrateFromOldRoom(sanitized);
+            const legacyMirror = toLegacyRoomState(nextCoupleRoom);
+
+            localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(nextCoupleRoom));
+            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
+            localStorage.setItem('tulika_room_state', JSON.stringify(legacyMirror));
+            await writeRaw(STORES.DATA, COUPLE_ROOM_KEY, nextCoupleRoom);
+            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
+
+            notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton', item: nextCoupleRoom });
         }
     },
 
@@ -667,17 +673,13 @@ export const StorageService = {
             localStorage.removeItem(CACHE_KEYS.TOGETHER_MUSIC_META);
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
         } else if (table === 'our_room_state') {
-            const defaultRoom: RoomState = {
-                placedItems: [],
-                coins: 500,
-                roomName: 'P1 Room',
-                wallpaper: 'plain',
-                floor: 'carpet',
-                ambient: 'warm',
-            };
-            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(defaultRoom));
-            localStorage.setItem('tulika_room_state', JSON.stringify(defaultRoom));
-            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, defaultRoom);
+            const defaultCoupleRoom = normalizeCoupleRoom();
+            const legacyMirror = toLegacyRoomState(defaultCoupleRoom);
+            localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(defaultCoupleRoom));
+            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
+            localStorage.setItem('tulika_room_state', JSON.stringify(legacyMirror));
+            await writeRaw(STORES.DATA, COUPLE_ROOM_KEY, defaultCoupleRoom);
+            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
             notifyUpdate({ source: 'sync', action: 'delete', table, id: 'singleton' });
         }
     },
@@ -1006,7 +1008,11 @@ export const StorageService = {
         const fallback: RoomState = DEFAULT_ROOM_STATE;
         try {
             const raw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('tulika_room_state');
-            if (!raw) return fallback;
+            if (!raw) {
+                const coupleRaw = localStorage.getItem(COUPLE_ROOM_KEY);
+                if (!coupleRaw) return fallback;
+                return toLegacyRoomState(JSON.parse(coupleRaw));
+            }
             const parsed = JSON.parse(raw) as Partial<RoomState> & { furniture?: any[] };
             const legacyFurniture = Array.isArray(parsed.furniture) ? parsed.furniture : [];
             const migratedPlaced = legacyFurniture.map((f: any, idx: number) => ({
@@ -1051,6 +1057,36 @@ export const StorageService = {
         writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, nextState);
         notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
     },
+
+    getCoupleRoomState: (): CoupleRoomState => {
+        try {
+            const raw = localStorage.getItem(COUPLE_ROOM_KEY);
+            if (raw) return normalizeCoupleRoom(JSON.parse(raw));
+
+            // Legacy Migration: If v2 doesn't exist, try to migrate from v1
+            const oldRaw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('tulika_room_state');
+            if (oldRaw) {
+                const migrated = migrateFromOldRoom(JSON.parse(oldRaw));
+                localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(migrated));
+                writeRaw(STORES.DATA, COUPLE_ROOM_KEY, migrated);
+                return migrated;
+            }
+        } catch {}
+        return normalizeCoupleRoom();
+    },
+
+
+    saveCoupleRoomState: (state: CoupleRoomState, source: 'user' | 'sync' = 'user'): void => {
+        const nextState = sanitizeUserContent(normalizeCoupleRoom(state));
+        const legacyMirror = toLegacyRoomState(nextState);
+        localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(nextState));
+        localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
+        localStorage.setItem('tulika_room_state', JSON.stringify(legacyMirror));
+        writeRaw(STORES.DATA, COUPLE_ROOM_KEY, nextState);
+        writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
+        notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
+    },
+
 
     getUsBucketItems: (): UsBucketItem[] => {
         if (DATA_CACHE.usBucketItems.length > 0) return DATA_CACHE.usBucketItems;

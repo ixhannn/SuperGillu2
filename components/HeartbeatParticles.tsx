@@ -72,7 +72,7 @@ function acquire(): Particle | null {
 // Coordinate convention: xc positive → right, yc positive → DOWN (screen).
 
 const HR   = 130;
-const STEP = 2.0;
+const STEP = 1.5;
 const FOV  = 520;
 
 // Pure Geometric Heart Math
@@ -143,8 +143,8 @@ function easeOut(t: number) { return 1 - (1-t)*(1-t)*(1-t); }
 
 // ─────────────────────────────── dissolve timing constants ───────────────────
 
-const D_SCATTER  = 350;
-const D_FLY_IN   = 1050;
+const D_SCATTER  = 800;
+const D_FLY_IN   = 800;
 const D_HOLD     = 2000;
 const D_FLY_BACK = 900;
 const D_FADE     = 350;
@@ -202,7 +202,7 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
   dissolveOnDoneAt  = effectTs + D_SCATTER + D_FLY_IN + D_HOLD + D_FLY_BACK * 0.75;
   dissolveFired     = false;
 
-  const SPACING = 2;
+  const SPACING = 1.5;
   const btnCx = rect.left + rect.width  / 2;
   const btnCy = rect.top  + rect.height / 2;
   
@@ -249,27 +249,29 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
     const { lx, ly, lz, bright } = GRID[heartOrder[i]];
     const { bx, by } = btnPts[i];
 
-    // Scatter direction: outward from button centre + randomness
-    const angle = Math.atan2(by - btnCy, bx - btnCx) + rnd(-1.1, 1.1);
-    const scatterDist = rnd(55, 210);
+    // Soft fly away (like magical dust blowing off)
+    const angle = rnd(0, Math.PI * 2);
+    const scatterDist = rnd(30, 90);
+    // Calculate 0 to 1 ratio from left to right of the button
+    const tX = Math.max(0, Math.min(1, (bx - rect.left) / rect.width));
 
     p.active      = true;
     p.mode        = 'dissolve';
     p.lx = lx; p.ly = ly; p.lz = lz;
-    // vlx/vly store the PEAK scatter offset (reached at end of D_SCATTER)
-    p.vlx = Math.cos(angle) * scatterDist;
-    p.vly = Math.sin(angle) * scatterDist;
+    p.vlx = Math.cos(angle) * scatterDist + rnd(10, 30); // slight rightward wind pushing them
+    p.vly = Math.sin(angle) * scatterDist - rnd(10, 30); // slight gentle lift
     p.vlz = 0;
     p.hcx = cx; p.hcy = cy;
     p.ox  = bx; p.oy  = by;
     p.snapX = 0; p.snapY = 0; p.snapped = false;
     p.elapsed     = 0;
-    p.startAt     = rnd(0, 90);   // tiny stagger so button disintegrates at once
+    // Left-to-right horizontal peel
+    p.startAt     = tX * 350 + rnd(0, 45);
     p.convergeEnd = D_SCATTER + D_FLY_IN;
     p.holdEnd     = D_SCATTER + D_FLY_IN + D_HOLD;
     p.flyBackEnd  = D_SCATTER + D_FLY_IN + D_HOLD + D_FLY_BACK;
     p.lifetime    = D_TOTAL;
-    p.size        = rnd(1.4, 2.0); // smaller for higher resolution liquid look
+    p.size        = rnd(1.4, 2.0); // large enough to cover the button seamlessly before falling
     p.bright      = bright;
     const [r, g, b] = btnColor(bx, rect.left, rect.width);
     p.r = r; p.g = g; p.b = b;
@@ -563,7 +565,12 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
       for (let i = 0; i < POOL; i++) {
         const p = pool[i];
         if (!p.active || p.mode !== 'dissolve') continue;
-        if (p.elapsed < p.startAt) continue;
+        
+        // Ensure the button looks completely solid before its particles start crumbling
+        if (p.elapsed < p.startAt) {
+          dotSolid(ctx, p.ox, p.oy, p.size, p.r, p.g, p.b, 1.0);
+          continue;
+        }
 
         const e        = p.elapsed;
         const convEnd  = p.convergeEnd;
@@ -571,47 +578,52 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
         const flyBackEnd = p.flyBackEnd;
 
         if (e < D_SCATTER) {
-          // Phase 1: Pure linear explosion (old scatter mechanic)
+          // Phase 1: Flying away sweeping freely
           const t      = easeOut(clamp01(e / D_SCATTER));
           const px     = p.ox + p.vlx * t;
-          const py     = p.oy + p.vly * t;
-          const fadeIn = Math.min(e / 50, 1);
-          dotSolid(ctx, px, py, p.size, p.r, p.g, p.b, fadeIn * 0.95);
+          const py     = p.oy + p.vly * t; 
+          dotSolid(ctx, px, py, p.size, p.r, p.g, p.b, 1.0);
 
         } else if (e < convEnd) {
-          // Phase 2: Massive fluid vortex assembling into heart
+          // Phase 2: Smooth wind-blown arc into the heart (Fits Thanos snap)
           const scx = p.ox + p.vlx;
           const scy = p.oy + p.vly;
           
-          // easeInOut for silky smooth transitions
-          const t   = eio(clamp01((e - D_SCATTER) / D_FLY_IN));
+          const dt = e - D_SCATTER;
+          const t  = clamp01(dt / D_FLY_IN);
+          const easeT = eio(t);
           
-          const hpx = p.lx + p.hcx;
-          const hpy = p.ly + p.hcy;
+          const endX = p.hcx + p.lx;
+          const endY = p.hcy + p.ly;
           
-          // Base linear trajectory interpolation
-          const ix = scx + (hpx - scx) * t;
-          const iy = scy + (hpy - scy) * t;
+          // Control point continues their fly-away velocity before swooping into the heart
+          const cpX = scx + p.vlx * 2.5; 
+          const cpY = scy + p.vly * 2.5 - 40; // upward draft logic
           
-          const dx = ix - p.hcx;
-          const dy = iy - p.hcy;
-          
-          // Spatial Shear: Particles farther from the heart core drift differently mid-flight.
-          // sin(t * PI) zeros out precisely at start and end, guaranteeing perfect geometrical shapes.
-          const heartDist = Math.sqrt(p.lx * p.lx + p.ly * p.ly);
-          const shear = Math.sin(t * Math.PI) * (heartDist / 60) * 1.5;
-          
-          // 1 full fluid rotation + exact individual droplet shear
-          const swirlA = t * Math.PI * 2.0 + shear;
+          // Quadratic bezier interpolation for elegant dust-blown gathering
+          let px = (1 - easeT) * (1 - easeT) * scx 
+                 + 2 * (1 - easeT) * easeT * cpX 
+                 + easeT * easeT * endX;
+                 
+          let py = (1 - easeT) * (1 - easeT) * scy 
+                 + 2 * (1 - easeT) * easeT * cpY 
+                 + easeT * easeT * endY;
 
-          const cosS = Math.cos(swirlA), sinS = Math.sin(swirlA);
-          const px = p.hcx + (dx * cosS - dy * sinS);
-          const py = p.hcy + (dx * sinS + dy * cosS);
+          // Gentle ambient dust wobble
+          p.wobble += 0.15;
+          px += Math.sin(p.wobble) * (1 - easeT) * 2.0;
 
-          const cr  = Math.round(p.r + (HEART_R - p.r) * t);
-          const cg  = Math.round(p.g + (HEART_G - p.g) * t);
-          const cb  = Math.round(p.b + (HEART_B - p.b) * t);
-          dotSolid(ctx, px, py, p.size, cr, cg, cb, 0.95);
+          const cr  = Math.round(p.r + (HEART_R - p.r) * easeT);
+          const cg  = Math.round(p.g + (HEART_G - p.g) * easeT);
+          const cb  = Math.round(p.b + (HEART_B - p.b) * easeT);
+
+          // snap
+          if (easeT > 0.98) {
+            p.snapped = true;
+            p.snapX = px; p.snapY = py;
+          }
+
+          dotSolid(ctx, px, py, p.size, cr, cg, cb, 0.98);
 
         } else if (e < holdEnd) {
           // Phase 3: HOLD — full 3-D depth, Y-oscillation, beats 3×

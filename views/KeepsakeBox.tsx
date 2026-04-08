@@ -252,6 +252,12 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            const profile = StorageService.getCoupleProfile();
+            if (!profile.isPremium) {
+                toast.show("Video uploads are a premium feature. Please upgrade to use this.", 'error');
+                return;
+            }
+            
             if (isVideoTooLarge(file)) {
                 toast.show("Video too large (Max 25MB)", 'error');
                 return;

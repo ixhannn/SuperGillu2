@@ -164,9 +164,8 @@ label, .cursor-pointer, .spring-press {
 
 /* ── GPU ACCELERATION ─────────────────────────────────────────────────────── */
 .gpu-layer {
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  perspective: 1000px;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* Canvas / fixed background layers — isolation prevents expensive stacking context recalculations */
@@ -1069,11 +1068,38 @@ html, body {
   -webkit-touch-callout: none;
   background-color: var(--color-base);
   color: var(--color-text-primary);
+  /* Prevent browser pull-to-refresh and bounce for native app feel */
+  overscroll-behavior: none;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
 }
 
-input, textarea {
+input, textarea, [contenteditable] {
   user-select: auto;
   -webkit-user-select: auto;
+}
+
+/* Prevent text selection on interactive elements during swipe */
+button, [role="button"], nav, .spring-press {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Smoother image rendering */
+img {
+  image-rendering: -webkit-optimize-contrast;
+  will-change: auto;
+}
+
+/* Focus ring only for keyboard users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid rgba(var(--theme-particle-1-rgb), 0.6);
+  outline-offset: 2px;
 }
 
 /* ============================================

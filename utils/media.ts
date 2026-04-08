@@ -40,36 +40,33 @@ const clampDimensions = (
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
+import imageCompression from 'browser-image-compression';
+
 /**
  * Compress an image file to a JPEG data-URL.
- *
- * - Scales down to fit within `IMAGE_MAX_SIZE` px while keeping aspect ratio.
- * - Outputs JPEG at `IMAGE_QUALITY` compression.
  */
-export const compressImage = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error('File read failed'));
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onerror = () => reject(new Error('Image decode failed'));
-            img.onload = () => {
-                const { width, height } = clampDimensions(
-                    img.width,
-                    img.height,
-                    IMAGE_MAX_SIZE
-                );
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx?.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', IMAGE_QUALITY));
-            };
-            img.src = e.target?.result as string;
-        };
-        reader.readAsDataURL(file);
-    });
+export const compressImage = async (file: File): Promise<string> => {
+    const options = {
+        maxSizeMB: 0.2, // ~200KB
+        maxWidthOrHeight: IMAGE_MAX_SIZE,
+        useWebWorker: true,
+        fileType: 'image/jpeg',
+        initialQuality: IMAGE_QUALITY
+    };
+    
+    try {
+        const compressedFile = await imageCompression(file, options);
+        // Convert Blob to Data URL
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(compressedFile);
+        });
+    } catch (error) {
+        throw error;
+    }
+};
 
 /**
  * Generate a JPEG thumbnail data-URL from a video file.

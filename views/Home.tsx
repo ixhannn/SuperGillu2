@@ -360,12 +360,19 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
     // Scroll-linked header opacity — transparent at top, solid on scroll
     useEffect(() => {
-        const handleScroll = () => {
-            const y = window.scrollY || 0;
+        const mainEl = document.querySelector('main');
+        if (!mainEl) return;
+        
+        const handleScroll = (e: Event) => {
+            const y = (e.target as HTMLElement).scrollTop || 0;
             setHeaderOpacity(Math.min(y / 100, 1));
         };
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
+        
+        mainEl.addEventListener('scroll', handleScroll, { passive: true });
+        // Trigger once to set initial state
+        handleScroll({ target: mainEl } as unknown as Event);
+        
+        return () => mainEl.removeEventListener('scroll', handleScroll);
     }, []);
 
     const triggerReceivedHeartbeat = () => {

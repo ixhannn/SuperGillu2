@@ -15,6 +15,7 @@ interface LayoutProps {
   children: React.ReactNode;
   currentView: ViewState;
   setView: (view: ViewState) => void;
+  registerScrollRef?: (el: HTMLElement | null) => void;
   notifications?: {
     timeline?: boolean;
     moments?: boolean;
@@ -27,11 +28,17 @@ export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number)
 });
 export const useConfetti = () => useContext(ConfettiContext);
 
-export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, notifications }) => {
+export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, registerScrollRef, notifications }) => {
   const mainRef = useRef<HTMLElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const prevView = useRef(currentView);
+
+  // Register scroll ref with parent App so it can control scroll position
+  useEffect(() => {
+    if (registerScrollRef) registerScrollRef(mainRef.current);
+    return () => { if (registerScrollRef) registerScrollRef(null); };
+  }, [registerScrollRef]);
 
   useEffect(() => {
     startBreathingRhythm();
@@ -107,7 +114,12 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
         {/* Main content */}
         <main
           ref={mainRef}
-          className="flex-1 relative z-10 w-full max-w-md mx-auto overflow-y-auto overflow-x-hidden no-scrollbar smooth-scroll pt-safe pb-32"
+          className="flex-1 relative z-10 w-full max-w-md mx-auto overflow-y-auto overflow-x-hidden no-scrollbar pt-safe pb-32"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            scrollBehavior: 'auto',
+          }}
         >
           {children}
         </main>
@@ -123,7 +135,7 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
 
         {/* Global effects */}
         <DynamicToast />
-<TouchTrailCanvas />
+        <TouchTrailCanvas />
         <PhysicsConfetti ref={confettiRef} />
       </div>
     </ConfettiContext.Provider>

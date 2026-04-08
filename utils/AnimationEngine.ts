@@ -5,7 +5,7 @@
  * No effect runs its own RAF - zero redundant loops, zero duplicate work.
  *
  * Frame budget tracked per subscriber. Quality tier broadcast to all effects
- * for real-time adaptive rendering.
+ * for real-time adaptive rendering. Auto-downgrades tier when FPS drops.
  */
 
 export type QualityTier = 'ultra' | 'high' | 'medium' | 'low' | 'css-only';
@@ -30,12 +30,19 @@ const TIER_RANK: Record<QualityTier, number> = {
   ultra: 4,
 };
 
+// FPS thresholds for auto adaptive quality
+const FPS_LOW    = 30; // below this → downgrade
+const FPS_HIGH   = 52; // above this → upgrade
+const ADAPT_INTERVAL = 3000; // ms between tier checks
+
 class AnimationEngineClass {
   private readonly subs = new Map<string, AnimationSubscriber>();
   private rafId = 0;
   private lastTs = 0;
   private running = false;
   private visibilityListenerBound = false;
+  private lastAdapt = 0;
+  private adaptLockUntil = 0; // prevent rapid flapping
 
   public tier: QualityTier = 'ultra';
 
@@ -70,17 +77,49 @@ class AnimationEngineClass {
     }
   }
 
+  private adaptTier(ts: number): void {
+    if (ts - this.lastAdapt < ADAPT_INTERVAL) return;
+    if (ts < this.adaptLockUntil) return;
+    this.lastAdapt = ts;
+
+    const fps = this.fps;
+    const currentRank = TIER_RANK[this.tier];
+
+    if (fps < FPS_LOW && currentRank > 0) {
+      // Downgrade
+      const tiers = Object.keys(TIER_RANK) as QualityTier[];
+      const lower = tiers.find(t => TIER_RANK[t] === currentRank - 1);
+      if (lower) {
+        this.setTier(lower);
+        this.adaptLockUntil = ts + 5000; // 5s lock after downgrade
+      }
+    } else if (fps > FPS_HIGH && currentRank < TIER_RANK['ultra']) {
+      // Upgrade (more conservative — only if well above threshold)
+      const tiers = Object.keys(TIER_RANK) as QualityTier[];
+      const higher = tiers.find(t => TIER_RANK[t] === currentRank + 1);
+      if (higher) {
+        this.setTier(higher);
+        this.adaptLockUntil = ts + 8000; // 8s lock after upgrade (stable before re-checking)
+      }
+    }
+  }
+
   private readonly loop = (ts: number): void => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     this.rafId = requestAnimationFrame(this.loop);
 
     // Cap delta at 50ms to prevent physics spiral-of-death after tab switch
     const delta = Math.min(ts - this.lastTs, 50);
+    // Skip duplicate frames (e.g. from display power saving doubling callbacks)
+    if (delta < 4) return;
     this.lastTs = ts;
 
     // Record frame time in ring buffer
     this.frameTimes[this.frameIdx % 60] = delta;
     this.frameIdx++;
+
+    // Auto adaptive quality
+    this.adaptTier(ts);
 
     const tierRank = TIER_RANK[this.tier];
 
@@ -116,6 +155,7 @@ class AnimationEngineClass {
       if (document.visibilityState === 'hidden') {
         this.stop();
       } else if (this.subs.size > 0) {
+        this.lastTs = performance.now(); // Reset to avoid huge delta on resume
         this.start();
       }
     });

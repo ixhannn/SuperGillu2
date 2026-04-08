@@ -48,6 +48,12 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
+          const profile = StorageService.getCoupleProfile();
+          if (!profile.isPremium) {
+              toast.show("Video uploads are a premium feature. Please upgrade to use this.", 'error');
+              return;
+          }
+
           if (isVideoTooLarge(file)) {
               toast.show("Video too large! Please choose a video under 25MB.", 'error');
               return;

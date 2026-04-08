@@ -11,6 +11,49 @@ import {
   percentToGrid,
 } from './roomCatalog3D';
 
+const HEART_COLORS = ['#fb7185', '#ec4899', '#f472b6', '#fbcfe8'];
+
+const HeartBurst: React.FC<{ position: [number, number, number] }> = ({ position }) => {
+  const particles = useMemo(() => {
+    return Array.from({ length: 8 }).map((_, i) => ({
+      id: i,
+      velocity: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.1,
+        0.1 + Math.random() * 0.15,
+        (Math.random() - 0.5) * 0.1
+      ),
+      color: HEART_COLORS[i % HEART_COLORS.length],
+      scale: 0.1 + Math.random() * 0.15,
+      delay: Math.random() * 0.2
+    }));
+  }, []);
+
+  const group = useRef<THREE.Group>(null);
+
+  useFrame((state, delta) => {
+    if (!group.current) return;
+    group.current.children.forEach((child, i) => {
+      const p = particles[i];
+      if (state.clock.elapsedTime > p.delay) {
+        child.position.add(p.velocity.clone().multiplyScalar(delta * 2));
+        child.scale.multiplyScalar(0.96);
+        child.rotation.z += delta * 2;
+      }
+    });
+  });
+
+  return (
+    <group ref={group} position={position}>
+      {particles.map((p) => (
+        <mesh key={p.id} position={[0, 0, 0]}>
+          <planeGeometry args={[1, 1]} />
+          <meshBasicMaterial color={p.color} transparent opacity={0.8} />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
 const CELL_SIZE = 0.88;
 const FLOOR_THICKNESS = 0.18;
 const WALL_HEIGHT = 2.86;
@@ -231,8 +274,8 @@ const createPatternTexture = (variant: string, isFloor: boolean): THREE.CanvasTe
 };
 
 const createPropTexture = (kind: PropKind, color: string): THREE.CanvasTexture => {
-  const scale = 4;
-  const units = 32;
+  const scale = 3;
+  const units = 48;
   const canvas = document.createElement('canvas');
   canvas.width = units * scale;
   canvas.height = units * scale;
@@ -242,8 +285,12 @@ const createPropTexture = (kind: PropKind, color: string): THREE.CanvasTexture =
   const dark = shade(color, -26);
   const ink = OUTLINE;
   const silver = '#d8dfee';
-  const floorWood = '#8a603f';
+  const warmWood = '#8a603f';
+  const paleWood = '#b68462';
   const softPink = '#f7d5e5';
+  const cream = '#f7f0e6';
+  const night = '#232742';
+  const glass = '#bfe3ff';
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -254,216 +301,277 @@ const createPropTexture = (kind: PropKind, color: string): THREE.CanvasTexture =
     px(x + 1, y + 1, w - 2, h - 2, fill);
   };
 
-  const floorShadow = () => {
-    px(5, 25, 22, 3, '#573e62');
-    px(7, 24, 18, 1, '#71547b');
+  const outlineRound = (x: number, y: number, w: number, h: number, fill: string) => {
+    px(x + 1, y, w - 2, 1, ink);
+    px(x, y + 1, 1, h - 2, ink);
+    px(x + w - 1, y + 1, 1, h - 2, ink);
+    px(x + 1, y + h - 1, w - 2, 1, ink);
+    px(x + 1, y + 1, w - 2, h - 2, fill);
   };
 
-  floorShadow();
+  const floorShadow = (x: number, y: number, w: number, h: number) => {
+    px(x, y, w, h, '#564164');
+    px(x + 2, y - 1, Math.max(1, w - 4), 1, '#786082');
+  };
+
+  const leg = (x: number, y: number, h: number) => {
+    px(x, y, 2, h, warmWood);
+    px(x + 1, y, 1, h, '#63432f');
+  };
+
+  floorShadow(8, 38, 28, 4);
 
   switch (kind) {
     case 'desk':
-      outlineRect(5, 12, 19, 9, base);
-      px(7, 14, 15, 5, shade(base, -8));
-      px(7, 21, 2, 7, floorWood);
-      px(20, 21, 2, 7, floorWood);
-      outlineRect(16, 6, 8, 6, '#26324b');
-      px(18, 8, 4, 2, '#7bd3ff');
-      px(9, 8, 4, 4, '#49b67d');
-      px(10, 7, 2, 1, '#78d98e');
+      floorShadow(6, 39, 30, 4);
+      px(8, 22, 24, 3, light);
+      px(10, 25, 20, 8, base);
+      px(12, 27, 16, 4, shade(base, -10));
+      leg(10, 33, 8);
+      leg(28, 33, 8);
+      outlineRect(22, 12, 14, 9, night);
+      px(24, 14, 10, 5, '#85d8ff');
+      outlineRect(11, 16, 9, 7, '#4e5a74');
+      px(13, 18, 5, 3, '#79dc8d');
+      outlineRect(4, 26, 5, 8, '#d57d57');
+      px(5, 27, 3, 2, '#f3c19a');
       break;
     case 'tv':
-      outlineRect(6, 18, 20, 6, '#5d6388');
-      outlineRect(7, 7, 18, 10, '#1d2334');
-      px(9, 9, 14, 6, color);
-      px(13, 24, 6, 3, '#515770');
+      floorShadow(6, 38, 30, 4);
+      outlineRect(8, 29, 26, 7, '#6a6f8f');
+      outlineRect(9, 12, 24, 15, night);
+      px(12, 15, 18, 9, glass);
+      px(13, 16, 16, 2, '#e7fbff');
+      px(18, 36, 6, 3, '#535875');
+      leg(11, 35, 6);
+      leg(31, 35, 6);
       break;
     case 'bookshelf':
-      outlineRect(8, 5, 14, 22, floorWood);
-      px(10, 10, 10, 1, ink);
-      px(10, 15, 10, 1, ink);
-      px(10, 20, 10, 1, ink);
-      px(10, 7, 2, 3, '#ffb84d');
-      px(13, 7, 2, 3, '#77a5ff');
-      px(16, 7, 2, 3, '#8be38e');
+      floorShadow(10, 38, 20, 4);
+      outlineRect(14, 8, 18, 31, warmWood);
+      px(16, 15, 14, 2, '#65412d');
+      px(16, 23, 14, 2, '#65412d');
+      px(16, 31, 14, 2, '#65412d');
+      px(17, 11, 3, 4, '#ffb84d');
+      px(21, 10, 3, 5, '#77a5ff');
+      px(25, 12, 3, 3, '#8be38e');
+      px(18, 18, 4, 4, '#d77c65');
+      px(23, 19, 5, 3, '#d3b363');
+      px(18, 27, 10, 3, '#c6a4ff');
       break;
     case 'fridge':
-      outlineRect(9, 5, 13, 22, silver);
-      px(10, 6, 11, 9, shade('#d8dfee', 10));
-      px(10, 16, 11, 10, shade('#d8dfee', -8));
-      px(19, 10, 1, 4, '#7aa7e3');
-      px(19, 18, 1, 5, '#7aa7e3');
+      floorShadow(11, 38, 18, 4);
+      outlineRect(16, 9, 16, 30, silver);
+      px(18, 11, 12, 12, shade(silver, 10));
+      px(18, 24, 12, 13, shade(silver, -6));
+      px(27, 15, 1, 5, '#7aa7e3');
+      px(27, 28, 1, 6, '#7aa7e3');
+      px(18, 23, 12, 1, '#bac3d8');
       break;
     case 'couch':
-      outlineRect(4, 16, 23, 8, base);
-      outlineRect(5, 10, 8, 8, light);
-      outlineRect(18, 10, 8, 8, light);
-      px(5, 24, 2, 3, '#6f4c3d');
-      px(24, 24, 2, 3, '#6f4c3d');
+      floorShadow(6, 39, 31, 4);
+      outlineRound(8, 23, 30, 10, base);
+      outlineRound(9, 15, 12, 10, light);
+      outlineRound(22, 15, 13, 10, light);
+      px(11, 26, 9, 3, shade(base, -8));
+      px(24, 26, 9, 3, shade(base, -8));
+      leg(12, 33, 7);
+      leg(31, 33, 7);
       break;
     case 'bed':
-      outlineRect(4, 13, 24, 10, base);
-      outlineRect(5, 8, 8, 6, softPink);
-      outlineRect(13, 8, 8, 6, '#f2bfd9');
-      px(4, 24, 2, 3, '#6f4c3d');
-      px(26, 24, 2, 3, '#6f4c3d');
+      floorShadow(5, 39, 34, 4);
+      px(8, 21, 28, 4, '#9a6681');
+      px(8, 25, 28, 11, base);
+      px(11, 27, 22, 6, shade(base, -10));
+      outlineRound(10, 13, 11, 8, softPink);
+      outlineRound(21, 13, 11, 8, '#f2bfd9');
+      px(34, 18, 4, 12, '#7a5662');
+      leg(10, 36, 6);
+      leg(33, 36, 6);
       break;
     case 'chair':
-      outlineRect(10, 11, 12, 7, dark);
-      outlineRect(9, 17, 14, 6, base);
-      px(11, 23, 2, 5, '#676f88');
-      px(19, 23, 2, 5, '#676f88');
+      floorShadow(11, 39, 18, 4);
+      outlineRect(16, 14, 14, 10, dark);
+      outlineRect(14, 24, 18, 7, base);
+      leg(17, 31, 9);
+      leg(27, 31, 9);
+      px(18, 17, 10, 4, shade(dark, 14));
       break;
     case 'beanbag':
-      outlineRect(7, 16, 18, 9, base);
-      px(10, 18, 12, 4, light);
+      floorShadow(10, 39, 22, 4);
+      outlineRound(11, 22, 22, 12, base);
+      px(15, 24, 14, 5, light);
       break;
     case 'table':
-      outlineRect(8, 14, 16, 5, light);
-      px(15, 19, 2, 7, '#6f4c3d');
-      px(12, 25, 8, 2, '#7e5c44');
+      floorShadow(12, 39, 18, 4);
+      px(13, 22, 16, 3, paleWood);
+      px(14, 25, 14, 3, light);
+      px(20, 28, 2, 10, warmWood);
+      px(16, 38, 10, 2, '#7e5c44');
       break;
     case 'lamp':
-      px(15, 7, 2, 16, '#878fa7');
-      outlineRect(11, 4, 10, 5, light);
-      px(10, 23, 12, 2, '#5e6781');
+      floorShadow(14, 39, 12, 3);
+      px(23, 11, 2, 24, '#878fa7');
+      outlineRound(17, 8, 14, 8, light);
+      px(15, 35, 18, 2, '#5e6781');
       break;
     case 'lantern':
-      px(15, 4, 2, 4, '#878fa7');
-      outlineRect(10, 8, 12, 12, light);
-      px(11, 10, 10, 8, base);
+      floorShadow(14, 39, 14, 3);
+      px(23, 8, 2, 4, '#878fa7');
+      outlineRect(17, 12, 14, 16, light);
+      px(19, 14, 10, 10, base);
+      px(21, 16, 6, 4, '#ffe8a6');
       break;
     case 'candles':
-      outlineRect(8, 18, 4, 8, '#f9f1db');
-      outlineRect(14, 15, 4, 11, '#fff5db');
-      outlineRect(20, 19, 4, 7, '#f9f1db');
-      px(9, 16, 2, 2, '#ffcb63');
-      px(15, 13, 2, 2, '#ffcb63');
-      px(21, 17, 2, 2, '#ffcb63');
+      floorShadow(12, 39, 18, 3);
+      outlineRect(14, 24, 5, 10, '#f9f1db');
+      outlineRect(21, 20, 5, 14, '#fff5db');
+      outlineRect(28, 25, 5, 9, '#f9f1db');
+      px(15, 22, 2, 2, '#ffcb63');
+      px(22, 18, 2, 2, '#ffcb63');
+      px(29, 23, 2, 2, '#ffcb63');
       break;
     case 'disco':
-      px(15, 2, 2, 4, '#8790ac');
-      outlineRect(11, 6, 10, 10, silver);
-      px(12, 7, 2, 2, '#93b8ff');
-      px(16, 9, 2, 2, '#ffd0f5');
-      px(18, 12, 2, 2, '#ffe27a');
+      px(23, 4, 2, 5, '#8790ac');
+      outlineRect(17, 9, 14, 14, silver);
+      px(18, 10, 3, 3, '#93b8ff');
+      px(23, 12, 2, 2, '#ffd0f5');
+      px(27, 16, 2, 2, '#ffe27a');
+      px(19, 18, 2, 2, '#b2ffd8');
       break;
     case 'lights':
-      px(4, 7, 24, 1, ink);
-      [6, 10, 14, 18, 22, 26].forEach((x, idx) => {
-        px(x, 8, 1, 2, idx % 2 === 0 ? '#ffe580' : '#f6a8ff');
-        px(x, 10, 1, 1, '#8ee1ff');
+      px(4, 11, 40, 1, ink);
+      [8, 14, 20, 26, 32, 38].forEach((x, idx) => {
+        px(x, 12, 1, 3, idx % 2 === 0 ? '#ffe580' : '#f6a8ff');
+        px(x - 1, 15, 3, 2, idx % 3 === 0 ? '#8ee1ff' : '#ffe7a8');
       });
       break;
     case 'balloon':
-      outlineRect(7, 8, 8, 8, light);
-      outlineRect(16, 6, 8, 8, '#ffc0d0');
-      outlineRect(12, 13, 9, 9, base);
-      px(11, 21, 1, 6, ink);
-      px(19, 19, 1, 8, ink);
-      px(16, 23, 1, 4, ink);
+      outlineRound(10, 12, 10, 11, light);
+      outlineRound(22, 9, 10, 11, '#ffc0d0');
+      outlineRound(16, 17, 12, 12, base);
+      px(18, 29, 1, 11, ink);
+      px(26, 25, 1, 15, ink);
+      px(22, 30, 1, 10, ink);
       break;
     case 'plant':
     case 'bonsai':
     case 'flower':
     case 'sunflower':
     case 'cactus':
-      outlineRect(11, 20, 10, 6, '#8b623d');
+      floorShadow(14, 39, 18, 4);
+      outlineRect(17, 28, 14, 9, '#8b623d');
       if (kind === 'cactus') {
-        outlineRect(13, 9, 6, 12, color);
-        outlineRect(10, 12, 3, 6, color);
-        outlineRect(19, 13, 3, 6, color);
+        outlineRect(20, 12, 8, 16, color);
+        outlineRect(16, 16, 4, 8, color);
+        outlineRect(28, 17, 4, 8, color);
       } else if (kind === 'bonsai') {
-        px(15, 11, 2, 9, '#7a4c36');
-        outlineRect(10, 8, 6, 5, '#8ed55f');
-        outlineRect(15, 6, 7, 6, '#7dc84f');
+        px(23, 16, 3, 13, '#7a4c36');
+        outlineRound(16, 12, 10, 8, '#8ed55f');
+        outlineRound(23, 9, 11, 10, '#7dc84f');
       } else if (kind === 'sunflower') {
-        px(15, 10, 2, 10, '#5f8f41');
-        outlineRect(11, 5, 10, 7, '#ffcf4d');
-        px(14, 7, 4, 3, '#8e582b');
+        px(23, 14, 2, 14, '#5f8f41');
+        outlineRound(16, 7, 15, 10, '#ffcf4d');
+        px(21, 10, 6, 4, '#8e582b');
       } else if (kind === 'flower') {
-        px(15, 11, 2, 10, '#5f8f41');
-        outlineRect(11, 7, 10, 6, '#ff9bcc');
-        px(14, 9, 4, 2, '#ffd77c');
+        px(23, 15, 2, 14, '#5f8f41');
+        outlineRound(16, 10, 14, 8, '#ff9bcc');
+        px(21, 13, 6, 3, '#ffd77c');
       } else {
-        outlineRect(10, 9, 12, 11, color);
+        outlineRound(16, 11, 16, 15, color);
       }
       break;
     case 'frame':
-      outlineRect(8, 6, 16, 18, '#6e4d3a');
-      px(10, 8, 12, 14, '#f5efe3');
-      px(12, 10, 4, 4, color);
-      px(16, 14, 4, 4, shade(color, -18));
+      outlineRect(13, 9, 22, 24, '#6e4d3a');
+      px(16, 12, 16, 18, '#f5efe3');
+      px(18, 14, 6, 6, color);
+      px(24, 20, 6, 6, shade(color, -18));
       break;
     case 'neon':
-      outlineRect(7, 8, 18, 12, '#262241');
-      px(10, 11, 4, 2, light);
-      px(15, 11, 2, 6, light);
-      px(18, 11, 4, 2, light);
-      px(18, 15, 4, 2, light);
+      outlineRect(10, 12, 28, 16, '#262241');
+      px(15, 17, 6, 2, light);
+      px(22, 17, 2, 8, light);
+      px(26, 17, 6, 2, light);
+      px(26, 23, 6, 2, light);
+      px(13, 15, 20, 1, '#ffffff');
       break;
     case 'projector':
-      outlineRect(11, 16, 10, 8, '#363d56');
-      px(14, 18, 3, 3, '#90d7ff');
-      px(21, 17, 6, 4, shade(color, 25));
+      floorShadow(12, 39, 18, 3);
+      outlineRect(16, 25, 12, 9, '#363d56');
+      px(20, 28, 4, 3, '#90d7ff');
+      px(28, 26, 10, 5, shade(color, 25));
       break;
     case 'window':
-      outlineRect(8, 6, 16, 18, '#a86f54');
-      px(10, 8, 12, 14, '#bfe3ff');
-      px(15, 8, 1, 14, '#f0f5ff');
-      px(10, 15, 12, 1, '#f0f5ff');
+      outlineRect(12, 8, 24, 26, '#a86f54');
+      px(15, 11, 18, 20, glass);
+      px(23, 11, 2, 20, '#f0f5ff');
+      px(15, 20, 18, 2, '#f0f5ff');
+      px(17, 13, 14, 4, '#ffffff');
       break;
     case 'portal':
-      outlineRect(10, 4, 12, 22, '#4a3b65');
-      px(12, 6, 8, 18, '#8d66ff');
-      px(13, 8, 6, 14, '#b7a7ff');
+      outlineRect(15, 6, 18, 31, '#4a3b65');
+      px(18, 9, 12, 25, '#8d66ff');
+      px(20, 12, 8, 18, '#b7a7ff');
       break;
     case 'aquarium':
-      outlineRect(5, 11, 22, 12, '#8f98af');
-      px(7, 13, 18, 8, '#79d7ff');
-      px(10, 17, 4, 2, '#ffbf52');
-      px(18, 16, 4, 2, '#72d07a');
-      px(8, 23, 2, 4, '#7f8598');
-      px(22, 23, 2, 4, '#7f8598');
+      floorShadow(7, 39, 32, 4);
+      outlineRect(8, 18, 28, 14, '#8f98af');
+      px(11, 21, 22, 8, '#79d7ff');
+      px(15, 25, 5, 2, '#ffbf52');
+      px(25, 24, 4, 2, '#72d07a');
+      leg(12, 32, 8);
+      leg(30, 32, 8);
       break;
     case 'fireplace':
-      outlineRect(5, 12, 22, 13, '#a16242');
-      px(10, 16, 12, 6, '#2b2235');
-      px(12, 17, 8, 4, '#ff9548');
+      floorShadow(6, 39, 30, 4);
+      outlineRect(8, 18, 28, 17, '#a16242');
+      px(15, 23, 14, 8, '#2b2235');
+      px(18, 24, 8, 5, '#ff9548');
+      px(17, 20, 10, 2, '#c98f5c');
       break;
     case 'record':
-      outlineRect(9, 14, 14, 10, '#434d71');
-      px(11, 16, 7, 6, '#1c2032');
-      px(17, 17, 4, 2, '#f7b455');
+      floorShadow(13, 39, 20, 4);
+      outlineRect(16, 23, 16, 11, '#434d71');
+      px(19, 26, 8, 5, '#1c2032');
+      px(27, 27, 4, 2, '#f7b455');
+      px(18, 21, 12, 2, '#7d86b2');
       break;
     case 'books':
-      outlineRect(8, 19, 14, 4, '#6aa4ff');
-      outlineRect(10, 15, 12, 4, '#ff8c6f');
-      outlineRect(12, 11, 10, 4, '#7bd08c');
+      floorShadow(13, 39, 18, 3);
+      outlineRect(13, 29, 16, 5, '#6aa4ff');
+      outlineRect(16, 24, 14, 5, '#ff8c6f');
+      outlineRect(19, 19, 12, 5, '#7bd08c');
       break;
     case 'mug':
-      outlineRect(12, 15, 8, 9, color);
-      px(20, 17, 3, 5, '#f3f6ff');
+      floorShadow(16, 39, 12, 3);
+      outlineRect(18, 24, 11, 12, color);
+      px(29, 27, 4, 6, cream);
+      px(20, 26, 7, 2, shade(color, 18));
       break;
     case 'pillows':
-      outlineRect(7, 16, 10, 8, base);
-      outlineRect(16, 14, 10, 9, '#a798ff');
+      floorShadow(10, 39, 24, 4);
+      outlineRound(10, 24, 13, 10, base);
+      outlineRound(22, 21, 14, 12, '#a798ff');
       break;
     case 'blanket':
-      outlineRect(5, 15, 22, 9, color);
-      px(7, 17, 18, 3, shade(color, 18));
+      floorShadow(8, 39, 28, 4);
+      outlineRect(8, 23, 28, 11, color);
+      px(11, 26, 22, 4, shade(color, 18));
+      px(10, 33, 24, 1, '#dbc7ff');
       break;
     case 'robot':
-      outlineRect(11, 9, 10, 12, silver);
-      px(13, 12, 2, 2, '#5a6887');
-      px(17, 12, 2, 2, '#5a6887');
-      px(14, 17, 4, 2, '#6dd0ff');
-      px(14, 5, 4, 2, '#5d6a86');
-      px(12, 21, 2, 5, '#707892');
-      px(18, 21, 2, 5, '#707892');
+      floorShadow(14, 39, 18, 4);
+      outlineRect(18, 14, 14, 16, silver);
+      px(21, 18, 3, 3, '#5a6887');
+      px(26, 18, 3, 3, '#5a6887');
+      px(22, 24, 6, 3, '#6dd0ff');
+      px(22, 10, 6, 2, '#5d6a86');
+      leg(20, 30, 10);
+      leg(28, 30, 10);
       break;
     default:
-      outlineRect(8, 10, 16, 14, base);
+      floorShadow(12, 39, 24, 4);
+      outlineRect(14, 18, 20, 16, base);
       break;
   }
 
@@ -567,8 +675,12 @@ const PropActor: React.FC<PropActorProps> = ({
     const t = clock.elapsedTime;
     const idle = itemIdleOffset(item.idle, t + gx * 0.19 + gy * 0.13);
     const s = item.scale || 1;
-    const targetScale = dragging ? s * 1.05 : s;
-    groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.18);
+    // Premium soft scale spring
+    const scaleTarget = dragging ? s * 1.1 : selected ? s * 1.05 : s;
+    groupRef.current.scale.x = THREE.MathUtils.lerp(groupRef.current.scale.x, scaleTarget, 0.12);
+    groupRef.current.scale.y = THREE.MathUtils.lerp(groupRef.current.scale.y, scaleTarget, 0.12);
+    groupRef.current.scale.z = THREE.MathUtils.lerp(groupRef.current.scale.z, scaleTarget, 0.12);
+
     if (isWallMounted) {
       groupRef.current.position.set(wallX, wallY + idle.y * 0.4, wallZ);
       groupRef.current.rotation.set(0, idle.r * 0.1, 0);
@@ -577,6 +689,7 @@ const PropActor: React.FC<PropActorProps> = ({
       groupRef.current.rotation.set(0, baseRotation + idle.r, 0);
     }
   });
+
 
   const shadowW = Math.max(0.72, item.footprint[0] * 0.8);
   const shadowH = Math.max(0.62, item.footprint[1] * 0.75);
@@ -656,7 +769,7 @@ interface RoomScene3DProps {
   onDragCommit: () => void;
 }
 
-export const RoomScene3D: React.FC<RoomScene3DProps> = ({
+ export const RoomScene3D: React.FC<RoomScene3DProps> = ({
   room,
   catalogById,
   selectedId,
@@ -666,6 +779,24 @@ export const RoomScene3D: React.FC<RoomScene3DProps> = ({
 }) => {
   const [webglReady, setWebglReady] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [bursts, setBursts] = useState<{ id: string; pos: [number, number, number] }[]>([]);
+
+  const triggerBurst = useCallback((pos: [number, number, number]) => {
+    const id = Math.random().toString(36);
+    setBursts(prev => [...prev.slice(-3), { id, pos }]);
+    setTimeout(() => setBursts(prev => prev.filter(b => b.id !== id)), 1200);
+  }, []);
+
+  const handleSelectWithEffect = (id: string | null) => {
+    onSelect(id);
+    if (id) {
+       const entry = room.placedItems.find(it => it.uid === id);
+       if (entry) {
+         const [x, , z] = gridToWorld(percentToGrid(entry).gx, percentToGrid(entry).gy);
+         triggerBurst([x, 1, z]);
+       }
+    }
+  };
 
   useEffect(() => {
     setWebglReady(hasWebGLSupport());
@@ -684,34 +815,34 @@ export const RoomScene3D: React.FC<RoomScene3DProps> = ({
   const ambientPreset = useMemo(() => {
     if (room.ambient === 'cool') {
       return {
-        background: '#f5dcc9',
-        ambientColor: '#eef5ff',
-        ambientIntensity: 1.15,
-        dirColor: '#d6e8ff',
-        dirIntensity: 1.05,
-        fillColor: '#b3daff',
-        fillIntensity: 0.48,
+        background: '#eef4fb',
+        ambientColor: '#f3f8ff',
+        ambientIntensity: 1.24,
+        dirColor: '#dcebff',
+        dirIntensity: 1.12,
+        fillColor: '#b7d8ff',
+        fillIntensity: 0.56,
       };
     }
     if (room.ambient === 'rainbow') {
       return {
-        background: '#f6d7c4',
-        ambientColor: '#fff1fb',
-        ambientIntensity: 1.18,
-        dirColor: '#ffe0ad',
-        dirIntensity: 1.08,
-        fillColor: '#b8ffd6',
-        fillIntensity: 0.5,
+        background: '#f7edf7',
+        ambientColor: '#fff6fd',
+        ambientIntensity: 1.24,
+        dirColor: '#ffe6bc',
+        dirIntensity: 1.12,
+        fillColor: '#c5ffe0',
+        fillIntensity: 0.56,
       };
     }
     return {
-      background: '#f6d8b8',
-      ambientColor: '#fff2df',
-      ambientIntensity: 1.12,
-      dirColor: '#ffe5bc',
-      dirIntensity: 1.04,
-      fillColor: '#ffe1b7',
-      fillIntensity: 0.46,
+      background: '#f7ede7',
+      ambientColor: '#fff6ee',
+      ambientIntensity: 1.22,
+      dirColor: '#ffe9c7',
+      dirIntensity: 1.1,
+      fillColor: '#ffe2c4',
+      fillIntensity: 0.54,
     };
   }, [room.ambient]);
 
@@ -779,29 +910,29 @@ export const RoomScene3D: React.FC<RoomScene3DProps> = ({
 
       <mesh position={[0, 0, 0]} receiveShadow>
         <boxGeometry args={[INNER_SIZE + 0.3, FLOOR_THICKNESS, INNER_SIZE + 0.3]} />
-        <meshStandardMaterial color="#45518d" roughness={0.96} metalness={0} />
+        <meshStandardMaterial color="#6f79a8" roughness={0.96} metalness={0} />
       </mesh>
       <mesh position={[0, FLOOR_TOP_Y + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[INNER_SIZE, INNER_SIZE]} />
-        <meshStandardMaterial map={floorTex} color="#6474c0" roughness={0.96} metalness={0} />
+        <meshStandardMaterial map={floorTex} color="#7482cc" roughness={0.96} metalness={0} />
       </mesh>
 
       <mesh position={[0, WALL_HEIGHT / 2 + FLOOR_TOP_Y, -INNER_SIZE / 2 - WALL_THICKNESS / 2]}>
         <boxGeometry args={[INNER_SIZE + WALL_THICKNESS * 2, WALL_HEIGHT, WALL_THICKNESS]} />
-        <meshStandardMaterial map={wallTex} color="#dccfc4" roughness={0.97} metalness={0} />
+        <meshStandardMaterial map={wallTex} color="#e6d9ce" roughness={0.97} metalness={0} />
       </mesh>
       <mesh position={[-INNER_SIZE / 2 - WALL_THICKNESS / 2, WALL_HEIGHT / 2 + FLOOR_TOP_Y, LEFT_WALL_CENTER_Z]}>
         <boxGeometry args={[WALL_THICKNESS, WALL_HEIGHT, LEFT_WALL_DEPTH]} />
-        <meshStandardMaterial map={wallTex} color="#d3c4b8" roughness={0.97} metalness={0} />
+        <meshStandardMaterial map={wallTex} color="#ddd0c6" roughness={0.97} metalness={0} />
       </mesh>
 
       <mesh position={[0, WALL_HEIGHT + FLOOR_TOP_Y + 0.05, -INNER_SIZE / 2 - WALL_THICKNESS / 2]}>
         <boxGeometry args={[INNER_SIZE + WALL_THICKNESS * 2.1, 0.1, WALL_THICKNESS + 0.04]} />
-        <meshStandardMaterial color="#bca28d" roughness={0.9} metalness={0} />
+        <meshStandardMaterial color="#d2b9a6" roughness={0.9} metalness={0} />
       </mesh>
       <mesh position={[-INNER_SIZE / 2 - WALL_THICKNESS / 2, WALL_HEIGHT + FLOOR_TOP_Y + 0.05, LEFT_WALL_CENTER_Z]}>
         <boxGeometry args={[WALL_THICKNESS + 0.04, 0.1, LEFT_WALL_DEPTH]} />
-        <meshStandardMaterial color="#bca28d" roughness={0.9} metalness={0} />
+        <meshStandardMaterial color="#d2b9a6" roughness={0.9} metalness={0} />
       </mesh>
 
       <mesh
@@ -810,9 +941,10 @@ export const RoomScene3D: React.FC<RoomScene3DProps> = ({
         onPointerMove={handlePointerPlaneMove}
         onPointerUp={stopDrag}
         onPointerDown={() => {
-          if (!draggingId) onSelect(null);
+          if (!draggingId) handleSelectWithEffect(null);
         }}
       >
+
         <planeGeometry args={[INNER_SIZE + 0.9, INNER_SIZE + 0.9]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
@@ -830,17 +962,21 @@ export const RoomScene3D: React.FC<RoomScene3DProps> = ({
           dimmed={starter}
           interactive={!starter}
           onPointerDown={handleItemPointerDown}
-          onSelect={onSelect}
+          onSelect={handleSelectWithEffect}
         />
+      ))}
+
+      {bursts.map(b => (
+        <HeartBurst key={b.id} position={b.pos} />
       ))}
 
       <ContactShadows
         position={[0, FLOOR_TOP_Y + 0.005, 0]}
-        opacity={0.18}
+        opacity={0.12}
         scale={INNER_SIZE + 0.3}
         blur={2.5}
         far={7.8}
-        color="#4a3961"
+        color="#6b5878"
       />
     </Canvas>
   );
