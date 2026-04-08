@@ -46,7 +46,7 @@ interface Particle {
   wobble: number;
 }
 
-const POOL = 2800;
+const POOL = 12000;
 const pool: Particle[] = Array.from({ length: POOL }, () => ({
   active: false, mode: 'send' as const,
   lx:0, ly:0, lz:0, vlx:0, vly:0, vlz:0,
@@ -72,31 +72,30 @@ function acquire(): Particle | null {
 // Coordinate convention: xc positive → right, yc positive → DOWN (screen).
 
 const HR   = 130;
-const STEP = 4.0;
+const STEP = 2.0;
 const FOV  = 520;
 
-// Heart shape parameters (all in px)
-const H_CX  = HR * 0.50;   // horizontal offset of bump centres
-const H_CY  = HR * 0.20;   // how far ABOVE origin the bump centres are (screen: y = −H_CY)
-const H_R   = HR * 0.56;   // radius of each bump circle
-const H_TIP = HR * 0.92;   // y-position of the bottom tip (below origin)
-const H_R2  = H_R * H_R;
+// Pure Geometric Heart Math
+// Defined via an exact set intersection of a rotated square and two perfectly tangent circles.
+// This generates the flawless iOS-style emoji heart format.
+const S = HR * 0.75; 
 
 function insideHeart(xc: number, yc: number): boolean {
-  // ── two circular bumps ──────────────────────────────────────────────────
-  const lx = xc + H_CX, ly = yc + H_CY;   // left  bump: centre (−CX, −CY)
-  const rx = xc - H_CX, ry = yc + H_CY;   // right bump: centre (+CX, −CY)
-  if (lx*lx + ly*ly <= H_R2) return true;
-  if (rx*rx + ry*ry <= H_R2) return true;
+  const x = xc;
+  const y = yc + S * 0.89; // Align physical bounding center to origin
 
-  // ── tapered body (below bump centres → tip) ──────────────────────────
-  if (yc >= -H_CY && yc <= H_TIP) {
-    // t = 0 at top of body (y = −H_CY), 1 at tip
-    const t     = (yc + H_CY) / (H_TIP + H_CY);
-    // cubic taper → smooth sides + sharp tip
-    const halfW = (H_CX + H_R) * Math.pow(1 - t, 0.80);
-    if (Math.abs(xc) <= halfW) return true;
-  }
+  // 1. Diamond test
+  if (Math.abs(x) + Math.abs(y - S) <= S) return true;
+
+  // 2. Left Circle test
+  const dxL = x - (-S/2);
+  const dyL = y - (S/2);
+  if (dxL*dxL + dyL*dyL <= (S*S)/2) return true;
+
+  // 3. Right Circle test
+  const dxR = x - (S/2);
+  const dyR = y - (S/2);
+  if (dxR*dxR + dyR*dyR <= (S*S)/2) return true;
 
   return false;
 }
@@ -104,25 +103,31 @@ function insideHeart(xc: number, yc: number): boolean {
 interface GridPt { lx: number; ly: number; lz: number; bright: number; }
 const GRID: GridPt[] = (() => {
   const pts: GridPt[] = [];
-  // Tight bounding box for the new heart shape
-  const loX = -(H_CX + H_R) * 1.04,  hiX = (H_CX + H_R) * 1.04;
-  const loY = -(H_CY + H_R) * 1.04,  hiY = H_TIP * 1.04;
+  
+  const loX = -S * 1.5, hiX = S * 1.5;
+  const loY = -S * 1.5, hiY = S * 1.5;
 
   for (let gx = loX; gx <= hiX; gx += STEP) {
     for (let gy = loY; gy <= hiY; gy += STEP) {
       if (!insideHeart(gx, gy)) continue;
 
-      // Depth: thin card shape — max ~22px at centre, tapers to near-zero at edges
-      const cx = gx, cy = gy - (H_TIP - H_CY) * 0.1;
-      const r2  = cx*cx + cy*cy;
-      const maxZ = HR * 0.17 * Math.sqrt(Math.max(0, 1 - r2 / (HR * HR * 1.1)));
-      const lz   = maxZ * rnd(0.3, 1.0) * (Math.random() < 0.5 ? 1 : -1);
+      // Distance from center for bevel map
+      const r2 = gx*gx + gy*gy;
+      const maxZ = HR * 0.12 * Math.sqrt(Math.max(0, 1 - r2 / (HR * HR * 1.50)));
+      const lz   = -maxZ * rnd(0.95, 1.05);
 
-      // Brightness: brightest near the circle outlines (gives clear edge)
-      const dLeft  = Math.sqrt((gx+H_CX)**2 + (gy+H_CY)**2);
-      const dRight = Math.sqrt((gx-H_CX)**2 + (gy+H_CY)**2);
-      const nearEdge = Math.min(Math.abs(dLeft - H_R), Math.abs(dRight - H_R));
-      const edgeBright = Math.exp(-nearEdge / (H_R * 0.40));
+      // Brightness: highlight outer shape
+      const dxL = gx - (-S/2);
+      const dyL = (gy + S * 0.89) - (S/2);
+      const dxR = gx - (S/2);
+      const dyR = (gy + S * 0.89) - (S/2);
+      
+      const rCircleSq = (S*S)/2;
+      const dL = Math.abs(dxL*dxL + dyL*dyL - rCircleSq);
+      const dR = Math.abs(dxR*dxR + dyR*dyR - rCircleSq);
+      
+      const dEdge = Math.min(dL, dR);
+      const edgeBright = Math.exp(-dEdge / (S * S * 0.15));
       const bright = 0.40 + 0.60 * edgeBright;
 
       pts.push({ lx: gx, ly: gy, lz, bright });
@@ -138,12 +143,12 @@ function easeOut(t: number) { return 1 - (1-t)*(1-t)*(1-t); }
 
 // ─────────────────────────────── dissolve timing constants ───────────────────
 
-const D_SCATTER  = 380;
-const D_FLY_IN   = 750;
-const D_HOLD     = 1350;  // 3 clear heartbeat pulses need room
-const D_FLY_BACK = 700;
+const D_SCATTER  = 350;
+const D_FLY_IN   = 1050;
+const D_HOLD     = 2000;
+const D_FLY_BACK = 900;
 const D_FADE     = 350;
-const D_TOTAL    = D_SCATTER + D_FLY_IN + D_HOLD + D_FLY_BACK + D_FADE; // 3530 ms
+const D_TOTAL    = D_SCATTER + D_FLY_IN + D_HOLD + D_FLY_BACK + D_FADE;
 
 // Fixed X-tilt for dissolve HOLD (slight forward-facing lean)
 const H_ANG_X = 0.12;
@@ -153,14 +158,21 @@ const H_COS_X = Math.cos(H_ANG_X), H_SIN_X = Math.sin(H_ANG_X);
 const BEAT_POSITIONS = [0.08, 0.40, 0.72] as const;
 
 // ── Phong lighting (computed once) ───────────────────────────────────────────
-// Light from upper-left-front
+// Main Key Light from upper-left-front
 const _lx = -0.28, _ly = -0.52, _lz = 1.00;
 const _lm = Math.sqrt(_lx*_lx + _ly*_ly + _lz*_lz);
 const LIT_X = _lx/_lm, LIT_Y = _ly/_lm, LIT_Z = _lz/_lm;
-// Blinn-Phong half-vector H = normalize(L + V), V=(0,0,1)
 const _hx = LIT_X, _hy = LIT_Y, _hz = LIT_Z + 1;
 const _hm = Math.sqrt(_hx*_hx + _hy*_hy + _hz*_hz);
 const HAL_X = _hx/_hm, HAL_Y = _hy/_hm, HAL_Z = _hz/_hm;
+
+// Warm Rim Light from lower-right-back
+const _rx = 0.85, _ry = -0.20, _rz = -0.65;
+const _rm = Math.sqrt(_rx*_rx + _ry*_ry + _rz*_rz);
+const RIM_LIT_X = _rx/_rm, RIM_LIT_Y = _ry/_rm, RIM_LIT_Z = _rz/_rm;
+const _rhx = RIM_LIT_X, _rhy = RIM_LIT_Y, _rhz = RIM_LIT_Z + 1;
+const _rhm = Math.sqrt(_rhx*_rhx + _rhy*_rhy + _rhz*_rhz);
+const RIM_HAL_X = _rhx/_rhm, RIM_HAL_Y = _rhy/_rhm, RIM_HAL_Z = _rhz/_rhm;
 
 // Global dissolve state
 let dissolveOnDone:  (() => void) | null = null;
@@ -174,7 +186,7 @@ let dissolveStart    = 0;   // timestamp of spawn
 
 let effectTs = 0;
 
-// Button colour gradient: tulika-500 (#f43f5e) → tulika-600 (#e11d48)
+// Base colour gradient perfectly matching the DOM button: tulika-500 (#f43f5e) → tulika-600 (#e11d48)
 function btnColor(bx: number, btnLeft: number, btnWidth: number): [number,number,number] {
   const t = (bx - btnLeft) / btnWidth;  // 0 (left) → 1 (right)
   const r = Math.round(244 - t*19);     // 244 → 225
@@ -190,23 +202,47 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
   dissolveOnDoneAt  = effectTs + D_SCATTER + D_FLY_IN + D_HOLD + D_FLY_BACK * 0.75;
   dissolveFired     = false;
 
-  const SPACING = 3;
-  const cx = rect.left + rect.width  / 2;
-  const cy = rect.top  + rect.height / 2;
+  const SPACING = 2;
+  const btnCx = rect.left + rect.width  / 2;
+  const btnCy = rect.top  + rect.height / 2;
+  
+  // Center of screen for the heart animation target
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2 - 40; // slight upward offset feels better
   dissolveHcx = cx;
   dissolveHcy = cy;
 
-  // Build button grid
+  // Build button grid with rounded corners to precisely match button silhouette
   const btnPts: Array<{bx: number; by: number}> = [];
+  const rad = 24; // ~1.5rem border radius
+  
+  const inRoundedRect = (x: number, y: number) => {
+    if (x < rect.left + rad && y < rect.top + rad) {
+        return (x - (rect.left + rad))**2 + (y - (rect.top + rad))**2 <= rad*rad;
+    }
+    if (x > rect.right - rad && y < rect.top + rad) {
+        return (x - (rect.right - rad))**2 + (y - (rect.top + rad))**2 <= rad*rad;
+    }
+    if (x < rect.left + rad && y > rect.bottom - rad) {
+        return (x - (rect.left + rad))**2 + (y - (rect.bottom - rad))**2 <= rad*rad;
+    }
+    if (x > rect.right - rad && y > rect.bottom - rad) {
+        return (x - (rect.right - rad))**2 + (y - (rect.bottom - rad))**2 <= rad*rad;
+    }
+    return true;
+  };
+
   for (let x = rect.left + SPACING/2; x < rect.right;  x += SPACING) {
     for (let y = rect.top  + SPACING/2; y < rect.bottom; y += SPACING) {
-      btnPts.push({ bx: x, by: y });
+      if (inRoundedRect(x, y)) {
+        btnPts.push({ bx: x, by: y });
+      }
     }
   }
 
   // Shuffle heart grid and assign one heart target per button particle
   const heartOrder = GRID.map((_,i) => i).sort(() => Math.random()-0.5);
-  const useCount = Math.min(btnPts.length, heartOrder.length, POOL - 10);
+  const useCount = Math.min(btnPts.length, heartOrder.length, POOL - 50);
 
   for (let i = 0; i < useCount; i++) {
     const p = acquire(); if (!p) break;
@@ -214,7 +250,7 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
     const { bx, by } = btnPts[i];
 
     // Scatter direction: outward from button centre + randomness
-    const angle = Math.atan2(by - cy, bx - cx) + rnd(-1.1, 1.1);
+    const angle = Math.atan2(by - btnCy, bx - btnCx) + rnd(-1.1, 1.1);
     const scatterDist = rnd(55, 210);
 
     p.active      = true;
@@ -233,7 +269,7 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
     p.holdEnd     = D_SCATTER + D_FLY_IN + D_HOLD;
     p.flyBackEnd  = D_SCATTER + D_FLY_IN + D_HOLD + D_FLY_BACK;
     p.lifetime    = D_TOTAL;
-    p.size        = rnd(1.8, 2.6);
+    p.size        = rnd(1.4, 2.0); // smaller for higher resolution liquid look
     p.bright      = bright;
     const [r, g, b] = btnColor(bx, rect.left, rect.width);
     p.r = r; p.g = g; p.b = b;
@@ -321,17 +357,15 @@ function dot(
 }
 
 // Solid dot — for dissolve particles on light backgrounds (source-over)
-function dotSolid(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, radius: number,
-  r: number, g: number, b: number, alpha: number,
-) {
-  ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
-  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI*2); ctx.fill();
+function dotSolid(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, r: number, g: number, b: number, a: number) {
+  // Use slightly rounded inputs to prevent blurry sub-pixel antialiasing edge artifacts,
+  // but keep sizes fractional for volumetric depth feeling.
+  ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+  ctx.fillRect(Math.floor(x - s*0.5), Math.floor(y - s*0.5), s, Math.max(1, s));
 }
 
-// Heart crimson: vibrant red — visible on both light and dark backgrounds
-const HEART_R = 218, HEART_G = 30, HEART_B = 62;
+// Heart crimson core: extreme contrast
+const HEART_R = 220, HEART_G = 15, HEART_B = 40;
 
 // ─────────────────────────────────────────────────────── component ────────────
 
@@ -509,17 +543,17 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           // Outer soft bloom
           const gR = HR * 1.35 * bScaleG;
           const g1 = ctx.createRadialGradient(dissolveHcx, dissolveHcy, 0, dissolveHcx, dissolveHcy, gR);
-          g1.addColorStop(0,    `rgba(210,15,45,${(gA*0.22).toFixed(3)})`);
-          g1.addColorStop(0.45, `rgba(170,5,25, ${(gA*0.10).toFixed(3)})`);
+          g1.addColorStop(0,    `rgba(240,20,70,${(gA*0.35).toFixed(3)})`);
+          g1.addColorStop(0.45, `rgba(180,10,40, ${(gA*0.15).toFixed(3)})`);
           g1.addColorStop(1,    'rgba(0,0,0,0)');
           ctx.fillStyle = g1;
           ctx.beginPath(); ctx.arc(dissolveHcx, dissolveHcy, gR, 0, Math.PI*2); ctx.fill();
 
-          // Tight inner hot-core glow
+          // Tight inner hot-core glow (fiery peach heart pulse)
           const gR2 = HR * 0.55 * bScaleG;
           const g2  = ctx.createRadialGradient(dissolveHcx, dissolveHcy - HR*0.15, 0, dissolveHcx, dissolveHcy, gR2);
-          g2.addColorStop(0,   `rgba(255,140,160,${(gA*0.18).toFixed(3)})`);
-          g2.addColorStop(0.5, `rgba(220,30,60, ${(gA*0.08).toFixed(3)})`);
+          g2.addColorStop(0,   `rgba(255,180,190,${(gA*0.40).toFixed(3)})`);
+          g2.addColorStop(0.5, `rgba(255,60,90, ${(gA*0.18).toFixed(3)})`);
           g2.addColorStop(1,   'rgba(0,0,0,0)');
           ctx.fillStyle = g2;
           ctx.beginPath(); ctx.arc(dissolveHcx, dissolveHcy, gR2, 0, Math.PI*2); ctx.fill();
@@ -537,7 +571,7 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
         const flyBackEnd = p.flyBackEnd;
 
         if (e < D_SCATTER) {
-          // Phase 1: button pixels scatter outward — keep button colour
+          // Phase 1: Pure linear explosion (old scatter mechanic)
           const t      = easeOut(clamp01(e / D_SCATTER));
           const px     = p.ox + p.vlx * t;
           const py     = p.oy + p.vly * t;
@@ -545,108 +579,108 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           dotSolid(ctx, px, py, p.size, p.r, p.g, p.b, fadeIn * 0.95);
 
         } else if (e < convEnd) {
-          // Phase 2: fly to heart — colour transitions button → deep crimson
+          // Phase 2: Massive fluid vortex assembling into heart
           const scx = p.ox + p.vlx;
           const scy = p.oy + p.vly;
+          
+          // easeInOut for silky smooth transitions
           const t   = eio(clamp01((e - D_SCATTER) / D_FLY_IN));
-          const hx  = p.lx + p.hcx;
-          const hy  = p.ly + p.hcy;
-          const px  = scx + (hx - scx) * t;
-          const py  = scy + (hy - scy) * t;
+          
+          const hpx = p.lx + p.hcx;
+          const hpy = p.ly + p.hcy;
+          
+          // Base linear trajectory interpolation
+          const ix = scx + (hpx - scx) * t;
+          const iy = scy + (hpy - scy) * t;
+          
+          const dx = ix - p.hcx;
+          const dy = iy - p.hcy;
+          
+          // Spatial Shear: Particles farther from the heart core drift differently mid-flight.
+          // sin(t * PI) zeros out precisely at start and end, guaranteeing perfect geometrical shapes.
+          const heartDist = Math.sqrt(p.lx * p.lx + p.ly * p.ly);
+          const shear = Math.sin(t * Math.PI) * (heartDist / 60) * 1.5;
+          
+          // 1 full fluid rotation + exact individual droplet shear
+          const swirlA = t * Math.PI * 2.0 + shear;
+
+          const cosS = Math.cos(swirlA), sinS = Math.sin(swirlA);
+          const px = p.hcx + (dx * cosS - dy * sinS);
+          const py = p.hcy + (dx * sinS + dy * cosS);
+
           const cr  = Math.round(p.r + (HEART_R - p.r) * t);
           const cg  = Math.round(p.g + (HEART_G - p.g) * t);
           const cb  = Math.round(p.b + (HEART_B - p.b) * t);
-          dotSolid(ctx, px, py, p.size, cr, cg, cb, 0.90);
+          dotSolid(ctx, px, py, p.size, cr, cg, cb, 0.95);
 
         } else if (e < holdEnd) {
           // Phase 3: HOLD — full 3-D depth, Y-oscillation, beats 3×
           const holdT = clamp01((e - convEnd) / D_HOLD);
 
-          // ── 3 heartbeat pulses ────────────────────────────────────────
-          let beatScale = 1.0;
+          // ── 3 heartbeat pulses (Aggressive fluid pump) ───────────────────
+          let pulse = 1.0;
           for (const b of BEAT_POSITIONS) {
             const dt2 = holdT - b;
-            if (dt2 >= 0 && dt2 < 0.20) {
-              const bt = dt2 / 0.20;
-              beatScale += 0.55 * Math.pow(1 - bt, 2) * Math.sin(bt * Math.PI);
+            if (dt2 >= 0 && dt2 < 0.22) {
+              const bt = dt2 / 0.22;
+              // Hard pump outward, elastic recoil inward
+              pulse += 0.85 * Math.pow(1 - bt, 3) * Math.sin(bt * Math.PI);
             }
           }
 
-          // ── Y-oscillation (0° → 22° → 0°) — gentle tilt shows depth without bloat ─
-          const angY_h  = Math.sin(holdT * Math.PI) * 0.38;
-          const cosY_h  = Math.cos(angY_h), sinY_h = Math.sin(angY_h);
+          // ── Organic Liquid Breathing ─────────
+          // Inject subtle math to make the heart slowly boil and warp like liquid
+          const ripple = Math.sin(effectTs / 500 + p.lx / 40) * 1.5; 
+          const rippleY = Math.cos(effectTs / 600 + p.ly / 40) * 1.5;
 
-          // Scale beat, keep FULL lz for real depth
-          const slx = p.lx * beatScale;
-          const sly = p.ly * beatScale;
-          const slz = p.lz * beatScale;          // ← full depth, no attenuation
+          // X-tilt only (catching the zenith lighting)
+          const slx = p.lx * pulse;
+          const sly = p.ly * pulse;
+          const slz = p.lz * pulse;
 
-          // Y-rotation → X-tilt
-          const rx0  =  slx * cosY_h + slz * sinY_h;
-          const rz0  = -slx * sinY_h + slz * cosY_h;
-          const ry_h =  sly * H_COS_X - rz0 * H_SIN_X;
-          const rz_h =  sly * H_SIN_X + rz0 * H_COS_X;
-          const rx_h =  rx0;
+          const ry_h =  (sly + rippleY) * H_COS_X - slz * H_SIN_X;
+          const rz_h =  (sly + rippleY) * H_SIN_X + slz * H_COS_X;
+          const rx_h =  slx + ripple;
 
           const ps = FOV / (FOV + rz_h);
           const sx = rx_h * ps + p.hcx;
           const sy = ry_h * ps + p.hcy;
 
-          // ── Phong lighting: position proxy as surface normal ─────────
-          // In this projection rz_h < 0 = front (closer, ps>1). Outward normal
-          // = negate position so front normals have nz>0 = face toward viewer.
+          // ── Studio Dual Lighting: glass surface normals ─────────
           const nmag = Math.sqrt(rx_h*rx_h + ry_h*ry_h + rz_h*rz_h) || 1;
           const nx = -rx_h / nmag, ny = -ry_h / nmag, nz = -rz_h / nmag;
 
-          // Lambertian diffuse
+          // Lambertian diffuse core
           const diffuse  = Math.max(0, nx*LIT_X + ny*LIT_Y + nz*LIT_Z);
-          // Blinn-Phong specular (shininess 52)
+          
+          // Main Blinn-Phong Key Specular (Diamond white punch)
           const specDot  = Math.max(0, nx*HAL_X + ny*HAL_Y + nz*HAL_Z);
-          const specular = Math.pow(specDot, 52);
-          // Combined lighting — ambient raised to 0.20 so shadow = deep crimson, never near-black
-          const lit = clamp01(0.20 + 0.70 * diffuse + 1.00 * specular);
-
-          // Color ramp: dark crimson shadow → base crimson → bright cherry highlight
-          const SHAD_R = 148, SHAD_G = 12, SHAD_B = 32;   // dark red, clearly not black
-          const LITE_R = 255, LITE_G = 70, LITE_B = 92;    // bright cherry
-          let cr: number, cg: number, cb: number;
-          if (lit < 0.5) {
-            const t = lit * 2;
-            cr = Math.round(SHAD_R + (HEART_R - SHAD_R) * t);
-            cg = Math.round(SHAD_G + (HEART_G - SHAD_G) * t);
-            cb = Math.round(SHAD_B + (HEART_B - SHAD_B) * t);
-          } else {
-            const t = (lit - 0.5) * 2;
-            cr = Math.round(HEART_R + (LITE_R - HEART_R) * t);
-            cg = Math.round(HEART_G + (LITE_G - HEART_G) * t);
-            cb = Math.round(HEART_B + (LITE_B - HEART_B) * t);
-          }
-          // Specular bloom: near-white hot spot on shiny surfaces
-          const bloom = clamp01(specular * 2.8);
-          cr = Math.min(255, Math.round(cr + (255 - cr) * bloom * 0.58));
-          cg = Math.min(255, Math.round(cg + (215 - cg) * bloom * 0.48));
-          cb = Math.min(255, Math.round(cb + (220 - cb) * bloom * 0.48));
-
-          // Rim light: warm pink glow at silhouette edges (nz≈0, front-facing only)
-          const rim = Math.pow(1 - Math.abs(nz), 4) * clamp01(nz * 12 + 0.6);
-          cr = Math.min(255, Math.round(cr + (255 - cr) * rim * 0.55));
-          cg = Math.min(255, Math.round(cg + (80  - cg) * rim * 0.40));
-          cb = Math.min(255, Math.round(cb + (100 - cb) * rim * 0.40));
+          const specular = Math.pow(specDot, 48); // Sharp glossy reflection
+          
+          // High-Ambient lighting to prevent pinks from collapsing into black/dark red
+          const AMB = 0.85;
+          const DIF = 0.25;
+          const light = Math.min(1, AMB + diffuse * DIF);
+          
+          // Pure brand color ramp based on the particle's own spawn pigment
+          // Specular highlights are mapped additively to create a glossy white sheen
+          const specAdd = Math.min(255, specular * 100 * p.bright);
+          const cr = Math.min(255, Math.round(p.r * light + specAdd));
+          const cg = Math.min(255, Math.round(p.g * light + specAdd));
+          const cb = Math.min(255, Math.round(p.b * light + specAdd));
 
           // Depth: 1=front(rz<0), 0=back(rz>0)
           const depth = clamp01((HR - rz_h) / (2 * HR));
-          // Back particles fade out — removes dark smudges from behind the heart
-          const alpha = (0.18 + 0.82 * depth) * (0.72 + p.bright * 0.28) * (0.90 + beatScale * 0.10);
-          // Size: high floor so back particles still fill the grid (no hollow gaps)
+          // Solid opacity so no dark alpha-blending artifacts appear against the app background.
+          const alpha = clamp01(0.95 + pulse * 0.05);
           const szBoost = 1 + specular * 0.38;
-          const sm = ps * (0.80 + 0.20 * depth) * (0.90 + beatScale * 0.10) * szBoost;
+          // Background particles shrink slightly for depth
+          const sm = ps * (0.80 + 0.20 * depth) * (0.90 + pulse * 0.10) * szBoost;
           dotSolid(ctx, sx, sy, p.size * sm, cr, cg, cb, alpha);
 
         } else if (e < flyBackEnd) {
-          // Phase 4: fly back — crimson → button colour
+          // Phase 4: fly back dissolving into reverse fluid swirl
           if (!p.snapped) {
-            // At holdT=1, angY_h = sin(π)*0.82 = 0 → heart face-forward again.
-            // Snap with X-tilt only, full lz.
             const ry_h = p.ly * H_COS_X - p.lz * H_SIN_X;
             const rz_h = p.ly * H_SIN_X + p.lz * H_COS_X;
             const ps   = FOV / (FOV + rz_h);
@@ -655,12 +689,31 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
             p.snapped = true;
           }
           const t  = eio(clamp01((e - holdEnd) / D_FLY_BACK));
-          const px = p.snapX + (p.ox - p.snapX) * t;
-          const py = p.snapY + (p.oy - p.snapY) * t;
+          
+          // Base linear trajectory interpolation
+          const ix = p.snapX + (p.ox - p.snapX) * t;
+          const iy = p.snapY + (p.oy - p.snapY) * t;
+
+          const dx = ix - p.hcx;
+          const dy = iy - p.hcy;
+
+          // Distance-based particle shear unspools the rigid shape into flowing particles
+          const btnDx = p.ox - p.hcx;
+          const btnDy = p.oy - p.hcy;
+          const btnDist = Math.sqrt(btnDx * btnDx + btnDy * btnDy);
+          const shear = Math.sin(t * Math.PI) * (btnDist / 120) * 2.0;
+
+          // 1 smooth reverse rotation + sheer scatter
+          const swirlA = t * Math.PI * -2.0 - shear;
+
+          const cosS = Math.cos(swirlA), sinS = Math.sin(swirlA);
+          const px = p.hcx + (dx * cosS - dy * sinS);
+          const py = p.hcy + (dx * sinS + dy * cosS);
+
           const cr = Math.round(HEART_R + (p.r - HEART_R) * t);
           const cg = Math.round(HEART_G + (p.g - HEART_G) * t);
           const cb = Math.round(HEART_B + (p.b - HEART_B) * t);
-          dotSolid(ctx, px, py, p.size, cr, cg, cb, 0.92);
+          dotSolid(ctx, px, py, p.size, cr, cg, cb, 0.98);
 
         } else {
           // Phase 5: fade at button position

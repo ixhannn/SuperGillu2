@@ -9,7 +9,7 @@ import { differenceInDays, getYear, intervalToDuration, isAfter, setYear } from 
 import { MagneticButton } from '../components/MagneticButton';
 import { HolographicCard } from '../components/HolographicCard';
 import { TiltCard } from '../components/TiltCard';
-import { ParticleHeart } from '../components/CrystalHeart';
+import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
 
 interface HomeProps {
@@ -226,13 +226,14 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [notes, setNotes] = useState<Note[]>([]);
     const [showHeartbeat, setShowHeartbeat] = useState(false);
     const [receivedHeartbeat, setReceivedHeartbeat] = useState(false);
-    const [showParticleHeart, setShowParticleHeart] = useState(false);
+    const [isDissolving, setIsDissolving] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
     const [headerOpacity, setHeaderOpacity] = useState(0);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
+    const particlesRef = useRef<HeartbeatParticlesHandle>(null);
     const heroInView = useInView(heroRef, { once: true, margin: "-100px" });
     const displayCount = useCountUp(daysTogether, heroInView);
 
@@ -369,17 +370,27 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
     const triggerReceivedHeartbeat = () => {
         setReceivedHeartbeat(true);
-        setShowParticleHeart(true);
+        if (heartbeatBtnRef.current) {
+            const rect = heartbeatBtnRef.current.getBoundingClientRect();
+            particlesRef.current?.triggerReceive(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        } else {
+            particlesRef.current?.triggerReceive(window.innerWidth / 2, window.innerHeight / 2);
+        }
         if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
         setTimeout(() => setReceivedHeartbeat(false), 2000);
     };
 
     const sendHeartbeat = () => {
-        setShowHeartbeat(true);
-        setShowParticleHeart(true);
+        if (!heartbeatBtnRef.current || isDissolving) return;
+        
+        const rect = heartbeatBtnRef.current.getBoundingClientRect();
+        setIsDissolving(true);
         if (navigator.vibrate) navigator.vibrate(50);
-        SyncService.sendSignal('HEARTBEAT');
-        setTimeout(() => setShowHeartbeat(false), 1000);
+        
+        particlesRef.current?.triggerButtonDissolve(rect, () => {
+            setIsDissolving(false);
+            SyncService.sendSignal('HEARTBEAT');
+        });
     };
 
     const toggleMyStatus = () => {
@@ -430,7 +441,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             />
 
             {/* Particle Heart — triggered on send & receive */}
-            <ParticleHeart active={showParticleHeart} onComplete={() => setShowParticleHeart(false)} originRef={heartbeatBtnRef} />
+            <HeartbeatParticles ref={particlesRef} />
             {showSurprise && surpriseContent && <SurpriseModal content={surpriseContent} onClose={() => setShowSurprise(false)} />}
 
             {/* ── HEADER ──────────────────────────────────────────────── */}
@@ -569,7 +580,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     <MagneticButton onClick={sendHeartbeat as any} strength={0.2} className="flex-1">
                         <div
                             ref={heartbeatBtnRef}
-                            className={`w-full h-full group relative bg-gradient-to-br from-tulika-500 to-tulika-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-shadow duration-500 ${receivedHeartbeat ? 'ring-2 ring-tulika-300/50 animate-glow-pulse' : ''}`}
+                            className={`w-full h-full group relative bg-gradient-to-br from-tulika-500 to-tulika-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 ${receivedHeartbeat ? 'ring-2 ring-tulika-300/50 animate-glow-pulse' : ''} ${isDissolving ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
                             style={{ boxShadow: receivedHeartbeat ? '0 4px 24px rgba(251,207,232,0.40), 0 12px 40px rgba(251,207,232,0.15)' : '0 4px 16px rgba(251,207,232,0.20), 0 12px 32px rgba(251,207,232,0.08)' }}
                         >
                             <HeartbeatRipple active={showHeartbeat} />

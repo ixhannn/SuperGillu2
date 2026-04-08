@@ -1,6 +1,7 @@
 import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
+import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
 
 // ENSURING WE STAY ON V11 FOR DATA CONTINUITY
 const DB_NAME = 'TulikaVault_v11';
@@ -1002,14 +1003,7 @@ export const StorageService = {
     },
 
     getRoomState: (): RoomState => {
-        const fallback: RoomState = {
-            placedItems: [],
-            coins: 500,
-            roomName: 'P1 Room',
-            wallpaper: 'plain',
-            floor: 'carpet',
-            ambient: 'warm',
-        };
+        const fallback: RoomState = DEFAULT_ROOM_STATE;
         try {
             const raw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('tulika_room_state');
             if (!raw) return fallback;
@@ -1023,23 +1017,35 @@ export const StorageService = {
                 z: idx,
                 placedBy: f.placedBy || '',
             }));
-            return {
+            return normalizeRoomState({
                 placedItems: Array.isArray(parsed.placedItems)
                     ? parsed.placedItems.map((it: any) => ({ ...it, itemId: LEGACY_ROOM_ITEM_MAP[it.itemId] || it.itemId || 'fluffy_couch' }))
                     : migratedPlaced,
                 coins: Number.isFinite(parsed.coins) ? Number(parsed.coins) : 500,
+                love: Number.isFinite((parsed as any).love) ? Number((parsed as any).love) : fallback.love,
+                stars: Number.isFinite((parsed as any).stars) ? Number((parsed as any).stars) : fallback.stars,
+                xp: Number.isFinite((parsed as any).xp) ? Number((parsed as any).xp) : fallback.xp,
+                roomXp: Number.isFinite((parsed as any).roomXp) ? Number((parsed as any).roomXp) : fallback.roomXp,
+                bondXp: Number.isFinite((parsed as any).bondXp) ? Number((parsed as any).bondXp) : fallback.bondXp,
                 roomName: parsed.roomName || 'P1 Room',
                 wallpaper: ROOM_WALLPAPERS.has(String(parsed.wallpaper)) ? parsed.wallpaper : 'plain',
                 floor: ROOM_FLOORS.has(String(parsed.floor)) ? parsed.floor : 'carpet',
                 ambient: ROOM_AMBIENTS.has(String(parsed.ambient)) ? parsed.ambient : 'warm',
-            };
+                lastActiveAt: (parsed as any).lastActiveAt,
+                lastIdleClaimAt: (parsed as any).lastIdleClaimAt,
+                purchaseCounts: (parsed as any).purchaseCounts,
+                upgrades: (parsed as any).upgrades,
+                daily: (parsed as any).daily,
+                stats: (parsed as any).stats,
+                unlockedThemes: (parsed as any).unlockedThemes,
+            });
         } catch {
             return fallback;
         }
     },
 
     saveRoomState: (state: RoomState, source: 'user' | 'sync' = 'user'): void => {
-        const nextState = sanitizeUserContent(state);
+        const nextState = sanitizeUserContent(normalizeRoomState(state));
         localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(nextState));
         localStorage.setItem('tulika_room_state', JSON.stringify(nextState)); // legacy key mirror
         writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, nextState);

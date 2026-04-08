@@ -210,16 +210,69 @@ export interface RoomPlacedItem {
   z?: number;
   scale?: number;
   rotation?: number;
+  purchasePrice?: number;
   placedBy: string;
+}
+
+export interface RoomUpgradeLevels {
+  creatorRig: number;
+  cozyNook: number;
+  idleEngine: number;
+  storage: number;
+  bonding: number;
+}
+
+export interface RoomDailyState {
+  streak: number;
+  bestStreak: number;
+  lastClaimDate?: string;
+  lastVisitDate?: string;
+  lastGiftDate?: string;
+  lastJointDate?: string;
+  actionsToday?: number;
+  coinsToday?: number;
+  coupleActionsToday?: number;
+  giftsToday?: number;
+  visitsToday?: number;
+  claimedTaskIds: string[];
+  claimedCollectionIds: string[];
+  taskSeedDate?: string;
+}
+
+export interface RoomRunStats {
+  actionsCompleted: number;
+  contentCreated: number;
+  cozyActions: number;
+  memoryActions: number;
+  coupleActions: number;
+  visitsCompleted: number;
+  giftsSent: number;
+  tasksCompleted: number;
+  itemsPurchased: number;
+  coinsEarned: number;
+  loveEarned: number;
+  starsEarned: number;
 }
 
 export interface RoomState {
   placedItems: RoomPlacedItem[];
   coins: number;
+  love?: number;
+  stars?: number;
+  xp?: number;
+  roomXp?: number;
+  bondXp?: number;
   roomName: string;
   wallpaper: 'plain' | 'stripes' | 'polka' | 'hearts' | 'stars' | 'wood';
   floor: 'hardwood' | 'carpet' | 'tiles' | 'cloud' | 'grass' | 'marble';
   ambient: 'warm' | 'cool' | 'rainbow';
+  lastActiveAt?: string;
+  lastIdleClaimAt?: string;
+  purchaseCounts?: Record<string, number>;
+  upgrades?: Partial<RoomUpgradeLevels>;
+  daily?: Partial<RoomDailyState>;
+  stats?: Partial<RoomRunStats>;
+  unlockedThemes?: string[];
   furniture?: RoomFurniture[]; // legacy field (migration only)
 }
 
