@@ -186,7 +186,7 @@ let dissolveStart    = 0;   // timestamp of spawn
 
 let effectTs = 0;
 
-// Base colour gradient perfectly matching the DOM button: tulika-500 (#f43f5e) → tulika-600 (#e11d48)
+// Base colour gradient perfectly matching the DOM button: lior-500 (#f43f5e) → lior-600 (#e11d48)
 function btnColor(bx: number, btnLeft: number, btnWidth: number): [number,number,number] {
   const t = (bx - btnLeft) / btnWidth;  // 0 (left) → 1 (right)
   const r = Math.round(244 - t*19);     // 244 → 225

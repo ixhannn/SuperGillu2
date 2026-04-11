@@ -6,10 +6,10 @@ configurations.all {
 }
 
 android {
-    namespace = "com.tulika.app"
+    namespace = "com.lior.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.tulika.app"
+        applicationId "com.lior.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

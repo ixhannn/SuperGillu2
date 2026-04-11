@@ -128,13 +128,13 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
     <div className="flex flex-col h-full min-h-screen">
       <ViewHeader title="Dinner Decider" onBack={() => setView('home')} variant="simple" />
 
-      <div className="flex-1 overflow-y-auto p-6 pb-32 flex flex-col items-center">
+      <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto p-6 pb-32 flex flex-col items-center">
 
         {/* The Wheel */}
         <div className="relative w-72 h-72 mb-8 mt-4">
           {/* Pointer */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 -mt-4 z-20">
-            <div className="w-0 h-0 border-l-[15px] border-l-transparent border-r-[15px] border-r-transparent border-t-[30px] border-t-tulika-600 filter drop-shadow-md"></div>
+            <div className="w-0 h-0 border-l-[15px] border-l-transparent border-r-[15px] border-r-transparent border-t-[30px] border-t-lior-600 filter drop-shadow-md"></div>
           </div>
 
           {/* Spinning SVG */}
@@ -190,7 +190,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
 
         {/* Winner Display */}
         {winner && (
-          <div className="mb-6 bg-tulika-500 text-white px-6 py-4 rounded-2xl animate-elastic-pop text-center shadow-lg shadow-tulika-500/30 ring-1 ring-tulika-200">
+          <div className="mb-6 bg-lior-500 text-white px-6 py-4 rounded-2xl animate-elastic-pop text-center shadow-lg shadow-lior-500/30 ring-1 ring-lior-200">
             <p className="text-xs uppercase font-bold opacity-90 mb-1 tracking-wider">We are eating</p>
             <p className="text-2xl font-serif font-bold">{winner}! 🍽️</p>
           </div>
@@ -199,7 +199,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
         <button
           onClick={startSpin}
           disabled={isSpinning || options.length < 2}
-          className="w-full max-w-xs bg-tulika-500 text-white py-4 rounded-2xl font-bold spring-press transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8 shadow-xl shadow-tulika-500/20 ring-1 ring-tulika-200"
+          className="w-full max-w-xs bg-lior-500 text-white py-4 rounded-2xl font-bold spring-press transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8 shadow-xl shadow-lior-500/20 ring-1 ring-lior-200"
         >
           <RotateCw size={20} className={isSpinning ? 'animate-spin' : ''} />
           {isSpinning ? 'Spinning...' : 'Spin the Wheel'}
@@ -214,12 +214,12 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
               onChange={(e) => setNewOption(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
               placeholder="Add food option..."
-              className="flex-1 shadow-inner rounded-xl px-4 py-3 focus:ring-2 focus:ring-tulika-500/50 outline-none"
+              className="flex-1 shadow-inner rounded-xl px-4 py-3 focus:ring-2 focus:ring-lior-500/50 outline-none"
               style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
             />
             <button
               onClick={handleAdd}
-              className="text-tulika-500 p-3 rounded-xl shadow-sm"
+              className="text-lior-500 p-3 rounded-xl shadow-sm"
               style={{ background: 'rgba(var(--theme-particle-1-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.20)' }}
             >
               <Plus size={24} />
@@ -238,7 +238,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
             {options.length === 0 && (
               <div className="flex flex-col items-center text-center py-8 animate-fade-in glass-card rounded-[2rem] mt-4 shadow-sm" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
                 <div className="relative mb-4">
-                  <div className="absolute inset-0 bg-tulika-100 rounded-full blur-xl" />
+                  <div className="absolute inset-0 bg-lior-100 rounded-full blur-xl" />
                   <div className="relative p-4 rounded-full shadow-inner" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
                     <Utensils size={28} style={{ animation: 'wiggle-spring 2s ease-in-out infinite', color: 'var(--color-text-secondary)' }} />
                   </div>

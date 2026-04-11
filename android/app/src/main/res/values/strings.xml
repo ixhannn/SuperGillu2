@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Tulika</string>
-    <string name="title_activity_main">Tulika</string>
-    <string name="package_name">com.tulika.app</string>
-    <string name="custom_url_scheme">com.tulika.app</string>
+    <string name="app_name">Lior</string>
+    <string name="title_activity_main">Lior</string>
+    <string name="package_name">com.lior.app</string>
+    <string name="custom_url_scheme">com.lior.app</string>
 </resources>

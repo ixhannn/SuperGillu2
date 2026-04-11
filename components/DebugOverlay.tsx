@@ -116,7 +116,7 @@ export const DebugOverlay: React.FC = () => {
     >
       {/* Header */}
       <div className="flex justify-between items-center mb-2">
-        <span style={{ color: '#94a3b8' }}>TULIKA DEBUG</span>
+        <span style={{ color: '#94a3b8' }}>LIOR DEBUG</span>
         <span style={{ color: TIER_COLOR[tier], fontWeight: 'bold' }}>{tier.toUpperCase()}</span>
       </div>
 

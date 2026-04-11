@@ -1,6 +1,8 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigation } from '../App';
+import { motion } from 'framer-motion';
+import { PREMIUM_SPRING } from '../utils/constants';
 
 interface ViewHeaderProps {
     title: string;
@@ -23,34 +25,47 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
     const handleBack = onBack ?? goBack;
 
     return (
-        <div className={`view-header ${(borderless || variant === 'transparent') ? 'view-header--borderless' : ''} flex items-center justify-between`}>
-            <button
-                onClick={handleBack}
+        <div className={`view-header ${(borderless || variant === 'transparent') ? 'view-header--borderless' : ''} flex items-center justify-between px-2`}>
+            <motion.button
+                initial={{ x: -8, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+                onClick={(e) => { e.stopPropagation(); handleBack(); }}
                 aria-label="Go back"
-                className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2 spring-press"
+                className="p-3 -ml-1 min-h-[48px] min-w-[48px] flex items-center justify-center cursor-pointer rounded-full active:bg-black/5 transition-colors spring-press"
                 style={{ color: 'var(--color-text-secondary)' }}
             >
-                <ArrowLeft size={24} />
-            </button>
+                <ArrowLeft size={24} strokeWidth={2.2} />
+            </motion.button>
 
             {variant === 'centered' ? (
-                <div className="text-center absolute left-1/2 -translate-x-1/2 pointer-events-none">
-                    <h2 className="font-serif font-bold text-2xl" style={{ color: 'var(--color-text-primary)' }}>{title}</h2>
+                <motion.div 
+                    initial={{ y: 5, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={PREMIUM_SPRING}
+                    className="text-center absolute left-1/2 -translate-x-1/2 pointer-events-none w-max max-w-[65%]"
+                >
+                    <h2 className="text-xl font-serif font-bold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>{title}</h2>
                     {subtitle && (
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-500">{subtitle}</p>
+                        <p className="text-micro-bold mt-0.5" style={{ color: 'var(--color-pink-deep)' }}>{subtitle}</p>
                     )}
-                </div>
+                </motion.div>
             ) : (
-                <div className="flex-1 ml-2">
-                    <h2 className="font-serif font-bold text-xl" style={{ color: 'var(--color-text-primary)' }}>{title}</h2>
+                <motion.div 
+                    initial={{ x: 10, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={PREMIUM_SPRING}
+                    className="flex-1 ml-3"
+                >
+                    <h2 className="text-xl font-serif font-bold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>{title}</h2>
                     {subtitle && (
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-tulika-500">{subtitle}</p>
+                        <p className="text-micro-bold mt-0.5" style={{ color: 'var(--color-pink-deep)' }}>{subtitle}</p>
                     )}
-                </div>
+                </motion.div>
             )}
 
             <div className="flex items-center gap-2">
-                {rightSlot || <div className="w-[44px]" />}
+                {rightSlot || <div className="w-[48px]" />}
             </div>
         </div>
     );

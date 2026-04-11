@@ -3,7 +3,7 @@
  *
  * Flow:
  *   1. User A calls createInvite() → 8-char code stored in `pair_invites`.
- *   2. User A displays the code as a QR (encoded as "TULIKA:<code>").
+ *   2. User A displays the code as a QR (encoded as "LIOR:<code>").
  *   3. User B scans the QR → calls claimInvite(code).
  *   4. On success both sides save each other's userId + name to CoupleProfile.
  */
@@ -23,7 +23,7 @@ export type ClaimResult =
   | { ok: false; error: ClaimError };
 
 /** QR payload prefix — lets the scanner ignore unrelated QR codes. */
-export const QR_PREFIX = 'TULIKA:';
+export const QR_PREFIX = 'LIOR:';
 
 export const PairingService = {
   async getActiveInvite(): Promise<PairInvite | null> {
@@ -102,7 +102,7 @@ export const PairingService = {
     const { data: { user }, error: authErr } = await sb.auth.getUser();
     if (authErr || !user) return { ok: false, error: 'network' };
 
-    const code = raw.replace(/^TULIKA:/i, '').replace(/\s+/g, '').trim().toUpperCase().slice(0, 8);
+    const code = raw.replace(/^LIOR:/i, '').replace(/\s+/g, '').trim().toUpperCase().slice(0, 8);
     if (code.length !== 8) return { ok: false, error: 'invalid' };
 
     const { data, error } = await sb.rpc('claim_pair_invite', { invite_code: code });

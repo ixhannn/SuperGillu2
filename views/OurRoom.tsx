@@ -12,8 +12,10 @@ import {
   Share2,
   Sparkles,
   Trash2,
+  Users,
   X,
 } from 'lucide-react';
+import { SectionDivider } from './Home';
 import { CoupleRoomState, ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
@@ -55,11 +57,11 @@ const loadRoom = (): CoupleRoomState => StorageService.getCoupleRoomState();
 const saveRoom = (room: CoupleRoomState): void => StorageService.saveCoupleRoomState(room);
 
 const panelStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.76)',
-  backdropFilter: 'blur(28px) saturate(145%)',
-  WebkitBackdropFilter: 'blur(28px) saturate(145%)',
-  border: '1px solid rgba(255,255,255,0.92)',
-  boxShadow: '0 18px 44px rgba(87,58,80,0.10)',
+  background: 'var(--theme-surface-glass)',
+  backdropFilter: 'blur(24px)',
+  WebkitBackdropFilter: 'blur(24px)',
+  border: '1.5px solid var(--theme-border-crisp)',
+  boxShadow: 'var(--shadow-sm)',
 };
 
 const softText = 'var(--color-text-secondary, #8D7E87)';
@@ -507,12 +509,12 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   const handleShare = async () => {
     const shareText = `${room.roomName} is where ${profile.myName} and ${profile.partnerName} keep leaving notes, little gifts, and new memories for each other.`;
     try {
-      if (typeof navigator !== 'undefined' && 'share' in navigator) {
+      if (typeof navigator !== 'undefined' && navigator.share) {
         await navigator.share({
           title: room.roomName,
           text: shareText,
         });
-      } else if (navigator.clipboard?.writeText) {
+      } else if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(shareText);
         pushToast('Room story copied');
       } else {
@@ -535,14 +537,14 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
 
   return (
     <div className="min-h-full px-4 pb-8 pt-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 mb-6">
         <motion.button
           whileTap={{ scale: 0.96 }}
           onClick={() => setView('us')}
-          className="h-11 w-11 shrink-0 rounded-[1.2rem] flex items-center justify-center"
+          className="h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center glass-card-premium shadow-none ring-1 ring-inset ring-white/10"
           style={panelStyle}
         >
-          <ArrowLeft size={18} style={{ color: strongText }} />
+          <ArrowLeft size={20} className="text-gray-800" />
         </motion.button>
 
         <div className="min-w-0 flex-1 text-center px-1">
@@ -559,71 +561,70 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                 }
               }}
               autoFocus
-              className="mx-auto w-full max-w-[220px] rounded-2xl border border-white/90 bg-white/90 px-3 py-2 text-center text-sm font-semibold outline-none"
-              style={{ color: strongText }}
+              className="mx-auto w-full max-w-[240px] rounded-2xl border-none glass-card-premium px-4 py-2.5 text-center text-lg font-bold text-gray-800 outline-none ring-2 ring-lior-400/30"
             />
           ) : (
-            <button onClick={() => setEditingName(true)} className="mx-auto block max-w-full">
-              <p className="truncate text-[1rem] font-semibold tracking-[0.02em]" style={{ color: strongText }}>
+            <button onClick={() => setEditingName(true)} className="mx-auto block max-w-full group">
+              <h1 className="truncate text-2xl font-serif font-bold text-gray-800 leading-tight group-active:scale-95 transition-transform">
                 {room.roomName}
-              </p>
-              <p className="mt-1 text-[0.74rem] font-medium" style={{ color: softText }}>
-                {profile.myName} and {profile.partnerName}
+              </h1>
+              <p className="text-micro-bold text-gray-400 mt-0.5 opacity-60">
+                {profile.myName} & {profile.partnerName}
               </p>
             </button>
           )}
         </div>
 
         <div
-          className="shrink-0 rounded-[1.2rem] px-3 py-2.5 text-right"
+          className="shrink-0 rounded-2xl px-4 py-2.5 text-right glass-card-premium shadow-none ring-1 ring-inset ring-white/10"
           style={panelStyle}
         >
-          <p className="text-[0.62rem] font-semibold uppercase tracking-[0.22em]" style={{ color: softText }}>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 opacity-60">
             Decor
           </p>
-          <p className="mt-1 text-[0.84rem] font-semibold" style={{ color: strongText }}>
+          <p className="text-sm font-bold text-gray-800">
             {room.placedItems.length}/{MAX_PLACED_ITEMS}
           </p>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <div className="rounded-[1.35rem] px-4 py-3" style={panelStyle}>
-          <div className="flex items-center gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="rounded-3xl p-5 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
+          <div className="flex items-center gap-2 mb-2">
             <div
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ background: partnerPresent ? '#10b981' : '#f59e0b', boxShadow: partnerPresent ? '0 0 0 4px rgba(16,185,129,0.12)' : '0 0 0 4px rgba(245,158,11,0.12)' }}
+              className={`h-2.5 w-2.5 rounded-full ${partnerPresent ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}
+              style={{ boxShadow: partnerPresent ? '0 0 10px rgba(34,197,94,0.4)' : 'none' }}
             />
-            <p className="text-[0.77rem] font-semibold" style={{ color: strongText }}>
-              {partnerPresent ? `${profile.partnerName} is here` : `${togetherDays} days together`}
+            <p className="text-xs font-bold text-gray-800">
+              {partnerPresent ? `${profile.partnerName} inside` : `${togetherDays} Days`}
             </p>
           </div>
-          <p className="mt-1 text-[0.68rem]" style={{ color: softText }}>
-            {partnerPresent ? 'Both of you are in the room right now.' : 'Your shared place keeps growing with you.'}
+          <p className="text-[11px] font-medium text-gray-400 leading-tight opacity-80">
+            {partnerPresent ? 'They are currently in the room.' : 'The time you have spent together.'}
           </p>
         </div>
 
-        <div className="rounded-[1.35rem] px-4 py-3" style={panelStyle}>
-          <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-            Recent touch
+        <div className="rounded-3xl p-5 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 opacity-60">
+            Last Activity
           </p>
-          <p className="mt-1 text-[0.77rem] font-semibold leading-snug" style={{ color: strongText }}>
-            {remoteActivity || (room.lastActorName ? `${room.lastActorName} ${room.lastActionText || 'updated the room'}` : 'The room is ready for your next little touch.')}
+          <p className="text-xs font-bold text-gray-800 leading-snug truncate">
+            {remoteActivity || (room.lastActorName ? `${room.lastActorName} ${room.lastActionText || 'updated'}` : 'Start building...')}
           </p>
-          <p className="mt-1 text-[0.68rem]" style={{ color: softText }}>
-            {room.lastTouchedAt ? formatRelativeTime(room.lastTouchedAt) : 'Waiting for the next memory'}
+          <p className="mt-1 text-[10px] font-medium text-lior-400">
+            {room.lastTouchedAt ? formatRelativeTime(room.lastTouchedAt) : 'Freshly created'}
           </p>
         </div>
       </div>
 
       <div
-        className="relative mt-4 overflow-hidden rounded-[2rem]"
+        className="relative mt-5 overflow-hidden rounded-[2.5rem] glass-card-premium border-none shadow-2xl ring-1 ring-inset ring-white/20"
         style={{
           ...panelStyle,
-          minHeight: '420px',
-          height: '56vh',
-          maxHeight: '620px',
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.86) 0%, rgba(255,245,248,0.72) 100%)',
+          minHeight: '440px',
+          height: '58vh',
+          maxHeight: '640px',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,245,248,0.85) 100%)',
         }}
       >
         <div className="absolute inset-0">
@@ -640,27 +641,30 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            background: 'linear-gradient(180deg, rgba(255,248,250,0.24) 0%, rgba(255,248,250,0) 18%, rgba(255,241,245,0.18) 100%)',
+            background: 'radial-gradient(circle at 50% 20%, rgba(255,255,255,0.4) 0%, transparent 70%)',
           }}
         />
 
         <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
-          <div className="max-w-[78%] rounded-[1.2rem] px-3.5 py-2.5" style={panelStyle}>
-            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em]" style={{ color: softText }}>
-              Our place
+          <div className="max-w-[80%] rounded-2xl px-4 py-3 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 opacity-60">
+              Cozy Haven
             </p>
-            <p className="mt-1 text-[0.8rem] font-medium leading-snug" style={{ color: strongText }}>
-              {selectedItemName ? `Selected: ${selectedItemName}` : 'Drag to decorate. Tap to select, rotate, or remove.'}
+            <p className="mt-0.5 text-xs font-bold text-gray-800 leading-snug">
+              {selectedItemName ? `Active: ${selectedItemName}` : 'Tap objects to move or rotate'}
             </p>
           </div>
 
           {(partnerNotes.length > 0 || unopenedGifts.length > 0) && (
-            <div className="rounded-[1.2rem] px-3 py-2.5 text-right" style={panelStyle}>
-              <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em]" style={{ color: softText }}>
-                For you
-              </p>
-              <p className="mt-1 text-[0.8rem] font-semibold" style={{ color: strongText }}>
-                {partnerNotes.length > 0 ? `${partnerNotes.length} note${partnerNotes.length === 1 ? '' : 's'}` : `${unopenedGifts.length} gift${unopenedGifts.length === 1 ? '' : 's'}`}
+            <div className="rounded-2xl px-3 py-2.5 text-right glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
+              <div className="flex items-center gap-1.5 justify-end">
+                 <div className="w-1.5 h-1.5 rounded-full bg-lior-500 animate-ping" />
+                 <p className="text-[10px] font-bold text-lior-500 uppercase tracking-widest">
+                   Alerts
+                 </p>
+              </div>
+              <p className="mt-0.5 text-xs font-bold text-gray-800">
+                {partnerNotes.length + unopenedGifts.length} New
               </p>
             </div>
           )}
@@ -736,63 +740,64 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
         ))}
       </div>
 
-      <div className="mt-4 grid gap-3">
-        <div className="rounded-[1.6rem] p-4" style={panelStyle}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-                For each other
-              </p>
-              <p className="mt-1 text-[0.92rem] font-semibold" style={{ color: strongText }}>
-                {latestPartnerNote
-                  ? `${profile.partnerName} left you a note`
-                  : latestGiftForMe
-                    ? `${profile.partnerName} left you a gift`
-                    : 'Leave something thoughtful in the room today'}
-              </p>
+      <div className="mt-6">
+        <SectionDivider label="For Each Other" />
+        <div className="grid gap-4">
+          <div className="rounded-[2rem] p-6 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-gray-800 mb-1">
+                  {latestPartnerNote
+                    ? `Note from ${profile.partnerName}`
+                    : latestGiftForMe
+                      ? `Gift from ${profile.partnerName}`
+                      : 'Create a Moment'}
+                </p>
+                <p className="text-[11px] font-medium text-gray-400 leading-relaxed opacity-80">
+                  {latestPartnerNote?.text ||
+                    latestGiftForMe?.message ||
+                    'Little notes and gifts build the soul of this shared room.'}
+                </p>
+              </div>
+              {(latestPartnerNote || latestGiftForMe) && (
+                <button
+                  onClick={() => setActiveModal(latestGiftForMe ? 'gift' : 'note')}
+                  className="rounded-full px-4 py-2 text-[10px] font-bold bg-lior-50 text-lior-500 ring-1 ring-lior-100 active:scale-90 transition-transform"
+                >
+                  OPEN
+                </button>
+              )}
             </div>
             {(latestPartnerNote || latestGiftForMe) && (
-              <button
-                onClick={() => setActiveModal(latestGiftForMe ? 'gift' : 'note')}
-                className="rounded-full px-3 py-1.5 text-[0.68rem] font-semibold"
-                style={{ background: 'rgba(236,72,153,0.10)', color: '#db2777' }}
-              >
-                Open
-              </button>
+              <div className="mt-4 flex items-center gap-3">
+                <div className="flex -space-x-2">
+                   <div className="w-6 h-6 rounded-full bg-lior-100 flex items-center justify-center text-[10px] ring-2 ring-white">👩🏻</div>
+                   <div className="w-6 h-6 rounded-full bg-lior-50 flex items-center justify-center text-[10px] ring-2 ring-white">👨🏻</div>
+                </div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{room.gifts.length} Gifts sent</span>
+              </div>
             )}
           </div>
-          <p className="mt-2 text-[0.76rem] leading-relaxed" style={{ color: softText }}>
-            {latestPartnerNote?.text ||
-              latestGiftForMe?.message ||
-              'Notes, little gifts, and room changes all show up here so the space keeps feeling alive.'}
-          </p>
-          <div className="mt-3 flex items-center gap-3 text-[0.68rem]" style={{ color: softText }}>
-            <span>{partnerNotes.length} notes</span>
-            <span>{room.gifts.length} gifts</span>
-            <span>{room.placedItems.length} decor pieces</span>
-          </div>
-        </div>
 
-        {upcomingMilestones[0] && (
-          <div className="rounded-[1.6rem] p-4" style={panelStyle}>
-            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-              Next meaningful unlock
-            </p>
-            <div className="mt-2 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[0.92rem] font-semibold" style={{ color: strongText }}>
-                  {upcomingMilestones[0].title}
-                </p>
-                <p className="mt-1 text-[0.76rem] leading-relaxed" style={{ color: softText }}>
-                  {upcomingMilestones[0].description}
-                </p>
+          {upcomingMilestones[0] && (
+            <div className="rounded-[2rem] p-6 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
+              <div className="flex items-center justify-between mb-4">
+                 <p className="text-[10px] font-bold uppercase tracking-widest text-lior-500">
+                    Growth Milestone
+                 </p>
+                 <div className="px-2.5 py-1 rounded-full bg-gray-50 text-[10px] font-black tracking-widest text-gray-500 ring-1 ring-gray-100 uppercase">
+                    {getMilestoneSubtitle(upcomingMilestones[0], room, profile)}
+                 </div>
               </div>
-              <div className="rounded-full px-3 py-1.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(139,92,246,0.10)', color: '#7c3aed' }}>
-                {getMilestoneSubtitle(upcomingMilestones[0], room, profile)}
-              </div>
+              <p className="text-sm font-bold text-gray-800 mb-1">
+                {upcomingMilestones[0].title}
+              </p>
+              <p className="text-[11px] font-medium text-gray-400 leading-relaxed opacity-80">
+                {upcomingMilestones[0].description}
+              </p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -855,7 +860,7 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                   </motion.button>
                 </div>
 
-                <div className="max-h-[65vh] overflow-y-auto px-5 pb-5" style={{ scrollbarWidth: 'none' }}>
+                <div data-lenis-prevent className="lenis-inner max-h-[65vh] overflow-y-auto px-5 pb-5" style={{ scrollbarWidth: 'none' }}>
                   {activeModal === 'decorate' && (
                     <div className="space-y-4">
                       <div className="rounded-[1.35rem] p-4" style={{ background: 'rgba(255,247,250,0.9)', border: '1px solid rgba(236,72,153,0.10)' }}>
@@ -874,7 +879,7 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                         </div>
                       </div>
 
-                      <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                      <div data-lenis-prevent className="lenis-inner flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
                         {(Object.keys(CATEGORY_LABELS) as RoomCategory[]).map((cat) => (
                           <button
                             key={cat}

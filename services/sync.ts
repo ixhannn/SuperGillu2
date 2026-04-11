@@ -11,7 +11,7 @@ class SyncServiceClass {
     public isConnected: boolean = false;
     public lastSyncTime: string = '';
     private channel: RealtimeChannel | null = null;
-    private ROOM_ID = 'tulika_global_room';
+    private ROOM_ID = 'lior_global_room';
     private presenceInterval: any = null;
     private realtimeChannels: RealtimeChannel[] = [];
     private storageListener: ((e: Event) => void) | null = null;
@@ -19,6 +19,7 @@ class SyncServiceClass {
     private isPartnerPresent = false;
     private amILeader = false;
     private activeSessionId: string | null = null;
+    private reconcileInFlight: Promise<void> | null = null;
 
     private cleanupRealtimeState() {
         if (this.presenceInterval) {
@@ -117,7 +118,7 @@ class SyncServiceClass {
         const profile = StorageService.getCoupleProfile();
         const partner = profile.partnerName;
 
-        let title = "Tulika";
+        let title = "Lior";
         let body = "Something new was added!";
         let icon = "/icon.svg";
 
@@ -161,6 +162,11 @@ class SyncServiceClass {
     }
 
     private async reconcileCloud() {
+        if (this.reconcileInFlight) {
+            return this.reconcileInFlight;
+        }
+
+        this.reconcileInFlight = (async () => {
         try {
             // Re-send any deletions that may have failed previously (offline, crash, etc.)
             // Tombstones are NEVER removed — they permanently block resurrection from partner's cache
@@ -256,7 +262,24 @@ class SyncServiceClass {
             }
         } catch (e) {
             console.warn("Reconciliation failed", e);
+        } finally {
+            this.reconcileInFlight = null;
         }
+        })();
+
+        return this.reconcileInFlight;
+    }
+
+    public async refreshFromCloud() {
+        if (!SupabaseService.init()) {
+            this.updateStatus('Offline (Not Configured)');
+            return;
+        }
+
+        this.updateStatus('Refreshing from Cloud...');
+        await this.reconcileCloud();
+        this.lastSyncTime = new Date().toLocaleTimeString();
+        syncEventTarget.dispatchEvent(new Event('sync-update'));
     }
 
     private async handleLocalChange(detail: StorageUpdateDetail) {

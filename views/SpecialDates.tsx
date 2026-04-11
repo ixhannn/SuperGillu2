@@ -88,7 +88,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
         rightSlot={
           <button
             onClick={() => setShowAdd(!showAdd)}
-            className="bg-tulika-500/15 text-tulika-400 p-2 rounded-full transition-colors"
+            className="bg-lior-500/15 text-lior-400 p-2 rounded-full transition-colors"
           >
             <Plus size={24} />
           </button>
@@ -100,21 +100,21 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
           <input
             type="text"
             placeholder="Title (e.g. Anniversary)"
-            className="w-full mb-3 p-3 rounded-xl font-serif focus:ring-2 focus:ring-tulika-500/50 shadow-inner"
+            className="w-full mb-3 p-3 rounded-xl font-serif focus:ring-2 focus:ring-lior-500/50 shadow-inner"
             style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
             value={newTitle}
             onChange={e => setNewTitle(e.target.value)}
           />
           <input
             type="date"
-            className="w-full mb-4 p-3 rounded-xl font-serif focus:ring-2 focus:ring-tulika-500/50 shadow-inner"
+            className="w-full mb-4 p-3 rounded-xl font-serif focus:ring-2 focus:ring-lior-500/50 shadow-inner"
             style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
             value={newDate}
             onChange={e => setNewDate(e.target.value)}
           />
           <button
             onClick={handleAdd}
-            className="w-full text-white py-3 rounded-xl font-semibold shadow-md shadow-tulika-500/20"
+            className="w-full text-white py-3 rounded-xl font-semibold shadow-md shadow-lior-500/20"
             style={{ background: 'var(--theme-nav-center-bg-active)' }}
           >
             Save Date
@@ -135,7 +135,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                 <p className="text-xs mb-5 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Mark the moments that matter</p>
                 <button
                     onClick={() => setShowAdd(true)}
-                    className="px-5 py-2.5 bg-tulika-500 text-white rounded-full text-sm font-bold shadow-lg shadow-tulika-500/20 spring-press flex items-center gap-2"
+                    className="px-5 py-2.5 bg-lior-500 text-white rounded-full text-sm font-bold shadow-lg shadow-lior-500/20 spring-press flex items-center gap-2"
                 >
                     <Plus size={16} /> Add a Date
                 </button>
@@ -176,7 +176,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="block text-2xl font-bold text-tulika-500">{count}</span>
+                    <span className="block text-2xl font-bold text-lior-500">{count}</span>
                     <span className="text-[10px] uppercase font-bold" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
                   </div>
                 </motion.div>

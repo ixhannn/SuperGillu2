@@ -195,6 +195,10 @@ export interface MoodEntry {
 
 export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service';
 
+export type TransitionDirection = 'push' | 'pop' | 'tab' | 'modal';
+
+export const ROOT_TABS: ViewState[] = ['home', 'us', 'timeline', 'daily-moments', 'profile'];
+
 export interface RoomFurniture {
   uid: string;
   itemId: string;

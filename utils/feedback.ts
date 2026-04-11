@@ -1,5 +1,5 @@
 // Haptics and Audio Utility for Premium Multi-sensory feedback
-
+import { Haptics } from '../services/haptics';
 class FeedbackEngine {
   private audioCtx: AudioContext | null = null;
   private isEnabled: boolean = true;
@@ -52,31 +52,19 @@ class FeedbackEngine {
   // --- HAPTICS ---
 
   public light() {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      // Extremely short, sharp tap
-      navigator.vibrate(5); 
-    }
+    Haptics.tap();
   }
 
   public medium() {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      // Slightly more body, still sharp
-      navigator.vibrate(12); 
-    }
+    Haptics.press();
   }
 
   public success() {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      // Da-DUM (tightened cinematic timing)
-      navigator.vibrate([10, 60, 20]); 
-    }
+    Haptics.success();
   }
 
   public error() {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      // Sharp, distinct staccato buzzes
-      navigator.vibrate([15, 40, 15, 40, 20]); 
-    }
+    Haptics.error();
   }
 
   // --- PREMIUM AUDIO ---

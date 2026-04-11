@@ -1,63 +1,105 @@
 /**
- * AnimationEngine - The heartbeat of Tulika.
+ * AnimationEngine — The single heartbeat of Lior.
  *
- * Single requestAnimationFrame loop. Every visual effect subscribes here.
- * No effect runs its own RAF - zero redundant loops, zero duplicate work.
+ * ONE requestAnimationFrame loop owns ALL rendering.
+ * No component, service, or effect may call requestAnimationFrame directly.
+ * Everything subscribes here and receives tick(delta, ts, tier).
  *
- * Frame budget tracked per subscriber. Quality tier broadcast to all effects
- * for real-time adaptive rendering. Auto-downgrades tier when FPS drops.
+ * Quality tiers (120fps display tuned):
+ *   ultra    → 120fps   (all effects on, full particle count)
+ *   high     → 90fps    (WebGL on, particle count 70%)
+ *   medium   → 60fps    (backdrop-filter disabled, particle count 40%)
+ *   low      → 30fps    (canvas-only, no WebGL, no blur)
+ *   css-only → fallback (all JS animations off, pure CSS)
+ *
+ * Tier thresholds:
+ *   < 100fps sustained → downgrade (5s lock)
+ *   ≥ 108fps for 1.5s  → upgrade   (8s lock)
+ *
+ * CSS Animation Bus (zero-thrash):
+ *   Subscribers returning cssProps() contribute to a SINGLE
+ *   style.setProperty burst at the END of each frame — one paint
+ *   boundary regardless of how many subscribers write CSS vars.
  */
 
 export type QualityTier = 'ultra' | 'high' | 'medium' | 'low' | 'css-only';
 
 export interface AnimationSubscriber {
+  /** Unique id — used for unregister and cost tracking in overlay */
   id: string;
-  /** Called every frame with delta (ms), absolute timestamp (ms), and current quality tier */
+  /** Main tick. delta = ms since last frame (capped at 50ms, min 3ms). */
   tick: (delta: number, timestamp: number, tier: QualityTier) => void;
-  /** Declared CPU budget in ms - used for scheduling/shedding */
+  /** Declared CPU budget in ms — surfaced in dev overlay */
   budgetMs: number;
-  /** Minimum quality tier required to run this effect */
+  /** Minimum tier this subscriber requires to run */
   minTier: QualityTier;
-  /** Priority 1-10: higher = more likely to survive tier downgrade */
+  /** Priority 1–10: higher survives tier downgrade longer */
   priority: number;
+  /**
+   * Optional CSS Animation Bus contribution.
+   * Return a map of CSS custom property → value this frame.
+   * All contributors are batched into ONE setProperty burst at frame end.
+   *
+   * NEVER write to document.documentElement.style directly in tick().
+   * Use this instead.
+   *
+   * Example:
+   *   cssProps: () => ({
+   *     '--breathe-phase': `${Math.sin(t * 0.5).toFixed(4)}`,
+   *     '--glow-alpha':    `${alpha.toFixed(3)}`,
+   *   })
+   */
+  cssProps?: () => Record<string, string>;
 }
 
 const TIER_RANK: Record<QualityTier, number> = {
   'css-only': 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  ultra: 4,
+  low:        1,
+  medium:     2,
+  high:       3,
+  ultra:      4,
 };
 
-// FPS thresholds for auto adaptive quality
-const FPS_LOW    = 30; // below this → downgrade
-const FPS_HIGH   = 52; // above this → upgrade
-const ADAPT_INTERVAL = 3000; // ms between tier checks
+// Thresholds — tuned for 120fps panel (8.33ms budget per frame)
+const DOWNGRADE_FPS = 100;       // below this → downgrade
+const UPGRADE_FPS   = 108;       // above this (sustained) → upgrade
+const SAMPLE_EVERY  = 30;        // frames between tier evaluations
+const UPGRADE_REQUIRED = 180;    // frames of high FPS before upgrading (~1.5s @120)
+const DOWNGRADE_LOCK = 5_000;    // ms lock after downgrade
+const UPGRADE_LOCK   = 8_000;    // ms lock after upgrade
 
 class AnimationEngineClass {
   private readonly subs = new Map<string, AnimationSubscriber>();
   private rafId = 0;
   private lastTs = 0;
   private running = false;
-  private visibilityListenerBound = false;
-  private lastAdapt = 0;
-  private adaptLockUntil = 0; // prevent rapid flapping
+  private visListenerBound = false;
+  private adaptLockUntil = 0;
+  private upgradeFrames = 0;
 
+  /** Active quality tier — broadcast to subscribers and CSS via data-tier */
   public tier: QualityTier = 'ultra';
 
   /**
-   * Ring buffer of last 60 frame deltas in ms.
-   * PerformanceManager reads this to compute real fps without any extra tracking.
+   * Ring buffer of frame deltas (ms). Length 128 → ~1s of history at 120fps.
+   * PerformanceManager and FPSMonitor read from here.
+   * No separate RAF needed to measure FPS.
    */
-  public readonly frameTimes = new Float32Array(60).fill(16.67);
+  public readonly frameTimes = new Float32Array(128).fill(8.33);
   private frameIdx = 0;
 
-  /** Current measured fps (averaged over last 60 frames) */
+  /**
+   * Per-subscriber measured cost (ms) for the last frame.
+   * FPSMonitor reads this map to render budget bars.
+   */
+  public readonly costs = new Map<string, number>();
+
+  /** Rolling average FPS over the last 128 frames */
   get fps(): number {
+    const len = this.frameTimes.length;
     let sum = 0;
-    for (let i = 0; i < 60; i++) sum += this.frameTimes[i];
-    return Math.round(60000 / sum);
+    for (let i = 0; i < len; i++) sum += this.frameTimes[i];
+    return Math.round((len * 1000) / sum);
   }
 
   register(sub: AnimationSubscriber): void {
@@ -67,66 +109,101 @@ class AnimationEngineClass {
 
   unregister(id: string): void {
     this.subs.delete(id);
-    if (this.subs.size === 0) this.stop();
+    this.costs.delete(id);
   }
 
+  /** Override tier externally (e.g. from settings or debug UI) */
   setTier(tier: QualityTier): void {
+    if (this.tier === tier) return;
     this.tier = tier;
+    this.upgradeFrames = 0;
+    this._publishTier(tier);
+  }
+
+  private _publishTier(tier: QualityTier): void {
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.tier = tier;
     }
   }
 
-  private adaptTier(ts: number): void {
-    if (ts - this.lastAdapt < ADAPT_INTERVAL) return;
-    if (ts < this.adaptLockUntil) return;
-    this.lastAdapt = ts;
+  private _adaptTier(fps: number, ts: number): void {
+    if (ts < this.adaptLockUntil) {
+      this.upgradeFrames = 0;
+      return;
+    }
 
-    const fps = this.fps;
-    const currentRank = TIER_RANK[this.tier];
+    const rank  = TIER_RANK[this.tier];
+    const tiers = (Object.keys(TIER_RANK) as QualityTier[])
+      .sort((a, b) => TIER_RANK[a] - TIER_RANK[b]);
 
-    if (fps < FPS_LOW && currentRank > 0) {
-      // Downgrade
-      const tiers = Object.keys(TIER_RANK) as QualityTier[];
-      const lower = tiers.find(t => TIER_RANK[t] === currentRank - 1);
-      if (lower) {
-        this.setTier(lower);
-        this.adaptLockUntil = ts + 5000; // 5s lock after downgrade
+    if (fps < DOWNGRADE_FPS && rank > 0) {
+      this.upgradeFrames = 0;
+      const lower = tiers.find(t => TIER_RANK[t] === rank - 1)!;
+      this.tier = lower;
+      this._publishTier(lower);
+      this.adaptLockUntil = ts + DOWNGRADE_LOCK;
+    } else if (fps >= UPGRADE_FPS && rank < TIER_RANK['ultra']) {
+      if (++this.upgradeFrames >= UPGRADE_REQUIRED) {
+        this.upgradeFrames = 0;
+        const higher = tiers.find(t => TIER_RANK[t] === rank + 1)!;
+        this.tier = higher;
+        this._publishTier(higher);
+        this.adaptLockUntil = ts + UPGRADE_LOCK;
       }
-    } else if (fps > FPS_HIGH && currentRank < TIER_RANK['ultra']) {
-      // Upgrade (more conservative — only if well above threshold)
-      const tiers = Object.keys(TIER_RANK) as QualityTier[];
-      const higher = tiers.find(t => TIER_RANK[t] === currentRank + 1);
-      if (higher) {
-        this.setTier(higher);
-        this.adaptLockUntil = ts + 8000; // 8s lock after upgrade (stable before re-checking)
-      }
+    } else {
+      this.upgradeFrames = 0;
     }
   }
 
   private readonly loop = (ts: number): void => {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    // Pause when tab is hidden — saves battery, avoids huge delta on resume
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      this.running = false;
+      this.rafId = 0;
+      return;
+    }
+
     this.rafId = requestAnimationFrame(this.loop);
 
-    // Cap delta at 50ms to prevent physics spiral-of-death after tab switch
     const delta = Math.min(ts - this.lastTs, 50);
-    // Skip duplicate frames (e.g. from display power saving doubling callbacks)
-    if (delta < 4) return;
+    if (delta < 3) return; // skip duplicate callbacks from power-saving display
     this.lastTs = ts;
 
-    // Record frame time in ring buffer
-    this.frameTimes[this.frameIdx % 60] = delta;
+    // Record into ring buffer
+    this.frameTimes[this.frameIdx & 127] = delta;
     this.frameIdx++;
 
-    // Auto adaptive quality
-    this.adaptTier(ts);
+    // Evaluate tier every N frames
+    if ((this.frameIdx & (SAMPLE_EVERY - 1)) === 0) {
+      this._adaptTier(this.fps, ts);
+    }
 
     const tierRank = TIER_RANK[this.tier];
+    const root = typeof document !== 'undefined' ? document.documentElement.style : null;
+    let cssAccum: Record<string, string> | null = null;
 
-    // Tick all eligible subscribers
     for (const sub of this.subs.values()) {
-      if (tierRank >= TIER_RANK[sub.minTier]) {
-        sub.tick(delta, ts, this.tier);
+      if (tierRank < TIER_RANK[sub.minTier]) continue;
+
+      const t0 = performance.now();
+      sub.tick(delta, ts, this.tier);
+      this.costs.set(sub.id, performance.now() - t0);
+
+      // Collect CSS contributions
+      if (sub.cssProps) {
+        const props = sub.cssProps();
+        if (props) {
+          if (!cssAccum) cssAccum = {};
+          // Merge — later subscribers win on key collision
+          for (const k in props) cssAccum[k] = props[k];
+        }
+      }
+    }
+
+    // ONE setProperty burst for all CSS vars this frame
+    if (cssAccum && root) {
+      for (const key in cssAccum) {
+        root.setProperty(key, cssAccum[key]);
       }
     }
   };
@@ -135,7 +212,8 @@ class AnimationEngineClass {
     if (this.running) return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
 
-    this.bindVisibilityListener();
+    this._bindVisibility();
+    this._publishTier(this.tier);
     this.running = true;
     this.lastTs = performance.now();
     this.rafId = requestAnimationFrame(this.loop);
@@ -148,19 +226,24 @@ class AnimationEngineClass {
     this.rafId = 0;
   }
 
-  private bindVisibilityListener(): void {
-    if (this.visibilityListenerBound || typeof document === 'undefined') return;
-
+  private _bindVisibility(): void {
+    if (this.visListenerBound || typeof document === 'undefined') return;
+    this.visListenerBound = true;
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         this.stop();
-      } else if (this.subs.size > 0) {
-        this.lastTs = performance.now(); // Reset to avoid huge delta on resume
+      } else {
+        this.lastTs = performance.now(); // avoid spike on resume
+        this.running = false;
         this.start();
       }
     });
-    this.visibilityListenerBound = true;
   }
 }
 
 export const AnimationEngine = new AnimationEngineClass();
+
+// Boot the engine immediately so the CSS tier attribute is set before first paint
+if (typeof document !== 'undefined') {
+  AnimationEngine.start();
+}

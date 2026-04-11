@@ -130,7 +130,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
         { id: 'milestones' as Tab, emoji: '✨', label: 'Milestones', count: datedMilestones.length },
     ];
 
-    const inputCls = "bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-[0.88rem] text-gray-700 placeholder-gray-300 outline-none focus:border-tulika-200 transition-colors w-full";
+    const inputCls = "bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-[0.88rem] text-gray-700 placeholder-gray-300 outline-none focus:border-lior-200 transition-colors w-full";
 
     return (
         <div className="min-h-screen pb-32" style={{ background: 'var(--theme-bg-main)' }}>
@@ -230,7 +230,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                 {tab.label}
                             </span>
                             {tab.count > 0 && activeTab !== tab.id && (
-                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-tulika-400 text-white text-[0.5rem] font-bold flex items-center justify-center">
+                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-lior-400 text-white text-[0.5rem] font-bold flex items-center justify-center">
                                     {tab.count > 9 ? '9+' : tab.count}
                                 </span>
                             )}
@@ -250,7 +250,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                             <div className="mb-4">
                                 <div className="flex justify-between mb-1.5">
                                     <p className="text-[0.7rem] text-gray-400">{completed.length} of {bucketItems.length} done</p>
-                                    <p className="text-[0.7rem] font-bold text-tulika-400">{pct}%</p>
+                                    <p className="text-[0.7rem] font-bold text-lior-400">{pct}%</p>
                                 </div>
                                 <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(236,72,153,0.1)' }}>
                                     <motion.div className="h-full rounded-full" style={{ background: 'linear-gradient(90deg,#f9a8d4,#ec4899)' }}
@@ -262,7 +262,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                         {/* Add input */}
                         <div className="flex gap-2.5 items-center px-4 py-3.5 rounded-2xl mb-5"
                             style={{ background: 'white', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.04)' }}>
-                            <MapPin size={14} className="text-tulika-300 flex-shrink-0" />
+                            <MapPin size={14} className="text-lior-300 flex-shrink-0" />
                             <input value={bucketInput} onChange={e => setBucketInput(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && addBucketItem()}
                                 placeholder="An adventure to add…"
@@ -500,7 +500,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                         className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl mb-5 spring-press"
                                         style={{ background: 'white', border: '1px dashed rgba(236,72,153,0.3)', boxShadow: '0 1px 6px rgba(0,0,0,0.03)' }}>
                                         <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'rgba(236,72,153,0.08)' }}>
-                                            <Plus size={15} className="text-tulika-400" />
+                                            <Plus size={15} className="text-lior-400" />
                                         </div>
                                         <p className="text-[0.85rem] text-gray-400">Add a milestone…</p>
                                     </button>
@@ -510,7 +510,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
 
                         {/* Horizontal scroll */}
                         {datedMilestones.length > 0 && (
-                            <div className="-mx-5 px-5 overflow-x-auto pb-3" style={{ scrollbarWidth: 'none' }}>
+                            <div data-lenis-prevent className="lenis-inner -mx-5 px-5 overflow-x-auto pb-3" style={{ scrollbarWidth: 'none' }}>
                                 <div className="flex gap-3" style={{ width: 'max-content' }}>
                                     {datedMilestones.map((ms, i) => (
                                         <motion.div key={ms.id}
@@ -527,7 +527,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                             <p className="text-[0.64rem] text-gray-400">
                                                 {new Date(ms.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                             </p>
-                                            <p className="text-[0.64rem] font-semibold text-tulika-400">{relativeTime(ms.date)}</p>
+                                            <p className="text-[0.64rem] font-semibold text-lior-400">{relativeTime(ms.date)}</p>
                                             {ms.description && (
                                                 <p className="text-[0.7rem] text-gray-500 italic leading-snug line-clamp-2">{ms.description}</p>
                                             )}

@@ -41,10 +41,18 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
 
     const handleSubmit = () => {
         if (!draft.trim()) return;
-        StorageService.submitQuestionAnswer(draft.trim());
+        const answer = draft.trim();
+        setEntry(prev => prev ? ({
+            ...prev,
+            answers: {
+                ...prev.answers,
+                [profile.myName]: answer,
+            },
+        }) : prev);
+        StorageService.submitQuestionAnswer(answer);
         setExpanded(false);
         setDraft('');
-        refresh();
+        onUpdate();
     };
 
     const handleCancel = (e: React.MouseEvent) => {

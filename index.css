@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 /* ============================================
-   TULIKA — Premium Design System v4 (Pro Max)
+   LIOR — Premium Design System v4 (Pro Max)
    True geometric glass, massive radii, cinematic shadows
    ============================================ */
 
@@ -124,14 +124,99 @@ html.theme-transitioning *::after {
 
 /* ── MOBILE TOUCH OPTIMIZATION ────────────────────────────────────────────── */
 a, button, [role="button"], input, select, textarea,
-label, .cursor-pointer, .spring-press {
+label, .cursor-pointer, .spring-press, [data-press] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
-.spring-press, .glass-card, .glass-nav {
+.spring-press, .glass-card, .glass-nav, [data-press], [data-drag] {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* ── VIEW TRANSITIONS API (iOS Safari 18+, Chrome 111+) ──────────────────── */
+/*
+ * Two layers:
+ *   ::view-transition-*(root)       — fallback for browsers/paths not using
+ *                                      view-transition-name on the content div.
+ *   ::view-transition-*(main-view)  — applied to the named content wrapper set
+ *                                      in ViewTransition.tsx (mobile VT path).
+ *
+ * Direction data is set via data-nav-dir on <html> in navigateWithTransition().
+ */
+
+/* Root layer: tab crossfade default */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(root) { animation-name: vt-fade-out; }
+::view-transition-new(root) { animation-name: vt-fade-in; }
+
+/* Named main-view layer: tab crossfade default */
+::view-transition-old(main-view),
+::view-transition-new(main-view) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(main-view) { animation-name: vt-fade-out; }
+::view-transition-new(main-view) { animation-name: vt-fade-in; }
+
+/* Push: drill into sub-screen */
+html[data-nav-dir="push"]::view-transition-old(root),
+html[data-nav-dir="push"]::view-transition-old(main-view) {
+  animation-name: vt-slide-out-left;
+  animation-duration: 260ms;
+}
+html[data-nav-dir="push"]::view-transition-new(root),
+html[data-nav-dir="push"]::view-transition-new(main-view) {
+  animation-name: vt-slide-in-right;
+  animation-duration: 340ms;
+}
+
+/* Pop: go back */
+html[data-nav-dir="pop"]::view-transition-old(root),
+html[data-nav-dir="pop"]::view-transition-old(main-view) {
+  animation-name: vt-slide-out-right;
+  animation-duration: 260ms;
+}
+html[data-nav-dir="pop"]::view-transition-new(root),
+html[data-nav-dir="pop"]::view-transition-new(main-view) {
+  animation-name: vt-slide-in-left;
+  animation-duration: 340ms;
+}
+
+/* Modal: sheet slides up from bottom */
+html[data-nav-dir="modal"]::view-transition-old(root),
+html[data-nav-dir="modal"]::view-transition-old(main-view) {
+  animation-name: vt-scale-out;
+  animation-duration: 200ms;
+}
+html[data-nav-dir="modal"]::view-transition-new(root),
+html[data-nav-dir="modal"]::view-transition-new(main-view) {
+  animation-name: vt-slide-up;
+  animation-duration: 380ms;
+}
+
+@keyframes vt-fade-in        { from { opacity: 0; }                             to { opacity: 1; } }
+@keyframes vt-fade-out       { from { opacity: 1; }                             to { opacity: 0; } }
+@keyframes vt-slide-in-right { from { opacity: 0; transform: translateX(6%); }  to { opacity: 1; transform: translateX(0); } }
+@keyframes vt-slide-out-left { from { opacity: 1; transform: translateX(0); }   to { opacity: 0; transform: translateX(-4%); } }
+@keyframes vt-slide-in-left  { from { opacity: 0; transform: translateX(-6%); } to { opacity: 1; transform: translateX(0); } }
+@keyframes vt-slide-out-right{ from { opacity: 1; transform: translateX(0); }   to { opacity: 0; transform: translateX(4%); } }
+@keyframes vt-slide-up       { from { opacity: 0; transform: translateY(8%); }  to { opacity: 1; transform: translateY(0); } }
+@keyframes vt-scale-out      { from { opacity: 1; transform: scale(1); }        to { opacity: 0; transform: scale(0.96); } }
+
+/* ── LONG PRESS RING — no CSS animation needed; JS drives dashoffset ─────── */
+/* The SVG inherits the element's border-radius for clip matching.             */
+[data-long-press] { position: relative; overflow: visible; }
+
+/* ── PRESSING STATE — scale hint for [data-press] delegation ─────────────── */
+/* attachPress also writes this directly via style, so this is belt-and-suspenders. */
+[data-pressing="true"] {
+  transform: scale(0.97);
+  transition: transform 0ms; /* instant on press, spring handles the release */
 }
 
 /* ── BREATHING CARDS ──────────────────────────────────────────────────────── */
@@ -492,9 +577,9 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   0%, 100% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(3%, 3%) scale(1.04); }
 }
-.sanctuary-aurora-1 { animation: sanctuary-aurora-1 22s ease-in-out infinite; }
-.sanctuary-aurora-2 { animation: sanctuary-aurora-2 28s ease-in-out infinite; }
-.sanctuary-aurora-3 { animation: sanctuary-aurora-3 18s ease-in-out infinite; }
+.sanctuary-aurora-1 { animation: sanctuary-aurora-1 22s ease-in-out infinite; will-change: transform; }
+.sanctuary-aurora-2 { animation: sanctuary-aurora-2 28s ease-in-out infinite; will-change: transform; }
+.sanctuary-aurora-3 { animation: sanctuary-aurora-3 18s ease-in-out infinite; will-change: transform; }
 
 /* ── VIEW HEADER — standardized sticky header for all views ───────────────── */
 .view-header {
@@ -565,11 +650,16 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   transform-style: preserve-3d;
 }
 
-/* Holographic shimmer */
+/* Holographic shimmer — uses transform (GPU composited, no repaint) */
+/* translateX sweeps the pseudo-element across; parent clips overflow. */
 @keyframes holo-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0%   { transform: translateX(-110%); }
+  50%  { transform: translateX(110%); }
+  100% { transform: translateX(-110%); }
+}
+
+.holo-shimmer {
+  overflow: hidden; /* clip the pseudo-element during translateX sweep */
 }
 
 .holo-shimmer::before {
@@ -579,13 +669,13 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   border-radius: inherit;
   background: linear-gradient(
     105deg,
-    transparent 20%,
-    rgba(255,255,255,0.40) 30%,
-    rgba(var(--theme-particle-2-rgb), 0.15) 40%,
-    rgba(255,255,255,0.50) 50%,
-    transparent 60%
+    transparent 25%,
+    rgba(255,255,255,0.40) 40%,
+    rgba(var(--theme-particle-2-rgb), 0.15) 50%,
+    rgba(255,255,255,0.50) 60%,
+    transparent 75%
   );
-  background-size: 200% 100%;
+  will-change: transform;
   animation: holo-shift 4s ease-in-out infinite;
   pointer-events: none;
   z-index: 5;
@@ -598,14 +688,30 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   transform-style: preserve-3d;
 }
 
-/* Pulsing glow ring — follows active theme */
+/* Pulsing glow ring — compositor-safe opacity on a promoted layer */
 @keyframes glow-ring-3d {
-  0%, 100% { box-shadow: 0 0 20px rgba(var(--theme-particle-1-rgb), 0.18), 0 0 40px rgba(var(--theme-particle-1-rgb), 0.07); }
-  50% { box-shadow: 0 0 30px rgba(var(--theme-particle-1-rgb), 0.30), 0 0 60px rgba(var(--theme-particle-1-rgb), 0.12); }
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
 }
 
 .glow-3d {
+  position: relative;
+  isolation: isolate;
+}
+.glow-3d::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at center,
+    rgba(var(--theme-particle-1-rgb), 0.25) 0%,
+    rgba(var(--theme-particle-1-rgb), 0.08) 55%,
+    transparent 70%
+  );
   animation: glow-ring-3d 3s ease-in-out infinite;
+  will-change: opacity;
+  pointer-events: none;
+  z-index: -1;
 }
 
 /* ============================================
@@ -666,20 +772,23 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   50%     { transform: translate3d(-5%, -3%, 0) scale(1.06); border-radius: 40% 50% 60% 50% / 50% 60% 40% 60%; }
 }
 
+/* morph1/2/3 — border-radius only animations.
+   Adding translateZ(0) forces a GPU compositor layer so border-radius
+   changes repaint only that layer, not the whole page. */
 @keyframes morph1 {
-  0%,100% { border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
-  33%     { border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%; }
-  66%     { border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%; }
+  0%,100% { transform: translateZ(0); border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+  33%     { transform: translateZ(0); border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%; }
+  66%     { transform: translateZ(0); border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%; }
 }
 @keyframes morph2 {
-  0%,100% { border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%; }
-  33%     { border-radius: 30% 60% 40% 70% / 50% 40% 60% 50%; }
-  66%     { border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%; }
+  0%,100% { transform: translateZ(0); border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%; }
+  33%     { transform: translateZ(0); border-radius: 30% 60% 40% 70% / 50% 40% 60% 50%; }
+  66%     { transform: translateZ(0); border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%; }
 }
 @keyframes morph3 {
-  0%,100% { border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%; }
-  33%     { border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
-  66%     { border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%; }
+  0%,100% { transform: translateZ(0); border-radius: 50% 60% 50% 40% / 60% 30% 70% 40%; }
+  33%     { transform: translateZ(0); border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+  66%     { transform: translateZ(0); border-radius: 60% 40% 30% 70% / 50% 60% 40% 60%; }
 }
 
 @keyframes shimmer-sweep {
@@ -689,10 +798,30 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   100% { transform: translateX(220%) skewX(-15deg); opacity: 0; }
 }
 
-/* Glow pulse — follows active theme */
+/* Glow pulse — compositor-safe: opacity-only on a promoted layer.
+   The glow is baked into a static ::after, opacity interpolates on GPU. */
 @keyframes glow-pulse {
-  0%,100% { box-shadow: 0 0 20px rgba(var(--theme-particle-1-rgb), 0.20), 0 0 60px rgba(var(--theme-particle-1-rgb), 0.08); }
-  50%     { box-shadow: 0 0 32px rgba(var(--theme-particle-1-rgb), 0.35), 0 0 80px rgba(var(--theme-particle-1-rgb), 0.14); }
+  0%,100% { opacity: 0.55; }
+  50%     { opacity: 1; }
+}
+
+/* Static glow ring behind .animate-glow-pulse elements */
+.animate-glow-pulse {
+  position: relative;
+  isolation: isolate;
+}
+.animate-glow-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at center,
+    rgba(var(--theme-particle-1-rgb), 0.30) 0%,
+    rgba(var(--theme-particle-1-rgb), 0.10) 50%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: -1;
 }
 
 @keyframes ripple-expand {
@@ -844,8 +973,8 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 .animate-elastic-pop   { animation: elastic-pop 0.5s var(--spring-smooth) both; }
 .animate-scale-bounce  { animation: scale-bounce 0.4s var(--spring-smooth) both; }
 .animate-tilt-in       { animation: tilt-in 0.6s var(--ease-out-expo) both; }
-.animate-shimmer       { background: linear-gradient(90deg, transparent, rgba(var(--theme-particle-2-rgb),0.28), transparent); background-size: 300% 100%; animation: shimmerSweep 3s ease-in-out infinite; }
-.animate-glow-pulse    { animation: glow-pulse 3s ease-in-out infinite; will-change: box-shadow; }
+.animate-shimmer       { background: linear-gradient(90deg, transparent, rgba(var(--theme-particle-2-rgb),0.28), transparent); background-size: 300% 100%; animation: shimmer-sweep 3s ease-in-out infinite; will-change: transform, opacity; }
+.animate-glow-pulse    { animation: glow-pulse 3s ease-in-out infinite; will-change: opacity; }
 .animate-breathe-glow  { animation: breathe-glow 4s ease-in-out infinite; will-change: transform, opacity; }
 .animate-number-roll   { animation: number-roll 0.8s var(--spring-smooth) both; will-change: transform, opacity; }
 .animate-wiggle-spring { animation: wiggle-spring 0.5s var(--spring-bounce); will-change: transform; }
@@ -1023,6 +1152,68 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* ============================================
+   LENIS SMOOTH SCROLL
+   ============================================ */
+
+/*
+  Lenis v1.3 container mode:
+  Lenis intercepts wheel/touch and drives scroll via
+  wrapper.scrollTo({ top: value, behavior:'instant' }).
+  Wrapper MUST be overflow-y:auto — native scrollTop is the mechanism.
+*/
+.lenis-wrapper {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+/* Content fills wrapper height on short pages. No transform needed here. */
+.lenis-content {
+  min-height: 100%;
+}
+
+/* Safe-area top padding for device notch / status bar */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+
+/*
+  Lenis inner — native scroll containers inside the main Lenis scroller.
+  These have data-lenis-prevent which tells Lenis "don't intercept here".
+  They scroll natively, but we apply the same compositor hints to keep
+  them on their own GPU layers.
+
+  overscroll-behavior: contain prevents scroll chaining: when the inner
+  list hits its boundary, the chain stops here instead of bleeding into
+  the main Lenis scroll.
+*/
+.lenis-inner {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow: clip;
+}
+
+.lenis [data-lenis-prevent],
+.lenis [data-lenis-prevent-wheel],
+.lenis [data-lenis-prevent-touch],
+.lenis [data-lenis-prevent-vertical],
+.lenis [data-lenis-prevent-horizontal] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
+
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(var(--theme-particle-2-rgb), 0.30); border-radius: 100px; }
@@ -1035,6 +1226,128 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 
 /* ── Safe area ────────────────────────────────────────────────────────────── */
 .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ============================================
+   ADAPTIVE QUALITY TIERS
+   Applied via data-tier attribute on <html>
+   AnimationEngine writes this every time the tier changes.
+
+   Rule of thumb:
+     [data-tier="high"]     → safe to reduce particle count, keep blur
+     [data-tier="medium"]   → kill backdrop-filter (biggest GPU saving)
+     [data-tier="low"]      → kill all non-essential animations
+     [data-tier="css-only"] → emergency: keep only CSS transitions, no canvas
+   ============================================ */
+
+/* ── HIGH tier: reduce secondary particle density only ────────────────── */
+[data-tier="high"] .animate-morph-1,
+[data-tier="high"] .animate-morph-2,
+[data-tier="high"] .animate-morph-3 {
+  animation-duration: 30s; /* slow down expensive morphs */
+}
+
+/* ── MEDIUM tier: disable backdrop-filter (largest GPU cost) ──────────── */
+/*    Elements re-render their backdrop on every ancestor paint.
+      Removing it at this tier saves ~2-4ms GPU per frame. */
+[data-tier="medium"] .glass-card,
+[data-tier="medium"] .glass-card-elevated,
+[data-tier="medium"] .glass-card-soft,
+[data-tier="medium"] .glass-ultra,
+[data-tier="medium"] .glass-nav,
+[data-tier="medium"] .view-header,
+[data-tier="medium"] .glass-3d {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+}
+
+[data-tier="medium"] .animate-morph-1,
+[data-tier="medium"] .animate-morph-2,
+[data-tier="medium"] .animate-morph-3,
+[data-tier="medium"] .sanctuary-aurora-1,
+[data-tier="medium"] .sanctuary-aurora-2,
+[data-tier="medium"] .sanctuary-aurora-3 {
+  animation: none !important;
+}
+
+[data-tier="medium"] .holo-shimmer::before {
+  display: none; /* kill GPU-intensive shimmer sweep */
+}
+
+/* ── LOW tier: keep only opacity/transform animations ─────────────────── */
+[data-tier="low"] .animate-morph-1,
+[data-tier="low"] .animate-morph-2,
+[data-tier="low"] .animate-morph-3,
+[data-tier="low"] .sanctuary-aurora-1,
+[data-tier="low"] .sanctuary-aurora-2,
+[data-tier="low"] .sanctuary-aurora-3,
+[data-tier="low"] .animate-drift-1,
+[data-tier="low"] .animate-drift-2,
+[data-tier="low"] .animate-drift-3,
+[data-tier="low"] .animate-glow-pulse::after,
+[data-tier="low"] .glow-3d::after,
+[data-tier="low"] .holo-shimmer::before,
+[data-tier="low"] .card-shimmer::after,
+[data-tier="low"] .icon-glow-ring {
+  display: none !important;
+  animation: none !important;
+}
+
+[data-tier="low"] .glass-card,
+[data-tier="low"] .glass-card-elevated,
+[data-tier="low"] .glass-card-soft,
+[data-tier="low"] .glass-ultra,
+[data-tier="low"] .glass-nav,
+[data-tier="low"] .view-header,
+[data-tier="low"] .glass-3d {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+}
+
+/* ── CSS-ONLY tier: all JS animations off, pure CSS transitions only ─── */
+[data-tier="css-only"] *,
+[data-tier="css-only"] *::before,
+[data-tier="css-only"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+[data-tier="css-only"] .glass-card,
+[data-tier="css-only"] .glass-card-elevated,
+[data-tier="css-only"] .glass-card-soft,
+[data-tier="css-only"] .glass-ultra,
+[data-tier="css-only"] .glass-nav,
+[data-tier="css-only"] .view-header,
+[data-tier="css-only"] .glass-3d {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+}
+
+/* ── Compositor layer hints for all animated elements ─────────────────── */
+/* Force GPU layer promotion to prevent main-thread compositing cost.
+   will-change must be set here rather than per-class to avoid duplication. */
+.animate-morph-1,
+.animate-morph-2,
+.animate-morph-3,
+.sanctuary-aurora-1,
+.sanctuary-aurora-2,
+.sanctuary-aurora-3,
+.animate-drift-1,
+.animate-drift-2,
+.animate-drift-3,
+.animate-breathe-glow,
+.holo-shimmer::before {
+  will-change: transform;
+  transform: translateZ(0); /* force layer promotion even before animation fires */
+}
+
+.animate-glow-pulse,
+.animate-ui-breathe,
+.animate-backdrop-enter {
+  will-change: opacity;
+}
 
 /* ============================================
    REDUCED MOTION
@@ -1068,12 +1381,16 @@ html, body {
   -webkit-touch-callout: none;
   background-color: var(--color-base);
   color: var(--color-text-primary);
-  /* Prevent browser pull-to-refresh and bounce for native app feel */
-  overscroll-behavior: none;
-  overflow: hidden;
-  position: fixed;
+  /* Keep bounce disabled without locking the entire document in place. */
+  overscroll-behavior-y: none;
   width: 100%;
-  height: 100%;
+  min-height: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  position: relative;
 }
 
 input, textarea, [contenteditable] {

@@ -13,7 +13,7 @@ const staggerContainer = {
 
 const staggerItem = {
   hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } }
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as any } }
 };
 import { ConfirmModal } from '../components/ConfirmModal';
 import { generateId } from '../utils/ids';
@@ -99,18 +99,32 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
 
       <div className="px-5">
 
+      <AnimatePresence>
       {isEditing && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
-            <div className="w-full max-w-sm p-6 animate-pop-in glass-card-hero">
+        <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        >
+            <motion.div 
+                initial={{ scale: 0.94, opacity: 0, y: 8 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.96, opacity: 0, y: 4 }}
+                transition={{ type: 'spring', damping: 26, stiffness: 340 }}
+                className="w-full max-w-sm p-6 glass-card-hero"
+            >
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>New Note</h3>
-                    <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
+                    <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
                 </div>
                 <textarea
                     autoFocus
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
-                    className="w-full h-40 p-4 rounded-2xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed focus:ring-2 focus:ring-tulika-500/30 shadow-inner"
+                    className="w-full h-40 p-4 rounded-2xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed focus:ring-2 focus:ring-lior-500/30 shadow-inner"
                     placeholder="Write something sweet..."
                     style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', color: 'var(--color-text-primary)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}
                 />
@@ -121,9 +135,10 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
                 >
                     Save Note
                 </button>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       <motion.div className="grid grid-cols-2 gap-4" variants={staggerContainer} initial="hidden" animate="show">
         {notes.map((note) => (
@@ -173,7 +188,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
               <p className="text-xs mb-6 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Leave sweet words for each other</p>
               <button
                   onClick={() => setIsEditing(true)}
-                  className="px-6 py-3 glass-card text-tulika-600 font-bold uppercase tracking-wider spring-press flex items-center gap-2"
+                  className="px-6 py-3 glass-card text-lior-600 font-bold uppercase tracking-wider spring-press flex items-center gap-2"
               >
                   <Plus size={18} /> Write a Note
               </button>

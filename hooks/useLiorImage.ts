@@ -4,7 +4,7 @@ import { StorageService } from '../services/storage';
 /**
  * Custom hook to resolve media (Images/Videos) from RAM -> IndexedDB -> Cloud Payload.
  */
-export const useTulikaMedia = (mediaId?: string, fallbackData?: string, storagePath?: string) => {
+export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePath?: string) => {
     const [src, setSrc] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -46,4 +46,4 @@ export const useTulikaMedia = (mediaId?: string, fallbackData?: string, storageP
 };
 
 // Re-export for backward compatibility if needed, or alias
-export const useTulikaImage = useTulikaMedia;
+export const useLiorImage = useLiorMedia;

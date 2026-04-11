@@ -10,7 +10,7 @@ interface CanvasProps {
 export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [color, setColor] = useState('#f43f5e'); // Tulika-500
+  const [color, setColor] = useState('#f43f5e'); // Lior-500
   const [lineWidth, setLineWidth] = useState(4);
   const [isConnected, setIsConnected] = useState(SyncService.isConnected);
 
@@ -125,7 +125,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
-    link.download = `tulika-canvas-${Date.now()}.png`;
+    link.download = `lior-canvas-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -225,7 +225,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
         <button 
             onClick={() => { setColor('#f9fafb'); setLineWidth(20); }} // Eraser mode (composite erase)
             className={`p-2 rounded-full transition-colors ${
-                lineWidth === 20 ? 'bg-tulika-100 text-tulika-600' : 'text-gray-400'
+                lineWidth === 20 ? 'bg-lior-100 text-lior-600' : 'text-gray-400'
             }`}
         >
             <Eraser size={24} />

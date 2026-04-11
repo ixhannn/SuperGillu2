@@ -1,157 +1,121 @@
 /**
- * PerformanceManager — Device capability detection + real-time fps monitoring
+ * PerformanceManager — Device capability detection.
  *
- * Detects device tier on load:
- *   Tier 1: Full 120fps (iPhone 13 Pro+, Pixel 7+, Samsung S22+)
- *   Tier 2: Optimized 60fps (mid-range devices)
- *   Tier 3: Minimal (low-end, prefers-reduced-motion)
+ * Detects device tier at startup. FPS monitoring is handled entirely by
+ * AnimationEngine (which owns the single RAF loop) — this class no longer
+ * runs a separate requestAnimationFrame for monitoring, eliminating the
+ * previous double-loop that wasted one frame callback per tick.
  *
- * Monitors live fps and auto-downgrades if sustained drops detected.
- * All effect modules read from this singleton to decide quality levels.
+ * Device tiers:
+ *   1 — High-end:   120fps target (Pixel 7+, Galaxy S22+, iPhone 13 Pro+)
+ *   2 — Mid-range:  60fps target
+ *   3 — Low-end:    reduced motion, no particles
+ *
+ * Live FPS: read from AnimationEngine.fps (no separate loop needed).
  */
+
+import { AnimationEngine } from '../utils/AnimationEngine';
 
 export type DeviceTier = 1 | 2 | 3;
 
 class PerformanceManagerClass {
   tier: DeviceTier = 2;
-  currentFps: number = 60;
   reducedMotion: boolean = false;
 
-  /* Internal tracking */
-  private _frames: number[] = [];
-  private _rafId: number = 0;
-  private _lastTime: number = 0;
-  private _initialized: boolean = false;
-  private _downgradeTimeout: number = 0;
-  private _listeners: Set<(tier: DeviceTier) => void> = new Set();
+  private _initialized = false;
+  private _listeners = new Set<(tier: DeviceTier) => void>();
 
-  /** Call once on app mount */
-  init() {
+  /** Call once in App root — safe to call multiple times */
+  init(): void {
     if (this._initialized) return;
     this._initialized = true;
 
-    /* Detect prefers-reduced-motion immediately */
+    // Reduced motion — check immediately, listen for changes
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', (e) => {
       this.reducedMotion = e.matches;
-      if (e.matches) this._setTier(3);
+      if (e.matches) {
+        this._setTier(3);
+        AnimationEngine.setTier('css-only');
+      } else {
+        this._setTier(this._detectTier());
+        AnimationEngine.setTier('ultra');
+      }
     });
 
     if (this.reducedMotion) {
       this.tier = 3;
+      AnimationEngine.setTier('css-only');
       return;
     }
 
-    /* Detect device capability */
     this.tier = this._detectTier();
 
-    /* Start fps monitoring loop */
-    this._lastTime = performance.now();
-    this._monitorFps();
+    // Map DeviceTier → initial AnimationEngine QualityTier
+    if (this.tier === 3) {
+      AnimationEngine.setTier('low');
+    } else if (this.tier === 2) {
+      AnimationEngine.setTier('high');
+    }
+    // Tier 1 → AnimationEngine defaults to 'ultra'
   }
 
-  /** Register callback for tier changes (auto-downgrade/upgrade) */
-  onTierChange(fn: (tier: DeviceTier) => void) {
+  /** Live FPS — delegates to AnimationEngine (no separate RAF) */
+  get currentFps(): number {
+    return AnimationEngine.fps;
+  }
+
+  get particleCount(): number {
+    if (this.tier === 1) return 200;
+    if (this.tier === 2) return 60;
+    return 0;
+  }
+
+  get useWebGL(): boolean {
+    return this.tier <= 2 && !this.reducedMotion;
+  }
+
+  get useCanvas(): boolean {
+    return this.tier <= 2 && !this.reducedMotion;
+  }
+
+  get useChromaticAberration(): boolean {
+    return this.tier === 1 && !this.reducedMotion;
+  }
+
+  get useEntranceChoreography(): boolean {
+    return this.tier <= 2 && !this.reducedMotion;
+  }
+
+  onTierChange(fn: (tier: DeviceTier) => void): () => void {
     this._listeners.add(fn);
     return () => this._listeners.delete(fn);
   }
 
-  /** How many particles should the current tier render */
-  get particleCount(): number {
-    if (this.tier === 1) return 200;
-    if (this.tier === 2) return 60;
-    return 0; /* Tier 3: no particles */
-  }
-
-  /** Should we run WebGL effects? */
-  get useWebGL(): boolean {
-    return this.tier <= 2;
-  }
-
-  /** Should we run Canvas particle/ripple effects? */
-  get useCanvas(): boolean {
-    return this.tier <= 2;
-  }
-
-  /** Should we show chromatic aberration on scroll? */
-  get useChromaticAberration(): boolean {
-    return this.tier === 1;
-  }
-
-  /** Should we use full entrance choreography? */
-  get useEntranceChoreography(): boolean {
-    return this.tier <= 2;
-  }
-
-  destroy() {
-    cancelAnimationFrame(this._rafId);
-    this._initialized = false;
-  }
-
-  /* ─── Private ─── */
+  // No-op: kept for backward compat, no RAF to cancel
+  destroy(): void {}
 
   private _detectTier(): DeviceTier {
-    const memory = (navigator as any).deviceMemory || 4; /* Default 4GB if unsupported */
-    const cores = navigator.hardwareConcurrency || 4;
-    const screenRefresh = this._estimateRefreshRate();
+    const memory = (navigator as any).deviceMemory ?? 4;
+    const cores  = navigator.hardwareConcurrency ?? 4;
 
-    /* High-end: lots of memory, cores, and likely high refresh */
-    if (memory >= 4 && cores >= 6) return 1;
+    // GPU check: prefer WebGL2 presence as a proxy for capable GPU
+    let hasGPU = false;
+    try {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      hasGPU = !!gl;
+    } catch {}
+
+    if (memory >= 4 && cores >= 6 && hasGPU) return 1;
     if (memory >= 2 && cores >= 4) return 2;
     return 3;
   }
 
-  private _estimateRefreshRate(): number {
-    /* We can't reliably measure refresh rate synchronously.
-       Return 60 as default; the fps monitor will upgrade if we detect 120. */
-    return 60;
-  }
-
-  private _monitorFps() {
-    const now = performance.now();
-    const delta = now - this._lastTime;
-    this._lastTime = now;
-
-    if (delta > 0) {
-      const fps = 1000 / delta;
-      this._frames.push(fps);
-
-      /* Keep a rolling window of ~120 frames (~1-2 seconds) */
-      if (this._frames.length > 120) this._frames.shift();
-
-      /* Calculate average fps every 60 frames */
-      if (this._frames.length % 60 === 0) {
-        const avg = this._frames.reduce((a, b) => a + b, 0) / this._frames.length;
-        this.currentFps = Math.round(avg);
-
-        /* Auto-detect 120hz display */
-        if (avg > 100 && this.tier === 2) {
-          const memory = (navigator as any).deviceMemory || 4;
-          if (memory >= 4) this._setTier(1);
-        }
-
-        /* Auto-downgrade: sustained drops below threshold */
-        if (this.tier === 1 && avg < 80) {
-          this._downgradeTimeout++;
-          if (this._downgradeTimeout > 3) { /* 3 consecutive checks */
-            this._setTier(2);
-            this._downgradeTimeout = 0;
-          }
-        } else {
-          this._downgradeTimeout = 0;
-        }
-      }
-    }
-
-    this._rafId = requestAnimationFrame(() => this._monitorFps());
-  }
-
-  private _setTier(tier: DeviceTier) {
-    if (this.tier === tier) return;
-    this.tier = tier;
-    this._listeners.forEach(fn => fn(tier));
+  private _setTier(t: DeviceTier): void {
+    if (this.tier === t) return;
+    this.tier = t;
+    this._listeners.forEach(fn => fn(t));
   }
 }
 
-/** Singleton — import and use everywhere */
 export const PerformanceManager = new PerformanceManagerClass();

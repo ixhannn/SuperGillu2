@@ -6,7 +6,7 @@ import { normalizeCoupleRoom, migrateFromOldRoom } from '../components/room/room
 
 
 // ENSURING WE STAY ON V11 FOR DATA CONTINUITY
-const DB_NAME = 'TulikaVault_v11';
+const DB_NAME = 'LiorVault_v11';
 const DB_VERSION = 1;
 const STORES = {
     DATA: 'metadata_store',
@@ -14,27 +14,27 @@ const STORES = {
 };
 
 const CACHE_KEYS = {
-    MEMORIES: 'tulika_memories',
-    NOTES: 'tulika_notes',
-    DATES: 'tulika_dates',
-    ENVELOPES: 'tulika_envelopes',
-    DAILY_PHOTOS: 'tulika_daily_photos',
-    DINNER_OPTIONS: 'tulika_dinner_options',
-    KEEPSAKES: 'tulika_keepsakes',
-    COMMENTS: 'tulika_comments',
-    SHARED_PROFILE: 'tulika_shared_profile',
-    IDENTITY: 'tulika_identity',
-    USER_STATUS: 'tulika_status',
-    PARTNER_STATUS: 'tulika_partner_status',
-    PET_STATS: 'tulika_pet_stats',
-    DEVICE_ID: 'tulika_device_id',
-    TOGETHER_MUSIC_META: 'tulika_together_music_meta',
-    MOOD_ENTRIES: 'tulika_mood_entries',
-    PENDING_DELETES: 'tulika_pending_deletes',
-    OUR_ROOM_STATE: 'tulika_room_state_v2',
-    US_BUCKET_ITEMS: 'tulika_us_bucket_items',
-    US_WISHLIST_ITEMS: 'tulika_us_wishlist_items',
-    US_MILESTONES: 'tulika_us_milestones',
+    MEMORIES: 'lior_memories',
+    NOTES: 'lior_notes',
+    DATES: 'lior_dates',
+    ENVELOPES: 'lior_envelopes',
+    DAILY_PHOTOS: 'lior_daily_photos',
+    DINNER_OPTIONS: 'lior_dinner_options',
+    KEEPSAKES: 'lior_keepsakes',
+    COMMENTS: 'lior_comments',
+    SHARED_PROFILE: 'lior_shared_profile',
+    IDENTITY: 'lior_identity',
+    USER_STATUS: 'lior_status',
+    PARTNER_STATUS: 'lior_partner_status',
+    PET_STATS: 'lior_pet_stats',
+    DEVICE_ID: 'lior_device_id',
+    TOGETHER_MUSIC_META: 'lior_together_music_meta',
+    MOOD_ENTRIES: 'lior_mood_entries',
+    PENDING_DELETES: 'lior_pending_deletes',
+    OUR_ROOM_STATE: 'lior_room_state_v2',
+    US_BUCKET_ITEMS: 'lior_us_bucket_items',
+    US_WISHLIST_ITEMS: 'lior_us_wishlist_items',
+    US_MILESTONES: 'lior_us_milestones',
 };
 
 /* ─── Pending delete tombstones ─── */
@@ -98,7 +98,10 @@ const SANITIZED_TEXT_KEYS = new Set([
 const ROOM_WALLPAPERS = new Set(['plain', 'stripes', 'polka', 'hearts', 'stars', 'wood']);
 const ROOM_FLOORS = new Set(['hardwood', 'carpet', 'tiles', 'cloud', 'grass', 'marble']);
 const ROOM_AMBIENTS = new Set(['warm', 'cool', 'rainbow']);
-const COUPLE_ROOM_KEY = 'tulika_couple_room_v2';
+const COUPLE_ROOM_KEY = 'lior_couple_room_v2';
+const TULIKA_NAME = 'Tulika';
+const ISHAN_NAME = 'Ishan';
+const LEGACY_RENAMED_PERSON_NAME = 'Lior';
 const LEGACY_ROOM_ITEM_MAP: Record<string, string> = {
     frame: 'photo_frames',
     candle: 'candle_cluster',
@@ -136,6 +139,43 @@ const sanitizeUserString = (value: string) => (
         .replace(/</g, '＜')
         .replace(/>/g, '＞')
 );
+
+const normalizeIdentityPair = <T extends { myName?: string; partnerName?: string }>(identity: T): T => {
+    const normalized = { ...identity };
+
+    if (normalized.myName === LEGACY_RENAMED_PERSON_NAME) {
+        normalized.myName = TULIKA_NAME;
+    }
+
+    if (normalized.partnerName === LEGACY_RENAMED_PERSON_NAME) {
+        normalized.partnerName = TULIKA_NAME;
+    }
+
+    if (!normalized.myName) {
+        normalized.myName = ISHAN_NAME;
+    }
+
+    if (!normalized.partnerName) {
+        normalized.partnerName = normalized.myName === TULIKA_NAME ? ISHAN_NAME : TULIKA_NAME;
+    }
+
+    if (normalized.myName === normalized.partnerName) {
+        normalized.partnerName = normalized.myName === TULIKA_NAME ? ISHAN_NAME : TULIKA_NAME;
+    }
+
+    return normalized;
+};
+
+const normalizeKeepsakeSender = <T extends { senderId?: string }>(item: T): T => {
+    if (item.senderId !== LEGACY_RENAMED_PERSON_NAME) {
+        return item;
+    }
+
+    return {
+        ...item,
+        senderId: TULIKA_NAME,
+    };
+};
 
 const sanitizeUserContent = <T>(value: T): T => {
     if (typeof value === 'string') {
@@ -249,6 +289,8 @@ export const StorageService = {
                 load(CACHE_KEYS.US_MILESTONES, 'usMilestones')
             ]);
 
+            DATA_CACHE.keepsakes = DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item));
+
             const restoreLocalBackup = async (key: string) => {
                 const backup = await readRaw(STORES.DATA, key);
                 if (backup && !localStorage.getItem(key)) {
@@ -342,12 +384,15 @@ export const StorageService = {
 
     async _saveInternal(listKey: keyof typeof DATA_CACHE, storageKey: string, item: any, prefix?: string, table?: string, source: 'user' | 'sync' = 'user') {
         const sanitizedItem = sanitizeUserContent(item);
-        const toSaveMetadata = { ...sanitizedItem };
-        const rawImage = sanitizedItem.image;
-        const rawVideo = sanitizedItem.video;
+        const normalizedItem = listKey === 'keepsakes'
+            ? normalizeKeepsakeSender(sanitizedItem)
+            : sanitizedItem;
+        const toSaveMetadata = { ...normalizedItem };
+        const rawImage = normalizedItem.image;
+        const rawVideo = normalizedItem.video;
 
         if (rawImage && prefix) {
-            const imageId = sanitizedItem.imageId || `${prefix}_${sanitizedItem.id}`;
+            const imageId = normalizedItem.imageId || `${prefix}_${normalizedItem.id}`;
             await writeRaw(STORES.IMAGES, imageId, rawImage);
             if (rawImage.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, rawImage);
             toSaveMetadata.imageId = imageId;
@@ -355,7 +400,7 @@ export const StorageService = {
         }
 
         if (rawVideo && prefix) {
-            const videoId = sanitizedItem.videoId || `${prefix}_vid_${sanitizedItem.id}`;
+            const videoId = normalizedItem.videoId || `${prefix}_vid_${normalizedItem.id}`;
             await writeRaw(STORES.IMAGES, videoId, rawVideo);
             toSaveMetadata.videoId = videoId;
             delete toSaveMetadata.video;
@@ -378,7 +423,7 @@ export const StorageService = {
         await writeRaw(STORES.DATA, storageKey, list);
 
         if (table) {
-            notifyUpdate({ source, action: 'save', table, id: sanitizedItem.id, item: { ...toSaveMetadata, image: rawImage, video: rawVideo } });
+            notifyUpdate({ source, action: 'save', table, id: normalizedItem.id, item: { ...toSaveMetadata, image: rawImage, video: rawVideo } });
         }
 
         // Background: Upload to Supabase Storage (non-blocking, fire-and-forget)
@@ -488,8 +533,8 @@ export const StorageService = {
         }
     },
 
-    getKeepsakes: () => DATA_CACHE.keepsakes,
-    saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, k, 'keep', 'keepsakes'),
+    getKeepsakes: () => DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item)),
+    saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, normalizeKeepsakeSender(k), 'keep', 'keepsakes'),
     hideKeepsake: async (id: string) => {
         const list = DATA_CACHE.keepsakes.map(k => k.id === id ? { ...k, isHidden: true } : k);
         DATA_CACHE.keepsakes = list;
@@ -593,7 +638,7 @@ export const StorageService = {
                 else if (table === 'keepsakes') msg = 'A new keepsake arrived in your box 🎁';
                 else if (table === 'comments') msg = 'Your partner commented on something 💬';
                 
-                if (msg) new Notification('Tulika', { body: msg, icon: '/icon.svg' });
+                if (msg) new Notification('Lior', { body: msg, icon: '/icon.svg' });
             }
         } else if (table === 'couple_profile') {
             const local = this.getCoupleProfile();
@@ -632,7 +677,7 @@ export const StorageService = {
 
             localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(nextCoupleRoom));
             localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
-            localStorage.setItem('tulika_room_state', JSON.stringify(legacyMirror));
+            localStorage.setItem('lior_room_state', JSON.stringify(legacyMirror));
             await writeRaw(STORES.DATA, COUPLE_ROOM_KEY, nextCoupleRoom);
             await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
 
@@ -677,7 +722,7 @@ export const StorageService = {
             const legacyMirror = toLegacyRoomState(defaultCoupleRoom);
             localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(defaultCoupleRoom));
             localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
-            localStorage.setItem('tulika_room_state', JSON.stringify(legacyMirror));
+            localStorage.setItem('lior_room_state', JSON.stringify(legacyMirror));
             await writeRaw(STORES.DATA, COUPLE_ROOM_KEY, defaultCoupleRoom);
             await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
             notifyUpdate({ source: 'sync', action: 'delete', table, id: 'singleton' });
@@ -726,7 +771,11 @@ export const StorageService = {
         const idStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
         const sharedStr = localStorage.getItem(CACHE_KEYS.SHARED_PROFILE);
 
-        const id = idStr ? JSON.parse(idStr) : { myName: 'Ishan', partnerName: 'Tulika' };
+        const rawIdentity = idStr ? JSON.parse(idStr) : { myName: ISHAN_NAME, partnerName: TULIKA_NAME };
+        const id = normalizeIdentityPair(rawIdentity);
+        if (id.myName !== rawIdentity.myName || id.partnerName !== rawIdentity.partnerName) {
+            localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: id.myName, partnerName: id.partnerName }));
+        }
 
         // HARD-BUILD: Anniversary Date is 29 August 2023
         const HARD_CODED_ANNIVERSARY = '2023-08-29T00:00:00.000Z';
@@ -742,7 +791,7 @@ export const StorageService = {
     },
 
     saveCoupleProfile: (p: CoupleProfile, source: 'user' | 'sync' = 'user') => {
-        const sanitizedProfile = sanitizeUserContent(p);
+        const sanitizedProfile = normalizeIdentityPair(sanitizeUserContent(p));
         localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: sanitizedProfile.myName, partnerName: sanitizedProfile.partnerName }));
         const sharedProfile = { ...sanitizedProfile };
         delete (sharedProfile as any).myName;
@@ -1007,7 +1056,7 @@ export const StorageService = {
     getRoomState: (): RoomState => {
         const fallback: RoomState = DEFAULT_ROOM_STATE;
         try {
-            const raw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('tulika_room_state');
+            const raw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('lior_room_state');
             if (!raw) {
                 const coupleRaw = localStorage.getItem(COUPLE_ROOM_KEY);
                 if (!coupleRaw) return fallback;
@@ -1053,7 +1102,7 @@ export const StorageService = {
     saveRoomState: (state: RoomState, source: 'user' | 'sync' = 'user'): void => {
         const nextState = sanitizeUserContent(normalizeRoomState(state));
         localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(nextState));
-        localStorage.setItem('tulika_room_state', JSON.stringify(nextState)); // legacy key mirror
+        localStorage.setItem('lior_room_state', JSON.stringify(nextState)); // legacy key mirror
         writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, nextState);
         notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
     },
@@ -1064,7 +1113,7 @@ export const StorageService = {
             if (raw) return normalizeCoupleRoom(JSON.parse(raw));
 
             // Legacy Migration: If v2 doesn't exist, try to migrate from v1
-            const oldRaw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('tulika_room_state');
+            const oldRaw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('lior_room_state');
             if (oldRaw) {
                 const migrated = migrateFromOldRoom(JSON.parse(oldRaw));
                 localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(migrated));
@@ -1081,7 +1130,7 @@ export const StorageService = {
         const legacyMirror = toLegacyRoomState(nextState);
         localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(nextState));
         localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
-        localStorage.setItem('tulika_room_state', JSON.stringify(legacyMirror));
+        localStorage.setItem('lior_room_state', JSON.stringify(legacyMirror));
         writeRaw(STORES.DATA, COUPLE_ROOM_KEY, nextState);
         writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
         notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
@@ -1090,7 +1139,7 @@ export const StorageService = {
 
     getUsBucketItems: (): UsBucketItem[] => {
         if (DATA_CACHE.usBucketItems.length > 0) return DATA_CACHE.usBucketItems;
-        const raw = localStorage.getItem(CACHE_KEYS.US_BUCKET_ITEMS) || localStorage.getItem('tulika_bucket');
+        const raw = localStorage.getItem(CACHE_KEYS.US_BUCKET_ITEMS) || localStorage.getItem('lior_bucket');
         try {
             const parsed = raw ? JSON.parse(raw) : [];
             DATA_CACHE.usBucketItems = Array.isArray(parsed) ? parsed : [];
@@ -1109,7 +1158,7 @@ export const StorageService = {
         else list.unshift(sanitized);
         DATA_CACHE.usBucketItems = list;
         localStorage.setItem(CACHE_KEYS.US_BUCKET_ITEMS, JSON.stringify(list));
-        localStorage.setItem('tulika_bucket', JSON.stringify(list)); // legacy key mirror
+        localStorage.setItem('lior_bucket', JSON.stringify(list)); // legacy key mirror
         writeRaw(STORES.DATA, CACHE_KEYS.US_BUCKET_ITEMS, list);
         notifyUpdate({ source, action: 'save', table: 'us_bucket_items', id: sanitized.id, item: sanitized });
     },
@@ -1118,14 +1167,14 @@ export const StorageService = {
         if (source === 'user') addPendingDelete('us_bucket_items', id);
         DATA_CACHE.usBucketItems = StorageService.getUsBucketItems().filter((it) => it.id !== id);
         localStorage.setItem(CACHE_KEYS.US_BUCKET_ITEMS, JSON.stringify(DATA_CACHE.usBucketItems));
-        localStorage.setItem('tulika_bucket', JSON.stringify(DATA_CACHE.usBucketItems));
+        localStorage.setItem('lior_bucket', JSON.stringify(DATA_CACHE.usBucketItems));
         writeRaw(STORES.DATA, CACHE_KEYS.US_BUCKET_ITEMS, DATA_CACHE.usBucketItems);
         notifyUpdate({ source, action: 'delete', table: 'us_bucket_items', id });
     },
 
     getUsWishlistItems: (): UsWishlistItem[] => {
         if (DATA_CACHE.usWishlistItems.length > 0) return DATA_CACHE.usWishlistItems;
-        const raw = localStorage.getItem(CACHE_KEYS.US_WISHLIST_ITEMS) || localStorage.getItem('tulika_wishlist');
+        const raw = localStorage.getItem(CACHE_KEYS.US_WISHLIST_ITEMS) || localStorage.getItem('lior_wishlist');
         try {
             const parsed = raw ? JSON.parse(raw) : [];
             const profile = StorageService.getCoupleProfile();
@@ -1151,7 +1200,7 @@ export const StorageService = {
         else list.unshift(sanitized);
         DATA_CACHE.usWishlistItems = list;
         localStorage.setItem(CACHE_KEYS.US_WISHLIST_ITEMS, JSON.stringify(list));
-        localStorage.setItem('tulika_wishlist', JSON.stringify(list)); // legacy key mirror
+        localStorage.setItem('lior_wishlist', JSON.stringify(list)); // legacy key mirror
         writeRaw(STORES.DATA, CACHE_KEYS.US_WISHLIST_ITEMS, list);
         notifyUpdate({ source, action: 'save', table: 'us_wishlist_items', id: sanitized.id, item: sanitized });
     },
@@ -1160,14 +1209,14 @@ export const StorageService = {
         if (source === 'user') addPendingDelete('us_wishlist_items', id);
         DATA_CACHE.usWishlistItems = StorageService.getUsWishlistItems().filter((it) => it.id !== id);
         localStorage.setItem(CACHE_KEYS.US_WISHLIST_ITEMS, JSON.stringify(DATA_CACHE.usWishlistItems));
-        localStorage.setItem('tulika_wishlist', JSON.stringify(DATA_CACHE.usWishlistItems));
+        localStorage.setItem('lior_wishlist', JSON.stringify(DATA_CACHE.usWishlistItems));
         writeRaw(STORES.DATA, CACHE_KEYS.US_WISHLIST_ITEMS, DATA_CACHE.usWishlistItems);
         notifyUpdate({ source, action: 'delete', table: 'us_wishlist_items', id });
     },
 
     getUsMilestones: (): UsMilestone[] => {
         if (DATA_CACHE.usMilestones.length > 0) return DATA_CACHE.usMilestones;
-        const raw = localStorage.getItem(CACHE_KEYS.US_MILESTONES) || localStorage.getItem('tulika_milestones');
+        const raw = localStorage.getItem(CACHE_KEYS.US_MILESTONES) || localStorage.getItem('lior_milestones');
         try {
             const parsed = raw ? JSON.parse(raw) : [];
             DATA_CACHE.usMilestones = Array.isArray(parsed) ? parsed : [];
@@ -1186,7 +1235,7 @@ export const StorageService = {
         else list.push(sanitized);
         DATA_CACHE.usMilestones = list;
         localStorage.setItem(CACHE_KEYS.US_MILESTONES, JSON.stringify(list));
-        localStorage.setItem('tulika_milestones', JSON.stringify(list)); // legacy key mirror
+        localStorage.setItem('lior_milestones', JSON.stringify(list)); // legacy key mirror
         writeRaw(STORES.DATA, CACHE_KEYS.US_MILESTONES, list);
         notifyUpdate({ source, action: 'save', table: 'us_milestones', id: sanitized.id, item: sanitized });
     },
@@ -1195,7 +1244,7 @@ export const StorageService = {
         if (source === 'user') addPendingDelete('us_milestones', id);
         DATA_CACHE.usMilestones = StorageService.getUsMilestones().filter((it) => it.id !== id);
         localStorage.setItem(CACHE_KEYS.US_MILESTONES, JSON.stringify(DATA_CACHE.usMilestones));
-        localStorage.setItem('tulika_milestones', JSON.stringify(DATA_CACHE.usMilestones));
+        localStorage.setItem('lior_milestones', JSON.stringify(DATA_CACHE.usMilestones));
         writeRaw(STORES.DATA, CACHE_KEYS.US_MILESTONES, DATA_CACHE.usMilestones);
         notifyUpdate({ source, action: 'delete', table: 'us_milestones', id });
     },

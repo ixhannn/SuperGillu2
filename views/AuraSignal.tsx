@@ -265,7 +265,7 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                                 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 25, delay: index * 0.08 }}
                                 className={`w-full relative overflow-hidden rounded-[1.75rem] p-5 text-left transition-all duration-500
-                                    ${isSelected ? 'glass-card ring-2 ring-tulika-200' : 'glass-card shadow-sm'}
+                                    ${isSelected ? 'glass-card ring-2 ring-lior-200' : 'glass-card shadow-sm'}
                                 `}
                                 style={{
                                     border: isSelected ? `1px solid rgba(var(--theme-particle-2-rgb),0.15)` : `1px solid rgba(var(--theme-particle-2-rgb),0.10)`,

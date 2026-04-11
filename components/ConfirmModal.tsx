@@ -25,6 +25,16 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     onConfirm,
     onCancel
 }) => {
+    React.useEffect(() => {
+        if (!isOpen) return;
+        const handleBack = (e: Event) => {
+            e.preventDefault(); // Stop App.tsx from popping route
+            onCancel();
+        };
+        window.addEventListener('lior:hardware-back', handleBack);
+        return () => window.removeEventListener('lior:hardware-back', handleBack);
+    }, [isOpen, onCancel]);
+
     return (
         <AnimatePresence>
             {isOpen && ReactDOM.createPortal(
@@ -32,46 +42,55 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[200] flex items-center justify-center p-6"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(12px)' }}
+                    className="fixed inset-0 z-[200] flex items-center justify-center p-8"
+                    style={{ backgroundColor: 'rgba(21,12,16,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
                     onClick={onCancel}
                 >
                     <motion.div
-                        initial={{ scale: 0.92, opacity: 0, y: 8 }}
+                        initial={{ scale: 0.92, opacity: 0, y: 12 }}
                         animate={{ scale: 1, opacity: 1, y: 0 }}
-                        exit={{ scale: 0.95, opacity: 0, y: 4 }}
-                        transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-                        className="glass-card-hero w-full max-w-sm rounded-[1.75rem] p-7 shadow-elevated"
+                        exit={{ scale: 1.02, opacity: 0, y: 8 }}
+                        transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+                        className="bg-white/95 w-full max-w-[340px] p-8 shadow-float relative overflow-hidden"
+                        style={{ borderRadius: 'var(--radius-xl)' }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center gap-3 mb-4">
+                        {/* Subtle top decoration */}
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-lior-500/20 to-transparent opacity-40" />
+
+                        <div className="flex flex-col items-center text-center mb-6">
                             {variant === 'danger' && (
-                                <div className="p-2.5 bg-red-50 text-red-500 rounded-2xl">
-                                    <AlertTriangle size={18} />
-                                </div>
+                                <motion.div 
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ type: 'spring', delay: 0.1 }}
+                                    className="p-3.5 bg-red-50 text-red-500 rounded-2xl mb-4"
+                                >
+                                    <AlertTriangle size={24} strokeWidth={2} />
+                                </motion.div>
                             )}
-                            <h3 className="font-serif font-bold text-lg" style={{ color: 'var(--color-text-primary)' }}>{title}</h3>
+                            <h3 className="font-serif font-bold text-xl leading-tight" style={{ color: 'var(--color-text-primary)' }}>{title}</h3>
                         </div>
 
-                        <p className="text-sm leading-relaxed mb-7" style={{ color: 'var(--color-text-secondary)' }}>{message}</p>
+                        <p className="text-center text-[15px] leading-relaxed mb-8 px-2" style={{ color: 'var(--color-text-secondary)' }}>{message}</p>
 
-                        <div className="flex gap-3">
-                            <button
-                                onClick={onCancel}
-                                className="flex-1 py-3 rounded-2xl font-bold text-sm spring-press"
-                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', color: 'var(--color-text-secondary)' }}
-                            >
-                                {cancelLabel}
-                            </button>
+                        <div className="flex flex-col gap-2.5">
                             <button
                                 onClick={() => { variant === 'danger' ? feedback.error() : feedback.tap(); onConfirm(); }}
-                                className={`flex-1 py-3 rounded-2xl font-bold text-sm spring-press ${
+                                className={`w-full py-4 rounded-xl font-bold text-[14px] leading-none uppercase tracking-widest shadow-lg active:scale-95 transition-all ${
                                     variant === 'danger'
-                                        ? 'bg-red-500 text-white shadow-lg shadow-red-200/40'
-                                        : 'bg-tulika-500 text-white shadow-lg shadow-tulika-200/40'
+                                        ? 'bg-red-500 text-white shadow-red-500/15'
+                                        : 'bg-lior-500 text-white shadow-lior-500/15'
                                 }`}
                             >
                                 {confirmLabel}
+                            </button>
+                            <button
+                                onClick={onCancel}
+                                className="w-full py-4 rounded-xl font-bold text-[13px] leading-none uppercase tracking-widest active:scale-95 transition-all"
+                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.06)', color: 'var(--color-text-secondary)' }}
+                            >
+                                {cancelLabel}
                             </button>
                         </div>
                     </motion.div>

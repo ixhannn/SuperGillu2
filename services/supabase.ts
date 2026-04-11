@@ -1,8 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const DEFAULT_URL = 'https://zogdcuapmnbltdvqsrga.supabase.co';
-const DEFAULT_KEY = 'sb_publishable_KRRnxuRIWdlgHbn_g65dfQ_Mzzg5Vjl';
-const KEYS = { URL: 'tulika_sb_url', KEY: 'tulika_sb_key' };
+const KEYS = { URL: 'lior_sb_url', KEY: 'lior_sb_key' };
 const ENV_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || '';
 const ENV_KEY = import.meta.env.VITE_SUPABASE_KEY?.trim() || '';
 let cachedUserId: string | null = null;
@@ -14,8 +12,8 @@ export const SupabaseService = {
     client: null as SupabaseClient | null,
 
     init: () => {
-        const url = ENV_URL || localStorage.getItem(KEYS.URL) || DEFAULT_URL;
-        const key = ENV_KEY || localStorage.getItem(KEYS.KEY) || DEFAULT_KEY;
+        const url = ENV_URL || localStorage.getItem(KEYS.URL) || '';
+        const key = ENV_KEY || localStorage.getItem(KEYS.KEY) || '';
         if (url && key && !SupabaseService.client) {
             try {
                 SupabaseService.client = createClient(url, key);
@@ -32,7 +30,7 @@ export const SupabaseService = {
         return SupabaseService.init();
     },
 
-    isConfigured: () => (!!ENV_URL && !!ENV_KEY) || (!!localStorage.getItem(KEYS.URL) && !!localStorage.getItem(KEYS.KEY)) || (!!DEFAULT_URL && !!DEFAULT_KEY),
+    isConfigured: () => (!!ENV_URL && !!ENV_KEY) || (!!localStorage.getItem(KEYS.URL) && !!localStorage.getItem(KEYS.KEY)),
 
     setCachedUserId: (userId: string | null) => {
         cachedUserId = userId;
@@ -91,7 +89,7 @@ export const SupabaseService = {
         if (!userId) return false;
 
         try {
-            const { error } = await SupabaseService.client.rpc('claim_tulika_legacy_rows');
+            const { error } = await SupabaseService.client.rpc('claim_lior_legacy_rows');
             if (error) {
                 console.warn('Supabase legacy row claim failed:', error);
                 return false;

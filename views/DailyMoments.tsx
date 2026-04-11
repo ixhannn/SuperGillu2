@@ -4,10 +4,11 @@ import { Camera, Clock, Plus, Trash2, X, Sparkles, Loader2, RefreshCw, ArrowLeft
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, DailyPhoto, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
-import { useTulikaMedia } from '../hooks/useTulikaImage';
+import { useLiorMedia } from '../hooks/useLiorImage';
 import { ViewHeader } from '../components/ViewHeader';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { Skeleton } from '../components/Skeleton';
+import { SkeletonReveal } from '../components/SkeletonReveal';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
@@ -24,7 +25,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
     const mediaId = isVideo ? photo.imageId : (photo.imageId || photo.videoId);
     const mediaData = isVideo ? photo.image : (photo.image || photo.video);
 
-    const { src: mediaUrl, isLoading } = useTulikaMedia(mediaId, mediaData, photo.storagePath);
+    const { src: mediaUrl, isLoading } = useLiorMedia(mediaId, mediaData, photo.storagePath);
     const [timeLeft, setTimeLeft] = useState('');
 
     useEffect(() => {
@@ -166,12 +167,12 @@ const CommentBubble: React.FC<{
             className={`flex gap-2.5 ${isReply ? 'ml-10' : ''}`}
         >
             {/* Avatar */}
-            <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold ${isMine ? 'bg-tulika-500/15 text-tulika-400' : 'bg-blue-500/15 text-blue-400'}`}>
+            <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold ${isMine ? 'bg-lior-500/15 text-lior-400' : 'bg-blue-500/15 text-blue-400'}`}>
                 {comment.senderName.charAt(0).toUpperCase()}
             </div>
             {/* Content */}
             <div className="flex-1 min-w-0">
-                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-tulika-500/10 border border-tulika-500/20' : ''}`}
+                <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${isMine ? 'bg-lior-500/10 border border-lior-500/20' : ''}`}
                     style={!isMine ? { background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.14)' } : {}}>
                     <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{comment.senderName}</span>
@@ -208,7 +209,7 @@ const PostViewer: React.FC<{
     onClose: () => void;
 }> = ({ photo, onClose }) => {
     const isVideo = !!photo.video || !!photo.videoId;
-    const { src: mediaSrc, isLoading: mediaLoading } = useTulikaMedia(
+    const { src: mediaSrc, isLoading: mediaLoading } = useLiorMedia(
         isVideo ? (photo.videoId || photo.imageId) : photo.imageId,
         isVideo ? (photo.video || photo.image) : photo.image,
         isVideo ? (photo.videoStoragePath || photo.storagePath) : photo.storagePath
@@ -299,7 +300,7 @@ const PostViewer: React.FC<{
                         <ArrowLeft size={22} />
                     </button>
                     <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-tulika-400 to-tulika-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-lior-400 to-lior-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
                             {photo.senderId === myDeviceId ? profile.myName.charAt(0) : profile.partnerName.charAt(0)}
                         </div>
                         <div>
@@ -313,7 +314,7 @@ const PostViewer: React.FC<{
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-tulika-500 bg-tulika-500/15 px-2.5 py-1 rounded-full">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-lior-500 bg-lior-500/15 px-2.5 py-1 rounded-full">
                         <Clock size={10} className="inline mr-1" />
                         {hoursLeft}h {minsLeft}m
                     </span>
@@ -365,7 +366,7 @@ const PostViewer: React.FC<{
             )}
 
             {/* ── Comments Section ── */}
-            <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto px-4 py-4">
                 {comments.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 opacity-50">
                         <MessageCircle size={28} className="mb-2" style={{ color: 'var(--color-text-secondary)' }} />
@@ -410,17 +411,17 @@ const PostViewer: React.FC<{
             <div className="flex-shrink-0 px-4 py-3 safe-area-bottom backdrop-blur-md z-20" style={{ borderTop: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)' }}>
                 {replyTo && (
                     <div className="flex items-center justify-between mb-2 px-1">
-                        <span className="text-[11px] text-tulika-500 font-bold">
+                        <span className="text-[11px] text-lior-500 font-bold">
                             <Reply size={10} className="inline mr-1" />
                             Replying to {replyTo.senderName}
                         </span>
-                        <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-1" style={{ color: 'var(--color-text-secondary)' }}>
+                        <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:rounded-full focus-visible:ring-offset-1" style={{ color: 'var(--color-text-secondary)' }}>
                             <X size={14} />
                         </button>
                     </div>
                 )}
                 <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-tulika-400 to-tulika-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-lior-400 to-lior-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
                         {profile.myName.charAt(0)}
                     </div>
                     <input
@@ -430,13 +431,13 @@ const PostViewer: React.FC<{
                         onChange={e => setCommentText(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleSubmitComment(); }}
                         placeholder={replyTo ? `Reply to ${replyTo.senderName}...` : "Add a comment..."}
-                        className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-tulika-500/30 transition-all"
+                        className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-lior-500/30 transition-all"
                         style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', color: 'var(--color-text-primary)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}
                     />
                     <button
                         onClick={handleSubmitComment}
                         disabled={!commentText.trim() || isSubmitting}
-                        className="p-2.5 bg-tulika-500 text-white rounded-full disabled:opacity-30 disabled:scale-90 transition-all spring-press shadow-sm"
+                        className="p-2.5 bg-lior-500 text-white rounded-full disabled:opacity-30 disabled:scale-90 transition-all spring-press shadow-sm"
                     >
                         <Send size={16} />
                     </button>
@@ -569,26 +570,28 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                     onBack={() => setView('home')}
                     variant="centered"
                     rightSlot={
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                aria-label="Share a photo moment"
-                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-tulika-50 text-tulika-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 shadow-sm border border-tulika-100"
-                            >
-                                <Camera size={20} />
-                            </button>
-                            <button
-                                onClick={() => videoInputRef.current?.click()}
-                                aria-label="Share a video moment"
-                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 shadow-sm border border-blue-100"
-                            >
-                                <Video size={20} />
-                            </button>
-                        </div>
-                    }
-                />
-                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-                <input type="file" ref={videoInputRef} className="hidden" accept="video/*" onChange={handleVideoChange} />
+                    <div className="flex gap-3">
+                        <motion.button
+                            whileTap={{ scale: 0.92 }}
+                            onClick={() => fileInputRef.current?.click()}
+                            aria-label="Share a photo moment"
+                            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center bg-lior-50 text-lior-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-lior-500 shadow-sm border border-lior-100/50"
+                        >
+                            <Camera size={20} />
+                        </motion.button>
+                        <motion.button
+                            whileTap={{ scale: 0.92 }}
+                            onClick={() => videoInputRef.current?.click()}
+                            aria-label="Share a video moment"
+                            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 shadow-sm border border-blue-100/50"
+                        >
+                            <Video size={20} />
+                        </motion.button>
+                    </div>
+                }
+            />
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+            <input type="file" ref={videoInputRef} className="hidden" accept="video/*" onChange={handleVideoChange} />
 
             <div className="flex-1 p-6 pb-32">
                 {photos.length > 0 ? (
@@ -605,9 +608,36 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                         ))}
                     </motion.div>
                 ) : (
-                    <div className="h-full flex flex-col items-center justify-center py-20" style={{ color: 'var(--color-text-secondary)' }}>
-                        <Sparkles size={48} className="mb-4" />
-                        <p className="font-serif text-center">Share a moment that<br />disappears in 24 hours.</p>
+                    <div className="flex flex-col items-center justify-center py-24">
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                            className="relative mb-10"
+                        >
+                            <div className="absolute inset-0 bg-lior-200/20 rounded-full blur-3xl animate-breathe-glow" />
+                            <div className="relative p-10 bg-white/40 backdrop-blur-md rounded-full text-lior-500 border border-white/60 shadow-md">
+                                <Sparkles size={54} strokeWidth={1.5} />
+                            </div>
+                        </motion.div>
+                        <motion.h2 
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.15, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                            className="text-center pb-4 text-3xl font-serif font-bold leading-tight" 
+                            style={{ color: 'var(--color-text-primary)' }}
+                        >
+                            Capture a moment<br />that fades away.
+                        </motion.h2>
+                        <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 0.5 }}
+                            transition={{ delay: 0.35 }}
+                            className="text-[14px] font-bold tracking-[0.2em] uppercase"
+                            style={{ color: 'var(--color-text-secondary)' }}
+                        >
+                            Visible for 24 hours
+                        </motion.p>
                     </div>
                 )}
             </div>
@@ -616,17 +646,17 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             {isUploading && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-50 flex flex-col backdrop-blur-3xl" style={{ background: 'var(--color-surface)', animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
                     <div className="p-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)' }}>
-                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer spring-press focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
+                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer spring-press focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
                         <span className="font-bold text-sm uppercase tracking-widest" style={{ color: 'var(--color-text-primary)' }}>Post Moment</span>
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="px-4 py-1.5 bg-tulika-500 text-white rounded-full text-xs font-bold disabled:opacity-50 spring-press"
+                            className="px-4 py-1.5 bg-lior-500 text-white rounded-full text-xs font-bold disabled:opacity-50 spring-press"
                         >
                             {isSaving ? 'Sending...' : 'Share'}
                         </button>
                     </div>
-                    <div className="flex-1 p-6 flex flex-col overflow-y-auto">
+                    <div data-lenis-prevent className="lenis-inner flex-1 p-6 flex flex-col overflow-y-auto">
                         <div className="aspect-[3/4] rounded-[2rem] overflow-hidden mb-6 shadow-xl relative flex items-center justify-center bg-black">
                             {newImage && !newVideo && (
                                 <>
@@ -646,7 +676,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                             value={caption}
                             onChange={e => setCaption(e.target.value)}
                             placeholder="Add a caption..."
-                            className="w-full p-4 rounded-2xl font-medium outline-none focus:ring-2 focus:ring-tulika-500/30"
+                            className="w-full p-4 rounded-2xl font-medium outline-none focus:ring-2 focus:ring-lior-500/30"
                             style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.16)', color: 'var(--color-text-primary)' }}
                         />
                         <p className="mt-4 text-[10px] text-center font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>

@@ -2,6 +2,11 @@
  * TiltCard — Interactive 3D perspective card that responds to
  * pointer movement and device gyroscope for a real depth effect.
  * Includes glare overlay and shadow depth.
+ * 
+ * ON MOBILE: All 3D is disabled. The card renders as a simple div
+ * with a press scale. This eliminates gyroscope listeners, spring
+ * calculations, dynamic shadow blur, and preserve-3d compositing
+ * that cause scroll jitter on Android WebView.
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
@@ -17,6 +22,9 @@ interface TiltCardProps {
   onClick?: () => void;
 }
 
+const isMobile = typeof window !== 'undefined' &&
+  (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 768px)').matches);
+
 export const TiltCard: React.FC<TiltCardProps> = ({
   children,
   className = '',
@@ -26,9 +34,22 @@ export const TiltCard: React.FC<TiltCardProps> = ({
   scale = 1.02,
   onClick,
 }) => {
+  // ── MOBILE: zero-overhead wrapper ──
+  if (isMobile) {
+    return (
+      <div
+        className={`relative spring-press ${className}`}
+        style={style}
+        onClick={onClick}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  // ── DESKTOP: full 3D tilt pipeline ──
   const cardRef = useRef<HTMLDivElement>(null);
   const rectRef = useRef<DOMRect | null>(null);
-  const orientRafRef = useRef<number>(0);
   const [isHovered, setIsHovered] = useState(false);
 
   const rotateX = useMotionValue(0);
@@ -51,13 +72,10 @@ export const TiltCard: React.FC<TiltCardProps> = ({
   );
 
   const handlePointerEnterCapture = useCallback(() => {
-    // Only capture on devices that support true hover
-    if (!window.matchMedia('(any-hover: hover)').matches) return;
     if (cardRef.current) rectRef.current = cardRef.current.getBoundingClientRect();
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!window.matchMedia('(any-hover: hover)').matches) return;
     const rect = rectRef.current;
     if (!rect) return;
     const centerX = rect.left + rect.width / 2;
@@ -72,39 +90,12 @@ export const TiltCard: React.FC<TiltCardProps> = ({
   }, [maxTilt, rotateX, rotateY, glareX, glareY]);
 
   const handlePointerLeave = useCallback(() => {
-    if (!window.matchMedia('(any-hover: hover)').matches) return;
     rotateX.set(0);
     rotateY.set(0);
     glareX.set(50);
     glareY.set(50);
     setIsHovered(false);
   }, [rotateX, rotateY, glareX, glareY]);
-
-  // Device orientation (gyroscope) for mobile — RAF-throttled + tier-checked
-  useEffect(() => {
-    const handleOrientation = (e: DeviceOrientationEvent) => {
-      // Skip expensive orientation updates if device is struggling
-      if (typeof document !== 'undefined' && document.documentElement.dataset.tier === 'low') return;
-      if (e.beta === null || e.gamma === null) return;
-      
-      cancelAnimationFrame(orientRafRef.current);
-      orientRafRef.current = requestAnimationFrame(() => {
-        const tiltX = Math.max(-maxTilt, Math.min(maxTilt, (e.beta! - 45) * 0.3));
-        const tiltY = Math.max(-maxTilt, Math.min(maxTilt, e.gamma! * 0.3));
-        rotateX.set(-tiltX);
-        rotateY.set(tiltY);
-      });
-    };
-
-    if (typeof DeviceOrientationEvent !== 'undefined' && window.matchMedia('(any-pointer: coarse)').matches) {
-      window.addEventListener('deviceorientation', handleOrientation, { passive: true });
-    }
-
-    return () => {
-      window.removeEventListener('deviceorientation', handleOrientation);
-      cancelAnimationFrame(orientRafRef.current);
-    };
-  }, [maxTilt, rotateX, rotateY]);
 
   return (
     <motion.div
@@ -167,3 +158,4 @@ export const TiltCard: React.FC<TiltCardProps> = ({
     </motion.div>
   );
 };
+

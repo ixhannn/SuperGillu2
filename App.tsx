@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
+import { flushSync } from 'react-dom';
 import { Heart } from 'lucide-react';
-import { ViewState } from './types';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { ViewState, TransitionDirection, ROOT_TABS } from './types';
+import { LenisScroll } from './services/LenisScroll';
+import { navigateWithTransition } from './utils/gesture';
+
 
 // Navigation context for back navigation
 export const NavigationContext = createContext<{
@@ -49,6 +55,7 @@ import { SupabaseService } from './services/supabase';
 import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
+import { AppLaunchOverlay } from './components/AppLaunchOverlay';
 
 // Onboarding component for first-time identity selection
 const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => void }) => {
@@ -59,7 +66,7 @@ const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => v
       <div className="absolute bottom-[-10%] left-[-10%] w-72 h-72 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--theme-orb-2)', animationDelay: '1s' }} />
 
       <div className="relative z-10 text-center w-full max-sm:max-w-xs">
-        <div className="w-20 h-20 bg-white rounded-full mx-auto mb-8 shadow-elevated flex items-center justify-center text-tulika-500 animate-pop-in border-[3px] border-tulika-100/60">
+        <div className="w-20 h-20 bg-white rounded-full mx-auto mb-8 shadow-elevated flex items-center justify-center text-lior-500 animate-pop-in border-[3px] border-lior-100/60">
           <Heart size={40} fill="currentColor" className="animate-pulse-slow" />
         </div>
 
@@ -71,7 +78,7 @@ const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => v
             onClick={() => onSelect('Tulika', 'Ishan')}
             className="w-full p-4 rounded-[1.25rem] glass-card-hero flex items-center gap-4 transition-all group spring-press"
           >
-            <div className="w-12 h-12 rounded-full bg-tulika-50 flex items-center justify-center text-2xl transition-transform">👩🏻</div>
+            <div className="w-12 h-12 rounded-full bg-lior-50 flex items-center justify-center text-2xl transition-transform">👩🏻</div>
             <div className="text-left">
               <span className="block font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>Tulika</span>
               <span className="text-micro tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Switch to your profile</span>
@@ -95,66 +102,160 @@ const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => v
 };
 
 const RouteLoader = () => (
-  <div className="min-h-screen flex flex-col items-center justify-center"
-    style={{ background: 'var(--theme-bg-main)', color: 'var(--color-text-primary)' }}>
+  <div
+    className="min-h-screen flex flex-col items-center justify-center gap-6 overflow-hidden"
+    style={{ background: 'var(--theme-bg-main)', color: 'var(--color-text-primary)' }}
+  >
+    <div className="absolute inset-0" style={{ background: 'var(--theme-vignette)', opacity: 0.95 }} />
     <div className="relative">
-      <Heart size={44} className="text-tulika-200 animate-ping absolute inset-0" fill="currentColor" />
-      <Heart size={44} className="text-tulika-500 relative z-10 animate-pulse" fill="currentColor" />
+      <div
+        className="absolute inset-0 rounded-full animate-breathe-glow"
+        style={{
+          background: 'radial-gradient(circle, rgba(var(--theme-particle-2-rgb),0.34) 0%, transparent 70%)',
+          transform: 'scale(2.9)',
+        }}
+      />
+      <div className="w-24 h-24 rounded-[1.75rem] liquid-glass flex items-center justify-center relative overflow-hidden">
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.34), transparent 55%)' }}
+        />
+        <Heart
+          size={34}
+          className="relative z-10"
+          fill="currentColor"
+          style={{ opacity: 0.95, color: 'var(--color-nav-active)', animation: 'ui-breathe 1.8s ease-in-out infinite' }}
+        />
+      </div>
     </div>
-    <p className="mt-8 text-tulika-600 font-serif font-bold tracking-widest uppercase text-micro animate-pulse">
-      Opening Your Vault
-    </p>
+    <div className="relative z-10 text-center">
+      <p className="font-serif text-[1.45rem] tracking-[0.28em]">LIOR</p>
+      <p className="mt-2 text-[0.72rem] font-semibold uppercase tracking-[0.26em]" style={{ color: 'var(--color-text-secondary)' }}>
+        Waking the room softly
+      </p>
+    </div>
   </div>
 );
 
 // Main App Component with Default Export
 const App = () => {
   const [currentView, setCurrentView] = useState<ViewState>('home');
+  const [transitionDir, setTransitionDir] = useState<TransitionDirection>('tab');
   const historyStack = useRef<ViewState[]>([]);
+  const scrollPositions = useRef<Record<string, number>>({});
   const mainScrollRef = useRef<HTMLElement | null>(null);
+  // Tracks current view synchronously for pre-transition direction calculation.
+  // Must be updated BEFORE state changes so direction is resolved correctly.
+  const currentViewRef = useRef<ViewState>('home');
 
   // Register main scroll container from Layout
   const registerScrollRef = useCallback((el: HTMLElement | null) => {
     mainScrollRef.current = el;
   }, []);
 
-  const navigateTo = useCallback((view: ViewState) => {
-    setCurrentView(prev => {
-      if (prev !== view) {
-        // Push current view to history (unless it's the same or going to home resets)
-        historyStack.current.push(prev);
-        // Cap history at 20 entries
-        if (historyStack.current.length > 20) {
-          historyStack.current.shift();
-        }
-      }
-      return view;
-    });
-    // Scroll to top
-    requestAnimationFrame(() => {
-      if (mainScrollRef.current) {
-        mainScrollRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-      }
+  const getCurrentScroll = useCallback(() => {
+    if (LenisScroll.isReady) {
+      return LenisScroll.scroll;
+    }
+
+    return mainScrollRef.current?.scrollTop ?? 0;
+  }, []);
+
+  const restoreScroll = useCallback((y: number, immediate = true) => {
+    if (LenisScroll.isReady) {
+      LenisScroll.scrollTo(y, { immediate });
+      return;
+    }
+
+    mainScrollRef.current?.scrollTo({
+      top: y,
+      behavior: immediate ? 'auto' : 'smooth',
     });
   }, []);
 
-  const goBack = useCallback(() => {
-    const prev = historyStack.current.pop();
-    const destination = prev ?? 'home';
-    setCurrentView(destination);
-    // Scroll to top
+  const navigateTo = useCallback((view: ViewState) => {
+    const prev = currentViewRef.current;
+    if (prev === view) return;
+
+    // ── Resolve direction before the transition snapshot ─────────────────────
+    let dir: TransitionDirection = 'tab';
+    if (view === 'add-memory') dir = 'modal';
+    else if (ROOT_TABS.includes(view) && ROOT_TABS.includes(prev)) dir = 'tab';
+    else dir = 'push';
+
+    // Save scroll and update history synchronously (ref mutations, no re-render)
+    scrollPositions.current[prev] = getCurrentScroll();
+    if (!ROOT_TABS.includes(view)) {
+      historyStack.current.push(prev);
+      if (historyStack.current.length > 20) historyStack.current.shift();
+    } else {
+      historyStack.current = [];
+    }
+    currentViewRef.current = view;
+
+    // ── View Transitions API: captures old/new DOM snapshots around setState ──
+    // flushSync makes React update the DOM synchronously inside the VT callback
+    // so the browser captures the correct before/after states.
+    navigateWithTransition(
+      () => {
+        setCurrentView(view);
+        setTransitionDir(dir);
+      },
+      dir,
+      flushSync,
+    );
+
+    // Restore scroll after the transition has painted (both VT and FM paths)
     requestAnimationFrame(() => {
-      if (mainScrollRef.current) {
-        mainScrollRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-      }
+      setTimeout(() => {
+        const targetY = scrollPositions.current[view] ?? 0;
+        restoreScroll(targetY, true);
+      }, 10);
     });
-  }, []);
+  }, [getCurrentScroll, restoreScroll]);
+
+  const goBack = useCallback(() => {
+    const prev        = currentViewRef.current;
+    const destination = historyStack.current.pop() ?? 'home';
+
+    scrollPositions.current[prev] = getCurrentScroll();
+    currentViewRef.current        = destination;
+
+    navigateWithTransition(
+      () => {
+        setCurrentView(destination);
+        setTransitionDir('pop');
+      },
+      'pop',
+      flushSync,
+    );
+
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const targetY = scrollPositions.current[destination] ?? 0;
+        restoreScroll(targetY, true);
+      }, 10);
+    });
+  }, [getCurrentScroll, restoreScroll]);
 
   const canGoBack = historyStack.current.length > 0;
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [launchReady, setLaunchReady] = useState(false);
+  const [showLaunchOverlay, setShowLaunchOverlay] = useState(true);
+
+  useEffect(() => {
+    const launchTimer = window.setTimeout(() => setLaunchReady(true), 1350);
+    return () => window.clearTimeout(launchTimer);
+  }, []);
+
+  useEffect(() => {
+    if (isInitialized && launchReady) {
+      setShowLaunchOverlay(false);
+    }
+  }, [isInitialized, launchReady]);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -164,7 +265,7 @@ const App = () => {
 
         // 2. Check for Onboarding status
         const profile = StorageService.getCoupleProfile();
-        const hasOnboarded = localStorage.getItem('tulika_onboarded') === 'true' || localStorage.getItem('tulika_manual_override') === 'true';
+        const hasOnboarded = localStorage.getItem('lior_onboarded') === 'true' || localStorage.getItem('lior_manual_override') === 'true';
         setShowOnboarding(!hasOnboarded);
 
         // 3. Apply theme from URL override first, then fallback to stored profile theme.
@@ -217,16 +318,80 @@ const App = () => {
         console.error("Initialization error:", err);
       } finally {
         setIsInitialized(true);
+        // Hide native splash screen after content is ready, with a brief
+        // delay so the first paint is composited before the splash fades.
+        if (Capacitor.isNativePlatform()) {
+          requestAnimationFrame(() => {
+            import('@capacitor/splash-screen').then(({ SplashScreen }) => {
+              SplashScreen.hide({ fadeOutDuration: 200 });
+            }).catch(() => {});
+          });
+        }
       }
     };
 
     initializeApp();
-  }, []);
+
+    // ── Android hardware back button ──
+    // Intercept the native back gesture/button so it navigates within the app
+    // instead of closing the WebView entirely (default Capacitor behavior).
+    if (Capacitor.isNativePlatform()) {
+      const backHandler = CapacitorApp.addListener('backButton', ({ canGoBack: webCanGoBack }) => {
+        // Dispatch to open modals first
+        const event = new CustomEvent('lior:hardware-back', { cancelable: true });
+        window.dispatchEvent(event);
+        if (event.defaultPrevented) return;
+
+        if (historyStack.current.length > 0) {
+          const prev        = currentViewRef.current;
+          const destination = historyStack.current.pop() ?? 'home';
+
+          scrollPositions.current[prev] = getCurrentScroll();
+          currentViewRef.current        = destination;
+
+          navigateWithTransition(
+            () => {
+              setCurrentView(destination);
+              setTransitionDir('pop');
+            },
+            'pop',
+            flushSync,
+          );
+
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              const targetY = scrollPositions.current[destination] ?? 0;
+              restoreScroll(targetY, true);
+            }, 10);
+          });
+        } else {
+          // Already at root — minimize the app (Android pattern)
+          CapacitorApp.minimizeApp();
+        }
+      });
+
+      // ── StatusBar: edge-to-edge transparent overlay ──
+      import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
+        StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+        StatusBar.setBackgroundColor({ color: '#00000000' }).catch(() => {});
+        StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+      }).catch(() => {});
+
+      // ── Keyboard: configure Android resize behavior ──
+      import('@capacitor/keyboard').then(({ Keyboard, KeyboardResize }) => {
+        Keyboard.setResizeMode({ mode: KeyboardResize.Body }).catch(() => {});
+        Keyboard.setScroll({ isDisabled: false }).catch(() => {});
+      }).catch(() => {});
+
+      return () => { backHandler.then(h => h.remove()); };
+    }
+  }, [getCurrentScroll, restoreScroll]);
+
 
   const handleOnboardingSelect = (me: string, partner: string) => {
     const current = StorageService.getCoupleProfile();
     StorageService.saveCoupleProfile({ ...current, myName: me, partnerName: partner });
-    localStorage.setItem('tulika_onboarded', 'true');
+    localStorage.setItem('lior_onboarded', 'true');
     setShowOnboarding(false);
   };
 
@@ -298,11 +463,14 @@ const App = () => {
     <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
       <ErrorBoundary>
         <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef}>
-          <ViewTransition viewKey={currentView}>
+          <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
             {renderView()}
           </ViewTransition>
         </Layout>
         <AuraSignalReceiver />
+        <AnimatePresence>
+          {showLaunchOverlay && <AppLaunchOverlay />}
+        </AnimatePresence>
       </ErrorBoundary>
     </NavigationContext.Provider>
   );
@@ -339,7 +507,7 @@ const AuraSignalReceiver = () => {
         Audio.play('heartbeat');
 
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-           new Notification('Tulika - New Aura', { 
+           new Notification('Lior - New Aura', {
                body: detail.payload.title, 
                icon: '/icon.svg',
                silent: false

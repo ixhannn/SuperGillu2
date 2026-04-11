@@ -130,14 +130,14 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                 </div>
 
                 {/* Tabs */}
-                <div className="flex gap-2 p-4 bg-white/50 border-b border-gray-100 overflow-x-auto no-scrollbar">
+                <div data-lenis-prevent className="lenis-inner flex gap-2 p-4 bg-white/50 border-b border-gray-100 overflow-x-auto no-scrollbar">
                     {['hat', 'accessory', 'environment'].map(tab => (
                         <button
                             key={tab}
                             onClick={() => { feedback.light(); setActiveTab(tab as any); }}
                             className={`px-5 py-2.5 rounded-2xl font-bold text-sm capitalize transition-all whitespace-nowrap ${
                                 activeTab === tab 
-                                ? 'bg-tulika-500 text-white shadow-md shadow-tulika-200' 
+                                ? 'bg-lior-500 text-white shadow-md shadow-lior-200' 
                                 : 'bg-white text-gray-500'
                             }`}
                         >
@@ -155,14 +155,14 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                     </div>
                     <button
                         onClick={() => setShowAffordableFirst(prev => !prev)}
-                        className={`px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all ${showAffordableFirst ? 'bg-tulika-100 text-tulika-700' : 'bg-gray-100 text-gray-500'}`}
+                        className={`px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all ${showAffordableFirst ? 'bg-lior-100 text-lior-700' : 'bg-gray-100 text-gray-500'}`}
                     >
                         <Eye size={12} /> Affordable First
                     </button>
                 </div>
 
                 {/* Grid */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto p-4 space-y-4">
                     <div className="grid grid-cols-2 gap-3 pb-8">
                         <AnimatePresence mode="popLayout">
                             {visibleItems.map(item => {
@@ -180,7 +180,7 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                                         key={item.id} 
                                         className={`p-4 rounded-[2rem] border-2 transition-all relative overflow-hidden flex flex-col items-center text-center ${
                                             isEquipped 
-                                                ? 'bg-tulika-50 border-tulika-200' 
+                                                ? 'bg-lior-50 border-lior-200' 
                                                 : isOwned 
                                                     ? 'bg-white border-white' 
                                                     : 'bg-white border-gray-50'
@@ -222,7 +222,7 @@ export const PetShop: React.FC<PetShopProps> = ({ stats, onClose, onUpdateStats 
                                                     onClick={() => handleEquipToggle(item)}
                                                     className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all outline-none ${
                                                         isEquipped 
-                                                            ? 'bg-tulika-500 text-white shadow-md shadow-tulika-200' 
+                                                            ? 'bg-lior-500 text-white shadow-md shadow-lior-200' 
                                                             : 'bg-gray-100 text-gray-600'
                                                     }`}
                                                 >

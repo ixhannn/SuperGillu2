@@ -1,44 +1,43 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3 \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"couples romantic love app mobile PWA intimate journal\" --design-system -p \"Tulika\")",
-      "Bash(py \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"couples romantic love app mobile PWA intimate journal\" --design-system -p \"Tulika\")",
-      "Bash(py \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"animation accessibility mobile touch\" --domain ux)",
-      "Bash(py \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"layout responsive form\" --stack react)",
-      "Bash(python skills/ui-ux-pro-max/scripts/search.py \"intimate couples app warm minimal dramatic liquid glass mobile\" --design-system -p \"Tulika\")",
-      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"intimate couples app warm minimal dramatic liquid glass mobile\" --design-system -p \"Tulika\")",
-      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"liquid glass warm minimal\" --domain style)",
-      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"animation mobile touch\" --domain ux)",
-      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"reduced-motion prefers accessibility\" --domain ux -n 3)",
-      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"elegant romantic serif warm\" --domain typography)",
       "Bash(npx tsc:*)",
-      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"intimate couples mobile app warm minimal liquid glass romantic\" --design-system -p \"Tulika\")",
-      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"mobile touch animation spring tap\" --domain ux -n 5)",
-      "Read(//c/Users/Sameer/.cursor//**)",
-      "Read(//c/Users/Sameer/.cursor/**)",
-      "Bash(npx vite:*)",
-      "WebFetch(domain:www.auros.global)",
-      "Bash(grep -r from.*three/examples c:UsersSameerDownloadstulika --include=*.tsx --include=*.ts --include=*.jsx --include=*.js)",
-      "Bash(node_modules/.bin/cap --version)",
-      "Bash(npx cap:*)",
-      "Bash(npm run:*)",
-      "Bash(claude mcp:*)",
-      "WebSearch",
-      "Bash(npm install:*)",
-      "Bash(curl -sL https://lottiefiles.com/free-animation/cute-bear-dancing-AfMGeP3e3h)",
-      "Bash(curl -sL https://lottiefiles.com/43901-cute-dog)",
-      "Bash(curl -sL https://lottiefiles.com/4889-cat)",
-      "Bash(curl -sL https://lottiefiles.com/7985-bunny-hop)",
-      "WebFetch(domain:lottiefiles.com)",
-      "Bash(curl:*)",
-      "Bash(npm list:*)",
-      "Bash(node -e \"require\\('@react-three/fiber'\\)\")",
-      "Bash(ls utils/feedback*)",
-      "Bash(python:*)",
-      "mcp__magic__21st_magic_component_inspiration",
-      "Bash(wc -l /c/Users/Sameer/Downloads/tulika/views/*.tsx)",
-      "Bash(ls C:/Users/Sameer/Downloads/tulika/*.md C:/Users/Sameer/Downloads/tulika/*.cjs)",
-      "Bash(ls C:/Users/Sameer/Downloads/tulika/components/*.md)"
+      "Bash(npx cap:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/tulika/.dual-graph/prime.ps1\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/tulika/.dual-graph/stop_hook.ps1\""
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/tulika/.dual-graph/prime.ps1\""
+          }
+        ]
+      }
     ]
   }
 }

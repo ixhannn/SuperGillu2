@@ -404,7 +404,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                 <div className="flex items-center justify-between">
                     <button
                         onClick={() => setView('home')}
-                        className="w-11 h-11 rounded-full backdrop-blur-xl flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tulika-500/60"
+                        className="w-11 h-11 rounded-full backdrop-blur-xl flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lior-500/60"
                         style={{ background: 'rgba(255,255,255,0.56)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
                         aria-label="Go back"
                     >
@@ -450,7 +450,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                             {!waiting.feltAt && (
                                 <button
                                     onClick={waiting.openedAt ? markFelt : markOpened}
-                                    className="rounded-full px-4 py-2.5 text-sm font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tulika-500/50"
+                                    className="rounded-full px-4 py-2.5 text-sm font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lior-500/50"
                                     style={{ background: waiting.openedAt ? waiting.color : 'rgba(255,255,255,0.5)', color: waiting.openedAt ? '#fff' : 'var(--color-text-primary)', border: waiting.openedAt ? 'none' : '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}
                                 >
                                     {waiting.openedAt ? 'Let them know' : 'Open it'}
@@ -500,7 +500,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                                         setSelectedIntentId(item.id);
                                     }}
                                     disabled={actionLocked}
-                                    className="rounded-[1.45rem] p-4 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tulika-500/50"
+                                    className="rounded-[1.45rem] p-4 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lior-500/50"
                                     style={{
                                         background: active ? `linear-gradient(145deg, ${item.color}16 0%, rgba(255,255,255,0.56) 100%)` : 'rgba(255,255,255,0.34)',
                                         border: active ? `1px solid ${item.color}44` : '1px solid rgba(var(--theme-particle-2-rgb),0.12)',
@@ -522,7 +522,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                         onChange={(event) => setNote(event.target.value.slice(0, MAX_NOTE))}
                         rows={3}
                         placeholder="Optional note"
-                        className="w-full mt-4 rounded-[1.3rem] px-4 py-3 outline-none resize-none focus:ring-2 focus:ring-tulika-500/30"
+                        className="w-full mt-4 rounded-[1.3rem] px-4 py-3 outline-none resize-none focus:ring-2 focus:ring-lior-500/30"
                         style={{ background: 'rgba(255,255,255,0.42)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.16)', color: 'var(--color-text-primary)' }}
                     />
 
@@ -534,7 +534,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                         <button
                             onClick={recording ? stopRecording : startRecording}
                             disabled={micLoading}
-                            className="rounded-full px-4 py-2.5 text-sm font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tulika-500/60"
+                            className="rounded-full px-4 py-2.5 text-sm font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lior-500/60"
                             style={{ background: recording ? intent.color : 'rgba(255,255,255,0.44)', color: recording ? '#fff' : 'var(--color-text-primary)', border: recording ? 'none' : '1px solid rgba(var(--theme-particle-2-rgb),0.14)' }}
                         >
                             {micLoading ? <RefreshCw size={15} className="animate-spin" /> : <><Mic size={15} />{recording ? fmtSecs(recordSeconds) : hasDraftWhisper ? 'Replace whisper' : 'Whisper'}</>}
@@ -569,7 +569,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                         <button
                             onClick={knockNow}
                             disabled={knockDisabled}
-                            className="rounded-[1.35rem] px-4 py-4 text-sm font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tulika-500/50"
+                            className="rounded-[1.35rem] px-4 py-4 text-sm font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lior-500/50"
                             style={{ background: 'rgba(255,255,255,0.42)', color: 'var(--color-text-primary)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.14)', opacity: knockDisabled ? 0.5 : 1 }}
                         >
                             {!connected ? 'Offline' : recording ? 'Recording...' : 'Knock now'}
@@ -577,7 +577,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                         <button
                             onClick={saveNightlight}
                             disabled={actionLocked}
-                            className="rounded-[1.35rem] px-4 py-4 text-sm font-semibold text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tulika-500/50"
+                            className="rounded-[1.35rem] px-4 py-4 text-sm font-semibold text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lior-500/50"
                             style={{ background: `linear-gradient(145deg, ${intent.color} 0%, ${intent.palette[1]} 100%)`, boxShadow: `0 18px 36px ${intent.color}22`, opacity: actionLocked ? 0.6 : 1 }}
                         >
                             {recording ? 'Finish recording' : sendLabel}

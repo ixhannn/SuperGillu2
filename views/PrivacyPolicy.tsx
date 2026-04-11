@@ -148,7 +148,7 @@ export const PrivacyPolicy: React.FC<Props> = ({ setView, fromAuth, onBack }) =>
                 <Section title="Contact us">
                     <p>If you have any questions about this Privacy Policy or want to exercise your data rights, you can contact us at:</p>
                     <p className="mt-2 font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                        privacy@tulika.app
+                        privacy@lior.app
                     </p>
                 </Section>
 

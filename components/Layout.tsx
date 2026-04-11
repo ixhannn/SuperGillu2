@@ -10,6 +10,8 @@ import { TouchTrailCanvas } from './TouchTrailCanvas';
 import { PhysicsConfetti, ConfettiHandle } from './PhysicsConfetti';
 import { ViewState } from '../types';
 import { startBreathingRhythm } from '../utils/BreathingRhythm';
+import { LenisScroll } from '../services/LenisScroll';
+import { SafeRender } from './SafeRender';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,16 +31,32 @@ export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number)
 export const useConfetti = () => useContext(ConfettiContext);
 
 export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, registerScrollRef, notifications }) => {
-  const mainRef = useRef<HTMLElement>(null);
+  // wrapperRef = overflow:hidden clip container (Lenis "wrapper")
+  const wrapperRef  = useRef<HTMLElement>(null);
+  // contentRef = the div Lenis translates (Lenis "content")
+  const contentRef  = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const prevView = useRef(currentView);
 
-  // Register scroll ref with parent App so it can control scroll position
+  // Boot Lenis once both DOM refs are available.
   useEffect(() => {
-    if (registerScrollRef) registerScrollRef(mainRef.current);
-    return () => { if (registerScrollRef) registerScrollRef(null); };
-  }, [registerScrollRef]);
+    const wrapper = wrapperRef.current;
+    const content = contentRef.current;
+    if (!wrapper || !content) return;
+
+    LenisScroll.init(wrapper, content);
+
+    // Pass wrapper as scroll ref — App.tsx uses LenisScroll.scroll / scrollTo
+    // instead of scrollTop, so this is just a stable ref handle.
+    if (registerScrollRef) registerScrollRef(wrapper);
+
+    return () => {
+      LenisScroll.destroy();
+      if (registerScrollRef) registerScrollRef(null);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount once only
 
   useEffect(() => {
     startBreathingRhythm();
@@ -48,7 +66,6 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   const handleRipple = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const target = (e.target as HTMLElement).closest('.spring-press') as HTMLElement | null;
     if (!target) return;
-    // Make host a positioned ripple container
     if (getComputedStyle(target).position === 'static') {
       target.style.position = 'relative';
     }
@@ -57,7 +74,7 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
     const circle = document.createElement('span');
     circle.className = 'ripple-ink-circle';
     circle.style.left = `${e.clientX - rect.left}px`;
-    circle.style.top = `${e.clientY - rect.top}px`;
+    circle.style.top  = `${e.clientY - rect.top}px`;
     target.appendChild(circle);
     circle.addEventListener('animationend', () => circle.remove(), { once: true });
   }, []);
@@ -94,13 +111,12 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
             />
           )}
         </AnimatePresence>
-        {/* Ambient warm glow background */}
-        <LiveBackground3D />
 
-        {/* 3D floating hearts scene */}
-        <FloatingHeartsScene />
+        {/* Ambient background layers — wrapped so GPU/WebGL crashes don't take down the app */}
+        <SafeRender><LiveBackground3D /></SafeRender>
+        <SafeRender><FloatingHeartsScene /></SafeRender>
 
-        {/* Subtle top-down vignette for depth */}
+        {/* Vignette */}
         <div
           className="fixed inset-0 pointer-events-none z-[2]"
           aria-hidden="true"
@@ -109,31 +125,33 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           }}
         />
 
-        {/* Soft diffusion layer removed — full-screen backdrop-filter is expensive */}
+        {/*
+          ── LENIS SCROLL STRUCTURE ──────────────────────────────────
+          wrapper (main): overflow:hidden — the viewport clip.
+                          flex-1 fills height between header and nav.
+                          Lenis intercepts wheel/touch events here.
 
-        {/* Main content */}
+          content (div):  The element Lenis translates with transform.
+                          Must have no overflow constraint of its own.
+                          pt-safe: below device notch.
+                          pb-32:   above bottom nav.
+          ─────────────────────────────────────────────────────────── */}
         <main
-          ref={mainRef}
-          className="flex-1 relative z-10 w-full max-w-md mx-auto overflow-y-auto overflow-x-hidden no-scrollbar pt-safe pb-32"
-          style={{
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehavior: 'contain',
-            scrollBehavior: 'auto',
-          }}
+          ref={wrapperRef}
+          className="lenis-wrapper flex-1 min-h-0 relative z-10 w-full max-w-md mx-auto"
         >
-          {children}
+          <div
+            ref={contentRef}
+            className="lenis-content pt-safe pb-32"
+          >
+            {children}
+          </div>
         </main>
 
-        {/* Global features */}
+        {/* Global overlays — these sit above the scroll layer */}
         <TogetherMode />
-
-        {/* Navigation */}
         <BottomNav currentView={currentView} setView={setView} notifications={notifications} />
-
-        {/* Dev debug overlay */}
         <DebugOverlay />
-
-        {/* Global effects */}
         <DynamicToast />
         <TouchTrailCanvas />
         <PhysicsConfetti ref={confettiRef} />

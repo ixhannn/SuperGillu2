@@ -123,7 +123,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
 
                         <button
                             onClick={() => setIsCheckingIn(true)}
-                            className="bg-tulika-500 text-white p-3 rounded-2xl shadow-lg shadow-tulika-500/20 spring-press flex items-center gap-2 group"
+                            className="bg-lior-500 text-white p-3 rounded-2xl shadow-lg shadow-lior-500/20 spring-press flex items-center gap-2 group"
                         >
                             <Plus size={20} className="transition-transform" />
                             <span className="text-xs font-bold uppercase pr-1">Pulse</span>
@@ -136,8 +136,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="font-serif text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{format(currentDate, 'MMMM yyyy')}</h2>
                     <div className="flex gap-2">
-                        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} aria-label="Previous month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center glass-card shadow-sm rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-secondary)' }}><ChevronLeft size={20} /></button>
-                        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} aria-label="Next month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center glass-card shadow-sm rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-tulika-500 focus-visible:ring-offset-2" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-secondary)' }}><ChevronRight size={20} /></button>
+                        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} aria-label="Previous month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center glass-card shadow-sm rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:ring-offset-2" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-secondary)' }}><ChevronLeft size={20} /></button>
+                        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} aria-label="Next month" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center glass-card shadow-sm rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:ring-offset-2" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-secondary)' }}><ChevronRight size={20} /></button>
                     </div>
                 </div>
 
@@ -171,8 +171,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                                         <span className="text-[10px] font-bold" style={{ color: 'var(--color-text-secondary)' }}>{format(day, 'd')}</span>
                                     </div>
                                 ) : (
-                                    <div className={`w-8 h-8 rounded-full border-2 ${isSelected ? 'border-tulika-300 bg-tulika-50' : 'border-transparent'} flex items-center justify-center transition-colors cursor-pointer`} style={!isSelected ? { background: 'rgba(var(--theme-particle-2-rgb),0.06)' } : {}}>
-                                        <span className={`text-xs ${isSelected ? 'text-tulika-600 font-bold' : 'font-medium'}`} style={!isSelected ? { color: 'var(--color-text-secondary)' } : {}}>{format(day, 'd')}</span>
+                                    <div className={`w-8 h-8 rounded-full border-2 ${isSelected ? 'border-lior-300 bg-lior-50' : 'border-transparent'} flex items-center justify-center transition-colors cursor-pointer`} style={!isSelected ? { background: 'rgba(var(--theme-particle-2-rgb),0.06)' } : {}}>
+                                        <span className={`text-xs ${isSelected ? 'text-lior-600 font-bold' : 'font-medium'}`} style={!isSelected ? { color: 'var(--color-text-secondary)' } : {}}>{format(day, 'd')}</span>
                                     </div>
                                 )}
                             </div>
@@ -219,7 +219,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                             <div className="relative mb-8">
                                 <div className="absolute top-4 left-4" style={{ color: 'var(--color-text-secondary)' }}><MessageCircle size={18} /></div>
                                 <textarea
-                                    className="w-full shadow-inner rounded-2xl p-4 pl-12 text-sm outline-none focus:ring-2 focus:ring-tulika-500/30 transition-all font-sans italic"
+                                    className="w-full shadow-inner rounded-2xl p-4 pl-12 text-sm outline-none focus:ring-2 focus:ring-lior-500/30 transition-all font-sans italic"
                                     style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
                                     placeholder="Add a little note... (Optional)"
                                     rows={2}
@@ -230,7 +230,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
 
                             <button
                                 onClick={handleCheckIn}
-                                className="w-full bg-tulika-500 text-white py-5 rounded-[1.5rem] font-bold uppercase tracking-widest shadow-xl shadow-tulika-500/20 active:scale-[0.98] transition-transform"
+                                className="w-full bg-lior-500 text-white py-5 rounded-[1.5rem] font-bold uppercase tracking-widest shadow-xl shadow-lior-500/20 active:scale-[0.98] transition-transform"
                             >
                                 Share My Pulse
                             </button>

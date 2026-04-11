@@ -6,7 +6,7 @@
  * come undone over 400ms, then snaps back as the new view assembles.
  *
  * One Canvas 2D overlay. Pure requestAnimationFrame effect.
- * Triggered via the global event 'tulika:navigate'.
+ * Triggered via the global event 'lior:navigate'.
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -125,10 +125,10 @@ export const ChromaticTransition: React.FC = () => {
       rafId = requestAnimationFrame(runEffect);
     };
 
-    window.addEventListener('tulika:navigate', trigger);
+    window.addEventListener('lior:navigate', trigger);
 
     return () => {
-      window.removeEventListener('tulika:navigate', trigger);
+      window.removeEventListener('lior:navigate', trigger);
       cancelAnimationFrame(rafId);
       ro.disconnect();
     };
@@ -145,5 +145,5 @@ export const ChromaticTransition: React.FC = () => {
 
 /** Call this whenever a view transition begins */
 export function triggerChromaticTransition(): void {
-  window.dispatchEvent(new Event('tulika:navigate'));
+  window.dispatchEvent(new Event('lior:navigate'));
 }

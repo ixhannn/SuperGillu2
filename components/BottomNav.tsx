@@ -99,7 +99,7 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
 
                       {item.hasNotification && !isActive && (
                         <div className="absolute -top-0.5 -right-1">
-                          <Heart size={7} className="text-tulika-400 fill-tulika-400 animate-breathe" />
+                          <Heart size={7} className="text-lior-400 fill-lior-400 animate-breathe" />
                         </div>
                       )}
                     </div>

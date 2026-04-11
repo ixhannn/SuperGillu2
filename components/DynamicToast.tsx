@@ -29,7 +29,7 @@ export const DynamicToast: React.FC = () => {
       case 'success': return <CheckCircle2 size={18} className="text-green-500" />;
       case 'error': return <AlertCircle size={18} className="text-red-500" />;
       case 'bell': return <BellRing size={18} className="text-blue-500" />;
-      case 'heart': return <Heart size={18} className="text-tulika-500 fill-tulika-500" />;
+      case 'heart': return <Heart size={18} className="text-lior-500 fill-lior-500" />;
       case 'info':
       default: return <Info size={18} className="text-gray-500" />;
     }
@@ -41,13 +41,13 @@ export const DynamicToast: React.FC = () => {
         {currentToast && (
           <motion.div
             key={currentToast.id}
-            initial={{ y: -50, scale: 0.8, opacity: 0, filter: 'blur(10px)' }}
+            initial={{ y: -44, scale: 0.92, opacity: 0, filter: 'blur(6px)' }}
             animate={{ 
               y: 12, 
               scale: 1, 
               opacity: 1, 
               filter: 'blur(0px)',
-              transition: { type: 'spring', damping: 18, stiffness: 200 }
+              transition: { type: 'spring', damping: 20, stiffness: 280 }
             }}
             exit={{ 
               y: -40, 
@@ -60,18 +60,20 @@ export const DynamicToast: React.FC = () => {
           >
             {/* Dynamic shape expansion animation */}
             <motion.div
-              layoutId="toast-icon"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              transition={{ type: 'spring', delay: 0.1 }}
+              transition={{ type: 'spring', delay: 0.05, stiffness: 500, damping: 25 }}
             >
               {getIcon(currentToast.type)}
             </motion.div>
             
             <motion.span
-              layoutId="toast-text"
               className="text-sm font-medium pr-1 truncate max-w-[200px]"
               style={{ color: 'var(--color-text-primary)' }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ delay: 0.04, duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
               {currentToast.message}
             </motion.span>

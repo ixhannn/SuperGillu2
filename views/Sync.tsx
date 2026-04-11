@@ -61,7 +61,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const lastExpiredInviteRef = useRef<string>('');
 
   const normalizeCode = (value: string) =>
-    value.replace(/^TULIKA:/i, '').replace(/\s+/g, '').trim().toUpperCase().slice(0, 8);
+    value.replace(/^LIOR:/i, '').replace(/\s+/g, '').trim().toUpperCase().slice(0, 8);
 
   // ── Sync event listener ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -154,7 +154,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setScanPhase('error');
-      setScanMsg('Camera API is not available in this environment. Open Tulika in a regular browser and try again.');
+      setScanMsg('Camera API is not available in this environment. Open Lior in a regular browser and try again.');
       return;
     }
 
@@ -613,12 +613,12 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     <div className="flex flex-col h-full min-h-screen pb-24">
       <ViewHeader title="Cloud Sync ★" onBack={() => setView('home')} variant="simple" />
 
-      <div className="flex-1 px-4 pt-4 pb-10 overflow-y-auto">
+      <div data-lenis-prevent className="lenis-inner flex-1 px-4 pt-4 pb-10 overflow-y-auto">
         <div className="w-full max-w-md mx-auto space-y-4">
           <section className="sync-surface-solid rounded-2xl p-4 text-left">
             <div className="flex items-center gap-3">
               <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                status.includes('Error') ? 'bg-red-500/15 text-red-400' : 'bg-tulika-500/15 text-tulika-400'
+                status.includes('Error') ? 'bg-red-500/15 text-red-400' : 'bg-lior-500/15 text-lior-400'
               }`}>
                 {isSyncing ? <RefreshCw size={20} className="animate-spin" /> : status.includes('Error') ? <AlertTriangle size={20} /> : <Cloud size={20} />}
               </div>
@@ -752,7 +752,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
               ) : (
                 <button onClick={requestPermission}
                   aria-label="Enable notifications"
-                  className="p-2 bg-tulika-500/15 text-tulika-400 rounded-full transition-colors">
+                  className="p-2 bg-lior-500/15 text-lior-400 rounded-full transition-colors">
                   <BellOff size={18} />
                 </button>
               )}

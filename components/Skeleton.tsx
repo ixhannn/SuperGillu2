@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 
 interface SkeletonProps {
   className?: string;
@@ -7,24 +6,14 @@ interface SkeletonProps {
 }
 
 const Shimmer: React.FC = () => (
-  <motion.div
-    className="absolute inset-0 -translate-x-full"
-    style={{
-      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
-    }}
-    animate={{
-      translateX: ['-100%', '200%']
-    }}
-    transition={{
-      repeat: Infinity,
-      duration: 1.5,
-      ease: 'linear'
-    }}
-  />
+  <>
+    <div className="absolute inset-0 skeleton-aura" />
+    <div className="absolute inset-0 skeleton-shimmer" />
+  </>
 );
 
 export const Skeleton: React.FC<SkeletonProps> = ({ className = '', type = 'text' }) => {
-  const baseClass = "bg-gray-200/60 overflow-hidden relative";
+  const baseClass = 'skeleton-shell overflow-hidden relative';
 
   if (type === 'list-item') {
     return (
@@ -81,6 +70,16 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className = '', type = 'text
     case 'avatar': typeClass = "h-10 w-10 rounded-full"; break;
     case 'image': typeClass = "w-full aspect-square rounded-2xl"; break;
     case 'card': typeClass = "w-full h-32 rounded-3xl"; break;
+  }
+
+  if (type === 'card') {
+    return (
+      <div className={`p-5 rounded-3xl ${className}`}>
+        <div className={`${baseClass} h-24 rounded-[1.5rem] mb-4`}><Shimmer /></div>
+        <div className={`${baseClass} h-4 w-2/3 rounded-md mb-2`}><Shimmer /></div>
+        <div className={`${baseClass} h-3 w-1/2 rounded-md`}><Shimmer /></div>
+      </div>
+    );
   }
 
   return (

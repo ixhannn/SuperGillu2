@@ -8,7 +8,7 @@
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 
   <!-- PWA Meta Tags -->
-  <title>Tulika</title>
+  <title>Lior</title>
   <meta name="description" content="A private memory app for couples.">
   <meta name="theme-color" content="#f8f9fb">
   <meta http-equiv="Content-Security-Policy"
@@ -18,7 +18,7 @@
   <!-- iOS Specific PWA config -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Tulika">
+  <meta name="apple-mobile-web-app-title" content="Lior">
   <link rel="apple-touch-icon" href="/icon.svg">
 
   <!-- Prevent auto-zooming on inputs -->
@@ -33,13 +33,13 @@
   <!-- Tailwind CSS is now handled via PostCSS/Build step -->
   <style>
     :root {
-      --color-tulika-50: #f8f9fb;
-      --color-tulika-100: #eef2f6;
-      --color-tulika-200: #e2e8f0;
-      --color-tulika-300: #cbd5e1;
-      --color-tulika-400: #94a3b8;
-      --color-tulika-500: #f43f5e;
-      --color-tulika-600: #e11d48;
+      --color-lior-50: #f8f9fb;
+      --color-lior-100: #eef2f6;
+      --color-lior-200: #e2e8f0;
+      --color-lior-300: #cbd5e1;
+      --color-lior-400: #94a3b8;
+      --color-lior-500: #f43f5e;
+      --color-lior-600: #e11d48;
     }
 
     html,
@@ -47,14 +47,15 @@
       margin: 0;
       padding: 0;
       width: 100%;
-      height: 100dvh;
-      overflow: hidden;
+      min-height: 100%;
       background-color: #f8f9fb;
       color: #1e293b;
     }
 
     body {
       overscroll-behavior: none;
+      overflow-x: hidden;
+      overflow-y: auto;
       -webkit-tap-highlight-color: transparent;
     }
 
@@ -101,7 +102,7 @@
   <link rel="stylesheet" href="/index.css">
 </head>
 
-<body>
+<body ontouchstart="">
   <!-- Gooey SVG Filters -->
   <svg width="0" height="0" class="absolute pointer-events-none">
     <filter id="goo">

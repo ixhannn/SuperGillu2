@@ -2,7 +2,7 @@ import { StorageService } from './storage';
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 
-const MIGRATION_KEY = 'tulika_media_migrated_v2';
+const MIGRATION_KEY = 'lior_media_migrated_v2';
 
 interface MigrationResult {
     migrated: number;
@@ -115,8 +115,8 @@ export const MediaMigrationService = {
                         await StorageService._saveInternal(
                             table.name === 'memories' ? 'memories' :
                                 table.name === 'daily_photos' ? 'dailyPhotos' : 'keepsakes',
-                            table.name === 'memories' ? 'tulika_memories' :
-                                table.name === 'daily_photos' ? 'tulika_daily_photos' : 'tulika_keepsakes',
+                            table.name === 'memories' ? 'lior_memories' :
+                                table.name === 'daily_photos' ? 'lior_daily_photos' : 'lior_keepsakes',
                             item, table.prefix, table.name, 'user'
                         );
                     }

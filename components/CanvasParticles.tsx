@@ -1,212 +1,167 @@
 /**
- * CanvasParticles — Touch-reactive particle system
+ * CanvasParticles — Touch-reactive particle system.
  *
- * 200-300 lightweight particles floating in a Perlin noise flow field.
- * On touch: particles flee from finger in radial burst, elastically return.
- * On idle: gentle drift like motes of light in a sunbeam.
+ * Physics runs in a dedicated Web Worker with OffscreenCanvas.
+ * Main thread cost: ~0.1ms per frame (only pointer event forwarding).
  *
- * Performance: Single Canvas, object pooling via Float32Array, zero GC.
- * Targets <2ms per frame. Scales particle count by device tier.
+ * The Worker runs its own RAF loop (required for OffscreenCanvas rendering).
+ * Main-thread AnimationEngine registers a lightweight subscriber that:
+ *   1. Forwards pointer events to the Worker (debounced via flag)
+ *   2. Sends tier/config changes when the quality level changes
+ *
+ * On devices that don't support OffscreenCanvas (Safari < 17 on some builds),
+ * falls back gracefully by rendering nothing (particles are decorative).
  */
 
 import React, { useRef, useEffect } from 'react';
+import { AnimationEngine, QualityTier } from '../utils/AnimationEngine';
 import { PerformanceManager } from '../services/performance';
 import { readThemeRgbTriplet } from '../utils/themeVars';
 
-/* ─── Simplex-like noise for flow field ─── */
-function noise2D(x: number, y: number): number {
-  /* Fast pseudo-noise — not true Perlin, but visually convincing
-     and costs almost nothing per call */
-  const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-  return (n - Math.floor(n)) * 2 - 1;
-}
+// Particle count per tier
+const TIER_COUNT: Record<QualityTier, number> = {
+  ultra:    200,
+  high:     140,
+  medium:   80,
+  low:      0,   // no particles on low — canvas is still there for touch trail
+  'css-only': 0,
+};
 
-function flowAngle(x: number, y: number, time: number): number {
-  /* Two octaves of noise for organic flow */
-  const n1 = noise2D(x * 0.003 + time * 0.1, y * 0.003);
-  const n2 = noise2D(x * 0.008 - time * 0.05, y * 0.008 + time * 0.08);
-  return (n1 + n2 * 0.5) * Math.PI * 2;
+function buildColors(): string[] {
+  return [
+    readThemeRgbTriplet('--theme-particle-1-rgb', '251,113,133'),
+    readThemeRgbTriplet('--theme-particle-2-rgb', '253,164,175'),
+    readThemeRgbTriplet('--theme-particle-3-rgb', '254,205,211'),
+    readThemeRgbTriplet('--theme-particle-4-rgb', '249,168,212'),
+    readThemeRgbTriplet('--theme-particle-5-rgb', '255,228,230'),
+  ];
 }
 
 export const CanvasParticles: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const pointerRef = useRef({ x: -9999, y: -9999, down: false, dirty: false });
+  const lastTierRef = useRef<QualityTier | null>(null);
 
   useEffect(() => {
+    if (PerformanceManager.reducedMotion) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!PerformanceManager.useCanvas) return;
 
-    const ctx = canvas.getContext('2d', { alpha: true })!;
-    if (!ctx) return;
-
-    const count = PerformanceManager.particleCount;
-    if (count === 0) return;
-
-    let w = window.innerWidth;
-    let h = window.innerHeight;
-    const dpr = Math.min(window.devicePixelRatio, 2);
-
-    /* Size canvas */
-    const resize = () => {
-      w = window.innerWidth;
-      h = window.innerHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
-      ctx.scale(dpr, dpr);
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    /* ─── Particle pool — pre-allocated typed arrays ─── */
-    const px = new Float32Array(count);    /* x position */
-    const py = new Float32Array(count);    /* y position */
-    const vx = new Float32Array(count);    /* x velocity */
-    const vy = new Float32Array(count);    /* y velocity */
-    const sizes = new Float32Array(count); /* radius */
-    const alphas = new Float32Array(count);/* opacity */
-    const hues = new Float32Array(count);  /* color hue offset */
-
-    /* Initialize particles randomly across screen */
-    for (let i = 0; i < count; i++) {
-      px[i] = Math.random() * w;
-      py[i] = Math.random() * h;
-      vx[i] = 0;
-      vy[i] = 0;
-      sizes[i] = Math.random() * 2.0 + 1.4;
-      alphas[i] = Math.random() * 0.35 + 0.45;
-      hues[i] = Math.random() * 30 - 15; /* slight hue variation around rose */
+    // Check OffscreenCanvas support
+    if (typeof canvas.transferControlToOffscreen !== 'function') {
+      // Graceful degradation — no particles but no crash
+      console.debug('[CanvasParticles] OffscreenCanvas not supported, skipping particles');
+      return;
     }
 
-    /* ─── Touch tracking ─── */
-    let touchX = -9999;
-    let touchY = -9999;
-    let touching = false;
+    // Spin up the Worker
+    const worker = new Worker(
+      new URL('../workers/ParticleWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    workerRef.current = worker;
 
+    const dpr    = Math.min(window.devicePixelRatio, 2);
+    const width  = window.innerWidth;
+    const height = window.innerHeight;
+    const offscreen = canvas.transferControlToOffscreen();
+
+    worker.postMessage({
+      type:   'init',
+      canvas: offscreen,
+      width,
+      height,
+      dpr,
+      count:  TIER_COUNT['ultra'],
+      colors: buildColors(),
+    }, [offscreen]); // transfer ownership — zero copy
+
+    // ── Resize handler ────────────────────────────────────────────────────
+    const onResize = () => {
+      worker.postMessage({
+        type:   'resize',
+        width:  window.innerWidth,
+        height: window.innerHeight,
+        dpr:    Math.min(window.devicePixelRatio, 2),
+      });
+    };
+    window.addEventListener('resize', onResize, { passive: true });
+
+    // ── Pointer forwarding (raw events → worker, batched per frame) ───────
     const onPointerDown = (e: PointerEvent) => {
-      touchX = e.clientX;
-      touchY = e.clientY;
-      touching = true;
+      pointerRef.current = { x: e.clientX, y: e.clientY, down: true, dirty: true };
     };
     const onPointerMove = (e: PointerEvent) => {
-      if (!touching) return;
-      touchX = e.clientX;
-      touchY = e.clientY;
+      if (!pointerRef.current.down) return;
+      pointerRef.current.x = e.clientX;
+      pointerRef.current.y = e.clientY;
+      pointerRef.current.dirty = true;
     };
     const onPointerUp = () => {
-      touching = false;
-      touchX = -9999;
-      touchY = -9999;
+      pointerRef.current = { x: -9999, y: -9999, down: false, dirty: true };
     };
-
     window.addEventListener('pointerdown', onPointerDown, { passive: true });
     window.addEventListener('pointermove', onPointerMove, { passive: true });
-    window.addEventListener('pointerup', onPointerUp, { passive: true });
+    window.addEventListener('pointerup',   onPointerUp,   { passive: true });
     window.addEventListener('pointercancel', onPointerUp, { passive: true });
 
-    /* ─── Animation loop ─── */
-    let time = 0;
-    let rafId: number;
-    let lastFrame = performance.now();
-
-    let colors = ['251,113,133', '253,164,175', '254,205,211', '249,168,212', '255,228,230'];
-
-    const syncThemeColors = () => {
-      colors = [
-        readThemeRgbTriplet('--theme-particle-1-rgb', '251,113,133'),
-        readThemeRgbTriplet('--theme-particle-2-rgb', '253,164,175'),
-        readThemeRgbTriplet('--theme-particle-3-rgb', '254,205,211'),
-        readThemeRgbTriplet('--theme-particle-4-rgb', '249,168,212'),
-        readThemeRgbTriplet('--theme-particle-5-rgb', '255,228,230'),
-      ];
-    };
-    syncThemeColors();
-
-    const themeObserver = new MutationObserver(syncThemeColors);
+    // ── Theme change observer ─────────────────────────────────────────────
+    const themeObserver = new MutationObserver(() => {
+      if (!workerRef.current) return;
+      workerRef.current.postMessage({
+        type:   'config',
+        count:  TIER_COUNT[AnimationEngine.tier],
+        colors: buildColors(),
+      });
+    });
     themeObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['style', 'data-theme'],
     });
 
-    const animate = () => {
-      rafId = requestAnimationFrame(animate);
+    // ── AnimationEngine subscriber (main-thread side, very cheap) ─────────
+    AnimationEngine.register({
+      id:       'canvas-particles-bridge',
+      priority: 3,
+      budgetMs: 0.2,
+      minTier:  'medium',
 
-      /* Delta time for frame-rate independence */
-      const now = performance.now();
-      const dt = Math.min((now - lastFrame) / 16.67, 3); /* Normalized to 60fps, capped */
-      lastFrame = now;
-      time += 0.016 * dt;
-
-      /* Clear with transparent */
-      ctx.clearRect(0, 0, w, h);
-
-      /* Touch influence radius */
-      const touchRadius = 120;
-      const touchForce = 4;
-
-      /* Phase 1: update physics */
-      for (let i = 0; i < count; i++) {
-        const angle = flowAngle(px[i], py[i], time);
-        vx[i] += Math.cos(angle) * 0.3 * dt;
-        vy[i] += Math.sin(angle) * 0.3 * dt;
-
-        if (touching) {
-          const dx = px[i] - touchX;
-          const dy = py[i] - touchY;
-          const distSq = dx * dx + dy * dy;
-          if (distSq < touchRadius * touchRadius && distSq > 0) {
-            const dist = Math.sqrt(distSq);
-            const force = (1 - dist / touchRadius) * touchForce * dt;
-            vx[i] += (dx / dist) * force;
-            vy[i] += (dy / dist) * force;
-          }
+      tick(_delta, _ts, tier) {
+        // Forward pending pointer state to worker (max one message per frame)
+        if (pointerRef.current.dirty) {
+          pointerRef.current.dirty = false;
+          workerRef.current?.postMessage({
+            type: 'pointer',
+            x:    pointerRef.current.x,
+            y:    pointerRef.current.y,
+            down: pointerRef.current.down,
+          });
         }
 
-        vx[i] *= 0.94;
-        vy[i] *= 0.94;
-        px[i] += vx[i] * dt;
-        py[i] += vy[i] * dt;
-
-        if (px[i] < -10) px[i] = w + 10;
-        if (px[i] > w + 10) px[i] = -10;
-        if (py[i] < -10) py[i] = h + 10;
-        if (py[i] > h + 10) py[i] = -10;
-      }
-
-      /* Phase 2: draw each particle — slow twinkle, no per-frame string alloc */
-      const TAU = Math.PI * 2;
-      for (let i = 0; i < count; i++) {
-        const colorIdx = i % colors.length;
-        // Slow twinkle (0.5 Hz) — avoids visible flicker
-        const alpha = alphas[i] * (0.88 + Math.sin(time * 0.5 + i * 0.7) * 0.12);
-        const size = sizes[i];
-        // Quantise alpha to 0.01 steps to reuse cached strings across frames
-        const a1 = ((alpha * 100 + 0.5) | 0) / 100;
-
-        ctx.beginPath();
-        ctx.arc(px[i], py[i], size, 0, TAU);
-        ctx.fillStyle = `rgba(${colors[colorIdx]},${a1})`;
-        ctx.fill();
-
-        if (size > 2) {
-          const a2 = ((alpha * 12 + 0.5) | 0) / 100;
-          ctx.beginPath();
-          ctx.arc(px[i], py[i], size * 1.8, 0, TAU);
-          ctx.fillStyle = `rgba(${colors[colorIdx]},${a2})`;
-          ctx.fill();
+        // Sync tier → particle count
+        if (tier !== lastTierRef.current) {
+          lastTierRef.current = tier;
+          workerRef.current?.postMessage({
+            type:   'config',
+            count:  TIER_COUNT[tier],
+            colors: buildColors(),
+          });
         }
-      }
-    };
-
-    rafId = requestAnimationFrame(animate);
+      },
+    });
 
     return () => {
-      cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', resize);
+      AnimationEngine.unregister('canvas-particles-bridge');
+      worker.postMessage({ type: 'stop' });
+      worker.terminate();
+      workerRef.current = null;
+
+      window.removeEventListener('resize',     onResize);
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointerup',   onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
       themeObserver.disconnect();
     };
@@ -218,7 +173,6 @@ export const CanvasParticles: React.FC = () => {
     <canvas
       ref={canvasRef}
       className="fixed inset-0 z-[4] pointer-events-none"
-      style={{ opacity: 1 }}
     />
   );
 };

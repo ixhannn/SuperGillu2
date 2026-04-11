@@ -12,7 +12,7 @@ module.exports = {
     theme: {
         extend: {
             colors: {
-                tulika: {
+                lior: {
                     50: '#fff1f2',
                     100: '#ffe4e6',
                     200: '#fecdd3',

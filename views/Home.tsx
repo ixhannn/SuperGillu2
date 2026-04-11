@@ -12,6 +12,13 @@ import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
 
+export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
+    <div className="flex items-center gap-3 mb-4 mt-2 px-1">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{label}</span>
+        <div className="flex-1 h-[1px]" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.08), transparent)' }} />
+    </div>
+);
+
 interface HomeProps {
     setView: (view: ViewState) => void;
 }
@@ -37,11 +44,11 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
                 className="bg-white w-full max-w-sm rounded-[2rem] shadow-elevated relative animate-modal-enter overflow-hidden"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-tulika-50 to-transparent pointer-events-none" />
+                <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-lior-50 to-transparent pointer-events-none" />
 
                 <div className="p-7 pb-8 relative">
                     <div className="flex justify-between items-start mb-5">
-                        <div className="flex items-center gap-2 text-tulika-500">
+                        <div className="flex items-center gap-2 text-lior-500">
                             <Sparkles size={16} className="animate-wiggle-spring" />
                             <span className="text-micro uppercase tracking-widest">A Memory For You</span>
                         </div>
@@ -57,7 +64,7 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
                                     <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" />
                                 </div>
                             ) : (
-                                <div className="aspect-video bg-tulika-50 rounded-xl flex items-center justify-center mb-3 text-tulika-200">
+                                <div className="aspect-video bg-lior-50 rounded-xl flex items-center justify-center mb-3 text-lior-200">
                                     <Heart size={40} />
                                 </div>
                             )}
@@ -74,12 +81,12 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
                         </div>
                     ) : (
                         <div className="bg-amber-50/80 p-8 rounded-2xl shadow-inner rotate-1 relative">
-                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-tulika-400 shadow-sm border-2 border-white/60" />
+                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-lior-400 shadow-sm border-2 border-white/60" />
                             <p className="font-serif text-xl text-gray-800 leading-relaxed whitespace-pre-wrap">
                                 "{(item as Note).content}"
                             </p>
                             <div className="mt-6 flex justify-end">
-                                <Heart size={14} className="text-tulika-400" fill="currentColor" />
+                                <Heart size={14} className="text-lior-400" fill="currentColor" />
                             </div>
                         </div>
                     )}
@@ -317,11 +324,11 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             if (detail.signalType === 'HEARTBEAT') {
                 triggerReceivedHeartbeat();
                 if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-                    new Notification('Tulika', { body: '❤️ You received a heartbeat!', icon: '/icon.svg' });
+                    new Notification(StorageService.getCoupleProfile().partnerName, { body: '❤️ You received a heartbeat!', icon: '/icon.svg' });
                 }
             } else if (detail.signalType === 'PET_NUDGE') {
                 if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-                    new Notification('Tulika', { body: `${detail.payload?.partner || 'Your partner'} sent a nudge! 👉`, icon: '/icon.svg' });
+                    new Notification(StorageService.getCoupleProfile().partnerName, { body: `${detail.payload?.partner || 'Your partner'} sent a nudge! 👉`, icon: '/icon.svg' });
                 }
             }
         };
@@ -463,17 +470,17 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         className={`flex items-center gap-3.5 group transition-all duration-500 rounded-[1.5rem] ${isTogether ? 'glass-card p-2.5 pr-4 animate-glow-pulse' : 'p-0'}`}
                     >
                         <div
-                            className={`w-12 h-12 rounded-full bg-tulika-50 overflow-hidden flex-shrink-0 transition-all duration-500 ${isTogether ? 'ring-[3px] ring-tulika-300/50' : ''}`}
+                            className={`w-12 h-12 rounded-full bg-lior-50 overflow-hidden flex-shrink-0 transition-all duration-500 ${isTogether ? 'ring-[3px] ring-lior-300/50' : ''}`}
                             style={{ boxShadow: '0 2px 8px rgba(251,207,232,0.1), 0 0 0 2px rgba(251,207,232,0.3)' }}
                         >
                             {profile.photo
                                 ? <img src={profile.photo} className="w-full h-full object-cover" alt="Profile" />
-                                : <div className="w-full h-full flex items-center justify-center text-tulika-200"><Heart fill="currentColor" size={20} /></div>
+                                : <div className="w-full h-full flex items-center justify-center text-lior-400"><Heart fill="currentColor" size={20} /></div>
                             }
                         </div>
                         <div className="text-left">
                             <h1 className="font-serif text-headline text-gray-800 leading-none" style={{ fontSize: '1.625rem' }}>
-                                {profile.myName} <span className="text-tulika-500">&</span> {profile.partnerName}
+                                {profile.myName} <span className="text-lior-500">&</span> {profile.partnerName}
                             </h1>
                             {streak > 0 && (
                                 <div className="inline-flex items-center gap-1 bg-amber-100/80 text-amber-600 px-2 py-0.5 rounded-full mt-1">
@@ -482,7 +489,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                             )}
                             {streak === 0 && (
-                                <p className={`text-micro mt-1 ${isTogether ? 'text-tulika-500' : 'text-gray-400'}`}>
+                                <p className={`text-micro mt-1 ${isTogether ? 'text-lior-500' : 'text-gray-400'}`}>
                                     {isTogether ? 'Together right now' : 'Tap to edit profile'}
                                 </p>
                             )}
@@ -498,12 +505,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     className={`spring-press transition-all rounded-2xl px-3 py-2 min-w-[7.25rem] flex items-center justify-center gap-2 border ${
                         isConnected
                             ? 'bg-gradient-to-br from-sage-200/90 to-sage-100/85 text-sage-700 border-sage-300/70 shadow-[0_8px_20px_rgba(86,140,112,0.22)]'
-                            : 'bg-white/72 text-tulika-700 border-white/80 shadow-[0_8px_20px_rgba(236,72,153,0.16)] backdrop-blur-md'
+                            : 'bg-white/72 text-lior-700 border-white/80 shadow-[0_8px_20px_rgba(236,72,153,0.16)] backdrop-blur-md'
                     }`}
                     aria-label="Open cloud sync"
                 >
                     <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${
-                        isConnected ? 'bg-sage-50/85 text-sage-600' : 'bg-white/85 text-tulika-600'
+                        isConnected ? 'bg-sage-50/85 text-sage-600' : 'bg-white/85 text-lior-600'
                     }`}>
                         {isConnected ? <RefreshCw size={14} /> : <Cloud size={14} />}
                     </span>
@@ -587,7 +594,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     <MagneticButton onClick={sendHeartbeat as any} strength={0.2} className="flex-1">
                         <div
                             ref={heartbeatBtnRef}
-                            className={`w-full h-full group relative bg-gradient-to-br from-tulika-500 to-tulika-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 ${receivedHeartbeat ? 'ring-2 ring-tulika-300/50 animate-glow-pulse' : ''} ${isDissolving ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                            className={`w-full h-full group relative bg-gradient-to-br from-lior-500 to-lior-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 ${receivedHeartbeat ? 'ring-2 ring-lior-300/50 animate-glow-pulse' : ''} ${isDissolving ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
                             style={{ boxShadow: receivedHeartbeat ? '0 4px 24px rgba(251,207,232,0.40), 0 12px 40px rgba(251,207,232,0.15)' : '0 4px 16px rgba(251,207,232,0.20), 0 12px 32px rgba(251,207,232,0.08)' }}
                         >
                             <HeartbeatRipple active={showHeartbeat} />
@@ -598,7 +605,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         </div>
                     </MagneticButton>
                     <MagneticButton onClick={handleSurprise as any} strength={0.3} className="w-[4.5rem]">
-                        <div className="w-full h-full bento-card text-tulika-500 p-5 flex items-center justify-center spring-press">
+                        <div className="w-full h-full bento-card text-lior-500 p-5 flex items-center justify-center spring-press">
                             <Gift size={22} />
                         </div>
                     </MagneticButton>
@@ -659,7 +666,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 >
                     <div className="relative flex-shrink-0">
                         {myStatus.state === 'sleeping'
-                            ? <Moon size={14} className="text-tulika-200" fill="currentColor" />
+                            ? <Moon size={14} className="text-lior-200" fill="currentColor" />
                             : <Sun size={14} className="text-amber-400 animate-spin-slow" />
                         }
                     </div>
@@ -667,7 +674,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         <span className={`text-xs font-semibold leading-tight ${myStatus.state === 'sleeping' ? 'text-white' : 'text-gray-700'}`}>
                             You · {myStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}
                         </span>
-                        <span className={`text-[10px] mt-0.5 leading-tight ${myStatus.state === 'sleeping' ? 'text-tulika-300/60' : 'text-gray-400'}`}>
+                        <span className={`text-[10px] mt-0.5 leading-tight ${myStatus.state === 'sleeping' ? 'text-lior-300/60' : 'text-gray-400'}`}>
                             tap to switch
                         </span>
                     </div>
@@ -687,7 +694,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     }}
                 >
                     <div className="absolute top-0 right-0 w-44 h-44 bg-amber-400/10 rounded-full blur-3xl" />
-                    <div className="absolute bottom-0 left-0 w-28 h-28 bg-tulika-400/8 rounded-full blur-2xl" />
+                    <div className="absolute bottom-0 left-0 w-28 h-28 bg-lior-400/8 rounded-full blur-2xl" />
 
                     <div className="relative z-10 flex justify-between items-center text-white">
                         <div>
@@ -727,7 +734,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     <div
                         onClick={() => setView('timeline')}
                         className={`rounded-[1.75rem] mb-5 relative z-10 spring-press cursor-pointer overflow-hidden ${
-                            otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-tulika-500 to-amber-500 text-white p-6'
+                            otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-lior-500 to-amber-500 text-white p-6'
                         }`}
                         style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                     >

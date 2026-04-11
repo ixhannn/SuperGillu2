@@ -48,8 +48,8 @@ export const FloatingHearts = () => {
       {particles.map(p => (
         <div
           key={p.id}
-          className={`absolute bottom-[-20px] will-change-transform animate-drift ${p.layer === 'slow' ? 'text-tulika-100' :
-              p.layer === 'medium' ? 'text-tulika-200' : 'text-tulika-300'
+          className={`absolute bottom-[-20px] will-change-transform animate-drift ${p.layer === 'slow' ? 'text-lior-100' :
+              p.layer === 'medium' ? 'text-lior-200' : 'text-lior-300'
             }`}
           style={{
             left: `${p.left}%`,

@@ -1179,10 +1179,10 @@ function init(){
 }
 
 /* ======= STORAGE ======= */
-function save(){try{localStorage.setItem('tulika-room-v2',JSON.stringify({coins:S.coins,placed:S.placed,wp:S.wp,fl:S.fl,lt:S.lt,name:S.name,nid:S.nid}));}catch(e){}}
+function save(){try{localStorage.setItem('lior-room-v2',JSON.stringify({coins:S.coins,placed:S.placed,wp:S.wp,fl:S.fl,lt:S.lt,name:S.name,nid:S.nid}));}catch(e){}}
 function loadState(){
   try{
-    const d=JSON.parse(localStorage.getItem('tulika-room-v2')||'null');
+    const d=JSON.parse(localStorage.getItem('lior-room-v2')||'null');
     if(d){Object.assign(S,d);}
   }catch(e){}
   updateCoins();
@@ -1397,7 +1397,7 @@ function waveAv(){
 /* ======= SHARE ======= */
 function shareRoom(){
   const code=btoa(JSON.stringify({n:S.name,items:S.placed.map(p=>[p.iid,Math.round(p.x),Math.round(p.y)]),w:S.wp,f:S.fl,l:S.lt}));
-  const txt='🏠 '+S.name+'\ntulika:room:'+code;
+  const txt='🏠 '+S.name+'\nlior:room:'+code;
   navigator.clipboard?.writeText(txt).then(()=>alert('Room code copied to clipboard! 📋')).catch(()=>prompt('Copy your room code:',txt));
 }
 

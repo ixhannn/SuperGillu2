@@ -1,5 +1,5 @@
 /**
- * Haptics Service — Tulika
+ * Haptics Service — Lior
  * ─────────────────────────────────────────────────────────────────────────────
  * Native API surface (what @capacitor/haptics v8 actually exposes):
  *
@@ -66,6 +66,9 @@ const isNative = (): boolean =>
   typeof (window as any).Capacitor !== 'undefined' &&
   (window as any).Capacitor?.isNativePlatform?.() === true;
 
+const isAndroid = (): boolean =>
+  isNative() && (window as any).Capacitor?.getPlatform?.() === 'android';
+
 // ─── Web Vibration API fallback ──────────────────────────────────────────────
 // Tuned to perceptually match the native haptic character as closely as
 // possible on Android Chrome. Shorter = lighter feel, longer = heavier.
@@ -112,18 +115,35 @@ const wait = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 class HapticsService {
   private enabled = true;
+  /** Tracks last fire time for global 50ms debounce */
+  private _lastFiredAt = 0;
+  private readonly _debounceMs = 50;
 
   loadPrefs() {
-    const v = localStorage.getItem('tulika_haptics');
+    const v = localStorage.getItem('lior_haptics');
     if (v !== null) this.enabled = v === '1';
   }
 
   setEnabled(value: boolean) {
     this.enabled = value;
-    localStorage.setItem('tulika_haptics', value ? '1' : '0');
+    localStorage.setItem('lior_haptics', value ? '1' : '0');
   }
 
   isEnabled() { return this.enabled; }
+
+  /**
+   * Global 50ms gate — returns false if a haptic fired too recently.
+   * Prevents accidental double-fires from synthetic click + pointerdown,
+   * multi-finger taps, or rapid repeat calls.
+   * Sequences (heartbeat, celebrate) bypass this internally — only the
+   * entry-point call is gated.
+   */
+  private _canFire(): boolean {
+    const now = performance.now();
+    if (now - this._lastFiredAt < this._debounceMs) return false;
+    this._lastFiredAt = now;
+    return true;
+  }
 
   // ─── Primitive impacts ──────────────────────────────────────────────────
 
@@ -133,8 +153,8 @@ class HapticsService {
    * iOS feel: touching a small light object
    */
   async tap() {
-    if (!this.enabled) return;
-    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Light });
+    if (!this.enabled || !this._canFire()) return;
+    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Light }); }
     else vibrate(W.tap);
   }
 
@@ -144,8 +164,8 @@ class HapticsService {
    * iOS feel: engaging a normal UI element
    */
   async press() {
-    if (!this.enabled) return;
-    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Medium });
+    if (!this.enabled || !this._canFire()) return;
+    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Medium }); }
     else vibrate(W.press);
   }
 
@@ -155,8 +175,8 @@ class HapticsService {
    * iOS feel: two heavy objects colliding
    */
   async heavy() {
-    if (!this.enabled) return;
-    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Heavy });
+    if (!this.enabled || !this._canFire()) return;
+    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Heavy }); }
     else vibrate(W.heavy);
   }
 
@@ -166,9 +186,8 @@ class HapticsService {
    * Use for: ghost buttons, back arrows, dismiss icons, secondary actions.
    */
   async softTap() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canFire()) return;
     if (isNative()) {
-      // Light is the softest Capacitor exposes — we accept this ceiling
       await CapHaptics.impact({ style: ImpactStyle.Light });
     } else {
       vibrate(W.softTap);
@@ -181,9 +200,81 @@ class HapticsService {
    * Use for: scroll overscroll bounce, drag boundary hit, destructive delete confirm.
    */
   async rigidStop() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canFire()) return;
     if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Heavy });
     else vibrate(W.rigidStop);
+  }
+
+  /**
+   * Destructive action — single Heavy impact.
+   * Heavier than warning; communicates irreversibility.
+   * Use for: delete button press, remove item, clear all.
+   */
+  async destructive() {
+    if (!this.enabled || !this._canFire()) return;
+    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Heavy });
+    else vibrate(W.heavy);
+  }
+
+  /**
+   * Drag pickup — Medium impact when an item becomes grabbed.
+   * Communicates "I have lifted this object off the surface."
+   * Use for: OurRoom item drag start, any draggable element grab.
+   */
+  async dragPickup() {
+    if (!this.enabled || !this._canFire()) return;
+    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Medium });
+    else vibrate(W.press);
+  }
+
+  /**
+   * Drag drop — Light impact when a dragged item is released / settles.
+   * Communicates "the object has landed."
+   * Use for: OurRoom item drop, drag-settle completion.
+   */
+  async dragDrop() {
+    if (!this.enabled || !this._canFire()) return;
+    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Light });
+    else vibrate(W.tap);
+  }
+
+  /**
+   * Milestone / special moment — celebratory triple-pulse.
+   * Pattern: Medium → 50ms → Light → 50ms → Light
+   * Feels like a gentle triumphant tap-tap-tap.
+   * Use for: streak milestone, memory count, any quiet achievement.
+   */
+  async milestone() {
+    if (!this.enabled || !this._canFire()) return;
+    if (isNative()) {
+      await CapHaptics.impact({ style: ImpactStyle.Medium });
+      await wait(50);
+      await CapHaptics.impact({ style: ImpactStyle.Light });
+      await wait(50);
+      await CapHaptics.impact({ style: ImpactStyle.Light });
+    } else {
+      vibrate([12, 50, 7, 50, 7]);
+    }
+  }
+
+  /**
+   * Heartbeat pulse sync — synchronous Light impact for use inside RAF loops.
+   * Unlike other methods this is NOT async — safe to call from AnimationEngine.
+   * Fires Light on each heartbeat peak (both lub and dub).
+   * Has its own debounce (70ms) independent from the global gate so it
+   * doesn't interfere with UI interactions.
+   */
+  private _lastPulseAt = 0;
+  heartbeatPulseSync(): void {
+    if (!this.enabled) return;
+    const now = performance.now();
+    if (now - this._lastPulseAt < 70) return; // tighter debounce for rhythmic use
+    this._lastPulseAt = now;
+    if (isNative()) {
+      CapHaptics.impact({ style: ImpactStyle.Light }); // fire-and-forget — safe from RAF
+    } else {
+      vibrate(W.tap);
+    }
   }
 
   // ─── Selection ──────────────────────────────────────────────────────────
@@ -196,11 +287,18 @@ class HapticsService {
    * NOTE: Wraps in selectionStart/End for proper iOS session context.
    */
   async select() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canFire()) return;
     if (isNative()) {
-      await CapHaptics.selectionStart();
-      await CapHaptics.selectionChanged();
-      await CapHaptics.selectionEnd();
+      if (isAndroid()) {
+        // Android: selection feedback has high bridge latency (~30ms round-trip).
+        // Use a Light impact instead — it's instant and perceptually identical.
+        CapHaptics.impact({ style: ImpactStyle.Light });
+      } else {
+        // iOS: selection session is near-instant and feels correct.
+        await CapHaptics.selectionStart();
+        await CapHaptics.selectionChanged();
+        await CapHaptics.selectionEnd();
+      }
     } else {
       vibrate(W.select);
     }

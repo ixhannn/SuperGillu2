@@ -75,7 +75,7 @@ interface ThemeDefinition {
 
 export const THEMES: Record<ThemeId, ThemeDefinition> = {
   rose: {
-    label: 'Tulika Rose',
+    label: 'Lior Rose',
     palette: {
       50: '#fff0f3',
       100: '#ffdde8',
@@ -681,13 +681,59 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
 
 let transitionTimer: number | null = null;
 const THEME_TRANSITION_MS = 600;
+let radialTransitionTimer: number | null = null;
+
+interface ThemeApplyOptions {
+  origin?: {
+    x: number;
+    y: number;
+  };
+}
+
+const removeThemeReveal = () => {
+  const existing = document.getElementById('lior-theme-reveal');
+  existing?.remove();
+  if (radialTransitionTimer !== null) {
+    window.clearTimeout(radialTransitionTimer);
+    radialTransitionTimer = null;
+  }
+};
+
+const spawnThemeReveal = (tokens: ThemeVisualTokens, origin?: { x: number; y: number }) => {
+  if (typeof document === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    return;
+  }
+
+  removeThemeReveal();
+
+  const wash = document.createElement('div');
+  const x = origin?.x ?? window.innerWidth / 2;
+  const y = origin?.y ?? window.innerHeight / 2;
+  const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+
+  wash.id = 'lior-theme-reveal';
+  wash.className = 'theme-radial-reveal';
+  wash.style.setProperty('--theme-reveal-origin-x', `${x}px`);
+  wash.style.setProperty('--theme-reveal-origin-y', `${y}px`);
+  wash.style.setProperty('--theme-reveal-radius', `${radius}px`);
+  wash.style.background = `${tokens.vignette}, ${tokens.bgMain}`;
+
+  document.body.appendChild(wash);
+  window.requestAnimationFrame(() => wash.classList.add('theme-radial-reveal-active'));
+
+  radialTransitionTimer = window.setTimeout(() => {
+    wash.remove();
+    radialTransitionTimer = null;
+  }, THEME_TRANSITION_MS + 120);
+};
 
 export const ThemeService = {
-  applyTheme: (themeId: string) => {
+  applyTheme: (themeId: string, options: ThemeApplyOptions = {}) => {
     const validId = (THEMES[themeId as ThemeId] ? themeId : 'rose') as ThemeId;
     const { palette, tokens } = THEMES[validId];
     const root = document.documentElement;
 
+    spawnThemeReveal(tokens, options.origin);
     root.setAttribute('data-theme', validId);
     root.classList.add('theme-transitioning');
 
@@ -696,13 +742,13 @@ export const ThemeService = {
       transitionTimer = null;
     }
 
-    root.style.setProperty('--color-tulika-50', palette[50]);
-    root.style.setProperty('--color-tulika-100', palette[100]);
-    root.style.setProperty('--color-tulika-200', palette[200]);
-    root.style.setProperty('--color-tulika-300', palette[300]);
-    root.style.setProperty('--color-tulika-400', palette[400]);
-    root.style.setProperty('--color-tulika-500', palette[500]);
-    root.style.setProperty('--color-tulika-600', palette[600]);
+    root.style.setProperty('--color-lior-50', palette[50]);
+    root.style.setProperty('--color-lior-100', palette[100]);
+    root.style.setProperty('--color-lior-200', palette[200]);
+    root.style.setProperty('--color-lior-300', palette[300]);
+    root.style.setProperty('--color-lior-400', palette[400]);
+    root.style.setProperty('--color-lior-500', palette[500]);
+    root.style.setProperty('--color-lior-600', palette[600]);
 
     root.style.setProperty('--color-base', tokens.base);
     root.style.setProperty('--color-surface', tokens.surface);
@@ -780,6 +826,7 @@ export const ThemeService = {
       window.clearTimeout(transitionTimer);
       transitionTimer = null;
     }
+    removeThemeReveal();
     document.documentElement.classList.remove('theme-transitioning');
   }
 };

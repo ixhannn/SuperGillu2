@@ -1,5 +1,5 @@
 /**
- * useHapticPress — Tulika
+ * useHapticPress — Lior
  *
  * Returns pointer event handlers that fire haptic + audio on pointerdown
  * (before the click event fires — makes interactions feel instantaneous).

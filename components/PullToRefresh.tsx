@@ -96,7 +96,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
         >
           <Heart 
             size={24} 
-            className="text-tulika-500 drop-shadow-md" 
+            className="text-lior-500 drop-shadow-md" 
             fill={isRefreshing ? "currentColor" : "none"} 
             strokeWidth={isRefreshing ? 0 : 2.5}
           />

@@ -17,6 +17,16 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
     // Pulling down 150px will fade the background to 0
     const bgOpacity = useTransform(y, [0, 150], [1, 0]);
 
+    React.useEffect(() => {
+        if (!isOpen) return;
+        const handleBack = (e: Event) => {
+            e.preventDefault();
+            onClose();
+        };
+        window.addEventListener('lior:hardware-back', handleBack);
+        return () => window.removeEventListener('lior:hardware-back', handleBack);
+    }, [isOpen, onClose]);
+
     return (
         <AnimatePresence>
             {isOpen && ReactDOM.createPortal(
@@ -27,7 +37,7 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         style={{ opacity: bgOpacity }}
-                        className="absolute inset-0 bg-stone-900/90 backdrop-blur-md pointer-events-auto"
+                        className="absolute inset-0 bg-stone-900/90 backdrop-blur-sm pointer-events-auto"
                         onClick={onClose}
                     />
 
@@ -36,7 +46,7 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
                         layoutId={layoutId}
                         drag="y"
                         dragConstraints={{ top: 0, bottom: 0 }}
-                        dragElastic={0.8}
+                        dragElastic={0.35}
                         onDragEnd={(e, info) => {
                             // If user dragged down fast or far enough, dismiss
                             if (info.offset.y > 100 || info.velocity.y > 500) {

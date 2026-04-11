@@ -146,7 +146,7 @@ export const TermsOfService: React.FC<Props> = ({ setView, fromAuth, onBack }) =
                 <Section title="13. Contact">
                     <p>For any questions about these Terms, please contact us at:</p>
                     <p className="mt-2 font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                        support@tulika.app
+                        support@lior.app
                     </p>
                 </Section>
 

@@ -1,5 +1,5 @@
 /**
- * Audio Service — Tulika
+ * Audio Service — Lior
  *
  * Procedural Web Audio API sound engine — zero asset files.
  * All sounds synthesized in real-time from oscillators, filters, and envelopes.
@@ -36,15 +36,15 @@ class AudioService {
   private unlocked = false;
 
   loadPrefs() {
-    const saved = localStorage.getItem('tulika_audio');
+    const saved = localStorage.getItem('lior_audio');
     if (saved !== null) this.enabled = saved === '1';
-    const vol = localStorage.getItem('tulika_audio_volume');
+    const vol = localStorage.getItem('lior_audio_volume');
     if (vol !== null) this.volume = Math.min(1, Math.max(0, parseFloat(vol)));
   }
 
   setEnabled(value: boolean) {
     this.enabled = value;
-    localStorage.setItem('tulika_audio', value ? '1' : '0');
+    localStorage.setItem('lior_audio', value ? '1' : '0');
     if (this.masterGain) {
       this.masterGain.gain.setTargetAtTime(value ? this.volume : 0, this.getCtx()!.currentTime, 0.05);
     }
@@ -52,7 +52,7 @@ class AudioService {
 
   setVolume(v: number) {
     this.volume = Math.min(1, Math.max(0, v));
-    localStorage.setItem('tulika_audio_volume', String(this.volume));
+    localStorage.setItem('lior_audio_volume', String(this.volume));
     if (this.masterGain) {
       this.masterGain.gain.setTargetAtTime(this.volume, this.getCtx()!.currentTime, 0.05);
     }

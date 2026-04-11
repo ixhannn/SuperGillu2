@@ -5,9 +5,10 @@ import { Trash2, Image as ImageIcon, PlayCircle, Plus, Calendar, Sparkles, Heart
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory, Note, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { SyncService } from '../services/sync';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
-import { useTulikaMedia } from '../hooks/useTulikaImage';
+import { useLiorMedia } from '../hooks/useLiorImage';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -59,7 +60,7 @@ function useVideoBlobUrl(src: string | null): string | null {
 
 /* ─── Surprise modal ─── */
 const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => void }) => {
-    const { src: imageUrl } = useTulikaMedia(memory.imageId, memory.image, memory.storagePath);
+    const { src: imageUrl } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
 
     return ReactDOM.createPortal(
         <motion.div
@@ -80,7 +81,7 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
             >
                 <div className="p-6 pb-7">
                     <div className="flex justify-between items-center mb-5">
-                        <div className="flex items-center gap-2 text-tulika-500">
+                        <div className="flex items-center gap-2 text-lior-500">
                             <Sparkles size={15} className="animate-wiggle-spring" />
                             <span className="text-[10px] font-bold uppercase tracking-widest">A Memory For You</span>
                         </div>
@@ -95,7 +96,7 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
                                 <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" />
                             </div>
                         ) : (
-                            <div className="aspect-[4/3] bg-tulika-50 flex items-center justify-center text-tulika-200">
+                            <div className="aspect-[4/3] bg-lior-50 flex items-center justify-center text-lior-200">
                                 <Heart size={40} />
                             </div>
                         )}
@@ -124,8 +125,8 @@ const MemoryCard: React.FC<{
     onDelete: (id: string) => void;
 }> = ({ memory, index, featured = false, onClick, onDelete }) => {
     const isVideo = !!memory.video || !!memory.videoId;
-    const { src: thumbUrl, isLoading } = useTulikaMedia(memory.imageId, memory.image, memory.storagePath);
-    const { src: videoThumbUrl } = useTulikaMedia(
+    const { src: thumbUrl, isLoading } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
+    const { src: videoThumbUrl } = useLiorMedia(
         !memory.imageId ? memory.videoId : undefined,
         !memory.imageId ? memory.video : undefined,
         !memory.imageId ? memory.videoStoragePath : undefined,
@@ -393,7 +394,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
     onDelete: (id: string) => void;
 }) => {
     const isVideo = !!memory.video || !!memory.videoId;
-    const { src: rawSrc, isLoading } = useTulikaMedia(
+    const { src: rawSrc, isLoading } = useLiorMedia(
         memory.videoId || memory.imageId,
         memory.video || memory.image,
         memory.videoStoragePath || memory.storagePath,
@@ -512,7 +513,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                 </div>
 
                 {/* ── Scrollable body: media + caption + comments ── */}
-                <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
+                <div ref={scrollRef} data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto overscroll-contain">
 
                     {/* Media */}
                     <div className="w-full" style={{ background: '#000' }}>
@@ -653,6 +654,8 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
     const [memories, setMemories] = useState<Memory[]>([]);
     const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
     const [surpriseMemory, setSurpriseMemory] = useState<Memory | null>(null);
+    const [isRecoveringCloud, setIsRecoveringCloud] = useState(false);
+    const recoveryAttemptedRef = useRef(false);
 
     useEffect(() => {
         const load = () => setMemories(StorageService.getMemories());
@@ -661,8 +664,26 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         return () => storageEventTarget.removeEventListener('storage-update', load);
     }, []);
 
+    useEffect(() => {
+        if (recoveryAttemptedRef.current) return;
+        if (!SyncService.isConnected) return;
+        if (memories.length > 0) return;
+
+        recoveryAttemptedRef.current = true;
+        setIsRecoveringCloud(true);
+        SyncService.refreshFromCloud()
+            .catch((error) => console.warn('Memory timeline refresh failed', error))
+            .finally(() => setIsRecoveringCloud(false));
+    }, [memories.length]);
+
     const handleRefresh = async () => {
-        await new Promise(r => setTimeout(r, 1200));
+        if (SyncService.isConnected) {
+            setIsRecoveringCloud(true);
+            await SyncService.refreshFromCloud().catch(() => {});
+            setIsRecoveringCloud(false);
+        } else {
+            await new Promise(r => setTimeout(r, 800));
+        }
         setMemories(StorageService.getMemories());
     };
 
@@ -705,44 +726,83 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
 
     return (
         <PullToRefresh onRefresh={handleRefresh}>
-            <div className="p-4 pt-8 pb-32 min-h-screen">
+            <div className="p-4 pt-6 pb-32 min-h-screen">
                 <ViewHeader title="Our Journey" onBack={() => setView('home')} variant="simple" />
 
                 {memories.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
-                        <div className="relative mb-6">
-                            <div className="absolute inset-0 bg-tulika-200/40 rounded-full blur-2xl animate-breathe-glow" />
-                            <div className="relative p-6 glass-card rounded-full text-tulika-400">
-                                <Calendar size={40} />
-                            </div>
-                        </div>
-                        <p className="font-serif font-bold text-center text-lg mb-2" style={{ color: 'var(--color-text-primary)' }}>
-                            Your journey is waiting to be written
-                        </p>
-                        <p className="text-xs mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-                            Capture your first memory together
-                        </p>
-                        <button
-                            onClick={() => setView('add-memory')}
-                            className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-500/20 spring-press flex items-center gap-2"
+                    <div className="flex flex-col items-center justify-center py-24">
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                            className="relative mb-8"
                         >
-                            <Plus size={18} /> Add Memory
-                        </button>
+                            <div className="absolute inset-0 bg-lior-200/40 rounded-full blur-3xl animate-breathe-glow" />
+                            <div className="relative p-8 glass-card rounded-full text-lior-400 shadow-float"
+                                 style={{ background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,1)' }}>
+                                <Calendar size={48} strokeWidth={1.5} />
+                            </div>
+                        </motion.div>
+                        <motion.h2 
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.15, duration: 0.8, ease: 'easeOut' }}
+                            className="text-center mb-3 text-2xl font-serif font-bold tracking-tight px-10"
+                            style={{ color: 'var(--color-text-primary)' }}
+                        >
+                            Your journey is waiting to be written
+                        </motion.h2>
+                        <motion.p 
+                            initial={{ y: 15, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.25, duration: 0.8, ease: 'easeOut' }}
+                            className="text-center text-[15px] mb-8 max-w-[260px] leading-relaxed" 
+                            style={{ color: 'var(--color-text-secondary)' }}
+                        >
+                            {isRecoveringCloud ? 'Checking your cloud vault...' : 'Capture your first memory together and watch your map grow.'}
+                        </motion.p>
+                        
+                        {isRecoveringCloud && (
+                            <motion.div 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="mb-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em]"
+                                style={{ background: 'rgba(255,255,255,0.66)', color: 'var(--color-text-secondary)', border: '1px solid rgba(255,255,255,0.72)' }}>
+                                <Sparkles size={14} className="animate-pulse" />
+                                Syncing memories
+                            </motion.div>
+                        )}
+                        
+                        <motion.button
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.4, type: 'spring' }}
+                            onClick={() => setView('add-memory')}
+                            className="px-8 py-4 bg-lior-500 text-white rounded-full text-sm font-bold uppercase tracking-[0.15em] shadow-lg shadow-lior-500/20 spring-press flex items-center gap-2.5 active:scale-95 transition-transform"
+                        >
+                            <Plus size={20} strokeWidth={2.5} /> Add Memory
+                        </motion.button>
                     </div>
                 ) : (
                     <>
                         {/* Surprise button */}
                         <motion.button
                             onClick={handleSurprise}
-                            whileTap={{ scale: 0.95 }}
-                            className="w-full flex items-center justify-center gap-2 py-3 rounded-[1rem] mb-6 cursor-pointer spring-press"
+                            whileTap={{ scale: 0.96 }}
+                            className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl mb-8 cursor-pointer shadow-sm relative overflow-hidden group"
                             style={{
-                                background: 'linear-gradient(135deg, rgba(236,72,153,0.08), rgba(251,207,232,0.15))',
-                                border: '1.5px solid rgba(236,72,153,0.15)',
+                                background: 'linear-gradient(135deg, rgba(236,72,153,0.06), rgba(251,207,232,0.12))',
+                                border: '1.5px solid rgba(236,72,153,0.12)',
                             }}
                         >
-                            <Sparkles size={15} style={{ color: '#ec4899' }} />
-                            <span className="text-[13px] font-semibold" style={{ color: '#be185d' }}>Surprise me</span>
+                            <motion.div
+                                animate={{ rotate: [0, 10, -10, 0] }}
+                                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                            >
+                                <Sparkles size={16} style={{ color: '#ec4899' }} />
+                            </motion.div>
+                            <span className="text-[14px] font-bold tracking-wide uppercase" style={{ color: '#be185d' }}>Surprise me</span>
+                            <div className="absolute inset-x-0 bottom-0 h-[2px] bg-pink-400/20 scale-x-0 group-active:scale-x-100 transition-transform duration-500" />
                         </motion.button>
 
                         <div className="space-y-10">

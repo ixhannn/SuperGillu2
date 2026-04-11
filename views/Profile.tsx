@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users, Volume2, VolumeX, Vibrate, Zap } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
+import { SectionDivider } from './Home';
 import { ViewState, CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { ThemeService, THEMES, ThemeId } from '../services/theme';
@@ -25,9 +26,11 @@ const THEME_DESCRIPTIONS: Record<ThemeId, string> = {
 };
 
 const FROSTED_PANEL_STYLE: React.CSSProperties = {
-    background: 'color-mix(in srgb, var(--color-surface) 82%, transparent)',
-    border: '1px solid color-mix(in srgb, var(--color-text-primary) 14%, transparent)',
-    boxShadow: '0 14px 36px color-mix(in srgb, var(--color-text-primary) 10%, transparent)',
+    background: 'var(--theme-surface-glass)',
+    backdropFilter: 'blur(24px)',
+    WebkitBackdropFilter: 'blur(24px)',
+    border: '1.5px solid var(--theme-border-crisp)',
+    boxShadow: 'var(--shadow-sm)',
 };
 
 export const Profile: React.FC<ProfileProps> = ({ setView }) => {
@@ -79,9 +82,15 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         setProfile(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleThemeChange = (themeId: ThemeId) => {
+    const handleThemeChange = (themeId: ThemeId, target?: HTMLElement | null) => {
         handleChange('theme', themeId);
-        ThemeService.applyTheme(themeId);
+        const rect = target?.getBoundingClientRect();
+        ThemeService.applyTheme(themeId, rect ? {
+            origin: {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+            },
+        } : undefined);
         Haptics.select();
         Audio.play('select');
     };
@@ -202,13 +211,13 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         };
         StorageService.saveCoupleProfile(newProfile);
         // Set override flag to ensure this choice persists over auto-login logic
-        localStorage.setItem('tulika_manual_override', 'true');
+        localStorage.setItem('lior_manual_override', 'true');
         window.location.reload();
     };
 
     const handleSignOut = async () => {
         if (confirm("Are you sure you want to sign out?")) {
-            localStorage.removeItem('tulika_manual_override'); // Clear override
+            localStorage.removeItem('lior_manual_override'); // Clear override
             if (SupabaseService.client) {
                 await SupabaseService.client.auth.signOut();
             }
@@ -225,7 +234,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `tulika_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `lior_backup_${new Date().toISOString().split('T')[0]}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -283,81 +292,75 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                 }
             />
 
-            <div className="p-6 pb-20 flex flex-col items-center overflow-y-auto">
+            <div className="view-container">
+                {/* Photo Upload — Hero Alignment */}
+                <div className="view-section flex flex-col items-center">
+                    <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="group relative w-40 h-40 rounded-full border-2 border-white/20 overflow-hidden cursor-pointer mb-6 transition-all duration-500 spring-press ring-4 ring-lior-100/30"
+                        style={{ background: 'var(--theme-surface-glass)', boxShadow: 'var(--shadow-lg)' }}
+                    >
+                        {profile.photo ? (
+                            <img src={profile.photo} className="w-full h-full object-cover" alt="Couple" />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-lior-300">
+                                <Heart size={48} className="mb-1" fill="currentColor" />
+                                <span className="text-micro-bold opacity-60">Upload Photo</span>
+                            </div>
+                        )}
 
-                {/* Photo Upload */}
-                <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="group relative w-40 h-40 rounded-full border-2 border-white/20 overflow-hidden cursor-pointer mb-10 transition-all duration-500 spring-press"
-                    style={{ background: 'rgba(255,255,255,0.06)' }}
-                >
-                    {profile.photo ? (
-                        <img src={profile.photo} className="w-full h-full object-cover" alt="Couple" />
-                    ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-tulika-200">
-                            <Heart size={48} className="mb-1" fill="currentColor" />
-                            <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Upload</span>
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Camera className="text-white" size={32} />
                         </div>
-                    )}
 
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 transition-opacity">
-                        <Camera className="text-white" size={32} />
+                        <input
+                            type="file"
+                            accept="image/png, image/jpeg, image/jpg, image/webp"
+                            ref={fileInputRef}
+                            className="hidden"
+                            onChange={handleImageUpload}
+                        />
                     </div>
-
-                    <input
-                        type="file"
-                        accept="image/png, image/jpeg, image/jpg, image/webp"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleImageUpload}
-                    />
                 </div>
 
-                <div className="w-full space-y-6">
-                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-[var(--color-text-secondary)] transition-shadow" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-xs font-bold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-secondary)' }}>My Name</label>
+                <div className="view-section space-y-4">
+                    <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-micro-bold text-gray-400 block mb-2 opacity-60 group-focus-within:opacity-100 group-focus-within:text-lior-500 transition-all">My Name</label>
                         <input
                             type="text"
                             value={profile.myName}
                             onChange={(e) => handleChange('myName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-xl outline-none"
-                            style={{ color: 'var(--color-text-primary)' }}
-                            placeholder="E.g. Romeo"
+                            className="w-full bg-transparent font-serif text-2xl outline-none text-gray-800 placeholder:text-gray-300 transition-all"
+                            placeholder="Your name"
                         />
                     </div>
 
-                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-[var(--color-text-secondary)] transition-shadow" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-xs font-bold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-secondary)' }}>Partner's Name</label>
+                    <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-micro-bold text-gray-400 block mb-2 opacity-60 group-focus-within:opacity-100 group-focus-within:text-lior-500 transition-all">Partner's Name</label>
                         <input
                             type="text"
                             value={profile.partnerName}
                             onChange={(e) => handleChange('partnerName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-xl outline-none"
-                            style={{ color: 'var(--color-text-primary)' }}
-                            placeholder="E.g. Juliet"
+                            className="w-full bg-transparent font-serif text-2xl outline-none text-gray-800 placeholder:text-gray-300 transition-all"
+                            placeholder="Their name"
                         />
                     </div>
 
-                    <div className="p-4 rounded-2xl focus-within:ring-2 focus-within:ring-[var(--color-text-secondary)] transition-shadow" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-xs font-bold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-secondary)' }}>Relationship Start Date</label>
+                    <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300" style={FROSTED_PANEL_STYLE}>
+                        <label className="text-micro-bold text-gray-400 block mb-2 opacity-60 group-focus-within:opacity-100 group-focus-within:text-lior-500 transition-all">Relationship Start Date</label>
                         <input
                             type="date"
                             value={profile.anniversaryDate ? new Date(profile.anniversaryDate).toISOString().split('T')[0] : ''}
                             onChange={(e) => handleChange('anniversaryDate', new Date(e.target.value).toISOString())}
-                            className="w-full bg-transparent font-medium text-lg outline-none"
-                            style={{ color: 'var(--color-text-primary)' }}
+                            className="w-full bg-transparent font-bold text-lg outline-none text-gray-800 transition-all"
                         />
                     </div>
+                </div>
 
-                    {/* Theme Selector */}
-                    <div className="rounded-2xl overflow-hidden" style={FROSTED_PANEL_STYLE}>
-                        {/* Header */}
-                        <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-                            <Palette size={14} style={{ color: activeTheme.palette[500] }} />
-                            <label className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-secondary)' }}>
-                                Theme Studio
-                            </label>
-                        </div>
+                {/* Theme Selector — Aesthetic Personalization */}
+                <div className="view-section">
+                    <SectionDivider label="Aesthetic Studio" />
+                    <div className="rounded-[2.5rem] glass-card-premium overflow-hidden p-0 border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
 
                         {/* Active theme hero */}
                         <div className="mx-4 mb-4 rounded-2xl overflow-hidden relative" style={{
@@ -415,12 +418,12 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             {Object.entries(THEMES).map(([id, theme]) => {
                                 const isSelected = (profile.theme || 'rose') === id;
                                 return (
-                                    <button
-                                        key={id}
-                                        onClick={() => handleThemeChange(id as ThemeId)}
-                                        aria-label={`${theme.label} theme - ${THEME_DESCRIPTIONS[id as ThemeId]}`}
-                                        aria-pressed={isSelected}
-                                        className="relative overflow-hidden focus-visible:outline-none"
+                                     <button
+                                         key={id}
+                                         onClick={(e) => handleThemeChange(id as ThemeId, e.currentTarget)}
+                                         aria-label={`${theme.label} theme - ${THEME_DESCRIPTIONS[id as ThemeId]}`}
+                                         aria-pressed={isSelected}
+                                         className="relative overflow-hidden focus-visible:outline-none"
                                         style={{
                                             borderRadius: 14,
                                             aspectRatio: '1 / 1',
@@ -489,12 +492,12 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             })}
                         </div>
                     </div>
+                </div>
 
-                    {/* Music Upload */}
-                    <div className="p-4 rounded-2xl transition-shadow" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-xs font-bold uppercase tracking-wider block mb-3 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
-                            <Music size={14} /> Together Song
-                        </label>
+                {/* Music Upload — Shared Vibe */}
+                <div className="view-section">
+                    <SectionDivider label="Shared Vibe" />
+                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
 
                         {musicMeta ? (
                             <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.14)' }}>
@@ -551,12 +554,12 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             </>
                         )}
                     </div>
+                </div>
 
-                    {/* Feel Settings — Haptics & Sound */}
-                    <div className="p-5 rounded-2xl" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-xs font-bold uppercase tracking-[0.16em] block mb-4 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
-                            <Zap size={13} /> Feel & Sound
-                        </label>
+                {/* Feel Settings — Haptics & Sound */}
+                <div className="view-section">
+                    <SectionDivider label="Tactile & Sound" />
+                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
 
                         {/* Haptics Toggle */}
                         <div className="flex items-center justify-between py-3 border-b" style={{ borderColor: 'color-mix(in srgb, var(--color-text-primary) 10%, transparent)' }}>
@@ -615,55 +618,55 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             </button>
                         </div>
                     </div>
+                </div>
 
-                    {/* Storage Status */}
-                    <div className="p-5 rounded-2xl mt-4" style={FROSTED_PANEL_STYLE}>
-                        <div className="flex justify-between items-center mb-4">
-                            <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
-                                <HardDrive size={14} /> Storage Vault
+                {/* Storage Status — Vault Integrity */}
+                <div className="view-section">
+                    <SectionDivider label="Vault Integrity" />
+                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
+                        <div className="flex justify-between items-center mb-6">
+                            <label className="text-micro-bold text-lior-500 flex items-center gap-2">
+                                <HardDrive size={14} /> Local Storage
                             </label>
-                            <div className="flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', color: 'var(--color-nav-active)' }}>
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-lior-50 text-lior-500 ring-1 ring-lior-100">
                                 <ShieldCheck size={12} /> {storageInfo.type}
                             </div>
                         </div>
 
                         <div className="flex justify-between items-end">
                             <div>
-                                <p className="text-2xl font-mono font-bold" style={{ color: 'var(--color-text-primary)' }}>{storageInfo.used}</p>
-                                <p className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>Total stored locally</p>
+                                <p className="text-3xl font-mono font-bold text-gray-800">{storageInfo.used}</p>
+                                <p className="text-micro-bold text-gray-400 opacity-60 mt-1">Local Memory Footprint</p>
                             </div>
-                            <div className="h-8 w-px" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.25)' }}></div>
                             <div className="text-right">
-                                <p className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Database Active</p>
-                                <p className="text-[10px]" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>IndexedDB Engine</p>
+                                <p className="text-micro-bold text-gray-800">Database Engine</p>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest opacity-60">IndexedDB Active</p>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    {/* Data & Backup Section */}
-                    <div className="p-5 rounded-2xl mt-4" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-xs font-bold uppercase tracking-wider block mb-4 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
-                            <Database size={14} /> Backup & Restore
-                        </label>
+                {/* Data & Backup Section */}
+                <div className="view-section">
+                    <SectionDivider label="Continuity" />
+                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
 
-                        <div className="flex gap-3">
+                        <div className="flex gap-4">
                             <button
                                 onClick={handleDownloadBackup}
                                 disabled={isBackingUp}
-                                className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
-                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)', color: 'var(--color-text-primary)' }}
+                                className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest flex flex-col items-center gap-2 bg-gray-50 border border-gray-100 text-gray-700 active:scale-95 transition-all"
                             >
                                 {isBackingUp ? <Download size={20} className="animate-bounce" /> : <Download size={20} />}
-                                <span>{isBackingUp ? 'Exporting...' : 'Backup'}</span>
+                                <span>Export</span>
                             </button>
 
                             <button
                                 onClick={() => backupInputRef.current?.click()}
-                                className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex flex-col items-center gap-1 active:scale-95 transition-all"
-                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)', color: 'var(--color-text-primary)' }}
+                                className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest flex flex-col items-center gap-2 bg-gray-50 border border-gray-100 text-gray-700 active:scale-95 transition-all"
                             >
                                 <Upload size={20} />
-                                <span>Restore</span>
+                                <span>Import</span>
                             </button>
                             <input
                                 type="file"
@@ -673,27 +676,26 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                 onChange={handleRestoreBackup}
                             />
                         </div>
-                        <p className="text-[10px] mt-3 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                        <p className="text-[11px] mt-6 leading-relaxed text-gray-500 font-medium">
                             Download a copy of your memories to keep them safe forever. You can restore this file anytime if you switch devices.
                         </p>
                     </div>
+                </div>
 
-                    <div className="w-full mt-8 pt-8 space-y-3" style={{ borderTop: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
-                        <button
-                            onClick={handleSwitchIdentityClick}
-                            className="w-full flex items-center justify-center gap-2 font-bold text-sm py-3 rounded-xl transition-colors spring-press"
-                            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.16)', color: 'var(--color-text-primary)' }}
-                        >
-                            <Users size={16} /> Switch Identity
-                        </button>
+                <div className="view-section pt-8 space-y-3 pb-12">
+                    <button
+                        onClick={handleSwitchIdentityClick}
+                        className="w-full flex items-center justify-center gap-2 font-bold text-sm py-4 rounded-2xl bg-gray-50 border border-gray-100 text-gray-700 transition-all spring-press"
+                    >
+                        <Users size={16} /> Switch Identity
+                    </button>
 
-                        <button
-                            onClick={handleSignOut}
-                            className="w-full flex items-center justify-center gap-2 text-red-500 font-bold text-sm bg-red-500/10 py-3 rounded-xl transition-colors spring-press"
-                        >
-                            <LogOut size={16} /> Sign Out
-                        </button>
-                    </div>
+                    <button
+                        onClick={handleSignOut}
+                        className="w-full flex items-center justify-center gap-2 text-red-500 font-bold text-sm bg-red-50 py-4 rounded-2xl border border-red-100 transition-all spring-press"
+                    >
+                        <LogOut size={16} /> Sign Out
+                    </button>
                 </div>
             </div>
 

@@ -152,7 +152,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                                 }
                             } catch (e) { /* user cancelled share */ }
                         }}
-                        className="p-3 bg-tulika-500 text-white rounded-full shadow-lg shadow-tulika-500/20 spring-press"
+                        className="p-3 bg-lior-500 text-white rounded-full shadow-lg shadow-lior-500/20 spring-press"
                     >
                         <Share2 size={20} />
                     </button>
@@ -163,7 +163,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 {stats.totalEntries === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
                         <div className="relative mb-6">
-                            <div className="absolute inset-0 bg-tulika-500/10 rounded-full blur-2xl animate-breathe-glow" />
+                            <div className="absolute inset-0 bg-lior-500/10 rounded-full blur-2xl animate-breathe-glow" />
                             <div className="relative p-6 rounded-full shadow-sm" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
                                 <Palette size={40} style={{ animation: 'breathe-glow 3s ease-in-out infinite', color: 'var(--color-text-secondary)' }} />
                             </div>
@@ -174,7 +174,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         <p className="text-xs mb-6" style={{ color: 'var(--color-text-secondary)' }}>Your monthly rewind will bloom here</p>
                         <button
                             onClick={() => setView('mood-calendar')}
-                            className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-500/20 spring-press"
+                            className="px-6 py-3 bg-lior-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-lior-500/20 spring-press"
                         >
                             Go to Aura Board
                         </button>
@@ -186,12 +186,12 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                 <section className="rounded-[2.5rem] p-8 shadow-xl overflow-hidden relative glass-card" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-2">
-                            <TrendingUp size={20} className="text-tulika-500" />
+                            <TrendingUp size={20} className="text-lior-500" />
                             <h2 className="font-bold uppercase tracking-wider text-xs" style={{ color: 'var(--color-text-primary)' }}>Harmony Wave</h2>
                         </div>
                         <div className="flex gap-4">
                             <div className="flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-full bg-tulika-400"></div>
+                                <div className="w-2 h-2 rounded-full bg-lior-400"></div>
                                 <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{profile.myName}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -261,7 +261,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         </h3>
                         <p className="text-[10px] font-medium italic" style={{ color: 'var(--color-text-secondary)' }}>Most aligned on {stats.bestAlignedDay}.</p>
                     </div>
-                    <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full shadow-lg border-4 border-tulika-500/20" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>
+                    <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full shadow-lg border-4 border-lior-500/20" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>
                         <span className="text-2xl font-black" style={{ color: 'var(--color-text-primary)' }}>{stats.syncScore}%</span>
                         <div className="absolute inset-0 rounded-full border-t-4 border-pink-400 animate-spin" style={{ animationDuration: '3s' }}></div>
                     </div>
@@ -269,9 +269,9 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
 
                 {/* Shared Memory Highlight placeholder */}
                 <section className="rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden glass-card" style={{ border: '1px solid rgba(var(--theme-particle-1-rgb),0.15)' }}>
-                    <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-tulika-400/20 rounded-full blur-3xl"></div>
+                    <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-lior-400/20 rounded-full blur-3xl"></div>
                     <div className="relative z-10">
-                        <Sparkles size={24} className="text-tulika-300 mb-4" />
+                        <Sparkles size={24} className="text-lior-300 mb-4" />
                         <h4 className="font-serif text-xl font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>The Monthly Glow</h4>
                         <p className="text-sm leading-relaxed font-serif italic" style={{ color: 'var(--color-text-secondary)' }}>
                             {stats.totalEntries > 0

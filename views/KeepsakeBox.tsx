@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Archive, Plus, Camera, Music, FileText, Lock, Gift, X, EyeOff, Video, PlayCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, Keepsake, CoupleProfile } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
-import { useTulikaMedia } from '../hooks/useTulikaImage';
+import { useLiorMedia } from '../hooks/useLiorImage';
 import { GestureModal } from '../components/GestureModal';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
@@ -11,43 +11,47 @@ import { generateId } from '../utils/ids';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { ViewHeader } from '../components/ViewHeader';
+import { SectionDivider } from './Home';
 
 interface KeepsakeBoxProps {
     setView: (view: ViewState) => void;
 }
 
+const normalizeSenderName = (senderId?: string) => senderId === 'Lior' ? 'Tulika' : senderId;
+
 const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick }) => {
-    const { src: mediaSrc } = useTulikaMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, keepsake.storagePath || keepsake.videoStoragePath);
+    const { src: mediaSrc } = useLiorMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, keepsake.storagePath || keepsake.videoStoragePath);
 
     const formattedDate = new Date(keepsake.date).toLocaleDateString(undefined, {
         year: 'numeric', month: 'short', day: 'numeric'
     });
 
-    const displaySender = keepsake.senderId === 'Tulika' ? 'Tulika' : (keepsake.senderId === 'Ishan' ? 'Ishan' : (isMine ? 'Me' : partnerName));
+    const normalizedSender = normalizeSenderName(keepsake.senderId);
+    const displaySender = normalizedSender === 'Tulika' ? 'Tulika' : (normalizedSender === 'Ishan' ? 'Ishan' : (isMine ? 'Me' : partnerName));
 
     return (
         <div className={`flex w-full mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}>
             <motion.div
                 layoutId={`keepsake-${keepsake.id}`}
                 onClick={() => { feedback.light(); onClick(); }}
-                className={`max-w-[85%] p-5 rounded-[2.5rem] mb-1 relative overflow-hidden group cursor-pointer animate-spring-in spring-press glass-card ${
+                className={`max-w-[88%] p-5 rounded-[2.5rem] mb-2 relative overflow-hidden group cursor-pointer animate-spring-in spring-press glass-card-premium shadow-none ring-1 ring-inset ring-white/10 ${
                     isMine
                         ? 'rounded-tr-none'
-                        : 'rounded-tl-none ring-2 ring-tulika-200 shadow-xl'
+                        : 'rounded-tl-none ring-lior-200/50'
                 }`}
             >
                 {/* Content */}
                 <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-widest ${isMine ? '' : 'text-tulika-500'}`} style={isMine ? { color: 'var(--color-text-secondary)' } : {}}>
+                    <div className="flex justify-between items-start mb-2.5">
+                        <span className={`text-micro-bold opacity-60 ${isMine ? 'text-gray-400' : 'text-lior-500'}`}>
                             From {displaySender}
                         </span>
                         <button
                             onClick={(e) => { e.stopPropagation(); onHide(); }}
-                            className="transition-colors p-2 -m-2 opacity-0"
+                            className="transition-colors p-2 -m-2 opacity-0 group-hover:opacity-40"
                             style={{ color: 'var(--color-text-secondary)' }}
                         >
-                            <EyeOff size={12} />
+                            <EyeOff size={13} />
                         </button>
                     </div>
 
@@ -69,13 +73,13 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
                     )}
 
                     {keepsake.title && (
-                        <h3 className="font-serif font-bold text-lg mb-1.5 leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                        <h3 className="text-title-premium text-lg mb-1 leading-tight text-gray-800">
                             {keepsake.title}
                         </h3>
                     )}
 
                     {keepsake.content && (
-                        <p className="font-serif leading-relaxed whitespace-pre-wrap text-[15px]" style={{ color: 'var(--color-text-primary)' }}>
+                        <p className="text-body-premium text-gray-600 leading-relaxed whitespace-pre-wrap text-[14px]">
                             {keepsake.content}
                         </p>
                     )}
@@ -86,15 +90,15 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
                                 <Music size={14} />
                             </div>
                             <div className="overflow-hidden">
-                                <a href={keepsake.spotifyLink} target="_blank" rel="noreferrer" className="text-[10px] text-tulika-500 underline truncate block font-bold">
+                                <a href={keepsake.spotifyLink} target="_blank" rel="noreferrer" className="text-[10px] text-lior-500 underline truncate block font-bold">
                                     Open Spotify
                                 </a>
                             </div>
                         </div>
                     )}
 
-                    <div className="mt-4 pt-3 flex justify-between items-center" style={{ borderTop: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', color: 'var(--color-text-secondary)' }}>
-                        <span className="font-serif italic text-[10px]">
+                    <div className="mt-4 pt-4 flex justify-between items-center opacity-40" style={{ borderTop: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
+                        <span className="text-micro-bold tracking-tight">
                             {formattedDate}
                         </span>
                         <Gift size={12} />
@@ -108,7 +112,7 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
 // Extracted to separate component so we can use hooks conditionally for the specific opened keepsake
 const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void }> = ({ keepsake, onClose }) => {
     // For detail views, we want the FULL resolution image/video
-    const { src: mediaUrl, isLoading } = useTulikaMedia(
+    const { src: mediaUrl, isLoading } = useLiorMedia(
         keepsake.videoId || keepsake.imageId,
         keepsake.video || keepsake.image,
         keepsake.videoStoragePath || keepsake.storagePath
@@ -124,7 +128,7 @@ const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void 
                 <X size={20} />
             </button>
 
-            <div className="relative z-10 max-h-[70vh] overflow-y-auto no-scrollbar pb-6">
+            <div data-lenis-prevent className="lenis-inner relative z-10 max-h-[70vh] overflow-y-auto no-scrollbar pb-6">
                 {keepsake.title && (
                     <h3 className="font-serif font-bold text-3xl mb-6 text-center leading-tight" style={{ color: 'var(--color-text-primary)' }}>
                         {keepsake.title}
@@ -135,7 +139,7 @@ const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void 
                     <div className="rounded-2xl overflow-hidden mb-8 border-2 border-white/10 bg-white/5 flex items-center justify-center min-h-[200px] relative">
                         {isLoading ? (
                            <div className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center">
-                               <div className="w-8 h-8 rounded-full border-4 border-gray-600 border-t-tulika-400 animate-spin"></div>
+                               <div className="w-8 h-8 rounded-full border-4 border-gray-600 border-t-lior-400 animate-spin"></div>
                            </div>
                         ) : (
                             keepsake.video || keepsake.videoId ? (
@@ -168,7 +172,7 @@ const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void 
 
 export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const [keepsakes, setKeepsakes] = useState<Keepsake[]>([]);
-    const [activeTab, setActiveTab] = useState<'tulika' | 'ishan'>('tulika');
+    const [activeTab, setActiveTab] = useState<'lior' | 'ishan'>('lior');
     const [selectedKeepsake, setSelectedKeepsake] = useState<Keepsake | null>(null);
     const [isComposing, setIsComposing] = useState(false);
     const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Me', partnerName: 'Partner', anniversaryDate: '' });
@@ -196,32 +200,38 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
         return () => storageEventTarget.removeEventListener('storage-update', handleUpdate);
     }, []);
 
-    const myId = StorageService.getDeviceId();
-    const isMeTulika = profile.myName === 'Tulika';
+    const groupedKeepsakesByDate = useMemo(() => {
+        const sorted = keepsakes
+            .filter(k => !k.isHidden)
+            .filter(k => {
+                const senderId = normalizeSenderName(k.senderId);
+                const isSentByTulika = senderId === 'Tulika';
+                const isSentByIshan = senderId === 'Ishan';
+                const isMe = k.senderId === StorageService.getDeviceId();
+                const isMeTulika = profile.myName === 'Tulika';
+                
+                if (activeTab === 'lior') {
+                    if (isSentByTulika) return true;
+                    if (isSentByIshan) return false;
+                    return isMeTulika ? isMe : !isMe;
+                } else {
+                    if (isSentByIshan) return true;
+                    if (isSentByTulika) return false;
+                    return isMeTulika ? !isMe : isMe;
+                }
+            })
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const filteredKeepsakes = keepsakes
-        .filter(k => !k.isHidden)
-        .filter(k => {
-            const isSentByTulika = k.senderId === 'Tulika';
-            const isSentByIshan = k.senderId === 'Ishan';
-            
-            // Fallback for legacy items without name-based senderId
-            const isMe = k.senderId === myId;
-            const isMeTulika = profile.myName === 'Tulika';
-            
-            if (activeTab === 'tulika') {
-                if (isSentByTulika) return true;
-                if (isSentByIshan) return false;
-                // Legacy
-                return isMeTulika ? isMe : !isMe;
-            } else {
-                if (isSentByIshan) return true;
-                if (isSentByTulika) return false;
-                // Legacy
-                return isMeTulika ? !isMe : isMe;
-            }
-        })
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // Group by Month Year
+        const groups: { [key: string]: Keepsake[] } = {};
+        sorted.forEach(k => {
+            const d = new Date(k.date);
+            const key = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(k);
+        });
+        return groups;
+    }, [keepsakes, activeTab, profile]);
 
     const [hideTarget, setHideTarget] = useState<string | null>(null);
 
@@ -280,6 +290,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     };
 
     const handleSend = async () => {
+        const myId = StorageService.getDeviceId();
         const newKeepsake: Keepsake = {
             id: generateId(),
             senderId: profile.myName || myId,
@@ -311,66 +322,69 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
 
     return (
         <div className="flex flex-col h-full min-h-screen">
-            <div className="pb-4 sticky top-0 z-20" style={{ background: 'color-mix(in srgb, var(--color-surface) 85%, transparent)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
+            <div className="pb-6 sticky top-0 z-20 glass-card-premium border-b-none ring-1 ring-white/10" style={{ background: 'var(--theme-surface-glass)', backdropFilter: 'blur(32px)' }}>
                 <ViewHeader
-                    title="The Keepsake Box"
+                    title="Memory Vault"
                     onBack={() => setView('home')}
                     variant="centered"
                     borderless
                 />
 
-                <div className="flex p-1 rounded-full relative mb-2 mx-6 glass-card shadow-sm border border-gray-100">
+                <div className="flex p-1.5 rounded-full relative mb-2 mx-6 glass-card shadow-none ring-1 ring-inset ring-white/10 bg-black/5">
                     <div
-                        className="absolute top-1 bottom-1 w-[48%] rounded-full transition-all duration-300 ease-spring shadow-sm"
-                        style={{ left: activeTab === 'tulika' ? '1%' : '51%', background: 'rgba(var(--theme-particle-2-rgb),0.15)' }}
+                        className="absolute top-1.5 bottom-1.5 w-[48%] rounded-full transition-all duration-300 ease-spring shadow-lg"
+                        style={{ left: activeTab === 'lior' ? '1%' : '51%', background: 'white' }}
                     ></div>
                     <button
-                        onClick={() => setActiveTab('tulika')}
-                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider relative z-10 transition-colors`}
-                        style={{ color: activeTab === 'tulika' ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
+                        onClick={() => setActiveTab('lior')}
+                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest relative z-10 transition-all ${activeTab === 'lior' ? 'text-lior-600' : 'text-gray-400'}`}
                     >
-                        From Tulika
+                        {profile.myName === 'Tulika' ? 'Created' : 'Tulika'}
                     </button>
                     <button
                         onClick={() => setActiveTab('ishan')}
-                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider relative z-10 transition-colors`}
-                        style={{ color: activeTab === 'ishan' ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
+                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest relative z-10 transition-all ${activeTab === 'ishan' ? 'text-lior-600' : 'text-gray-400'}`}
                     >
-                        From Ishan
+                        {profile.myName === 'Ishan' ? 'Created' : 'Ishan'}
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 p-6 pb-32 overflow-y-auto">
-                {filteredKeepsakes.length > 0 ? (
-                    filteredKeepsakes.map(k => (
-                        <KeepsakeCard
-                            key={k.id}
-                            keepsake={k}
-                            isMine={k.senderId === myId || k.senderId === profile.myName}
-                            partnerName={profile.partnerName}
-                            myName={profile.myName}
-                            onHide={() => handleHide(k.id)}
-                            onClick={() => setSelectedKeepsake(k)}
-                        />
+            <div className="view-container">
+                {Object.keys(groupedKeepsakesByDate).length > 0 ? (
+                    Object.entries(groupedKeepsakesByDate as { [key: string]: Keepsake[] }).map(([dateLabel, items]) => (
+                        <div key={dateLabel} className="view-section">
+                            <SectionDivider label={dateLabel} />
+                            {items.map(k => (
+                                <KeepsakeCard
+                                    key={k.id}
+                                    keepsake={k}
+                                    isMine={k.senderId === StorageService.getDeviceId() || k.senderId === profile.myName}
+                                    partnerName={profile.partnerName}
+                                    myName={profile.myName}
+                                    onHide={() => handleHide(k.id)}
+                                    onClick={() => setSelectedKeepsake(k)}
+                                />
+                            ))}
+                        </div>
                     ))
                 ) : (
-                    <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
-                        <div className="relative mb-6">
-                            <div className="absolute inset-0 bg-tulika-500/10 rounded-full blur-2xl animate-breathe-glow" />
-                            <div className="relative p-6 rounded-full" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
-                                <Gift size={40} style={{ color: 'var(--color-text-secondary)' }} />
+                    <div className="flex flex-col items-center justify-center py-24 animate-fade-in px-8">
+                        <div className="relative mb-10 scale-125">
+                            <div className="absolute inset-0 bg-lior-500/10 rounded-full blur-3xl animate-pulse" />
+                            <div className="relative p-8 rounded-full glass-card-premium shadow-none ring-1 ring-lior-100">
+                                <Archive size={48} className="text-lior-400" />
                             </div>
                         </div>
-                        <p className="font-serif text-center text-lg mb-2" style={{ color: 'var(--color-text-secondary)' }}>
-                            Your keepsake box is waiting for its first treasure
+                        <h2 className="text-title-premium text-2xl text-center mb-3">Your vault is whispering for stories</h2>
+                        <p className="text-center text-gray-400 font-medium text-sm leading-relaxed mb-10 max-w-xs">
+                          Seal your first memory, letter, or song to lock it away in your shared treasure box forever.
                         </p>
-                        <p className="text-xs mb-6" style={{ color: 'var(--color-text-secondary)' }}>Send something meaningful</p>
                         <button
                             onClick={() => setIsComposing(true)}
-                            className="px-6 py-3 bg-tulika-500 text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-lg shadow-tulika-500/20 spring-press"
+                            className="px-8 py-4 bg-lior-500 text-white rounded-2xl text-xs font-bold uppercase tracking-[0.2em] shadow-2xl shadow-lior-500/30 spring-press active:scale-95 transition-all"
                         >
-                            Send a Gift
+                            ENSHRINE A GIFT
                         </button>
                     </div>
                 )}
@@ -379,10 +393,10 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
             <div className="fixed bottom-24 right-6 z-30">
                 <button
                     onClick={() => setIsComposing(true)}
-                    className="bg-tulika-500 text-white p-4 rounded-full shadow-2xl shadow-tulika-500/30 spring-press spring-hover transition-transform flex items-center gap-2"
+                    className="bg-lior-500 text-white pl-5 pr-6 py-4 rounded-[2rem] shadow-2xl shadow-lior-600/40 spring-press flex items-center gap-3 active:scale-95 transition-all"
                 >
-                    <Gift size={24} />
-                    <span className="font-bold text-sm pr-2">Send Gift</span>
+                    <Plus size={24} strokeWidth={3} />
+                    <span className="font-bold text-xs uppercase tracking-widest">Enshrine</span>
                 </button>
             </div>
 
@@ -399,10 +413,10 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                     </div>
 
                     {step === 1 ? (
-                        <div className="flex-1 overflow-y-auto p-6 pt-6">
+                        <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto p-6 pt-6">
                             <h2 className="font-serif font-bold text-3xl mb-8" style={{ color: 'var(--color-text-primary)' }}>What would you like to give?</h2>
 
-                            <div className="flex gap-4 mb-8 overflow-x-auto pb-2 no-scrollbar">
+                            <div data-lenis-prevent className="lenis-inner flex gap-4 mb-8 overflow-x-auto pb-2 no-scrollbar">
                                 {[
                                     { id: 'letter', icon: FileText, label: 'Letter' },
                                     { id: 'photo', icon: Camera, label: 'Photo' },
@@ -412,7 +426,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                                     <button
                                         key={t.id}
                                         onClick={() => setType(t.id as any)}
-                                        className={`flex flex-col items-center gap-2 p-4 rounded-[2rem] min-w-[6rem] transition-all shadow-sm ${type === t.id ? 'bg-tulika-500 text-white shadow-lg shadow-tulika-500/20' : ''}`}
+                                        className={`flex flex-col items-center gap-2 p-4 rounded-[2rem] min-w-[6rem] transition-all shadow-sm ${type === t.id ? 'bg-lior-500 text-white shadow-lg shadow-lior-500/20' : ''}`}
                                         style={type !== t.id ? { background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-secondary)' } : {}}
                                     >
                                         <t.icon size={24} />
@@ -423,15 +437,16 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
 
                             <div className="space-y-6 animate-slide-up">
                                 <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-secondary)' }}>Title (Optional)</label>
-                                    <input
-                                        type="text"
-                                        value={title}
-                                        onChange={e => setTitle(e.target.value)}
-                                        className="w-full p-4 rounded-2xl shadow-sm font-serif text-lg outline-none focus:ring-2 focus:ring-tulika-500/30"
-                                        style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
-                                        placeholder="e.g. A thought for today"
-                                    />
+                                    <label className="text-micro-bold text-gray-400 block mb-2 opacity-60">Title (Optional)</label>
+                                    <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300">
+                                        <input
+                                            type="text"
+                                            value={title}
+                                            onChange={e => setTitle(e.target.value)}
+                                            className="w-full bg-transparent font-serif text-2xl outline-none text-gray-800 placeholder:text-gray-300"
+                                            placeholder="e.g. A thought for today"
+                                        />
+                                    </div>
                                 </div>
 
                                 {type === 'photo' && (
@@ -484,27 +499,29 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
 
                                 {type === 'song' && (
                                     <div>
-                                        <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-secondary)' }}>Spotify Link</label>
-                                        <input
-                                            type="text"
-                                            value={link}
-                                            onChange={e => setLink(e.target.value)}
-                                            className="w-full p-4 rounded-2xl shadow-sm font-sans text-sm outline-none focus:ring-2 focus:ring-tulika-500/30"
-                                            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
-                                            placeholder="https://open.spotify.com/track/..."
-                                        />
+                                        <label className="text-micro-bold text-gray-400 block mb-2 opacity-60">Spotify Link</label>
+                                        <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300">
+                                            <input
+                                                type="text"
+                                                value={link}
+                                                onChange={e => setLink(e.target.value)}
+                                                className="w-full bg-transparent font-sans text-sm outline-none text-gray-800 placeholder:text-gray-300"
+                                                placeholder="https://open.spotify.com/track/..."
+                                            />
+                                        </div>
                                     </div>
                                 )}
 
                                 <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-secondary)' }}>Message</label>
+                                    <label className="text-micro-bold text-gray-400 block mb-2 opacity-60">Message</label>
+                                    <div className="p-5 rounded-3xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300">
                                         <textarea
-                                        value={content}
-                                        onChange={e => setContent(e.target.value)}
-                                        className="w-full h-48 p-4 rounded-2xl shadow-inner font-serif text-lg leading-relaxed outline-none focus:ring-2 focus:ring-tulika-500/30 resize-none"
-                                        style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
-                                        placeholder="Write something meaningful..."
-                                    />
+                                            value={content}
+                                            onChange={e => setContent(e.target.value)}
+                                            className="w-full h-48 bg-transparent font-serif text-lg leading-relaxed outline-none text-gray-800 placeholder:text-gray-300 resize-none"
+                                            placeholder="Write something meaningful..."
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -521,7 +538,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                             <div className="w-full space-y-3">
                                 <button
                                     onClick={handleSend}
-                                    className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold uppercase tracking-wider shadow-xl shadow-tulika-500/20 spring-press spring-hover transition-transform"
+                                    className="w-full bg-lior-500 text-white py-4 rounded-xl font-bold uppercase tracking-wider shadow-xl shadow-lior-500/20 spring-press spring-hover transition-transform"
                                 >
                                     Seal & Send
                                 </button>
@@ -541,7 +558,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                             <button
                                 onClick={() => setStep(2)}
                                 disabled={!content && !image && !link && !video}
-                                className="w-full bg-tulika-500 text-white py-4 rounded-xl font-bold uppercase tracking-wider shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
+                                className="w-full bg-lior-500 text-white py-4 rounded-xl font-bold uppercase tracking-wider shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
                             >
                                 Continue
                             </button>
