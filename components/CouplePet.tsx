@@ -634,12 +634,6 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
     const hoursSincePetted = (Date.now() - new Date(stats.lastPetted || stats.lastFed).getTime()) / (1000 * 3600);
     const isActiveToday = hoursSincePetted < 24;
     const typedDialogue = useTypewriter(dialogue, 20);
-    const railWidth = Math.min(viewport.width - 24, 390);
-    const chamberWidth = Math.min(railWidth, 366);
-    const chamberHeight = Math.min(Math.max(viewport.height * 0.44, 320), 430);
-    const petSize = Math.min(296, Math.max(216, Math.round(chamberWidth * 0.76)));
-    const dialogueWidth = chamberWidth;
-    const dockCompact = railWidth < 350;
     const progressPercent = Math.max(6, xpIntoLevel);
     const bondState = xpIntoLevel >= 80 ? 'Radiant bond' : xpIntoLevel >= 45 ? 'Blooming bond' : 'Awakening bond';
     const worldLabel = envKey === 'env_space'
@@ -907,508 +901,279 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
         setShowSettings(false);
     };
 
-    /* ── SURFACES ──────────────────────────────────────────────── */
+    /* ── SURFACES (kept for settings modal) ────────────────────── */
     const glassSurface = useMemo<React.CSSProperties>(() => ({
         background: theme.trayBg,
         backdropFilter: 'blur(40px) saturate(140%)',
         WebkitBackdropFilter: 'blur(40px) saturate(140%)',
         border: `1px solid ${theme.trayBorder}`,
     }), [theme.trayBg, theme.trayBorder]);
-    const speechSurface = useMemo<React.CSSProperties>(() => ({
-        ...glassSurface,
-        background: 'rgba(255,255,255,0.88)',
-        boxShadow: `0 8px 32px rgba(232,160,176,0.10), 0 0 0 1px rgba(255,255,255,0.9)`,
-    }), [glassSurface]);
-    const statusSurface = useMemo<React.CSSProperties>(() => ({
-        ...glassSurface,
-        background: 'rgba(255,255,255,0.90)',
-        boxShadow: '0 12px 40px rgba(232,160,176,0.12), inset 0 1px 0 rgba(255,255,255,1)',
-    }), [glassSurface]);
-    const dockSurface = useMemo<React.CSSProperties>(() => ({
-        ...glassSurface,
-        background: 'rgba(255,255,255,0.92)',
-        boxShadow: '0 12px 40px rgba(232,160,176,0.14), inset 0 1px 0 rgba(255,255,255,1)',
-    }), [glassSurface]);
 
     /* ═══════════════════════════════════════════════════════════ */
-    /*  R E N D E R — THE SANCTUARY                               */
+    /*  R E N D E R                                               */
     /* ═══════════════════════════════════════════════════════════ */
-    return (
+    const petSize = 230;
+
+    return createPortal(
         <>
-            <div
-                className="relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden select-none"
-                style={{
-                    background: '#FDFCFB',
-                    overscrollBehavior: 'none',
-                    touchAction: 'manipulation',
-                }}
+            {/* ── FULL SCREEN BACKDROP ── */}
+            <motion.div
+                className="fixed inset-0 z-[60] select-none flex justify-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.28 }}
+                style={{ background: '#0d0610', touchAction: 'manipulation' }}
             >
-                <motion.div
-                    className="absolute inset-0"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 1.2 }}
-                    style={{ background: theme.bg }}
-                />
+                {/* Mobile-width content column */}
+                <div className="relative flex flex-col w-full overflow-hidden" style={{ maxWidth: 390 }}>
 
-                <motion.div
-                    className="absolute inset-0 pointer-events-none sanctuary-aurora-1"
-                    style={{
-                        background: `radial-gradient(circle at 50% 16%, ${theme.auroraA}20 0%, transparent 28%), radial-gradient(circle at 50% 42%, ${theme.auroraB}12 0%, transparent 34%)`,
-                        filter: 'blur(44px)',
-                    }}
-                    animate={reduceMotion ? { opacity: 0.18 } : { opacity: [0.14, 0.28, 0.14], scale: [1, 1.03, 1] }}
-                    transition={reduceMotion ? { duration: 0.2 } : { duration: 14, repeat: Infinity, ease: 'easeInOut' }}
-                />
-
-                <motion.div
-                    className="absolute inset-0 pointer-events-none sanctuary-aurora-2"
-                    style={{
-                        background: `radial-gradient(ellipse at 50% 72%, ${theme.auroraB}12 0%, transparent 40%)`,
-                        filter: 'blur(60px)',
-                    }}
-                    animate={reduceMotion ? { opacity: 0.14 } : { opacity: [0.1, 0.22, 0.1], y: [0, 8, 0] }}
-                    transition={reduceMotion ? { duration: 0.2 } : { duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-                />
-
-                <motion.div
-                    className="absolute inset-x-0 top-0 pointer-events-none sanctuary-aurora-3"
-                    style={{
-                        height: '48%',
-                        background: 'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 100%)',
-                        filter: 'blur(18px)',
-                    }}
-                    animate={reduceMotion ? { opacity: 0.08 } : { opacity: [0.04, 0.1, 0.04], y: [0, 6, 0] }}
-                    transition={reduceMotion ? { duration: 0.2 } : { duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-                />
-
-                <motion.div
-                    className="absolute inset-x-0 top-[20%] pointer-events-none"
-                    style={{
-                        height: '42%',
-                        background: `radial-gradient(ellipse 42% 46% at 50% 52%, ${happinessColor}0d 0%, transparent 72%)`,
-                        filter: 'blur(40px)',
-                    }}
-                    animate={reduceMotion ? { opacity: 0.12 } : { opacity: [0.08, 0.2, 0.08], scale: [1, 1.02, 1] }}
-                    transition={reduceMotion ? { duration: 0.2 } : { duration: petMood === 'excited' ? 1.8 : 5.4, repeat: Infinity, ease: 'easeInOut' }}
-                />
-
-                <div
-                    className="absolute inset-x-0 bottom-0 pointer-events-none"
-                    style={{ height: '42%', background: theme.groundBg }}
-                />
-
-                {isSleeping && (
-                    <motion.div
-                        className="absolute inset-0 z-30 pointer-events-none"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 1.8 }}
-                        style={{ background: 'linear-gradient(180deg, rgba(45,31,37,0.18) 0%, rgba(45,31,37,0.08) 100%)' }}
+                    {/* Atmospheric glow — stays within column */}
+                    <motion.div className="pointer-events-none absolute inset-x-0"
+                        style={{
+                            top: '4%', height: '54%',
+                            background: `radial-gradient(ellipse at 50% 45%, ${theme.accent}30 0%, transparent 70%)`,
+                            filter: 'blur(40px)',
+                        }}
+                        animate={reduceMotion ? {} : { opacity: [0.65, 1, 0.65], scale: [1, 1.04, 1] }}
+                        transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
                     />
-                )}
+                    {isHungry && !isSleeping && (
+                        <motion.div className="pointer-events-none absolute inset-0"
+                            animate={{ opacity: [0, 0.16, 0] }}
+                            transition={{ duration: 2, repeat: Infinity }}
+                            style={{ background: 'radial-gradient(circle at 50% 38%, rgba(239,68,68,0.22) 0%, transparent 55%)' }}
+                        />
+                    )}
+                    <PetFlash flash={flash} color={theme.accent} />
 
-                {isHungry && !isSleeping && (
-                    <motion.div
-                        className="absolute inset-0 z-20 pointer-events-none"
-                        animate={{ opacity: [0.04, 0.14, 0.04] }}
-                        transition={{ duration: 2.2, repeat: Infinity }}
-                        style={{ background: 'radial-gradient(circle at 50% 48%, rgba(239,68,68,0.12), transparent 56%)' }}
-                    />
-                )}
-
-                <EnvDecorations envKey={envKey} reduceMotion={reduceMotion} />
-                <FloatingOrbs theme={theme} sleeping={isSleeping} reduceMotion={reduceMotion} />
-                <PetFlash flash={flash} color={theme.accent} />
-
-                <div
-                    className="relative z-20 mx-auto flex h-full w-full flex-col px-3"
-                    style={{
-                        maxWidth: 390,
-                        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
-                        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
-                    }}
-                >
-                    <motion.header
-                        className="flex items-center justify-between"
-                        initial={{ opacity: 0, y: -14 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                    {/* ── TOP ZONE: header + title + pet ── */}
+                    <div
+                        className="flex flex-col shrink-0"
+                        style={{
+                            paddingTop: 'max(env(safe-area-inset-top, 0px), 14px)',
+                            height: '58%',
+                        }}
                     >
-                        {onClose ? (
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 pb-1 shrink-0">
                             <motion.button
                                 type="button"
                                 onClick={onClose}
-                                aria-label="Close pet sanctuary"
-                                className="flex h-11 w-11 items-center justify-center rounded-full"
-                                style={{
-                                    ...glassSurface,
-                                    background: 'rgba(255,255,255,0.85)',
-                                    boxShadow: '0 4px 16px rgba(232,160,176,0.12)',
-                                }}
-                                whileTap={{ scale: 0.88 }}
+                                className="liquid-glass-btn flex items-center gap-1.5 px-4 h-9 rounded-full text-white"
+                                style={{ fontSize: 13, fontWeight: 600 }}
+                                whileTap={{ scale: 0.91 }}
                             >
-                                <ChevronLeft size={18} style={{ color: textColor }} />
+                                <ChevronLeft size={14} />
+                                <span>Back</span>
                             </motion.button>
-                        ) : (
-                            <div className="h-11 w-11 shrink-0" />
-                        )}
 
-                        <div className="pointer-events-none text-center">
-                            <p className="text-[10px] font-black uppercase tracking-[0.28em]" style={{ color: theme.accent }}>
-                                Dream Sanctuary
-                            </p>
-                            <p className="mt-1 text-[11px] font-medium" style={{ color: textSec }}>
-                                {worldLabel}
-                            </p>
+                            <div className="liquid-glass flex items-center gap-0.5 rounded-full p-1" style={{ overflow: 'hidden' }}>
+                                <motion.button type="button" onClick={() => setShowSettings(true)}
+                                    className="flex h-7 w-7 items-center justify-center rounded-full text-white/70"
+                                    whileTap={{ scale: 0.88 }}>
+                                    <Settings size={13} />
+                                </motion.button>
+                                <motion.button type="button" onClick={onClose}
+                                    className="flex h-7 w-7 items-center justify-center rounded-full text-white/70"
+                                    whileTap={{ scale: 0.88 }}>
+                                    <X size={13} />
+                                </motion.button>
+                            </div>
                         </div>
 
-                        <motion.button
-                            type="button"
-                            onClick={() => setShowSettings(true)}
-                            aria-label="Open pet settings"
-                            className="flex h-11 w-11 items-center justify-center rounded-full"
-                            style={{
-                                ...glassSurface,
-                                background: 'rgba(255,255,255,0.85)',
-                                boxShadow: '0 4px 16px rgba(232,160,176,0.12)',
-                                color: textColor,
-                            }}
-                            whileTap={{ scale: 0.88 }}
-                        >
-                            <Settings size={16} />
-                        </motion.button>
-                    </motion.header>
+                        {/* Name + subtitle */}
+                        <div className="text-center px-6 pt-2 pb-1 shrink-0">
+                            <h1 className="text-[26px] font-bold tracking-tight leading-none text-white">
+                                {stats.name}
+                            </h1>
+                            <p className="mt-1 text-[12px] text-white/35">{stage} · {moodLabel}</p>
+                        </div>
 
-                    <div className="flex min-h-0 flex-1 flex-col pt-3">
-                        <AnimatePresence mode="wait">
-                            {typedDialogue ? (
-                                <motion.button
-                                    key={dialogue.slice(0, 32)}
-                                    type="button"
-                                    onClick={() => { void refreshAI(); }}
-                                    initial={{ opacity: 0, y: 12 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: 8 }}
-                                    transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-                                    className="relative w-full shrink-0 overflow-hidden rounded-[1.7rem] px-4 py-4 text-left"
-                                    style={{ ...speechSurface, width: dialogueWidth }}
-                                >
-                                    <motion.div
-                                        className="pointer-events-none absolute inset-y-0 w-[28%]"
-                                        style={{
-                                            background: 'linear-gradient(90deg, transparent, rgba(249,168,212,0.08) 46%, transparent)',
-                                        }}
-                                        animate={reduceMotion ? { opacity: 0 } : { left: ['-32%', '120%'] }}
-                                        transition={reduceMotion ? { duration: 0.2 } : { duration: 4, repeat: Infinity, repeatDelay: 5.5, ease: 'easeInOut' }}
-                                    />
-                                    <div className="relative z-10 flex items-center justify-between gap-3">
-                                        <span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: theme.accent }}>
-                                            {isFlashback ? 'Memory Echo' : `${stats.name} whispers`}
-                                        </span>
-                                        <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: textSec }}>
-                                            <RefreshCw size={10} /> Refresh
-                                        </span>
-                                    </div>
-                                    <p
-                                        className="relative z-10 mt-3 font-serif text-[15px] italic leading-[1.45]"
-                                        style={{
-                                            color: textColor,
-                                            display: '-webkit-box',
-                                            WebkitLineClamp: 4,
-                                            WebkitBoxOrient: 'vertical',
-                                            overflow: 'hidden',
-                                            overflowWrap: 'break-word',
-                                        }}
-                                    >
-                                        "{typedDialogue}"
-                                    </p>
-                                </motion.button>
-                            ) : isAILoading ? (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="flex w-full shrink-0 items-center justify-center gap-2 rounded-[1.6rem] px-4 py-4"
-                                    style={{ ...speechSurface, width: dialogueWidth }}
-                                >
-                                    {[0, 1, 2].map(i => (
-                                        <motion.div
-                                            key={i}
-                                            className="h-2 w-2 rounded-full"
-                                            style={{ background: theme.accent }}
-                                            animate={{ opacity: [0.25, 1, 0.25], scale: [0.7, 1.2, 0.7] }}
-                                            transition={{ duration: 1.05, delay: i * 0.16, repeat: Infinity }}
-                                        />
-                                    ))}
-                                </motion.div>
-                            ) : null}
-                        </AnimatePresence>
-
-                        <div className="relative mt-4 min-h-0 flex-1">
-                            <div className="absolute inset-0 flex items-end justify-center">
-                                <div className="relative w-full" style={{ maxWidth: chamberWidth, height: chamberHeight }}>
-                                    <motion.div
-                                        className="absolute inset-x-[4%] bottom-[2%] top-[4%] overflow-hidden"
-                                        initial={{ opacity: 0, y: 28, scale: 0.96 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        transition={{ duration: 0.85, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
-                                        style={{
-                                            borderRadius: '46% 46% 18% 18% / 24% 24% 10% 10%',
-                                            background: 'rgba(255,255,255,0.55)',
-                                            backdropFilter: 'blur(32px)',
-                                            WebkitBackdropFilter: 'blur(32px)',
-                                            border: `1px solid rgba(255,255,255,0.85)`,
-                                            boxShadow: `0 8px 40px ${theme.pedestalGlow}, inset 0 1px 0 rgba(255,255,255,1)`,
-                                        }}
-                                    >
-                                        <motion.div
-                                            className="absolute left-1/2 top-[8%] -translate-x-1/2 rounded-full"
-                                            style={{
-                                                width: Math.min(chamberWidth * 0.72, petSize + 84),
-                                                height: Math.min(chamberWidth * 0.72, petSize + 84),
-                                                background: `radial-gradient(circle, ${theme.auroraC}20 0%, ${theme.auroraA}18 30%, transparent 68%)`,
-                                                boxShadow: `0 0 80px ${theme.accent}18`,
-                                            }}
-                                            animate={reduceMotion ? { opacity: 0.7 } : { opacity: [0.46, 0.72, 0.46], scale: [1, 1.03, 1] }}
-                                            transition={reduceMotion ? { duration: 0.2 } : { duration: 5.2, repeat: Infinity, ease: 'easeInOut' }}
-                                        />
-                                        <motion.div
-                                            className="absolute left-1/2 top-[12%] -translate-x-1/2 rounded-full"
-                                            style={{
-                                                width: Math.min(chamberWidth * 0.44, petSize * 0.76),
-                                                height: Math.min(chamberWidth * 0.44, petSize * 0.76),
-                                                border: '1px solid rgba(232,160,176,0.15)',
-                                            }}
-                                            animate={reduceMotion ? { opacity: 0.26 } : { opacity: [0.18, 0.34, 0.18], scale: [1, 1.04, 1] }}
-                                            transition={reduceMotion ? { duration: 0.2 } : { duration: 6.2, repeat: Infinity, ease: 'easeInOut' }}
-                                        />
-                                        <motion.div
-                                            className="absolute left-1/2 top-[8%] -translate-x-1/2"
-                                            style={{
-                                                width: Math.min(chamberWidth * 0.72, petSize + 92),
-                                                height: '44%',
-                                                background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 100%)',
-                                                clipPath: 'polygon(47% 0%, 53% 0%, 72% 100%, 28% 100%)',
-                                                filter: 'blur(10px)',
-                                            }}
-                                            animate={reduceMotion ? { opacity: 0.08 } : { opacity: [0.04, 0.12, 0.04], y: [0, 8, 0] }}
-                                            transition={reduceMotion ? { duration: 0.2 } : { duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-                                        />
-                                        {[['18%', '24%'], ['76%', '20%'], ['28%', '14%'], ['70%', '30%']].map(([left, top], index) => (
-                                            <motion.div
-                                                key={`${left}-${top}`}
-                                                className="absolute rounded-full"
-                                                style={{ left, top, width: index % 2 === 0 ? 3 : 2, height: index % 2 === 0 ? 3 : 2, background: theme.accent }}
-                                                animate={reduceMotion ? { opacity: 0.32 } : { opacity: [0.16, 0.8, 0.16], scale: [0.8, 1.3, 0.8] }}
-                                                transition={reduceMotion ? { duration: 0.2 } : { duration: 2.8 + index, repeat: Infinity, ease: 'easeInOut', delay: index * 0.3 }}
-                                            />
-                                        ))}
-                                        <div
-                                            className="absolute inset-x-[8%] bottom-0"
-                                            style={{
-                                                height: '36%',
-                                                background: 'linear-gradient(180deg, transparent 0%, rgba(253,242,245,0.2) 24%, rgba(248,231,236,0.5) 100%)',
-                                                clipPath: 'polygon(0 100%, 0 56%, 10% 48%, 22% 54%, 36% 38%, 50% 46%, 64% 34%, 78% 44%, 100% 38%, 100% 100%)',
-                                            }}
-                                        />
-                                    </motion.div>
-
-                                    <motion.div
-                                        className="absolute inset-x-0 bottom-[10%] flex flex-col items-center"
-                                        initial={{ opacity: 0, y: 34 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ duration: 0.85, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                                    >
-                                        <div className="relative flex items-center justify-center" style={{ width: petSize + 86, height: petSize + 112 }}>
-                                            <motion.div
-                                                className="absolute inset-[10%] rounded-full pointer-events-none"
-                                                style={{
-                                                    background: `radial-gradient(circle, ${theme.accent}1a 0%, ${theme.accent}08 42%, transparent 74%)`,
-                                                    filter: 'blur(16px)',
-                                                }}
-                                                animate={reduceMotion
-                                                    ? { opacity: isSleeping ? 0.08 : 0.24 }
-                                                    : petMood === 'excited'
-                                                    ? { opacity: [0.3, 0.78, 0.3], scale: [1, 1.14, 1] }
-                                                    : isSleeping
-                                                    ? { opacity: [0.06, 0.14, 0.06], scale: [1, 1.02, 1] }
-                                                    : { opacity: [0.16, 0.36, 0.16], scale: [1, 1.06, 1] }
-                                                }
-                                                transition={reduceMotion ? { duration: 0.2 } : { duration: petMood === 'excited' ? 1.6 : 4, repeat: Infinity, ease: 'easeInOut' }}
-                                            />
-                                            <CoinFloat coinFloat={coinFloat} />
-                                            <PetCharacter
-                                                type={stats.type as PetType}
-                                                mood={petMood}
-                                                controls={petControls}
-                                                equippedHat={stats.equipped.hat}
-                                                equippedAccessory={stats.equipped.accessory}
-                                                level={level}
-                                                size={petSize}
-                                                onClick={handlePet}
-                                                onMouseDown={handleNudgeStart}
-                                                onMouseUp={handleNudgeEnd}
-                                                onTouchStart={handleNudgeStart}
-                                                onTouchEnd={handleNudgeEnd}
-                                            />
-                                            <HeartBurst active={heartBurst} />
-                                        </div>
-
-                                        <motion.div
-                                            className="relative mt-[-18px]"
-                                            animate={reduceMotion ? { opacity: 0.6 } : { opacity: [0.36, 0.72, 0.36], scaleX: [1, 1.08, 1] }}
-                                            transition={reduceMotion ? { duration: 0.2 } : { duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
-                                        >
-                                            <div
-                                                style={{
-                                                    width: Math.min(chamberWidth - 76, 248),
-                                                    height: 28,
-                                                    borderRadius: '50%',
-                                                    background: `radial-gradient(ellipse, ${theme.pedestalGlow} 0%, transparent 72%)`,
-                                                    filter: 'blur(9px)',
-                                                }}
-                                            />
-                                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: Math.min(chamberWidth - 120, 180) }}>
-                                                <GroundRipple rippleKey={rippleKey} color={theme.accent} />
-                                            </div>
-                                        </motion.div>
-                                    </motion.div>
-                                </div>
-                            </div>
+                        {/* Pet hero */}
+                        <div className="flex flex-1 items-center justify-center overflow-hidden">
+                            <motion.div
+                                className="relative flex items-center justify-center"
+                                style={{ width: petSize + 80, height: petSize + 80 }}
+                                initial={{ opacity: 0, scale: 0.82, y: 16 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                transition={{ duration: 0.58, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+                            >
+                                {/* Outer halo */}
+                                <motion.div className="absolute inset-[-8%] rounded-full pointer-events-none"
+                                    style={{
+                                        background: `radial-gradient(circle, ${theme.accent}18 0%, transparent 68%)`,
+                                        filter: 'blur(20px)',
+                                    }}
+                                    animate={reduceMotion ? {} : {
+                                        opacity: petMood === 'excited' ? [0.55, 1, 0.55] : [0.3, 0.6, 0.3],
+                                        scale:   petMood === 'excited' ? [1, 1.13, 1]    : [1, 1.06, 1],
+                                    }}
+                                    transition={{ duration: petMood === 'excited' ? 1.5 : 4.5, repeat: Infinity }}
+                                />
+                                {/* Glow ring */}
+                                <motion.div className="absolute rounded-full pointer-events-none"
+                                    style={{
+                                        inset: '16%',
+                                        border: `1px solid ${theme.accent}22`,
+                                    }}
+                                    animate={reduceMotion ? {} : { opacity: [0.3, 0.7, 0.3] }}
+                                    transition={{ duration: 3.5, repeat: Infinity }}
+                                />
+                                {/* Floor shadow */}
+                                <div className="absolute pointer-events-none"
+                                    style={{
+                                        bottom: '9%', left: '24%', width: '52%', height: 14,
+                                        borderRadius: '50%',
+                                        background: `radial-gradient(ellipse, ${theme.accent}38 0%, transparent 72%)`,
+                                        filter: 'blur(8px)',
+                                    }}
+                                />
+                                <CoinFloat coinFloat={coinFloat} />
+                                <HeartBurst active={heartBurst} color={theme.accent} />
+                                <PetCharacter
+                                    type={stats.type as PetType}
+                                    mood={petMood}
+                                    controls={petControls}
+                                    equippedHat={stats.equipped.hat}
+                                    equippedAccessory={stats.equipped.accessory}
+                                    level={level}
+                                    size={petSize}
+                                    onClick={handlePet}
+                                    onMouseDown={handleNudgeStart}
+                                    onMouseUp={handleNudgeEnd}
+                                    onTouchStart={handleNudgeStart}
+                                    onTouchEnd={handleNudgeEnd}
+                                />
+                            </motion.div>
                         </div>
                     </div>
 
-                    <motion.section
-                        className="mt-3 rounded-[1.9rem] px-4 pt-4 pb-3"
-                        style={statusSurface}
+                    {/* ── BOTTOM PANEL: liquid glass sheet ── */}
+                    <motion.div
+                        className="flex flex-col flex-1"
+                        style={{
+                            borderRadius: '26px 26px 0 0',
+                            background: 'rgba(255,255,255,0.07)',
+                            backdropFilter: 'blur(48px) saturate(180%) brightness(1.1)',
+                            WebkitBackdropFilter: 'blur(48px) saturate(180%) brightness(1.1)',
+                            borderTop: '1.5px solid rgba(255,255,255,0.20)',
+                            borderLeft: '1px solid rgba(255,255,255,0.10)',
+                            borderRight: '1px solid rgba(255,255,255,0.10)',
+                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.13), 0 -12px 48px rgba(0,0,0,0.32)',
+                            paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 20px)',
+                        }}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.34, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.42, delay: 0.16 }}
                     >
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-[0.24em]" style={{ color: theme.accent }}>
-                                    {bondState}
-                                </p>
-                                <h1 className="mt-2 truncate font-serif text-[28px] font-bold leading-none" style={{ color: textColor }}>
-                                    {stats.name}
-                                </h1>
-                                <p className="mt-2 text-[12px] font-medium" style={{ color: textSec }}>
-                                    {moodTone}
-                                </p>
-                            </div>
-                            <div className="shrink-0 text-right">
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: textSec }}>
-                                    Companion stage
-                                </p>
-                                <p className="mt-2 text-[15px] font-bold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>
-                                    {stage}
-                                </p>
-                                <div className="mt-2 flex items-center justify-end gap-1.5">
-                                    <Sparkles size={12} style={{ color: '#d8bb76' }} />
-                                    <span className="text-[14px] font-black" style={{ color: textColor }}>{stats.coins}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-3 gap-4">
-                            <div className="min-w-0 border-r pr-3" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
-                                <div className="flex items-center gap-1.5">
-                                    <Heart size={13} fill={happinessColor} stroke={happinessColor} />
-                                    <span className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: textSec }}>Harmony</span>
-                                </div>
-                                <p className="mt-2 text-[13px] font-bold" style={{ color: textColor }}>{stats.happiness}%</p>
-                            </div>
-                            <div className="min-w-0 border-r px-2" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
-                                <div className="flex items-center gap-1.5">
-                                    <Clock3 size={13} style={{ color: isHungry ? '#f87171' : textColor }} />
-                                    <span className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: textSec }}>Care</span>
-                                </div>
-                                <p className="mt-2 text-[13px] font-bold leading-tight" style={{ color: textColor }}>{feedTone}</p>
-                            </div>
-                            <div className="min-w-0 pl-2">
-                                <div className="flex items-center gap-1.5">
-                                    <Moon size={13} style={{ color: theme.accent }} />
-                                    <span className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: textSec }}>Aura</span>
-                                </div>
-                                <p className="mt-2 text-[13px] font-bold leading-tight" style={{ color: textColor }}>{moodLabel}</p>
-                            </div>
-                        </div>
-
-                        <div className="mt-4">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: textSec }}>Bond progress</span>
-                                <span className="text-[11px] font-semibold" style={{ color: textColor }}>{xpIntoLevel}/100</span>
-                            </div>
-                            <div className="mt-2 h-2.5 overflow-hidden rounded-full" style={{ background: 'rgba(232,160,176,0.15)' }}>
+                        {/* Whisper bubble */}
+                        <AnimatePresence>
+                            {(typedDialogue || isAILoading) && (
                                 <motion.div
-                                    className="h-full rounded-full"
-                                    style={{
-                                        background: `linear-gradient(90deg, ${theme.accent} 0%, ${theme.auroraC} 100%)`,
-                                        boxShadow: `0 0 14px ${theme.accent}35`,
-                                    }}
-                                    animate={{ width: `${progressPercent}%` }}
-                                    transition={{ type: 'spring', stiffness: 70, damping: 18 }}
-                                />
-                            </div>
-                            <div className="mt-2 flex items-center justify-between">
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: textSec }}>{activityTone}</span>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: textSec }}>Level {level}</span>
-                            </div>
-                        </div>
-                    </motion.section>
+                                    key="whisper"
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="overflow-hidden shrink-0"
+                                >
+                                    <button type="button" onClick={() => void refreshAI()}
+                                        className="w-full px-5 pt-4 pb-0 text-left">
+                                        {isAILoading && !typedDialogue ? (
+                                            <div className="flex gap-1.5 items-center h-4">
+                                                {[0,1,2].map(i => (
+                                                    <motion.div key={i} className="w-1.5 h-1.5 rounded-full"
+                                                        style={{ background: theme.accent }}
+                                                        animate={{ opacity: [0.3, 1, 0.3] }}
+                                                        transition={{ duration: 1, delay: i * 0.15, repeat: Infinity }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-[12px] italic line-clamp-1 text-white/40">
+                                                "{typedDialogue}"
+                                            </p>
+                                        )}
+                                    </button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
-                    <motion.nav
-                        className="mt-3 overflow-hidden rounded-[2rem] p-2.5"
-                        style={dockSurface}
-                        initial={{ opacity: 0, y: 22 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.44, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                        <div className="mb-2 flex items-center justify-between px-1">
-                            <p className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: textSec }}>Actions</p>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>
-                                {isSleeping ? 'dream mode' : 'tap or hold'}
-                            </p>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2.5">
-                            <motion.button
-                                type="button"
-                                onClick={handleFeed}
-                                disabled={isSleeping || action === 'feeding'}
-                                className="flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-2 rounded-[1.25rem] px-2 py-3"
-                                style={{
-                                    opacity: isSleeping || action === 'feeding' ? 0.34 : 1,
-                                    background: isHungry ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.02)',
-                                    border: isHungry ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(0,0,0,0.06)',
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)',
-                                }}
-                                whileTap={{ scale: 0.92 }}
-                            >
-                                <Utensils size={dockCompact ? 18 : 20} style={{ color: isHungry ? '#f87171' : textColor }} />
-                                <span className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: textColor }}>{isHungry ? 'Feed now' : 'Feed'}</span>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: textSec }}>Care</span>
-                            </motion.button>
-
+                        {/* Adore button */}
+                        <div className="px-4 pt-5 shrink-0">
                             <motion.button
                                 type="button"
                                 onClick={handlePet}
                                 disabled={isSleeping}
-                                className="flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-2 rounded-[1.35rem] px-2 py-3"
-                                style={{
-                                    opacity: isSleeping ? 0.34 : 1,
-                                    background: `linear-gradient(135deg, ${theme.accent}, ${theme.auroraA})`,
-                                    border: `1px solid rgba(255,255,255,0.4)`,
-                                    boxShadow: `0 8px 24px ${theme.accent}25`,
-                                }}
+                                className="liquid-glass-btn liquid-glass-btn--rose w-full flex items-center justify-center gap-2 rounded-2xl py-[14px] text-white"
+                                style={{ opacity: isSleeping ? 0.35 : 1, fontSize: 15, fontWeight: 700 }}
+                                whileTap={{ scale: 0.97 }}
+                            >
+                                <Heart size={16} fill="white" stroke="none" />
+                                {isSleeping ? 'Sleeping…' : 'Adore'}
+                            </motion.button>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="mx-4 mt-4 shrink-0" style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
+
+                        {/* Stats */}
+                        <div className="grid grid-cols-3 shrink-0 py-3">
+                            <div className="flex flex-col items-center gap-0.5 py-1">
+                                <div className="flex items-center gap-1">
+                                    <Heart size={12} fill={happinessColor} stroke={happinessColor} />
+                                    <span className="text-[22px] font-bold leading-none text-white">{stats.happiness}</span>
+                                </div>
+                                <span className="text-[10px] text-white/35 font-medium">Harmony</span>
+                            </div>
+                            <div className="flex flex-col items-center gap-0.5 py-1 border-x" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                                <div className="flex items-center gap-1">
+                                    <Sparkles size={12} style={{ color: '#d8bb76' }} />
+                                    <span className="text-[22px] font-bold leading-none text-white">{level}</span>
+                                </div>
+                                <span className="text-[10px] text-white/35 font-medium">Level</span>
+                            </div>
+                            <div className="flex flex-col items-center gap-0.5 py-1">
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[12px] leading-none" style={{ color: '#d8bb76' }}>✦</span>
+                                    <span className="text-[22px] font-bold leading-none text-white">{stats.coins}</span>
+                                </div>
+                                <span className="text-[10px] text-white/35 font-medium">Coins</span>
+                            </div>
+                        </div>
+
+                        {/* XP bar */}
+                        <div className="px-4 shrink-0">
+                            <div className="h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                                <motion.div className="h-full rounded-full"
+                                    style={{ background: `linear-gradient(90deg, ${theme.accent}, ${theme.auroraA})` }}
+                                    animate={{ width: `${progressPercent}%` }}
+                                    transition={{ type: 'spring', stiffness: 70, damping: 18 }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="mx-4 mt-3 shrink-0" style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
+
+                        {/* Action row — liquid glass buttons */}
+                        <div className="flex items-center flex-1 px-3 gap-2 pt-3">
+                            {/* Feed */}
+                            <motion.button
+                                type="button"
+                                onClick={handleFeed}
+                                disabled={isSleeping || action === 'feeding'}
+                                className="liquid-glass-btn flex flex-1 flex-col items-center justify-center gap-1.5 py-3 rounded-2xl"
+                                style={{ opacity: isSleeping || action === 'feeding' ? 0.3 : 1 }}
                                 whileTap={{ scale: 0.92 }}
                             >
-                                <Heart size={dockCompact ? 20 : 22} fill="white" stroke="none" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: 'white' }}>Adore</span>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: 'rgba(255,255,255,0.7)' }}>Main ritual</span>
+                                <Utensils size={20} style={{ color: isHungry ? '#f87171' : 'rgba(255,255,255,0.82)' }} />
+                                <span className="text-[11px] font-semibold text-white/55" style={{ color: isHungry ? '#f87171' : undefined }}>
+                                    {isHungry ? 'Feed!' : 'Feed'}
+                                </span>
                             </motion.button>
 
+                            {/* Nudge */}
                             <motion.button
                                 type="button"
                                 onMouseDown={handleNudgeStart}
@@ -1416,151 +1181,135 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                                 onTouchStart={handleNudgeStart}
                                 onTouchEnd={handleNudgeEnd}
                                 disabled={isSleeping}
-                                className="flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-2 rounded-[1.25rem] px-2 py-3"
-                                style={{
-                                    opacity: isSleeping ? 0.34 : 1,
-                                    background: 'rgba(0,0,0,0.02)',
-                                    border: '1px solid rgba(0,0,0,0.06)',
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)',
-                                }}
+                                className="liquid-glass-btn flex flex-1 flex-col items-center justify-center gap-1.5 py-3 rounded-2xl"
+                                style={{ opacity: isSleeping ? 0.3 : 1 }}
                                 whileTap={{ scale: 0.92 }}
                             >
-                                <Zap size={dockCompact ? 18 : 20} style={{ color: textColor }} />
-                                <span className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: textColor }}>Nudge</span>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: textSec }}>Hold</span>
+                                <Zap size={20} className="text-white/80" />
+                                <span className="text-[11px] font-semibold text-white/55">Nudge</span>
                             </motion.button>
 
+                            {/* Shop */}
                             <motion.button
                                 type="button"
                                 onClick={() => { feedback.playPop(); setShowShop(true); }}
-                                className="flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-2 rounded-[1.25rem] px-2 py-3"
-                                style={{
-                                    background: 'rgba(0,0,0,0.02)',
-                                    border: '1px solid rgba(0,0,0,0.06)',
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)',
-                                }}
+                                className="liquid-glass-btn flex flex-1 flex-col items-center justify-center gap-1.5 py-3 rounded-2xl"
                                 whileTap={{ scale: 0.92 }}
                             >
-                                <Store size={dockCompact ? 18 : 20} style={{ color: textColor }} />
-                                <span className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: textColor }}>Shop</span>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: textSec }}>Wardrobe</span>
+                                <Store size={20} className="text-white/80" />
+                                <span className="text-[11px] font-semibold text-white/55">Shop</span>
                             </motion.button>
                         </div>
-                    </motion.nav>
-                </div>
-            </div>
+                    </motion.div>
 
-            {/* ═══ MODALS ═══ */}
+                </div>
+            </motion.div>
+
+            {/* ═══ LEVEL UP ═══ */}
             <AnimatePresence>
                 {showLevelUp && (
                     <LevelUpCelebration level={celebLevel} accent={theme.accent} onDone={() => setShowLevelUp(false)} />
                 )}
             </AnimatePresence>
 
-            {/* ── Settings modal ── */}
-            {showSettings && createPortal(
-                <motion.div
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
-                    style={{ backgroundColor: 'rgba(45,31,37,0.25)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
-                    onClick={() => setShowSettings(false)}
-                >
+            {/* ═══ SETTINGS SHEET ═══ */}
+            <AnimatePresence>
+                {showSettings && (
                     <motion.div
-                        initial={{ y: 56, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-                        className="w-full max-w-sm rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden"
-                        style={{
-                            background: 'rgba(255,255,255,0.97)',
-                            backdropFilter: 'blur(40px)',
-                            boxShadow: '0 -12px 64px rgba(232,160,176,0.14), 0 0 0 1px rgba(255,255,255,0.5)',
-                        }}
-                        onClick={e => e.stopPropagation()}
+                        key="settings"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[70] flex items-end justify-center"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
+                        onClick={() => setShowSettings(false)}
                     >
-                        <div className="px-7 pt-6 pb-5 flex justify-between items-center"
-                            style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                            <div>
-                                <h3 className="font-serif font-bold text-lg" style={{ color: 'var(--color-text-primary)' }}>
-                                    Spirit Settings
-                                </h3>
-                                <p className="text-[11px] font-medium mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                                    Rename or choose your companion
-                                </p>
-                            </div>
-                            <button onClick={() => setShowSettings(false)}
-                                className="w-9 h-9 rounded-full flex items-center justify-center"
-                                style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--color-text-secondary)' }}>
-                                <X size={16} />
-                            </button>
-                        </div>
-
-                        <div className="p-7 space-y-6">
-                            <div>
-                                <label className="text-[10px] font-black uppercase tracking-widest block mb-2"
-                                    style={{ color: 'var(--color-text-secondary)' }}>Pet Name</label>
-                                <input type="text" value={editName}
-                                    onChange={e => setEditName(e.target.value)}
-                                    className="w-full py-3.5 px-4 rounded-2xl font-bold text-sm outline-none"
-                                    style={{
-                                        background: 'rgba(0,0,0,0.03)',
-                                        color: 'var(--color-text-primary)',
-                                        border: '1px solid rgba(0,0,0,0.08)',
-                                    }}
-                                />
+                        <motion.div
+                            initial={{ y: 60, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: 60, opacity: 0 }}
+                            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                            className="w-full max-w-sm rounded-t-[2rem] overflow-hidden"
+                            style={{
+                                background: 'rgba(28,14,20,0.97)',
+                                backdropFilter: 'blur(40px)',
+                                border: '1px solid rgba(255,255,255,0.10)',
+                                boxShadow: '0 -16px 60px rgba(0,0,0,0.5)',
+                            }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="px-6 pt-5 pb-4 flex justify-between items-center"
+                                style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                                <div>
+                                    <h3 className="font-bold text-base text-white">Settings</h3>
+                                    <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                        Rename or change spirit type
+                                    </p>
+                                </div>
+                                <button onClick={() => setShowSettings(false)}
+                                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                                    style={{ background: 'rgba(255,255,255,0.08)' }}>
+                                    <X size={15} color="rgba(255,255,255,0.7)" />
+                                </button>
                             </div>
 
-                            <div>
-                                <label className="text-[10px] font-black uppercase tracking-widest block mb-3"
-                                    style={{ color: 'var(--color-text-secondary)' }}>Spirit Type</label>
-                                <div className="grid grid-cols-2 gap-2.5">
-                                    {PET_TYPES.map(t => {
-                                        const active = editType === t.id;
-                                        return (
-                                            <motion.button key={t.id}
-                                                onClick={() => setEditType(t.id as any)}
-                                                className="py-4 px-3 rounded-2xl flex items-center gap-3"
-                                                style={active ? {
-                                                    background: `linear-gradient(135deg, ${theme.accent}18, ${theme.accent}08)`,
-                                                    border: `1.5px solid ${theme.accent}45`,
-                                                    boxShadow: `0 4px 16px ${theme.accent}18`,
-                                                } : {
-                                                    background: 'rgba(0,0,0,0.02)',
-                                                    border: '1px solid rgba(0,0,0,0.06)',
-                                                }}
-                                                whileTap={{ scale: 0.94 }}
-                                            >
-                                                <span className="text-2xl">{t.emoji}</span>
-                                                <div className="text-left">
-                                                    <span className="text-sm font-bold block"
-                                                        style={{ color: active ? theme.accent : 'var(--color-text-primary)' }}>
+                            <div className="p-6 space-y-5">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest block mb-2"
+                                        style={{ color: 'rgba(255,255,255,0.38)' }}>Name</label>
+                                    <input type="text" value={editName}
+                                        onChange={e => setEditName(e.target.value)}
+                                        className="w-full py-3 px-4 rounded-2xl font-bold text-sm outline-none text-white"
+                                        style={{
+                                            background: 'rgba(255,255,255,0.07)',
+                                            border: '1px solid rgba(255,255,255,0.12)',
+                                        }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest block mb-3"
+                                        style={{ color: 'rgba(255,255,255,0.38)' }}>Spirit Type</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {PET_TYPES.map(t => {
+                                            const active = editType === t.id;
+                                            return (
+                                                <motion.button key={t.id}
+                                                    onClick={() => setEditType(t.id as any)}
+                                                    className="py-3.5 px-3 rounded-2xl flex items-center gap-2.5"
+                                                    style={active ? {
+                                                        background: `${theme.accent}22`,
+                                                        border: `1.5px solid ${theme.accent}55`,
+                                                    } : {
+                                                        background: 'rgba(255,255,255,0.05)',
+                                                        border: '1px solid rgba(255,255,255,0.09)',
+                                                    }}
+                                                    whileTap={{ scale: 0.94 }}
+                                                >
+                                                    <span className="text-xl">{t.emoji}</span>
+                                                    <span className="text-[13px] font-bold"
+                                                        style={{ color: active ? theme.accent : 'rgba(255,255,255,0.75)' }}>
                                                         {t.label}
                                                     </span>
-                                                    <span className="text-[10px] font-semibold uppercase"
-                                                        style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}>
-                                                        {t.id}
-                                                    </span>
-                                                </div>
-                                            </motion.button>
-                                        );
-                                    })}
+                                                </motion.button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
+
+                                <motion.button onClick={saveSettings}
+                                    className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white"
+                                    style={{
+                                        background: `linear-gradient(135deg, ${theme.accent}, ${theme.auroraA})`,
+                                        boxShadow: `0 6px 20px ${theme.accent}40`,
+                                    }}
+                                    whileTap={{ scale: 0.97 }}
+                                >Save</motion.button>
                             </div>
-
-                            <motion.button onClick={saveSettings}
-                                className="w-full py-4 rounded-2xl font-bold text-sm text-white"
-                                style={{
-                                    background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent}cc)`,
-                                    boxShadow: `0 6px 20px ${theme.accent}38`,
-                                }}
-                                whileTap={{ scale: 0.97 }}
-                            >Save Changes</motion.button>
-                        </div>
+                        </motion.div>
                     </motion.div>
-                </motion.div>,
-                document.body
-            )}
+                )}
+            </AnimatePresence>
 
-            {/* ── Shop portal ── */}
+            {/* ═══ SHOP ═══ */}
             {createPortal(
                 <AnimatePresence>
                     {showShop && (
@@ -1576,6 +1325,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                 </AnimatePresence>,
                 document.body
             )}
-        </>
+        </>,
+        document.body
     );
 };

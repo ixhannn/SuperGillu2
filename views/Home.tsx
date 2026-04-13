@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -9,6 +9,7 @@ import { differenceInDays, getYear, intervalToDuration, isAfter, setYear } from 
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
+import { CouplePet } from '../components/CouplePet';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -225,6 +226,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [otdImage, setOtdImage] = useState<string | null>(null);
     const [showSurprise, setShowSurprise] = useState(false);
     const [surpriseContent, setSurpriseContent] = useState<{ type: 'memory' | 'note', item: Memory | Note } | null>(null);
+    const [showPet, setShowPet] = useState(false);
     const [nextEvent, setNextEvent] = useState<{ title: string, days: number } | null>(null);
     const [streak, setStreak] = useState(0);
     const [memories, setMemories] = useState<Memory[]>([]);
@@ -447,6 +449,15 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             {/* Particle Heart — triggered on send & receive */}
             <HeartbeatParticles ref={particlesRef} />
             {showSurprise && surpriseContent && <SurpriseModal content={surpriseContent} onClose={() => setShowSurprise(false)} />}
+            {showPet && (
+                <CouplePet
+                    memories={memories}
+                    notes={notes}
+                    status={myStatus}
+                    partnerName={profile.partnerName}
+                    onClose={() => setShowPet(false)}
+                />
+            )}
 
             {/* ── HEADER ──────────────────────────────────────────────── */}
             <div className="flex items-center justify-between mb-2 relative z-10">
@@ -578,7 +589,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
-            {/* ── ACTION BUTTONS — Heartbeat & Surprise ────────────────── */}
+            {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
             <ScrollReveal variant="popIn">
                 <div className="mb-5 flex gap-3 relative z-10">
                     <div onClick={sendHeartbeat} className="flex-1">
@@ -600,9 +611,9 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-bold text-sm tracking-wide">Heartbeat</span>
                         </div>
                     </div>
-                    <div onClick={handleSurprise} className="w-[4.5rem]">
+                    <div onClick={() => setShowPet(true)} className="w-[4.5rem]">
                         <div className="w-full h-full bento-card text-lior-500 p-5 flex items-center justify-center spring-press">
-                            <Gift size={22} />
+                            <PawPrint size={22} />
                         </div>
                     </div>
                 </div>

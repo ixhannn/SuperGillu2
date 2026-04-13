@@ -261,7 +261,7 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
     level = 1, size = 130, onClick, onMouseDown, onMouseUp, onTouchStart, onTouchEnd,
 }) => {
     const [blinking, setBlinking] = useState(false);
-    const blinkRef = useRef<ReturnType<typeof setTimeout>>();
+    const blinkRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const colors = PALETTES[type];
     const face = FACE[type];
     const sleeping = mood === 'sleeping';
@@ -348,12 +348,39 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
                     height="100%"
                     className="relative z-10"
                     style={{
-                        filter: sleeping ? 'brightness(0.88) saturate(0.7)'
-                            : mood === 'sad' ? 'saturate(0.65) brightness(0.94)' : 'none',
+                        filter: sleeping
+                            ? `brightness(0.82) saturate(0.6) drop-shadow(0 6px 18px ${colors.shadow})`
+                            : mood === 'sad'
+                            ? `saturate(0.65) brightness(0.92) drop-shadow(0 8px 20px ${colors.shadow})`
+                            : `drop-shadow(0 10px 28px ${colors.shadow}) drop-shadow(0 2px 8px rgba(0,0,0,0.22))`,
                         transition: 'filter 0.6s ease',
                     }}
                 >
-                    <BodySVG c={colors} />
+                    <defs>
+                        {/* Radial body gradient — light top-left, deep bottom-right */}
+                        <radialGradient id={`bg-${type}`} cx="36%" cy="28%" r="68%" gradientUnits="objectBoundingBox">
+                            <stop offset="0%"   stopColor={colors.bodyLight} stopOpacity="1" />
+                            <stop offset="55%"  stopColor={colors.body}      stopOpacity="1" />
+                            <stop offset="100%" stopColor={colors.earInner}  stopOpacity="1" />
+                        </radialGradient>
+                        {/* Belly gradient */}
+                        <radialGradient id={`belly-${type}`} cx="50%" cy="30%" r="60%">
+                            <stop offset="0%"   stopColor={colors.belly}     stopOpacity="0.9" />
+                            <stop offset="100%" stopColor={colors.body}      stopOpacity="0.4" />
+                        </radialGradient>
+                        {/* Specular highlight */}
+                        <radialGradient id={`spec-${type}`} cx="30%" cy="20%" r="40%">
+                            <stop offset="0%"   stopColor="rgba(255,255,255,0.38)" />
+                            <stop offset="100%" stopColor="rgba(255,255,255,0)"    />
+                        </radialGradient>
+                    </defs>
+                    {/* Render with gradient fills via a clone using the defined gradient ids */}
+                    <BodySVG c={{
+                        ...colors,
+                        body:      `url(#bg-${type})`,
+                        bodyLight: colors.bodyLight,
+                        belly:     `url(#belly-${type})`,
+                    } as any} />
                     {/* Cheeks */}
                     <circle cx={face.cheekX} cy={face.eyeY + 8} r={face.cheekR} fill={colors.cheek} opacity={excited ? 0.45 : 0.3} />
                     <circle cx={200 - face.cheekX} cy={face.eyeY + 8} r={face.cheekR} fill={colors.cheek} opacity={excited ? 0.45 : 0.3} />
@@ -370,6 +397,11 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
                             ? <AccComp y={face.eyeY} />
                             : <AccComp y={SCARF_Y[type]} />
                     )}
+                    {/* Specular highlight — top-left sheen for 3D roundness */}
+                    <ellipse cx={88} cy={82} rx={44} ry={34}
+                        fill={`url(#spec-${type})`}
+                        style={{ pointerEvents: 'none' }}
+                    />
                 </svg>
 
                 {/* Pulse ring for excited */}

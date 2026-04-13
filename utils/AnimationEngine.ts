@@ -60,6 +60,10 @@ const TIER_RANK: Record<QualityTier, number> = {
   ultra:      4,
 };
 
+// Pre-sorted tier array — computed once, reused in _adaptTier every 30 frames
+const TIER_SORTED: QualityTier[] = (Object.keys(TIER_RANK) as QualityTier[])
+  .sort((a, b) => TIER_RANK[a] - TIER_RANK[b]);
+
 // Thresholds — tuned for 120fps panel (8.33ms budget per frame)
 const DOWNGRADE_FPS = 100;       // below this → downgrade
 const UPGRADE_FPS   = 108;       // above this (sustained) → upgrade
@@ -93,6 +97,10 @@ class AnimationEngineClass {
    * FPSMonitor reads this map to render budget bars.
    */
   public readonly costs = new Map<string, number>();
+
+  // Pre-allocated CSS accumulator — reused every frame to avoid GC pressure
+  private readonly _cssAccum: { [k: string]: string } = Object.create(null);
+  private _cssDirty = false;
 
   /** Rolling average FPS over the last 128 frames */
   get fps(): number {
@@ -133,8 +141,7 @@ class AnimationEngineClass {
     }
 
     const rank  = TIER_RANK[this.tier];
-    const tiers = (Object.keys(TIER_RANK) as QualityTier[])
-      .sort((a, b) => TIER_RANK[a] - TIER_RANK[b]);
+    const tiers = TIER_SORTED;
 
     if (fps < DOWNGRADE_FPS && rank > 0) {
       this.upgradeFrames = 0;
@@ -180,7 +187,13 @@ class AnimationEngineClass {
 
     const tierRank = TIER_RANK[this.tier];
     const root = typeof document !== 'undefined' ? document.documentElement.style : null;
-    let cssAccum: Record<string, string> | null = null;
+
+    // Clear accumulator (reuse object — no per-frame allocation)
+    if (this._cssDirty) {
+      const acc = this._cssAccum;
+      for (const k in acc) delete acc[k];
+      this._cssDirty = false;
+    }
 
     for (const sub of this.subs.values()) {
       if (tierRank < TIER_RANK[sub.minTier]) continue;
@@ -193,18 +206,15 @@ class AnimationEngineClass {
       if (sub.cssProps) {
         const props = sub.cssProps();
         if (props) {
-          if (!cssAccum) cssAccum = {};
-          // Merge — later subscribers win on key collision
-          for (const k in props) cssAccum[k] = props[k];
+          const acc = this._cssAccum;
+          for (const k in props) { acc[k] = props[k]; this._cssDirty = true; }
         }
       }
     }
 
     // ONE setProperty burst for all CSS vars this frame
-    if (cssAccum && root) {
-      for (const key in cssAccum) {
-        root.setProperty(key, cssAccum[key]);
-      }
+    if (this._cssDirty && root) {
+      for (const key in this._cssAccum) root.setProperty(key, this._cssAccum[key]);
     }
   };
 

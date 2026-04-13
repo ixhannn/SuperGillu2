@@ -230,7 +230,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
             {options.map(opt => (
               <motion.div key={opt.id} variants={staggerItem} className="flex items-center justify-between glass-card shadow-sm p-3 rounded-xl spring-press" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
                 <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{opt.text}</span>
-                <button onClick={() => handleDelete(opt.id)} aria-label={`Delete ${opt.text}`} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center hover:text-red-500 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:rounded-lg focus-visible:ring-offset-1" style={{ color: 'var(--color-text-secondary)' }}>
+                <button onClick={() => handleDelete(opt.id)} aria-label={`Delete ${opt.text}`} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:rounded-lg focus-visible:ring-offset-1" style={{ color: 'var(--color-text-secondary)' }}>
                   <Trash2 size={18} />
                 </button>
               </motion.div>

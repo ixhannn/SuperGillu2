@@ -57,15 +57,15 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   const handleRipple = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const target = (e.target as HTMLElement).closest('.spring-press') as HTMLElement | null;
     if (!target) return;
-    if (getComputedStyle(target).position === 'static') {
-      target.style.position = 'relative';
-    }
-    target.style.overflow = 'hidden';
+    // ── Read phase first — prevents layout thrash ──────────────────
     const rect = target.getBoundingClientRect();
+    const pos  = getComputedStyle(target).position;
+    // ── Write phase — all mutations after reads ────────────────────
+    if (pos === 'static') target.style.position = 'relative';
+    target.style.overflow = 'hidden';
     const circle = document.createElement('span');
     circle.className = 'ripple-ink-circle';
-    circle.style.left = `${e.clientX - rect.left}px`;
-    circle.style.top  = `${e.clientY - rect.top}px`;
+    circle.style.cssText = `left:${e.clientX - rect.left}px;top:${e.clientY - rect.top}px`;
     target.appendChild(circle);
     circle.addEventListener('animationend', () => circle.remove(), { once: true });
   }, []);

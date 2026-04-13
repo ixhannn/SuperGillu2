@@ -15,7 +15,6 @@
  *   attachPinch          — multi-touch pinch-to-zoom
  *   attachRubberBand     — iOS-style rubber-band overscroll on a scroll container
  *   attachLongPress      — 380ms hold with SVG progress ring + haptic escalation
- *   attachMagnetic       — pointer-proximity magnetic button attraction
  *   navigateWithTransition — View Transitions API wrapper (Safari 17+ / Chrome 111+)
  *   initGlobalGestures   — call once at startup to wire [data-press] delegation
  */

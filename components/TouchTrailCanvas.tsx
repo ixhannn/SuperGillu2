@@ -159,15 +159,19 @@ export const TouchTrailCanvas: React.FC = () => {
 
           const size = p.maxSize * (0.4 + p.life * 0.6);
           const [r, g, b] = speedColor(p.speed);
+          const ri = r|0, gi = g|0, bi = b|0;
 
-          const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size * 2);
-          grd.addColorStop(0,   `rgba(${r|0},${g|0},${b|0},${(alpha * 0.9).toFixed(3)})`);
-          grd.addColorStop(0.5, `rgba(${r|0},${g|0},${b|0},${(alpha * 0.4).toFixed(3)})`);
-          grd.addColorStop(1,   `rgba(${r|0},${g|0},${b|0},0)`);
-
+          // Two-layer soft disc — outer halo + inner core.
+          // Avoids createRadialGradient per particle (eliminates GC pressure).
+          // Outer soft halo
           ctx.beginPath();
           ctx.arc(p.x, p.y, size * 2, 0, Math.PI * 2);
-          ctx.fillStyle = grd;
+          ctx.fillStyle = `rgba(${ri},${gi},${bi},${(alpha * 0.22).toFixed(2)})`;
+          ctx.fill();
+          // Inner core
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, size * 0.9, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${ri},${gi},${bi},${(alpha * 0.80).toFixed(2)})`;
           ctx.fill();
         }
       },

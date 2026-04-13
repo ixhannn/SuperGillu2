@@ -5,7 +5,8 @@ import { Onboarding } from './components/Onboarding';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ViewState, TransitionDirection, ROOT_TABS } from './types';
-import { navigateWithTransition } from './utils/gesture';
+import { TransitionEngine } from './utils/TransitionEngine';
+import type { EngineDirection } from './utils/TransitionEngine';
 
 
 // Navigation context for back navigation
@@ -153,6 +154,34 @@ const App = () => {
     pendingScrollRestore.current = null;
   }, [currentView, restoreScroll]);
 
+  // Gesture-back: TransitionEngine fires this after the swipe-exit animation.
+  // We only update React state here — the engine owns the fade-in animation.
+  useEffect(() => {
+    const handler = () => {
+      if (historyStack.current.length === 0) return;
+      const prev        = currentViewRef.current;
+      const destination = historyStack.current.pop() ?? 'home';
+      scrollPositions.current[prev] = getCurrentScroll();
+      currentViewRef.current        = destination;
+      flushSync(() => {
+        setTransitionDir('pop');
+        setCurrentView(destination);
+      });
+    };
+    window.addEventListener('te:gesture-back', handler);
+    return () => window.removeEventListener('te:gesture-back', handler);
+  }, [getCurrentScroll]);
+
+  // Predictive prefetch: BottomNav fires this on pointerdown before finger lifts.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const view = (e as CustomEvent<{ view: string }>).detail?.view as ViewState | undefined;
+      if (view && view !== currentViewRef.current) setPrefetchView(view);
+    };
+    window.addEventListener('te:prefetch', handler);
+    return () => window.removeEventListener('te:prefetch', handler);
+  }, []);
+
   const finalizeNavigation = useCallback(() => {
     transitionLockRef.current = false;
     setIsSwitchingView(false);
@@ -166,18 +195,18 @@ const App = () => {
     transitionLockRef.current = true;
     setIsSwitchingView(true);
 
-    navigateWithTransition(
+    TransitionEngine.navigate(
+      dir as EngineDirection,
       () => {
-        setTransitionDir(dir);
-        setCurrentView(destination);
+        flushSync(() => {
+          setTransitionDir(dir);
+          setCurrentView(destination);
+        });
       },
-      dir,
-      flushSync,
-    ).finally(() => {
-      requestAnimationFrame(() => {
-        finalizeNavigation();
-      });
-    });
+      () => {
+        requestAnimationFrame(finalizeNavigation);
+      },
+    );
   }, [finalizeNavigation]);
 
   const navigateTo = useCallback((view: ViewState) => {
@@ -217,6 +246,8 @@ const App = () => {
   }, [getCurrentScroll, runNavigation]);
 
   const canGoBack = historyStack.current.length > 0;
+
+  const [prefetchView, setPrefetchView] = useState<ViewState | null>(null);
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -403,6 +434,17 @@ const App = () => {
     }
   }, [currentView, navigateTo]);
 
+  // Pre-render high-probability nav targets silently (finger-on-tab → head-start).
+  const getPrefetchContent = useCallback((view: ViewState): React.ReactNode => {
+    switch (view) {
+      case 'home':          return <Home setView={navigateTo} />;
+      case 'us':            return <Us setView={navigateTo} />;
+      case 'timeline':      return <MemoryTimeline setView={navigateTo} />;
+      case 'daily-moments': return <DailyMoments setView={navigateTo} />;
+      default: return null;
+    }
+  }, [navigateTo]);
+
   // Global Loading State
   if (!isInitialized) {
     return <RouteLoader />;
@@ -443,6 +485,18 @@ const App = () => {
             </ViewTransition>
           </Layout>
           <AuraSignalReceiver />
+          {/* Predictive prefetch ghost — hidden, zero layout impact */}
+          {prefetchView && prefetchView !== currentView && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute', visibility: 'hidden',
+                pointerEvents: 'none', width: 0, height: 0, overflow: 'hidden',
+              }}
+            >
+              {getPrefetchContent(prefetchView)}
+            </div>
+          )}
           <AnimatePresence>
             {showLaunchOverlay && <AppLaunchOverlay />}
           </AnimatePresence>

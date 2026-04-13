@@ -105,7 +105,7 @@ const VoiceNoteCard: React.FC<{ note: VoiceNote; onDelete: (id: string) => void 
                         {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </p>
                 </div>
-                <button onClick={() => onDelete(note.id)} className="opacity-30 hover:opacity-60 p-1 flex-shrink-0 transition-opacity active:scale-90">
+                <button onClick={() => onDelete(note.id)} className="opacity-30 p-1 flex-shrink-0 transition-opacity active:scale-90">
                     <Trash2 size={14} style={{ color: 'var(--color-text-primary)' }} />
                 </button>
             </div>

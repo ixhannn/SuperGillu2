@@ -397,9 +397,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             Private & Encrypted
                         </div>
                         <div className="flex items-center gap-4 text-[11px] font-bold" style={{ color: 'var(--color-text-secondary)' }}>
-                            <button onClick={() => { feedback.tap(); onPrivacyPolicy?.(); }} className="hover:opacity-60 transition-opacity">Privacy</button>
+                            <button onClick={() => { feedback.tap(); onPrivacyPolicy?.(); }} className="transition-opacity">Privacy</button>
                             <span className="opacity-20">·</span>
-                            <button onClick={() => { feedback.tap(); onTerms?.(); }} className="hover:opacity-60 transition-opacity">Terms</button>
+                            <button onClick={() => { feedback.tap(); onTerms?.(); }} className="transition-opacity">Terms</button>
                         </div>
                     </div>
                 </div>

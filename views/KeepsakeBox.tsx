@@ -49,7 +49,7 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
                         </span>
                         <button
                             onClick={(e) => { e.stopPropagation(); onHide(); }}
-                            className="transition-colors p-2 -m-2 opacity-0 group-hover:opacity-40"
+                            className="transition-colors p-2 -m-2 opacity-0 opacity-40"
                             style={{ color: 'var(--color-text-secondary)' }}
                         >
                             <EyeOff size={13} />

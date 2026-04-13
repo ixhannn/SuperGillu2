@@ -18,7 +18,7 @@ import { AnimationEngine } from '../utils/AnimationEngine';
 import { readThemeRgbTriplet } from '../utils/themeVars';
 
 // ─── Tuning ────────────────────────────────────────────────────────────────────
-const STAR_COUNT       = 180;
+const STAR_COUNT       = 120;
 const CONNECTION_DIST  = 120;   // px — max distance to draw a connection line
 const TOUCH_RADIUS     = 160;   // px — stars within this rush toward finger
 const TOUCH_STRENGTH   = 0.18;  // acceleration toward touch point
@@ -231,21 +231,21 @@ export const ConstellationCanvas: React.FC = () => {
 
         // ── Draw connection lines (skip on low tier) ─────────────
         if (tier !== 'low' && tier !== 'css-only') {
-          ctx.lineWidth = 0.6;
+          // Batch ALL lines into a single path — one stroke() call instead of N
+          const distThresh2 = CONNECTION_DIST * CONNECTION_DIST;
+          ctx.beginPath();
+          ctx.lineWidth  = 0.6;
+          ctx.strokeStyle = `rgba(${starLinkRgb},0.09)`;
           for (let i = 0; i < stars.length - 1; i++) {
             const a = stars[i];
             for (let j = i + 1; j < stars.length; j++) {
               const b = stars[j];
-              const d2 = dist2(a.x, a.y, b.x, b.y);
-              if (d2 > CONNECTION_DIST * CONNECTION_DIST) continue;
-              const alpha = (1 - Math.sqrt(d2) / CONNECTION_DIST) * 0.18;
-              ctx.beginPath();
-              ctx.strokeStyle = `rgba(${starLinkRgb},${alpha.toFixed(3)})`;
+              if (dist2(a.x, a.y, b.x, b.y) > distThresh2) continue;
               ctx.moveTo(a.x, a.y);
               ctx.lineTo(b.x, b.y);
-              ctx.stroke();
             }
           }
+          ctx.stroke();
         }
 
         // ── Draw partner thread ───────────────────────────────────
@@ -273,28 +273,22 @@ export const ConstellationCanvas: React.FC = () => {
             ctx.fillStyle = `rgba(${starCoreRgb},${s.opacity})`;
             ctx.fill();
           } else {
-            // Partner star — heartbeat scale + glow
+            // Partner star — heartbeat scale + glow via shadowBlur (GPU-accelerated, no GC)
             const hb = s.isPartner === 0 ? hb0 : hb1;
             const scale = 1 + hb * 0.7;
             const r = s.size * scale;
-            const gR = r * 4;
-
-            // Outer glow
-            const glow = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, gR);
             const col0 = s.isPartner === 0 ? partnerARgb : partnerBRgb;
-            glow.addColorStop(0,   `rgba(${col0},${(0.35 + hb * 0.4).toFixed(3)})`);
-            glow.addColorStop(0.4, `rgba(${col0},${(0.12 + hb * 0.15).toFixed(3)})`);
-            glow.addColorStop(1,   `rgba(${col0},0)`);
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, gR, 0, Math.PI * 2);
-            ctx.fillStyle = glow;
-            ctx.fill();
+
+            // Glow via shadowBlur — hardware-accelerated, zero gradient allocation
+            ctx.shadowBlur  = r * 6 * (0.6 + hb * 0.4);
+            ctx.shadowColor = `rgba(${col0},${(0.5 + hb * 0.4).toFixed(2)})`;
 
             // Core
             ctx.beginPath();
             ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
             ctx.fillStyle = s.isPartner === 0 ? `rgba(${partnerARgb},0.95)` : `rgba(${partnerBRgb},0.95)`;
             ctx.fill();
+            ctx.shadowBlur = 0;
 
             // Perfect sync shockwave
             if (syncProgress > 0.985) {

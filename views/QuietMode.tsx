@@ -322,7 +322,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
                 <div className="bg-black/40 backdrop-blur-xl p-1.5 rounded-full border border-white/10 flex items-center gap-1 shadow-2xl">
                     <button 
                         onClick={() => changeSound('love')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${soundMode === 'love' && !isMuted ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white/80'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${soundMode === 'love' && !isMuted ? 'bg-white/20 text-white' : 'text-white/40'}`}
                     >
                         <Heart size={14} fill={soundMode === 'love' && !isMuted ? "currentColor" : "none"} />
                         <span className="text-xs font-medium">Love</span>
@@ -330,7 +330,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
                     
                     <button 
                         onClick={() => changeSound('wind')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${soundMode === 'wind' && !isMuted ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white/80'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${soundMode === 'wind' && !isMuted ? 'bg-white/20 text-white' : 'text-white/40'}`}
                     >
                         <Wind size={14} />
                         <span className="text-xs font-medium">Wind</span>

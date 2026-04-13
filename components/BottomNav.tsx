@@ -1,6 +1,6 @@
 import React, { useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { Home, Plus, Archive, Sparkles, Heart, Users } from 'lucide-react';
-import { motion, useMotionValue, animate } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ViewState } from '../types';
 import { Audio } from '../services/audio';
 
@@ -14,18 +14,25 @@ interface BottomNavProps {
   };
 }
 
-// Fixed square — eliminates all width animation, zero layout triggers
-const SZ = 52;
+const IND   = 56;   // indicator size
+const BTN   = 64;   // button slot
+const NAV_H = 76;   // bar height
+const RING  = 3;    // gold ring thickness
+
+// Spring-like cubic-bezier: fast start, overshoots ~8%, settles cleanly.
+// This runs inside WAAPI on the compositor thread — immune to JS jank.
+const SPRING_EASE = 'cubic-bezier(0.34, 1.38, 0.64, 1)';
+const SPRING_MS   = 420;
 
 export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView, notifications }) => {
   const navRef  = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // translateX + scaleX/Y are the ONLY values that change per frame.
-  // Both are GPU-composited transforms. Zero layout recalculation.
-  const pillX  = useMotionValue(0);
-  const pillSX = useMotionValue(1);
-  const pillSY = useMotionValue(1);
+  // WAAPI animation handle — lets us read the live position on interruption
+  const waapiAnim = useRef<Animation | null>(null);
+  // Last committed X (fallback if matrix read fails)
+  const committedX = useRef<number>(0);
 
   const navItems = useMemo(() => [
     { id: 'home',          icon: Home,     label: 'Home' },
@@ -35,67 +42,94 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
     { id: 'timeline',      icon: Archive,  label: 'Memories',hasNotification: notifications?.timeline },
   ], [notifications]);
 
-  // Returns the x center-offset for the indicator under a button
-  const getTargetX = useCallback((id: string): number | null => {
+  /** Pixel offset from nav's left padding-edge to center the indicator on `id`. */
+  const getX = useCallback((id: string): number | null => {
     const btn = btnRefs.current[id];
     const nav = navRef.current;
     if (!btn || !nav) return null;
     const nr = nav.getBoundingClientRect();
     const br = btn.getBoundingClientRect();
-    // Center the SZ×SZ indicator on the button
-    return br.left - nr.left + (br.width - SZ) / 2;
+    // subtract 1 for the nav's 1px border (getBoundingClientRect = border-box,
+    // but left:0 on absolute = padding-edge, 1px inside)
+    return (br.left - nr.left - 1) + (br.width - IND) / 2;
   }, []);
 
-  const snapPill = useCallback((id: string) => {
-    if (id === 'add-memory') return;
-    const x = getTargetX(id);
-    if (x === null) return;
-    pillX.set(x);
-    pillSX.set(1);
-    pillSY.set(1);
-  }, [pillX, pillSX, pillSY, getTargetX]);
+  const movePill = useCallback((id: string, instant = false) => {
+    const pill = pillRef.current;
+    if (!pill) return;
 
-  const animPill = useCallback((id: string) => {
-    if (id === 'add-memory') return;
-    const targetX = getTargetX(id);
-    if (targetX === null) return;
+    // Hide the pill for the Add tab (it has its own always-visible squircle)
+    if (id === 'add-memory') {
+      pill.style.opacity = '0';
+      return;
+    }
+    pill.style.opacity = '1';
 
-    const dist = Math.abs(targetX - pillX.get());
+    const tx = getX(id);
+    if (tx === null) return;
 
-    // ── Position spring ── GPU translateX, never triggers layout
-    animate(pillX, targetX, {
-      type:       'spring',
-      stiffness:  360,
-      damping:    24,
-      mass:       0.55,
-      restDelta:  0.5,
-    });
+    // ── Snap (no animation) ───────────────────────────────────────────────
+    if (instant) {
+      waapiAnim.current?.cancel();
+      waapiAnim.current = null;
+      pill.style.transform = `translateX(${tx}px)`;
+      committedX.current = tx;
+      return;
+    }
 
-    // ── Squash & stretch ── GPU scaleX/Y, liquid rubber-ball physics
-    const peakX = Math.min(1 + dist / 160, 1.40);
-    const peakY = Math.max(1 - dist / 260, 0.72);
+    // ── Smooth interruption ───────────────────────────────────────────────
+    // Read the pill's LIVE position from the compositor (mid-animation aware).
+    let fromX = committedX.current;
+    if (waapiAnim.current?.playState === 'running') {
+      try {
+        const m = new DOMMatrix(getComputedStyle(pill).transform);
+        if (isFinite(m.m41)) fromX = m.m41;
+      } catch (_) { /* fallback to committedX */ }
+    }
 
-    animate(pillSX, [1, peakX, 0.88, 1.05, 1], {
-      duration: 0.46,
-      times:    [0, 0.20, 0.56, 0.76, 1],
-    });
-    animate(pillSY, [1, peakY, 1.14, 0.96, 1], {
-      duration: 0.46,
-      times:    [0, 0.20, 0.56, 0.76, 1],
-    });
-  }, [pillX, pillSX, pillSY, getTargetX]);
+    // Commit the current position to inline style before cancelling.
+    // Without this, cancel() snaps the element back to its pre-animation state.
+    pill.style.transform = `translateX(${fromX}px)`;
+    waapiAnim.current?.cancel();
 
-  // Double-RAF: guarantees flex layout is painted before first measurement
+    // ── WAAPI: pure compositor-thread animation ───────────────────────────
+    // JS main thread can be totally blocked (React re-rendering the new view)
+    // and this animation continues at the device's native frame rate (120fps).
+    waapiAnim.current = pill.animate(
+      [
+        { transform: `translateX(${fromX}px)` },
+        { transform: `translateX(${tx}px)` },
+      ],
+      {
+        duration:  SPRING_MS,
+        easing:    SPRING_EASE,
+        fill:      'forwards',
+        composite: 'replace',
+      }
+    );
+
+    // On finish: commit so the next interruption reads correctly
+    waapiAnim.current.onfinish = () => {
+      pill.style.transform = `translateX(${tx}px)`;
+      committedX.current = tx;
+      waapiAnim.current?.cancel();   // remove fill state
+      waapiAnim.current = null;
+    };
+
+    committedX.current = tx;
+  }, [getX]);
+
+  // Double-RAF: guarantees flex layout is fully painted before we measure
   useEffect(() => {
     let r1: number, r2: number;
     r1 = requestAnimationFrame(() => {
-      r2 = requestAnimationFrame(() => snapPill(currentView));
+      r2 = requestAnimationFrame(() => movePill(currentView, true));
     });
     return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { animPill(currentView); }, [currentView, animPill]);
+  useEffect(() => { movePill(currentView); }, [currentView, movePill]);
 
   const handleNavTap = useCallback((id: string) => {
     Audio.play(id === 'add-memory' ? 'press' : 'navSwitch');
@@ -105,84 +139,67 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
   const isAddActive = currentView === 'add-memory';
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 flex justify-center pb-safe z-50 pointer-events-none"
-         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+    <div
+      className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
+      style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 20px)' }}
+    >
       <div className="pointer-events-auto">
         <div
           ref={navRef}
           className="relative flex items-center"
           style={{
-            height:       72,
+            height:       NAV_H,
             borderRadius: 9999,
-            // Warm cream — matches reference palette
-            background:   'rgba(253, 250, 245, 0.94)',
-            backdropFilter:       'blur(28px) saturate(150%)',
-            WebkitBackdropFilter: 'blur(28px) saturate(150%)',
-            border:     '1px solid rgba(225, 210, 180, 0.65)',
-            boxShadow:  [
-              '0 12px 40px rgba(100, 70, 15, 0.14)',
-              '0 4px 12px rgba(0,0,0,0.07)',
-              'inset 0 1px 0 rgba(255,255,255,0.92)',
-            ].join(', '),
             paddingLeft:  10,
             paddingRight: 10,
-            gap:          0,
+            background:   'var(--theme-nav-glass-bg)',
+            border:       '1px solid var(--theme-nav-glass-border)',
+            boxShadow: [
+              '0 20px 60px rgba(232, 160, 176, 0.22)',
+              '0 8px 24px rgba(232, 160, 176, 0.14)',
+              '0 2px 6px rgba(0, 0, 0, 0.06)',
+              'inset 0 1.5px 0 rgba(255, 255, 255, 0.98)',
+              'inset 0 -1px 0 rgba(232, 160, 176, 0.12)',
+            ].join(', '),
           }}
         >
-          {/* ── Gold-ring squircle indicator ───────────────────────────────
-               • Fixed SZ×SZ — no width change ever
-               • x + scaleX/Y — pure compositor transforms
-               • Gold gradient ring: outer bg + padding + white inner fill
-               • Elevation via layered box-shadows
-               • Hides (opacity 0) when Add tab is active
+          {/* ── Pink glass indicator ──────────────────────────────────────
+               Plain div — no framer-motion, no React subscriptions.
+               Position animated via WAAPI (compositor thread).
+               Opacity via CSS transition (also compositor thread).
+               left:0 pins the translateX origin to the nav padding-edge.
+               will-change:transform → browser pre-allocates compositor layer.
           ──────────────────────────────────────────────────────────────── */}
-          <motion.div
+          <div
+            ref={pillRef}
             aria-hidden="true"
-            className="absolute pointer-events-none"
-            animate={{ opacity: isAddActive ? 0 : 1 }}
-            transition={{ duration: 0.12 }}
             style={{
-              x:            pillX,
-              scaleX:       pillSX,
-              scaleY:       pillSY,
-              top:          (72 - SZ) / 2,   // vertically centered
-              width:        SZ,
-              height:       SZ,
+              position:     'absolute',
+              left:         0,
+              top:          `calc(50% - ${IND / 2}px)`,
+              width:        IND,
+              height:       IND,
               borderRadius: 16,
-              willChange:   'transform',
-              // ── Gold metallic ring via gradient background + padding ──
+              willChange:   'transform, opacity',
+              opacity:      1,
+              // Opacity: CSS transition (compositor) — no JS needed
+              transition:   'opacity 0.15s ease-out',
+              // Pink glass border ring
+              border:     `${RING}px solid transparent`,
               background: [
-                'linear-gradient(155deg,',
-                '  #f4e090 0%,',
-                '  #d4a030 25%,',
-                '  #966010 58%,',
-                '  #c8a035 82%,',
-                '  #ead878 100%',
-                ')',
-              ].join(''),
-              padding: '2.5px',
+                'linear-gradient(150deg, rgba(255,255,255,0.96) 0%, rgba(255,235,242,0.92) 100%) padding-box',
+                'linear-gradient(150deg, rgba(251,207,232,0.7) 0%, rgba(196,104,126,0.55) 50%, rgba(251,207,232,0.7) 100%) border-box',
+              ].join(', '),
               boxShadow: [
-                '0 10px 32px rgba(140, 90, 5, 0.32)',  // warm gold drop shadow
-                '0 4px 12px rgba(0,0,0,0.16)',          // general elevation
-                '0 1px 3px rgba(0,0,0,0.10)',           // close contact shadow
+                '0 8px 28px rgba(232, 160, 176, 0.38)',
+                '0 4px 12px rgba(0, 0, 0, 0.08)',
+                '0 1px 4px rgba(0, 0, 0, 0.06)',
+                'inset 0 1.5px 1px rgba(255, 255, 255, 0.96)',
               ].join(', '),
             }}
-          >
-            {/* White/cream inner surface */}
-            <div
-              style={{
-                width:        '100%',
-                height:       '100%',
-                borderRadius: 13.5,
-                background:   'linear-gradient(148deg, #ffffff 0%, #f8f2e8 100%)',
-                boxShadow: [
-                  'inset 0 1.5px 2px rgba(255,255,255,1)',    // top specular
-                  'inset 0 -1px 2px rgba(150,110,30,0.06)',   // subtle warm base
-                ].join(', '),
-              }}
-            />
-          </motion.div>
+          />
 
+          {/* ── Buttons ──────────────────────────────────────────────────── */}
           {navItems.map((item) => {
             const isActive = currentView === item.id;
             const Icon     = item.icon;
@@ -191,68 +208,67 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
               <button
                 key={item.id}
                 ref={el => { btnRefs.current[item.id] = el; }}
+                onPointerDown={() => {
+                  // Fire before finger lifts — gives React time to pre-render destination
+                  window.dispatchEvent(new CustomEvent('te:prefetch', { detail: { view: item.id } }));
+                }}
                 onClick={() => handleNavTap(item.id)}
-                className="relative flex items-center justify-center outline-none touch-manipulation"
-                style={{ width: 64, height: 64, zIndex: 1, flexShrink: 0 }}
+                className="relative flex items-center justify-center outline-none touch-manipulation select-none"
+                style={{ width: BTN, height: BTN, zIndex: 1, flexShrink: 0 }}
                 aria-label={item.label}
                 {...(item.id === 'daily-moments' ? { 'data-coachmark': 'daily-moments' } : {})}
               >
                 {item.isCenter ? (
-                  /* ── Add / FAB button ──────────────────────────────────
-                      Rose-gradient squircle, always elevated.
-                      Does not participate in the gold indicator.
-                  ───────────────────────────────────────────────────────── */
+                  /* Pink FAB — always elevated, never behind the glass indicator */
                   <motion.div
                     data-coachmark="center-fab"
                     whileTap={{ scale: 0.87 }}
                     transition={{ type: 'spring', stiffness: 520, damping: 22 }}
                     style={{
-                      width:        SZ,
-                      height:       SZ,
-                      borderRadius: 16,
-                      display:      'flex',
-                      alignItems:   'center',
+                      width:          IND,
+                      height:         IND,
+                      borderRadius:   16,
+                      display:        'flex',
+                      alignItems:     'center',
                       justifyContent: 'center',
+                      border:         'none',
                       background: isAddActive
-                        ? 'linear-gradient(135deg, #e8365a 0%, #c41840 100%)'
-                        : 'linear-gradient(135deg, rgba(232,54,90,0.88) 0%, rgba(196,24,64,0.88) 100%)',
+                        ? 'var(--theme-nav-center-bg-active)'
+                        : 'var(--theme-nav-center-bg-inactive)',
                       boxShadow: isAddActive
-                        ? '0 8px 28px rgba(232,54,90,0.38), 0 3px 10px rgba(0,0,0,0.14), inset 0 1px 0 rgba(255,255,255,0.22)'
-                        : '0 4px 18px rgba(232,54,90,0.26), inset 0 1px 0 rgba(255,255,255,0.18)',
+                        ? 'var(--theme-nav-center-shadow-active)'
+                        : 'var(--theme-nav-center-shadow-inactive)',
                     }}
                   >
-                    <Plus size={22} strokeWidth={2.5} color="#ffffff" />
+                    <Plus size={22} strokeWidth={2.5} color="rgba(255,255,255,0.96)" />
                   </motion.div>
+
                 ) : (
-                  /* ── Regular tab icon ──────────────────────────────────
-                      Activation:   spring pop-up
-                      Deactivation: instant (70 ms) — eliminates "stays lit"
-                  ───────────────────────────────────────────────────────── */
+                  /* Regular icon — framer-motion spring only fires once per switch */
                   <motion.div
                     className="relative flex items-center justify-center"
-                    animate={isActive ? { scale: 1, y: 0 } : { scale: 0.88, y: 0 }}
+                    animate={isActive ? { scale: 1 } : { scale: 0.84 }}
                     transition={
                       isActive
-                        ? { type: 'spring', stiffness: 520, damping: 26 }
-                        : { duration: 0.07 }
+                        ? { type: 'spring', stiffness: 500, damping: 26 }
+                        : { duration: 0.06 }
                     }
                   >
                     <Icon
-                      size={22}
-                      strokeWidth={isActive ? 2.2 : 1.65}
+                      size={21}
+                      strokeWidth={isActive ? 2.2 : 1.55}
                       fill={isActive ? 'currentColor' : 'none'}
                       fillOpacity={isActive ? 0.10 : 0}
                       style={{
-                        // Warm dark brown active (matches reference) / muted taupe inactive
                         color: isActive
-                          ? 'rgba(72, 48, 8, 0.90)'
-                          : 'rgba(155, 130, 95, 0.60)',
-                        transition: 'color 0.07s linear',
+                          ? 'var(--color-nav-active)'
+                          : 'var(--color-text-secondary)',
+                        transition: 'color 0.06s linear',
                       }}
                     />
                     {item.hasNotification && !isActive && (
-                      <div className="absolute -top-1 -right-1">
-                        <Heart size={7} className="text-lior-400 fill-lior-400 animate-breathe" />
+                      <div className="absolute -top-0.5 -right-0.5">
+                        <Heart size={6} className="text-lior-400 fill-lior-400 animate-breathe" />
                       </div>
                     )}
                   </motion.div>

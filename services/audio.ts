@@ -1,14 +1,17 @@
 /**
- * Audio Service — Lior
+ * Audio Service — Tulika
  *
  * Procedural Web Audio API sound engine — zero asset files.
- * All sounds synthesized in real-time from oscillators, filters, and envelopes.
  *
- * Design philosophy:
- *   - Every sound has a physical analogue (glass, wood, air, water)
- *   - Pairs with haptics so touch + sound reinforce each other
- *   - Sub-40ms latency via pre-warmed AudioContext
- *   - Respectful of system mute / silent mode via volume scaling
+ * What makes a sound feel "premium":
+ *   1. A sharp impulse transient at onset  — the physical "contact" sensation
+ *   2. A clean resonant tail               — the material ringing
+ *   3. Very short total duration           — premium apps whisper
+ *   4. Sample-accurate scheduling          — no setTimeout drift
+ *   5. Consistent gain family             — nothing jumps out as too loud
+ *
+ * All multi-note sequences now use Web Audio startTime offsets (never setTimeout),
+ * giving sub-millisecond scheduling accuracy regardless of JS main-thread load.
  */
 
 type SoundName =
@@ -29,10 +32,12 @@ type SoundName =
   | 'delete';
 
 class AudioService {
-  private ctx: AudioContext | null = null;
-  private enabled = true;
-  private volume = 0.45; // Not too loud — feels ambient, not jarring
-  private masterGain: GainNode | null = null;
+  private ctx:        AudioContext     | null = null;
+  private masterGain: GainNode         | null = null;
+  private compressor: DynamicsCompressorNode | null = null;
+  private shelf:      BiquadFilterNode | null = null;
+  private enabled  = true;
+  private volume   = 0.40;
   private unlocked = false;
 
   loadPrefs() {
@@ -45,28 +50,28 @@ class AudioService {
   setEnabled(value: boolean) {
     this.enabled = value;
     localStorage.setItem('lior_audio', value ? '1' : '0');
-    if (this.masterGain) {
-      this.masterGain.gain.setTargetAtTime(value ? this.volume : 0, this.getCtx()!.currentTime, 0.05);
+    const ctx = this.getCtx();
+    if (this.masterGain && ctx) {
+      this.masterGain.gain.setTargetAtTime(value ? this.volume : 0, ctx.currentTime, 0.05);
     }
   }
 
   setVolume(v: number) {
     this.volume = Math.min(1, Math.max(0, v));
     localStorage.setItem('lior_audio_volume', String(this.volume));
-    if (this.masterGain) {
-      this.masterGain.gain.setTargetAtTime(this.volume, this.getCtx()!.currentTime, 0.05);
+    const ctx = this.getCtx();
+    if (this.masterGain && ctx) {
+      this.masterGain.gain.setTargetAtTime(this.volume, ctx.currentTime, 0.05);
     }
   }
 
   isEnabled() { return this.enabled; }
-  getVolume() { return this.volume; }
+  getVolume()  { return this.volume; }
 
-  /** Must be called from a user gesture to unlock AudioContext on iOS/Android */
   unlock() {
     if (this.unlocked) return;
     const ctx = this.getCtx();
     if (!ctx) return;
-    // Play silent buffer to unlock
     const buf = ctx.createBuffer(1, 1, 22050);
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -82,12 +87,28 @@ class AudioService {
         this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
         this.masterGain = this.ctx.createGain();
         this.masterGain.gain.value = this.volume;
-        this.masterGain.connect(this.ctx.destination);
+
+        // Compressor: punchy, tamed peaks, analogue warmth
+        this.compressor = this.ctx.createDynamicsCompressor();
+        this.compressor.threshold.value = -22;
+        this.compressor.knee.value      =   7;
+        this.compressor.ratio.value     =   3.5;
+        this.compressor.attack.value    =   0.002;
+        this.compressor.release.value   =   0.10;
+
+        // High-shelf +1.5 dB @ 8 kHz — adds "air" to every sound
+        this.shelf = this.ctx.createBiquadFilter();
+        this.shelf.type            = 'highshelf';
+        this.shelf.frequency.value = 8000;
+        this.shelf.gain.value      = 1.5;
+
+        this.masterGain.connect(this.shelf);
+        this.shelf.connect(this.compressor);
+        this.compressor.connect(this.ctx.destination);
       } catch {
         return null;
       }
     }
-    // Resume if suspended (browser autoplay policy)
     if (this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
@@ -99,148 +120,183 @@ class AudioService {
     return this.masterGain;
   }
 
-  // ─── Sound Primitives ────────────────────────────────────────────────────────
+  // ─── Primitives ──────────────────────────────────────────────────────────────
 
   /**
-   * Quick percussive click — like pressing a high-quality physical key.
-   * Uses filtered noise burst + sine transient layered together.
+   * Pure sine tone with natural attack + exponential decay.
+   * `when`: seconds offset from ctx.currentTime (use for sample-accurate scheduling).
    */
-  private clickTone(
-    freq = 1200,
-    duration = 0.04,
-    gainPeak = 0.5,
-    filterFreq = 3000,
-    filterQ = 1.5,
+  private tone(
+    pitch:    number,
+    pitchEnd: number,
+    duration: number,
+    gain:     number,
+    attackMs  = 1.0,
+    when      = 0,
   ) {
-    const ctx = this.getCtx();
+    const ctx    = this.getCtx();
     const master = this.getMaster();
     if (!ctx || !master) return;
 
-    const now = ctx.currentTime;
+    const start  = ctx.currentTime + when;
+    const attack = attackMs / 1000;
 
-    // Sine transient
     const osc = ctx.createOscillator();
-    const oscGain = ctx.createGain();
-    osc.frequency.setValueAtTime(freq, now);
-    osc.frequency.exponentialRampToValueAtTime(freq * 0.4, now + duration);
+    const g   = ctx.createGain();
+
     osc.type = 'sine';
-    oscGain.gain.setValueAtTime(0, now);
-    oscGain.gain.linearRampToValueAtTime(gainPeak, now + 0.002);
-    oscGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    osc.connect(oscGain);
-    oscGain.connect(master);
-    osc.start(now);
-    osc.stop(now + duration + 0.01);
+    osc.frequency.setValueAtTime(pitch, start);
+    if (pitchEnd !== pitch) {
+      osc.frequency.exponentialRampToValueAtTime(
+        Math.max(pitchEnd, 1), start + duration,
+      );
+    }
 
-    // Noise burst for texture
-    const bufLen = Math.ceil(ctx.sampleRate * duration);
-    const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
-    const noise = ctx.createBufferSource();
-    noise.buffer = buf;
-    const noiseFilter = ctx.createBiquadFilter();
-    noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.value = filterFreq;
-    noiseFilter.Q.value = filterQ;
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(gainPeak * 0.3, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + duration * 0.6);
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(master);
-    noise.start(now);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.linearRampToValueAtTime(gain, start + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+    osc.connect(g);
+    g.connect(master);
+    osc.start(start);
+    osc.stop(start + duration + 0.015);
   }
 
   /**
-   * Soft whoosh — air movement, used for swipes and transitions.
+   * Bell partial stack — inharmonic series for glass/metal timbre.
+   * Classic Chowning ratios: f, 2.756f, 5.404f.
    */
-  private whoosh(
-    startFreq = 800,
-    endFreq = 200,
-    duration = 0.12,
-    gainPeak = 0.18,
+  private bell(
+    freq:     number,
+    duration: number,
+    gain:     number,
+    partials: number[] = [1, 2.756],
+    when      = 0,
   ) {
-    const ctx = this.getCtx();
-    const master = this.getMaster();
-    if (!ctx || !master) return;
-
-    const now = ctx.currentTime;
-    const bufLen = Math.ceil(ctx.sampleRate * duration);
-    const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
-
-    const noise = ctx.createBufferSource();
-    noise.buffer = buf;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(startFreq, now);
-    filter.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
-    filter.Q.value = 1.2;
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(gainPeak, now + duration * 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(master);
-    noise.start(now);
-  }
-
-  /**
-   * Bell-like chime — glass resonance, used for confirm / success.
-   */
-  private chime(
-    freq = 880,
-    duration = 0.55,
-    gainPeak = 0.35,
-    harmonics = [1, 2.76, 5.4],
-  ) {
-    const ctx = this.getCtx();
-    const master = this.getMaster();
-    if (!ctx || !master) return;
-
-    const now = ctx.currentTime;
-    harmonics.forEach((ratio, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.frequency.value = freq * ratio;
-      osc.type = 'sine';
-      const pk = gainPeak / (i + 1);
-      g.gain.setValueAtTime(0, now);
-      g.gain.linearRampToValueAtTime(pk, now + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + duration * (1 - i * 0.15));
-      osc.connect(g);
-      g.connect(master);
-      osc.start(now);
-      osc.stop(now + duration + 0.05);
+    partials.forEach((ratio, i) => {
+      const decay = duration * Math.pow(0.60, i);
+      this.tone(
+        freq * ratio,
+        freq * ratio,
+        decay,
+        gain / Math.pow(i + 1, 1.2),
+        0.8,
+        when,
+      );
     });
   }
 
   /**
-   * Thud — deep low impulse for important presses.
+   * Impulse transient — bandpass-filtered noise burst.
+   * This is what creates the tactile "click" sensation at the onset of a tap.
+   * Think of it as the "hammer hits string" moment before the tone rings.
+   *
+   * freq: center frequency of the bandpass filter (Hz)
+   * q:    filter Q — higher = more focused, nasal click
    */
-  private thud(freq = 80, duration = 0.08, gainPeak = 0.6) {
-    const ctx = this.getCtx();
+  private impulse(
+    freq:     number,
+    q:        number,
+    duration: number,
+    gain:     number,
+    when      = 0,
+  ) {
+    const ctx    = this.getCtx();
     const master = this.getMaster();
     if (!ctx || !master) return;
 
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
+    const start  = ctx.currentTime + when;
+    const bufLen = Math.ceil(ctx.sampleRate * duration);
+    const buf    = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const data   = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+
+    const noise  = ctx.createBufferSource();
+    noise.buffer = buf;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type            = 'bandpass';
+    filter.frequency.value = freq;
+    filter.Q.value         = q;
+
     const g = ctx.createGain();
-    osc.frequency.setValueAtTime(freq, now);
-    osc.frequency.exponentialRampToValueAtTime(20, now + duration);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.linearRampToValueAtTime(gain, start + 0.0004);  // 0.4 ms snap attack
+    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+    noise.connect(filter);
+    filter.connect(g);
+    g.connect(master);
+    noise.start(start);
+  }
+
+  /**
+   * Sub-bass body hit — felt more than heard on phone speakers.
+   */
+  private sub(freq: number, duration: number, gain: number, when = 0) {
+    const ctx    = this.getCtx();
+    const master = this.getMaster();
+    if (!ctx || !master) return;
+
+    const start = ctx.currentTime + when;
+    const osc   = ctx.createOscillator();
+    const g     = ctx.createGain();
+
     osc.type = 'sine';
-    g.gain.setValueAtTime(gainPeak, now);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.frequency.setValueAtTime(freq, start);
+    osc.frequency.exponentialRampToValueAtTime(
+      Math.max(freq * 0.18, 8), start + duration,
+    );
+    g.gain.setValueAtTime(gain, start);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
     osc.connect(g);
     g.connect(master);
-    osc.start(now);
-    osc.stop(now + duration + 0.01);
+    osc.start(start);
+    osc.stop(start + duration + 0.01);
+  }
+
+  /**
+   * Filtered noise whoosh — for swipe/modal only, never for taps.
+   */
+  private whoosh(
+    freqStart: number,
+    freqEnd:   number,
+    duration:  number,
+    gain:      number,
+    q          = 2.5,
+    when        = 0,
+  ) {
+    const ctx    = this.getCtx();
+    const master = this.getMaster();
+    if (!ctx || !master) return;
+
+    const start  = ctx.currentTime + when;
+    const bufLen = Math.ceil(ctx.sampleRate * duration);
+    const buf    = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const data   = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+
+    const noise  = ctx.createBufferSource();
+    noise.buffer = buf;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(freqStart, start);
+    filter.frequency.exponentialRampToValueAtTime(
+      Math.max(freqEnd, 1), start + duration,
+    );
+    filter.Q.value = q;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, start);
+    g.gain.linearRampToValueAtTime(gain, start + duration * 0.10);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+    noise.connect(filter);
+    filter.connect(g);
+    g.connect(master);
+    noise.start(start);
   }
 
   // ─── Named Sounds ─────────────────────────────────────────────────────────
@@ -248,151 +304,110 @@ class AudioService {
   play(sound: SoundName) {
     if (!this.enabled) return;
     switch (sound) {
+
+      // ── Crystal tap — lightest possible acknowledgement
+      // Impulse transient + very short high tone.
       case 'tap':
-        // Crisp glass tap — light and immediate
-        this.clickTone(1800, 0.035, 0.38, 4000, 2);
+        this.impulse(2800, 7,  0.010, 0.055);
+        this.tone(1800, 1800, 0.015, 0.062, 0.6);
         break;
 
-      case 'press':
-        // Solid button press — slightly deeper, has weight
-        this.clickTone(900, 0.055, 0.42, 2200, 1.8);
-        this.thud(120, 0.05, 0.25);
-        break;
-
-      case 'confirm':
-        // Satisfying double-chime — action completed
-        this.chime(1046, 0.45, 0.28, [1, 1.498]);
-        break;
-
-      case 'select':
-        // Light selection pop — choosing something
-        this.clickTone(1400, 0.028, 0.32, 3500, 2.5);
-        this.chime(1320, 0.2, 0.12, [1]);
-        break;
-
-      case 'toggleOn': {
-        // Switch snapping ON — ascending tick
-        const ctx = this.getCtx();
-        const master = this.getMaster();
-        if (!ctx || !master) break;
-        const now = ctx.currentTime;
-        [0, 0.04].forEach((delay, i) => {
-          const o = ctx.createOscillator();
-          const g = ctx.createGain();
-          o.frequency.value = 900 + i * 400;
-          o.type = 'sine';
-          g.gain.setValueAtTime(0, now + delay);
-          g.gain.linearRampToValueAtTime(0.3 - i * 0.05, now + delay + 0.003);
-          g.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.04);
-          o.connect(g); g.connect(master);
-          o.start(now + delay); o.stop(now + delay + 0.06);
-        });
-        break;
-      }
-
-      case 'toggleOff': {
-        // Switch snapping OFF — descending tick
-        const ctx = this.getCtx();
-        const master = this.getMaster();
-        if (!ctx || !master) break;
-        const now = ctx.currentTime;
-        [0, 0.04].forEach((delay, i) => {
-          const o = ctx.createOscillator();
-          const g = ctx.createGain();
-          o.frequency.value = 1300 - i * 400;
-          o.type = 'sine';
-          g.gain.setValueAtTime(0, now + delay);
-          g.gain.linearRampToValueAtTime(0.28 - i * 0.04, now + delay + 0.003);
-          g.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.038);
-          o.connect(g); g.connect(master);
-          o.start(now + delay); o.stop(now + delay + 0.06);
-        });
-        break;
-      }
-
-      case 'swipe':
-        // Soft air whoosh
-        this.whoosh(600, 150, 0.10, 0.14);
-        break;
-
+      // ── iOS-style tab switch — barely there, clean
+      // Transient-first design: impulse click + pure ping, no pitch movement.
       case 'navSwitch':
-        // Slightly more substantial than tap — page is moving
-        this.whoosh(900, 300, 0.08, 0.11);
-        this.clickTone(1100, 0.03, 0.25, 2800, 2);
+        this.impulse(2400, 8,  0.008, 0.048);
+        this.tone(1150, 1150, 0.020, 0.060, 0.5);
         break;
 
-      case 'error':
-        // Dissonant low thud — something went wrong
-        this.thud(60, 0.12, 0.55);
-        this.clickTone(280, 0.08, 0.22, 500, 0.8);
+      // ── Selection pop — choosing a chip or option
+      case 'select':
+        this.impulse(2000, 6,  0.008, 0.050);
+        this.tone(1450, 1450, 0.018, 0.058, 0.6);
         break;
 
-      case 'heartbeat': {
-        // Two-beat cardiac rhythm — lub-dub
-        const ctx = this.getCtx();
-        const master = this.getMaster();
-        if (!ctx || !master) break;
-        const now = ctx.currentTime;
-        const beats = [
-          { t: 0,    freq: 70, dur: 0.09, g: 0.7 },
-          { t: 0.13, freq: 55, dur: 0.12, g: 0.9 },
-        ];
-        beats.forEach(({ t, freq, dur, g }) => {
-          const o = ctx.createOscillator();
-          const gn = ctx.createGain();
-          o.frequency.setValueAtTime(freq, now + t);
-          o.frequency.exponentialRampToValueAtTime(18, now + t + dur);
-          o.type = 'sine';
-          gn.gain.setValueAtTime(g, now + t);
-          gn.gain.exponentialRampToValueAtTime(0.0001, now + t + dur);
-          o.connect(gn); gn.connect(master);
-          o.start(now + t); o.stop(now + t + dur + 0.01);
-        });
+      // ── Weighted button press — the Add FAB
+      // Heavier impact + clean mid tone + subtle sub for physical body.
+      case 'press':
+        this.impulse(1100, 4,  0.012, 0.070);
+        this.tone(480, 480, 0.042, 0.110, 1.0);
+        this.sub(62, 0.055, 0.170);
         break;
-      }
 
-      case 'celebrate': {
-        // Ascending sparkle arpeggio
-        const ctx = this.getCtx();
-        const master = this.getMaster();
-        if (!ctx || !master) break;
-        const now = ctx.currentTime;
-        const notes = [523, 659, 784, 1047, 1319];
-        notes.forEach((freq, i) => {
-          const o = ctx.createOscillator();
-          const g = ctx.createGain();
-          o.frequency.value = freq;
-          o.type = 'sine';
-          const t = now + i * 0.07;
-          g.gain.setValueAtTime(0, t);
-          g.gain.linearRampToValueAtTime(0.22, t + 0.008);
-          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-          o.connect(g); g.connect(master);
-          o.start(t); o.stop(t + 0.3);
-        });
+      // ── Toggle ON — ascending two-note snap (perfect 4th = 4:3)
+      // Sample-accurate: second note scheduled 38ms out via `when` offset.
+      case 'toggleOn':
+        this.impulse(2200, 6, 0.007, 0.045);
+        this.tone(900,  900,  0.028, 0.090, 0.8);
+        this.tone(1200, 1200, 0.024, 0.075, 0.8, 0.038);
         break;
-      }
 
+      // ── Toggle OFF — descending two-note snap
+      case 'toggleOff':
+        this.impulse(2200, 6, 0.007, 0.040);
+        this.tone(1200, 1200, 0.024, 0.075, 0.8);
+        this.tone(900,  900,  0.028, 0.065, 0.8, 0.038);
+        break;
+
+      // ── Success chime — three ascending bells: E5 → B5 → E6
+      // Perfect 4th + octave. Sample-accurate scheduling.
+      case 'confirm':
+        this.bell(659,  0.44, 0.165, [1, 2.756], 0.000);  // E5
+        this.bell(988,  0.38, 0.145, [1, 2.756], 0.058);  // B5 (5th up)
+        this.bell(1319, 0.30, 0.120, [1, 2.756], 0.116);  // E6 (octave)
+        break;
+
+      // ── Notification — warm two-tone bell (major 6th = A5 + F#6)
       case 'notification':
-        // Gentle two-tone chime
-        this.chime(880, 0.5, 0.22, [1, 1.333]);
+        this.bell(880,  0.52, 0.145, [1, 2.756], 0.000);
+        this.bell(1480, 0.40, 0.120, [1, 2.756], 0.062);  // F#6 (major 6th up)
         break;
 
+      // ── Celebrate — pentatonic arpeggio: C5 E5 G5 B5 E6
+      case 'celebrate': {
+        const notes = [523, 659, 784, 988, 1319];
+        const gains = [0.130, 0.120, 0.110, 0.100, 0.090];
+        notes.forEach((freq, i) => {
+          this.bell(freq, 0.36, gains[i], [1, 2.756], i * 0.058);
+        });
+        break;
+      }
+
+      // ── Heartbeat — organic lub-dub, sample-accurate
+      case 'heartbeat':
+        // lub
+        this.sub(65, 0.078, 0.480);
+        this.tone(135, 135, 0.060, 0.095, 1.0);
+        // dub (125ms later — heavier)
+        this.sub(52, 0.095, 0.580, 0.125);
+        this.tone(105, 105, 0.075, 0.120, 1.0, 0.125);
+        break;
+
+      // ── Swipe — soft directional air
+      case 'swipe':
+        this.whoosh(460, 130, 0.085, 0.062, 2.2);
+        break;
+
+      // ── Error — low weight thud, not a screech
+      case 'error':
+        this.sub(42, 0.095, 0.280);
+        this.tone(195, 195, 0.065, 0.080, 2.0);
+        break;
+
+      // ── Modal open — airy upward sweep + soft ping
       case 'modalOpen':
-        // Light airy whoosh upward
-        this.whoosh(200, 700, 0.09, 0.12);
-        this.chime(1200, 0.22, 0.15, [1]);
+        this.whoosh(200, 580, 0.080, 0.052, 2.8);
+        this.tone(1350, 1350, 0.165, 0.075, 2.5, 0.038);
         break;
 
+      // ── Modal close — downward exhale
       case 'modalClose':
-        // Downward settle
-        this.whoosh(700, 200, 0.08, 0.10);
+        this.whoosh(580, 200, 0.072, 0.045, 2.8);
         break;
 
+      // ── Delete — low body thud
       case 'delete':
-        // Low thud with slight dissonance — destructive action
-        this.thud(50, 0.14, 0.5);
-        this.clickTone(220, 0.07, 0.18, 400, 0.7);
+        this.sub(44, 0.110, 0.320);
+        this.tone(185, 185, 0.060, 0.070, 2.5);
         break;
     }
   }
@@ -401,11 +416,11 @@ class AudioService {
 export const Audio = new AudioService();
 Audio.loadPrefs();
 
-// Unlock on first user interaction
-const unlockOnGesture = () => {
+// Unlock AudioContext on first user interaction (required by iOS & Android)
+const _unlock = () => {
   Audio.unlock();
-  window.removeEventListener('touchstart', unlockOnGesture, { capture: true });
-  window.removeEventListener('mousedown', unlockOnGesture, { capture: true });
+  window.removeEventListener('touchstart', _unlock, { capture: true });
+  window.removeEventListener('mousedown',  _unlock, { capture: true });
 };
-window.addEventListener('touchstart', unlockOnGesture, { capture: true, passive: true });
-window.addEventListener('mousedown', unlockOnGesture, { capture: true });
+window.addEventListener('touchstart', _unlock, { capture: true, passive: true });
+window.addEventListener('mousedown',  _unlock, { capture: true });

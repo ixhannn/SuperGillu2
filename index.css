@@ -222,7 +222,7 @@ html[data-nav-dir="modal"]::view-transition-new(main-view) {
     0 var(--breath-shadow-y) var(--breath-shadow-blur)
     rgba(var(--theme-partner-a-rgb), var(--breath-shadow-alpha));
   transform: scale(var(--breath-scale));
-  will-change: box-shadow, transform;
+  will-change: transform;
 }
 
 .breath-glow::after {
@@ -1111,12 +1111,12 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 .animate-shimmer       { background: linear-gradient(90deg, transparent, rgba(var(--theme-particle-2-rgb),0.28), transparent); background-size: 300% 100%; animation: shimmer-sweep 3s ease-in-out infinite; will-change: transform, opacity; }
 .animate-glow-pulse    { animation: glow-pulse 3s ease-in-out infinite; will-change: opacity; }
 .animate-breathe-glow  { animation: breathe-glow 4s ease-in-out infinite; will-change: transform, opacity; }
-.animate-number-roll   { animation: number-roll 0.8s var(--spring-smooth) both; will-change: transform, opacity; }
-.animate-wiggle-spring { animation: wiggle-spring 0.5s var(--spring-bounce); will-change: transform; }
-.animate-modal-enter   { animation: modal-enter 0.4s var(--spring-smooth) both; will-change: transform, opacity; }
+.animate-number-roll   { animation: number-roll 0.8s var(--spring-smooth) both; }
+.animate-wiggle-spring { animation: wiggle-spring 0.5s var(--spring-bounce); }
+.animate-modal-enter   { animation: modal-enter 0.4s var(--spring-smooth) both; }
 .animate-backdrop-enter{ animation: backdrop-enter 0.3s ease-out both; }
-.animate-icon-spring   { animation: icon-spring 0.5s var(--spring-bounce) both; will-change: transform; }
-.animate-dot-spring    { animation: dot-spring 0.4s var(--spring-bounce) both; will-change: transform, opacity; }
+.animate-icon-spring   { animation: icon-spring 0.5s var(--spring-bounce) both; }
+.animate-dot-spring    { animation: dot-spring 0.4s var(--spring-bounce) both; }
 .animate-magnetic-hover{ animation: magnetic-pull 2s ease-in-out infinite; will-change: transform; }
 .animate-morph-1       { animation: morph-blob-1 20s ease-in-out infinite; will-change: transform; }
 .animate-morph-2       { animation: morph-blob-2 25s ease-in-out infinite; will-change: transform; }

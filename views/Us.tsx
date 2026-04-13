@@ -307,7 +307,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                             className="group relative rounded-2xl p-4 flex flex-col justify-between"
                                             style={{ background: 'white', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.04)', minHeight: '5.5rem' }}>
                                             <button onClick={() => deleteBucket(item.id)}
-                                                className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity spring-press text-gray-200 hover:text-gray-400">
+                                                className="absolute top-2.5 right-2.5 opacity-40 transition-opacity spring-press text-gray-200">
                                                 <X size={12} />
                                             </button>
                                             <p className="text-[0.85rem] text-gray-700 leading-snug pr-4 mb-3">{item.text}</p>
@@ -339,7 +339,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                                     <div key={item.id} className="group relative rounded-2xl p-4 flex flex-col justify-between"
                                                         style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.12)', minHeight: '5rem' }}>
                                                         <button onClick={() => deleteBucket(item.id)}
-                                                            className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 spring-press text-gray-200">
+                                                            className="absolute top-2.5 right-2.5 opacity-40 spring-press text-gray-200">
                                                             <X size={12} />
                                                         </button>
                                                         <p className="text-[0.82rem] text-gray-400 line-through leading-snug pr-3 mb-3">{item.text}</p>
@@ -435,7 +435,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                                     className="group relative rounded-2xl px-4 py-3.5"
                                                     style={{ background: item.gifted ? 'rgba(34,197,94,0.06)' : a.light, border: `1px solid ${item.gifted ? 'rgba(34,197,94,0.15)' : a.ring}` }}>
                                                     <button onClick={() => deleteWish(item.id)}
-                                                        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 spring-press text-gray-200">
+                                                        className="absolute top-3 right-3 opacity-40 spring-press text-gray-200">
                                                         <X size={12} />
                                                     </button>
                                                     <p className={`text-[0.85rem] leading-snug pr-5 mb-2 ${item.gifted ? 'line-through text-gray-300' : 'text-gray-700'}`}>{item.text}</p>
@@ -532,7 +532,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                             className="group relative rounded-[1.5rem] p-5 flex flex-col gap-2 flex-shrink-0"
                                             style={{ width: '10.5rem', background: MS_GRADIENTS[i % MS_GRADIENTS.length], boxShadow: '0 2px 16px rgba(0,0,0,0.07)' }}>
                                             <button onClick={() => deleteMilestone(ms.id)}
-                                                className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 spring-press text-gray-300 hover:text-gray-500 transition-opacity">
+                                                className="absolute top-3 right-3 opacity-40 spring-press text-gray-300 transition-opacity">
                                                 <X size={13} />
                                             </button>
                                             <span className="text-4xl">{ms.emoji}</span>

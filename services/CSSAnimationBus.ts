@@ -33,7 +33,13 @@ function q(v: number, decimals = 3): string {
 }
 
 let t = 0;
-let lastProps: Record<string, string> = {};
+
+// Pre-allocated double buffers — swap each frame to avoid per-frame allocations
+const _bufA: { [k: string]: string } = Object.create(null);
+const _bufB: { [k: string]: string } = Object.create(null);
+const _out:  { [k: string]: string } = Object.create(null);
+let _cur  = _bufA;  // values computed this frame
+let _prev = _bufB;  // values from last frame (for diff)
 
 AnimationEngine.register({
   id: 'css-animation-bus',
@@ -54,25 +60,25 @@ AnimationEngine.register({
     const shimmerPhase = ((t * 0.25) % 1);                                    // 0→1 at 0.25 Hz
     const uiBreath     = 0.6 + (breatheScale * 0.4);                          // 0.6→1.0
 
-    // Quantise to 3dp — prevents paint call if value hasn't visibly changed
-    const props: Record<string, string> = {
-      '--breathe-sin':   q(breatheSin),
-      '--breathe-cos':   q(breatheCos),
-      '--breathe-scale': q(breatheScale),
-      '--pulse-alpha':   q(pulseAlpha),
-      '--shimmer-phase': q(shimmerPhase),
-      '--ui-breathe':    q(uiBreath),
-    };
+    // Write into current buffer (reused, no allocation)
+    _cur['--breathe-sin']   = q(breatheSin);
+    _cur['--breathe-cos']   = q(breatheCos);
+    _cur['--breathe-scale'] = q(breatheScale);
+    _cur['--pulse-alpha']   = q(pulseAlpha);
+    _cur['--shimmer-phase'] = q(shimmerPhase);
+    _cur['--ui-breathe']    = q(uiBreath);
 
-    // Diff against last frame — only emit changed values
-    const changed: Record<string, string> = {};
-    for (const key in props) {
-      if (props[key] !== lastProps[key]) {
-        changed[key] = props[key];
-      }
+    // Diff against previous frame — only emit changed values
+    // Clear _out first (max 6 keys, so cheap)
+    for (const k in _out) delete _out[k];
+    for (const key in _cur) {
+      if (_cur[key] !== _prev[key]) _out[key] = _cur[key];
     }
-    lastProps = props;
-    return changed;
+
+    // Swap buffers without copying
+    const tmp = _prev; _prev = _cur; _cur = tmp;
+
+    return _out;
   },
 });
 

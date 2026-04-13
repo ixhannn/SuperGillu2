@@ -54,7 +54,7 @@ const CapsuleCard: React.FC<{ capsule: TimeCapsule; onUnlock: (id: string) => vo
                             </div>
                             <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>Opened</span>
                         </div>
-                        <button onClick={() => onDelete(capsule.id)} className="opacity-30 hover:opacity-60 p-1 transition-opacity active:scale-90">
+                        <button onClick={() => onDelete(capsule.id)} className="opacity-30 p-1 transition-opacity active:scale-90">
                             <Trash2 size={14} style={{ color: 'var(--color-text-primary)' }} />
                         </button>
                     </div>
@@ -94,7 +94,7 @@ const CapsuleCard: React.FC<{ capsule: TimeCapsule; onUnlock: (id: string) => vo
                             {canUnlock ? 'Ready to open!' : 'Sealed'}
                         </span>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(capsule.id); }} className="opacity-30 hover:opacity-60 p-1 transition-opacity active:scale-90">
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(capsule.id); }} className="opacity-30 p-1 transition-opacity active:scale-90">
                         <Trash2 size={14} style={{ color: 'var(--color-text-primary)' }} />
                     </button>
                 </div>
