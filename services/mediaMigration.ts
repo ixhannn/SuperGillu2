@@ -2,7 +2,7 @@ import { StorageService } from './storage';
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 
-const MIGRATION_KEY = 'lior_media_migrated_v2';
+const MIGRATION_KEY = 'lior_media_migrated_v4';
 
 interface MigrationResult {
     migrated: number;
@@ -13,6 +13,19 @@ interface MigrationResult {
 export const MediaMigrationService = {
     isMigrated(): boolean {
         return !!localStorage.getItem(MIGRATION_KEY);
+    },
+
+    /** True if any local item has media that hasn't been uploaded to R2 yet. */
+    hasUnmigratedMedia(): boolean {
+        const allItems = [
+            ...StorageService.getMemories(),
+            ...StorageService.getDailyPhotos(),
+            ...StorageService.getKeepsakes(),
+        ];
+        return allItems.some(item =>
+            (item.imageId && !item.storagePath) ||
+            (item.videoId && !item.videoStoragePath)
+        );
     },
 
     /**
@@ -62,8 +75,9 @@ export const MediaMigrationService = {
 
                     // Migrate image
                     if (item.imageId && (!item.storagePath || imageNeedsScopedPath)) {
-                        const base64 = await StorageService.getImage(item.imageId);
-                        // If not in local, check cloud JSON
+                        const base64 = await StorageService.getImage(item.imageId)
+                            || await getLegacyImage(item.imageId);
+                        // If not in local IDB (either vault), check cloud JSON
                         const finalBase64 = base64 || findCloudBase64(cloudItems, item.id, 'image');
 
                         if (finalBase64 && finalBase64.startsWith('data:')) {
@@ -90,7 +104,8 @@ export const MediaMigrationService = {
 
                     // Migrate video
                     if (item.videoId && (!item.videoStoragePath || videoNeedsScopedPath)) {
-                        const base64 = await StorageService.getImage(item.videoId);
+                        const base64 = await StorageService.getImage(item.videoId)
+                            || await getLegacyImage(item.videoId);
                         const finalBase64 = base64 || findCloudBase64(cloudItems, item.id, 'video');
 
                         if (finalBase64 && finalBase64.startsWith('data:')) {
@@ -144,4 +159,30 @@ function findCloudBase64(cloudItems: any[], itemId: string, type: 'image' | 'vid
     if (!cloudItem) return null;
     const data = cloudItem?.data || cloudItem;
     return type === 'video' ? (data.video || null) : (data.image || null);
+}
+
+// Fallback: read an image/video directly from TulikaVault_v11 (old IDB).
+// The IDB migration skips copying images when LiorVault already has entries,
+// so pre-rename media may still be sitting in the legacy database.
+function getLegacyImage(mediaId: string): Promise<string | null> {
+    return new Promise((resolve) => {
+        try {
+            const req = indexedDB.open('TulikaVault_v11');
+            req.onerror = () => resolve(null);
+            req.onsuccess = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains('image_vault')) {
+                    db.close();
+                    resolve(null);
+                    return;
+                }
+                try {
+                    const tx = db.transaction('image_vault', 'readonly');
+                    const getReq = tx.objectStore('image_vault').get(mediaId);
+                    getReq.onsuccess = () => { db.close(); resolve(getReq.result || null); };
+                    getReq.onerror = () => { db.close(); resolve(null); };
+                } catch { db.close(); resolve(null); }
+            };
+        } catch { resolve(null); }
+    });
 }

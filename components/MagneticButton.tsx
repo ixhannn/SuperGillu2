@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { attachPress, attachMagnetic } from '../utils/gesture';
+import { attachPress } from '../utils/gesture';
 
 interface MagneticButtonProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
@@ -36,18 +36,16 @@ export const MagneticButton: React.FC<MagneticButtonProps> = ({
     const el = ref.current;
     if (!el || shouldReduceMotion) return;
 
-    const cleanPress    = attachPress(el, {
+    const cleanPress = attachPress(el, {
       pressScale:   0.94,
-      pressOpacity: 1,       // brightness is enough; opacity untouched
+      pressOpacity: 1,
       spring:       { stiffness: 450, damping: 28, mass: 0.5 },
     });
-    const cleanMagnetic = attachMagnetic(el, { strength, radius: 80 });
 
     return () => {
       cleanPress();
-      cleanMagnetic();
     };
-  }, [shouldReduceMotion, strength]);
+  }, [shouldReduceMotion]);
 
   return (
     <div

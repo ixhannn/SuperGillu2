@@ -65,11 +65,15 @@ const rng = (() => {
 
 interface LiveBackground3DProps {
   preset?: ParticlePreset;
+  paused?: boolean;
 }
 
-export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'spark' }) => {
+export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'spark', paused = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [useFallback, setUseFallback] = useState(false);
+  const pausedRef = useRef(paused);
+
+  pausedRef.current = paused;
 
   useEffect(() => {
     const activePreset = PRESETS[preset];
@@ -317,6 +321,7 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
       minTier:   'medium' as QualityTier,
 
       tick(_delta, timestamp) {
+        if (pausedRef.current) return;
         const t = timestamp * 0.001;
         material.uniforms.uTime.value = t;
 

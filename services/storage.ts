@@ -1,6 +1,6 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote } from '../types';
 import { SupabaseService } from './supabase';
-import { MediaStorageService } from './mediaStorage';
+import { MediaStorageService, compressImage } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
 import { normalizeCoupleRoom, migrateFromOldRoom } from '../components/room/roomSoul';
 
@@ -11,6 +11,212 @@ const DB_VERSION = 1;
 const STORES = {
     DATA: 'metadata_store',
     IMAGES: 'image_vault'
+};
+
+// ── Legacy "Tulika" → "Lior" migration ────────────────────────────────────
+// The app was renamed from Tulika to Lior. Both the IndexedDB name and every
+// localStorage key were prefixed differently before the rename, so existing
+// users would otherwise lose all memories AND their stored Supabase URL/key
+// (meaning the cloud client never initializes, hiding remote data too).
+// This shim runs once on first init to copy old data forward.
+const LEGACY_DB_NAME = 'TulikaVault_v11';
+// v2: prior shim copied IDB entries with their original `tulika_*` keys, so the
+// loader (which reads `lior_*`) found nothing. Bumping the flag re-runs migration
+// with proper key remapping for affected users.
+const LEGACY_MIGRATION_FLAG = 'lior_legacy_migrated_v2';
+const remapLegacyKey = (key: unknown): unknown => {
+    if (typeof key === 'string' && key.startsWith('tulika_')) {
+        return 'lior_' + key.slice('tulika_'.length);
+    }
+    return key;
+};
+
+const migrateLegacyLocalStorage = () => {
+    if (localStorage.getItem(LEGACY_MIGRATION_FLAG) === 'done') return;
+    try {
+        const oldKeys: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('tulika_')) oldKeys.push(k);
+        }
+        for (const oldKey of oldKeys) {
+            const newKey = 'lior_' + oldKey.slice('tulika_'.length);
+            // Don't clobber any value already present under the new key
+            if (localStorage.getItem(newKey) !== null) continue;
+            const val = localStorage.getItem(oldKey);
+            if (val !== null) localStorage.setItem(newKey, val);
+        }
+    } catch (e) {
+        console.warn('[migration] localStorage copy failed:', e);
+    }
+};
+
+const openDbVersionless = (name: string): Promise<IDBDatabase> =>
+    new Promise((resolve, reject) => {
+        const req = indexedDB.open(name);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+
+// Read a single entry from TulikaVault_v11/image_vault.
+// Used as a fallback when the IDB migration skipped copying images because
+// LiorVault already had some entries (the skip-if-exists guard).
+const readFromLegacyVault = (mediaId: string): Promise<string | null> =>
+    new Promise((resolve) => {
+        try {
+            const req = indexedDB.open(LEGACY_DB_NAME);
+            req.onerror = () => resolve(null);
+            req.onsuccess = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(STORES.IMAGES)) { db.close(); resolve(null); return; }
+                try {
+                    const getReq = db.transaction(STORES.IMAGES, 'readonly').objectStore(STORES.IMAGES).get(mediaId);
+                    getReq.onsuccess = () => { db.close(); resolve(getReq.result ?? null); };
+                    getReq.onerror = () => { db.close(); resolve(null); };
+                } catch { db.close(); resolve(null); }
+            };
+        } catch { resolve(null); }
+    });
+
+const openLiorDb = (): Promise<IDBDatabase> =>
+    new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+            const db = (e.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(STORES.DATA)) db.createObjectStore(STORES.DATA);
+            if (!db.objectStoreNames.contains(STORES.IMAGES)) db.createObjectStore(STORES.IMAGES);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+
+const countStore = (db: IDBDatabase, storeName: string): Promise<number> =>
+    new Promise((resolve) => {
+        if (!db.objectStoreNames.contains(storeName)) return resolve(0);
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).count();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(0);
+    });
+
+const copyAllEntries = (oldDb: IDBDatabase, newDb: IDBDatabase, storeName: string, remapKeys: boolean): Promise<number> =>
+    new Promise((resolve, reject) => {
+        if (!oldDb.objectStoreNames.contains(storeName)) return resolve(0);
+        if (!newDb.objectStoreNames.contains(storeName)) return resolve(0);
+        const readTx = oldDb.transaction(storeName, 'readonly');
+        const writeTx = newDb.transaction(storeName, 'readwrite');
+        const writeStore = writeTx.objectStore(storeName);
+        const cursorReq = readTx.objectStore(storeName).openCursor();
+        let count = 0;
+        cursorReq.onsuccess = (e) => {
+            const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+            if (cursor) {
+                const targetKey = remapKeys ? remapLegacyKey(cursor.key) : cursor.key;
+                writeStore.put(cursor.value, targetKey as IDBValidKey);
+                count++;
+                cursor.continue();
+            }
+        };
+        cursorReq.onerror = () => reject(cursorReq.error);
+        writeTx.oncomplete = () => resolve(count);
+        writeTx.onerror = () => reject(writeTx.error);
+    });
+
+// Remap any orphaned `tulika_*` keys inside LiorVault_v11/metadata_store
+// in-place. This catches users whose prior (broken) v1 migration copied
+// entries with the wrong keys.
+const remapInPlaceLiorMetadata = async (): Promise<number> => {
+    try {
+        const db = await openLiorDb();
+        return await new Promise<number>((resolve) => {
+            const tx = db.transaction(STORES.DATA, 'readwrite');
+            const store = tx.objectStore(STORES.DATA);
+            const cursorReq = store.openCursor();
+            let remapped = 0;
+            cursorReq.onsuccess = (e) => {
+                const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+                if (cursor) {
+                    const key = cursor.key;
+                    if (typeof key === 'string' && key.startsWith('tulika_')) {
+                        const newKey = 'lior_' + key.slice('tulika_'.length);
+                        const value = cursor.value;
+                        store.get(newKey).onsuccess = (ev) => {
+                            const existing = (ev.target as IDBRequest).result;
+                            if (existing == null) {
+                                store.put(value, newKey);
+                                remapped++;
+                            }
+                            cursor.delete();
+                        };
+                    }
+                    cursor.continue();
+                }
+            };
+            cursorReq.onerror = () => resolve(remapped);
+            tx.oncomplete = () => { db.close(); resolve(remapped); };
+            tx.onerror = () => { db.close(); resolve(remapped); };
+        });
+    } catch {
+        return 0;
+    }
+};
+
+const migrateLegacyIndexedDB = async (): Promise<void> => {
+    if (localStorage.getItem(LEGACY_MIGRATION_FLAG) === 'done') return;
+
+    let oldDb: IDBDatabase | null = null;
+    let newDb: IDBDatabase | null = null;
+    try {
+        // Always run the in-place remap first — it's cheap and catches orphans
+        // from a prior failed v1 migration even when the legacy DB is gone.
+        const remapped = await remapInPlaceLiorMetadata();
+        if (remapped > 0) console.info(`[migration] remapped ${remapped} orphaned tulika_* keys in LiorVault_v11`);
+
+        // Quick existence check (Chromium/Safari only — Firefox falls through harmlessly)
+        const enumerate = (indexedDB as any).databases as undefined | (() => Promise<{ name?: string }[]>);
+        if (enumerate) {
+            const list = await enumerate.call(indexedDB).catch(() => []);
+            const hasLegacy = list.some((d) => d.name === LEGACY_DB_NAME);
+            if (!hasLegacy) {
+                localStorage.setItem(LEGACY_MIGRATION_FLAG, 'done');
+                return;
+            }
+        }
+
+        oldDb = await openDbVersionless(LEGACY_DB_NAME);
+
+        // If the legacy DB has no stores at all (was just created by our open),
+        // there's nothing to migrate.
+        const storeNames = Array.from(oldDb.objectStoreNames);
+        if (storeNames.length === 0) {
+            localStorage.setItem(LEGACY_MIGRATION_FLAG, 'done');
+            return;
+        }
+
+        newDb = await openLiorDb();
+
+        for (const storeName of [STORES.DATA, STORES.IMAGES]) {
+            if (!oldDb.objectStoreNames.contains(storeName)) continue;
+            // Always copy: metadata_store may be empty (after a failed prior migration)
+            // even though useful entries exist under tulika_* keys we now need to remap.
+            // For image_vault, we still skip if the new store already has entries to
+            // avoid clobbering re-uploaded media.
+            if (storeName === STORES.IMAGES) {
+                const existing = await countStore(newDb, storeName);
+                if (existing > 0) continue;
+            }
+            const remapKeys = storeName === STORES.DATA;
+            const copied = await copyAllEntries(oldDb, newDb, storeName, remapKeys);
+            if (copied > 0) console.info(`[migration] copied ${copied} entries from ${LEGACY_DB_NAME}/${storeName}${remapKeys ? ' (remapped)' : ''}`);
+        }
+
+        localStorage.setItem(LEGACY_MIGRATION_FLAG, 'done');
+    } catch (e) {
+        console.warn('[migration] IndexedDB copy failed:', e);
+    } finally {
+        oldDb?.close();
+        newDb?.close();
+    }
 };
 
 const CACHE_KEYS = {
@@ -35,6 +241,9 @@ const CACHE_KEYS = {
     US_BUCKET_ITEMS: 'lior_us_bucket_items',
     US_WISHLIST_ITEMS: 'lior_us_wishlist_items',
     US_MILESTONES: 'lior_us_milestones',
+    TIME_CAPSULES: 'lior_time_capsules',
+    SURPRISES: 'lior_surprises',
+    VOICE_NOTES: 'lior_voice_notes',
 };
 
 /* ─── Pending delete tombstones ─── */
@@ -77,6 +286,9 @@ const DATA_CACHE = {
     usBucketItems: [] as UsBucketItem[],
     usWishlistItems: [] as UsWishlistItem[],
     usMilestones: [] as UsMilestone[],
+    timeCapsules: [] as TimeCapsule[],
+    surprises: [] as Surprise[],
+    voiceNotes: [] as VoiceNote[],
 };
 
 const MEDIA_MEMORY_CACHE = new Map<string, string>();
@@ -151,17 +363,9 @@ const normalizeIdentityPair = <T extends { myName?: string; partnerName?: string
         normalized.partnerName = TULIKA_NAME;
     }
 
-    if (!normalized.myName) {
-        normalized.myName = ISHAN_NAME;
-    }
-
-    if (!normalized.partnerName) {
-        normalized.partnerName = normalized.myName === TULIKA_NAME ? ISHAN_NAME : TULIKA_NAME;
-    }
-
-    if (normalized.myName === normalized.partnerName) {
-        normalized.partnerName = normalized.myName === TULIKA_NAME ? ISHAN_NAME : TULIKA_NAME;
-    }
+    // Do not auto-fill empty names — they stay empty until the user sets them
+    // via onboarding or profile settings. Partner name is set automatically
+    // after QR pairing via PairingService / SyncService.
 
     return normalized;
 };
@@ -264,6 +468,11 @@ export const StorageService = {
     async init() {
         if (this.isInitialized) return;
         try {
+            // Run legacy Tulika→Lior migration BEFORE opening the new DB so any
+            // copied entries are visible on the very first init pass.
+            migrateLegacyLocalStorage();
+            await migrateLegacyIndexedDB();
+
             await getDB();
             if (navigator.storage && navigator.storage.persist) {
                 this.isPersisted = await navigator.storage.persist();
@@ -286,7 +495,10 @@ export const StorageService = {
                 load(CACHE_KEYS.MOOD_ENTRIES, 'moodEntries'),
                 load(CACHE_KEYS.US_BUCKET_ITEMS, 'usBucketItems'),
                 load(CACHE_KEYS.US_WISHLIST_ITEMS, 'usWishlistItems'),
-                load(CACHE_KEYS.US_MILESTONES, 'usMilestones')
+                load(CACHE_KEYS.US_MILESTONES, 'usMilestones'),
+                load(CACHE_KEYS.TIME_CAPSULES, 'timeCapsules'),
+                load(CACHE_KEYS.SURPRISES, 'surprises'),
+                load(CACHE_KEYS.VOICE_NOTES, 'voiceNotes'),
             ]);
 
             DATA_CACHE.keepsakes = DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item));
@@ -325,13 +537,20 @@ export const StorageService = {
         if (!SupabaseService.init()) return;
         try {
             const cloudMusic = await SupabaseService.fetchSingle('together_music');
-            if (cloudMusic && cloudMusic.music_base64) {
-                const localMeta = this.getTogetherMusicMetadata();
-                if (!localMeta || cloudMusic.meta.date !== localMeta.date) {
-                    await writeRaw(STORES.IMAGES, 'custom_together_music', cloudMusic.music_base64);
-                    localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(cloudMusic.meta));
-                    await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, cloudMusic.meta);
-                }
+            if (!cloudMusic) return;
+            const localMeta = this.getTogetherMusicMetadata();
+            const hasUpdate = !localMeta || (cloudMusic.meta?.date && cloudMusic.meta.date !== localMeta.date);
+            if (!hasUpdate) return;
+
+            if (cloudMusic.music_url) {
+                // Store R2 URL directly — audio element can stream from it
+                await writeRaw(STORES.IMAGES, 'custom_together_music', cloudMusic.music_url);
+            } else if (cloudMusic.music_base64) {
+                await writeRaw(STORES.IMAGES, 'custom_together_music', cloudMusic.music_base64);
+            }
+            if (cloudMusic.meta) {
+                localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(cloudMusic.meta));
+                await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, cloudMusic.meta);
             }
         } catch (e) { }
     },
@@ -352,7 +571,13 @@ export const StorageService = {
         const cacheKey = mediaId || storagePath || '';
         if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
 
-        // 2. IndexedDB local cache
+        // 2. R2 / Cloud storage URL — preferred source of truth once migration is done
+        if (storagePath) {
+            const url = await MediaStorageService.getAccessibleUrl(storagePath);
+            if (url) return url;
+        }
+
+        // 3. IndexedDB local cache (LiorVault — for items not yet uploaded to R2)
         if (mediaId) {
             const local = await readRaw(STORES.IMAGES, mediaId);
             if (local) {
@@ -361,21 +586,19 @@ export const StorageService = {
             }
         }
 
-        // 3. Supabase Storage signed URL (private, cross-device)
-        if (storagePath) {
-            const url = await MediaStorageService.getAccessibleUrl(storagePath);
-            if (url) {
-                // Don't cache signed URLs in MEDIA_MEMORY_CACHE — they expire
-                // The MediaStorageService has its own signed URL cache with expiry tracking
-                return url;
+        // 4. TulikaVault fallback — pre-rename images skipped by IDB migration
+        if (mediaId) {
+            const legacy = await readFromLegacyVault(mediaId);
+            if (legacy) {
+                await writeRaw(STORES.IMAGES, mediaId, legacy);
+                if (legacy.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, legacy);
+                return legacy;
             }
         }
 
-        // 4. Legacy fallback: base64 from cloud JSON column
+        // 5. Legacy fallback: base64 stored inline in cloud JSON column
         if (cloudPayload) {
-            if (mediaId) {
-                await writeRaw(STORES.IMAGES, mediaId, cloudPayload);
-            }
+            if (mediaId) await writeRaw(STORES.IMAGES, mediaId, cloudPayload);
             if (cloudPayload.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, cloudPayload);
             return cloudPayload;
         }
@@ -391,10 +614,13 @@ export const StorageService = {
         const rawImage = normalizedItem.image;
         const rawVideo = normalizedItem.video;
 
-        if (rawImage && prefix) {
+        // Compress image before writing to IDB + R2 (reduces storage 5-10x for photos)
+        const imageToStore = rawImage ? await compressImage(rawImage) : rawImage;
+
+        if (imageToStore && prefix) {
             const imageId = normalizedItem.imageId || `${prefix}_${normalizedItem.id}`;
-            await writeRaw(STORES.IMAGES, imageId, rawImage);
-            if (rawImage.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, rawImage);
+            await writeRaw(STORES.IMAGES, imageId, imageToStore);
+            if (imageToStore.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, imageToStore);
             toSaveMetadata.imageId = imageId;
             delete toSaveMetadata.image;
         }
@@ -423,12 +649,12 @@ export const StorageService = {
         await writeRaw(STORES.DATA, storageKey, list);
 
         if (table) {
-            notifyUpdate({ source, action: 'save', table, id: normalizedItem.id, item: { ...toSaveMetadata, image: rawImage, video: rawVideo } });
+            notifyUpdate({ source, action: 'save', table, id: normalizedItem.id, item: { ...toSaveMetadata, image: imageToStore, video: rawVideo } });
         }
 
         // Background: Upload to Supabase Storage (non-blocking, fire-and-forget)
         if (prefix && source === 'user') {
-            this._uploadToStorage(listKey, storageKey, toSaveMetadata, prefix, rawImage, rawVideo);
+            this._uploadToStorage(listKey, storageKey, toSaveMetadata, prefix, imageToStore, rawVideo);
         }
     },
 
@@ -619,7 +845,10 @@ export const StorageService = {
             mood_entries: { cache: 'moodEntries', key: CACHE_KEYS.MOOD_ENTRIES },
             us_bucket_items: { cache: 'usBucketItems', key: CACHE_KEYS.US_BUCKET_ITEMS },
             us_wishlist_items: { cache: 'usWishlistItems', key: CACHE_KEYS.US_WISHLIST_ITEMS },
-            us_milestones: { cache: 'usMilestones', key: CACHE_KEYS.US_MILESTONES }
+            us_milestones: { cache: 'usMilestones', key: CACHE_KEYS.US_MILESTONES },
+            time_capsules: { cache: 'timeCapsules', key: CACHE_KEYS.TIME_CAPSULES, prefix: 'capsule' },
+            surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES, prefix: 'surprise' },
+            voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES },
         };
 
         if (tableMap[table]) {
@@ -643,8 +872,11 @@ export const StorageService = {
         } else if (table === 'couple_profile') {
             const local = this.getCoupleProfile();
             if (item.anniversaryDate) {
-                // Only merge if the cloud date is valid
-                this.saveCoupleProfile({ ...local, ...item }, 'sync');
+                // Only merge shared fields — never overwrite local identity (myName/partnerName)
+                // from cloud data. Each device owns its own identity; syncing would swap names.
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { myName: _m, partnerName: _p, ...sharedFromCloud } = item as any;
+                this.saveCoupleProfile({ ...local, ...sharedFromCloud }, 'sync');
             }
         } else if (table === 'pet_stats') {
             this.savePetStats(item, 'sync');
@@ -660,8 +892,9 @@ export const StorageService = {
                 notifyUpdate({ source: 'sync', action: 'save', table, id: item.id });
             }
         } else if (table === 'together_music') {
-            if (item.music_base64) {
-                await writeRaw(STORES.IMAGES, 'custom_together_music', item.music_base64);
+            const musicData = item.music_url || item.music_base64;
+            if (musicData) {
+                await writeRaw(STORES.IMAGES, 'custom_together_music', musicData);
                 if (item.meta) {
                     localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(item.meta));
                     writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, item.meta);
@@ -696,7 +929,10 @@ export const StorageService = {
             comments: { cache: 'comments', key: CACHE_KEYS.COMMENTS },
             us_bucket_items: { cache: 'usBucketItems', key: CACHE_KEYS.US_BUCKET_ITEMS },
             us_wishlist_items: { cache: 'usWishlistItems', key: CACHE_KEYS.US_WISHLIST_ITEMS },
-            us_milestones: { cache: 'usMilestones', key: CACHE_KEYS.US_MILESTONES }
+            us_milestones: { cache: 'usMilestones', key: CACHE_KEYS.US_MILESTONES },
+            time_capsules: { cache: 'timeCapsules', key: CACHE_KEYS.TIME_CAPSULES },
+            surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES },
+            voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES },
         };
         if (tableToStorage[table]) {
             const cfg = tableToStorage[table];
@@ -742,13 +978,22 @@ export const StorageService = {
                     await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, meta);
 
                     if (SupabaseService.init()) {
-                        await SupabaseService.saveSingle('together_music', { music_base64: base64, meta });
+                        // Upload audio to R2 — avoid storing large base64 in Supabase JSONB
+                        const coupleId = await SupabaseService.getCurrentCoupleId();
+                        const path = `${coupleId ?? 'guest'}/music/together`;
+                        const uploaded = await MediaStorageService.uploadMedia(base64, path);
+                        const cloudPayload = uploaded
+                            ? { music_url: uploaded, meta }
+                            : { music_base64: base64, meta }; // fallback if R2 unavailable
+                        await SupabaseService.saveSingle('together_music', cloudPayload);
+                        notifyUpdate({ source: 'user', action: 'save', table: 'together_music', id: 'singleton', item: cloudPayload });
+                    } else {
+                        notifyUpdate({ source: 'user', action: 'save', table: 'together_music', id: 'singleton', item: { music_base64: base64, meta } });
                     }
-                    notifyUpdate({ source: 'user', action: 'save', table: 'together_music', id: 'singleton', item: { music_base64: base64, meta } });
                     resolve();
                 } catch (err) { reject(err); }
             };
-            reader.onerror = reject;
+            reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(file);
         });
     },
@@ -771,21 +1016,13 @@ export const StorageService = {
         const idStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
         const sharedStr = localStorage.getItem(CACHE_KEYS.SHARED_PROFILE);
 
-        const rawIdentity = idStr ? JSON.parse(idStr) : { myName: ISHAN_NAME, partnerName: TULIKA_NAME };
+        const rawIdentity = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
         const id = normalizeIdentityPair(rawIdentity);
         if (id.myName !== rawIdentity.myName || id.partnerName !== rawIdentity.partnerName) {
             localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: id.myName, partnerName: id.partnerName }));
         }
 
-        // HARD-BUILD: Anniversary Date is 29 August 2023
-        const HARD_CODED_ANNIVERSARY = '2023-08-29T00:00:00.000Z';
-
-        const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: HARD_CODED_ANNIVERSARY, theme: 'rose' };
-
-        // Final sanity check: if the anniversary somehow got mangled to something else, reset it to the hard-coded date
-        if (!shared.anniversaryDate || shared.anniversaryDate === '2024-01-01T00:00:00.000Z' || shared.anniversaryDate.includes('1970')) {
-            shared.anniversaryDate = HARD_CODED_ANNIVERSARY;
-        }
+        const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: '', theme: 'rose' };
 
         return { ...id, ...shared };
     },
@@ -1247,6 +1484,131 @@ export const StorageService = {
         localStorage.setItem('lior_milestones', JSON.stringify(DATA_CACHE.usMilestones));
         writeRaw(STORES.DATA, CACHE_KEYS.US_MILESTONES, DATA_CACHE.usMilestones);
         notifyUpdate({ source, action: 'delete', table: 'us_milestones', id });
+    },
+
+    // ── Free-tier limits ────────────────────────────────────────────────────
+    FREE_MEMORY_LIMIT: 50,
+    FREE_DAILY_LIMIT: 30,
+
+    hasReachedMemoryLimit(): boolean {
+        const profile = StorageService.getCoupleProfile();
+        if (profile.isPremium) return false;
+        return DATA_CACHE.memories.length >= this.FREE_MEMORY_LIMIT;
+    },
+
+    hasReachedDailyLimit(): boolean {
+        const profile = StorageService.getCoupleProfile();
+        if (profile.isPremium) return false;
+        const today = new Date().toISOString().split('T')[0];
+        const todayPhotos = DATA_CACHE.dailyPhotos.filter(p => p.createdAt.startsWith(today));
+        return todayPhotos.length >= this.FREE_DAILY_LIMIT;
+    },
+
+    // ── Time Capsules ────────────────────────────────────────────────────────
+    getTimeCapsules: (): TimeCapsule[] => {
+        if (DATA_CACHE.timeCapsules.length > 0) return DATA_CACHE.timeCapsules;
+        const raw = localStorage.getItem(CACHE_KEYS.TIME_CAPSULES);
+        try {
+            const parsed = raw ? JSON.parse(raw) : [];
+            DATA_CACHE.timeCapsules = Array.isArray(parsed) ? parsed : [];
+        } catch { DATA_CACHE.timeCapsules = []; }
+        return DATA_CACHE.timeCapsules;
+    },
+
+    saveTimeCapsule: (item: TimeCapsule) => StorageService._saveInternal('timeCapsules', CACHE_KEYS.TIME_CAPSULES, item, 'cap', 'time_capsules'),
+
+    deleteTimeCapsule: async (id: string) => {
+        addPendingDelete('time_capsules', id);
+        const item = DATA_CACHE.timeCapsules.find(c => c.id === id);
+        if (item?.imageId) await deleteRaw(STORES.IMAGES, item.imageId);
+        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
+        DATA_CACHE.timeCapsules = DATA_CACHE.timeCapsules.filter(c => c.id !== id);
+        await writeRaw(STORES.DATA, CACHE_KEYS.TIME_CAPSULES, DATA_CACHE.timeCapsules);
+        notifyUpdate({ source: 'user', action: 'delete', table: 'time_capsules', id });
+    },
+
+    unlockTimeCapsule: async (id: string) => {
+        const idx = DATA_CACHE.timeCapsules.findIndex(c => c.id === id);
+        if (idx < 0) return;
+        DATA_CACHE.timeCapsules = DATA_CACHE.timeCapsules.map(c =>
+            c.id === id ? { ...c, isUnlocked: true } : c
+        );
+        await writeRaw(STORES.DATA, CACHE_KEYS.TIME_CAPSULES, DATA_CACHE.timeCapsules);
+        notifyUpdate({ source: 'user', action: 'save', table: 'time_capsules', id });
+    },
+
+    // ── Surprises ─────────────────────────────────────────────────────────────
+    getSurprises: (): Surprise[] => {
+        if (DATA_CACHE.surprises.length > 0) return DATA_CACHE.surprises;
+        const raw = localStorage.getItem(CACHE_KEYS.SURPRISES);
+        try {
+            const parsed = raw ? JSON.parse(raw) : [];
+            DATA_CACHE.surprises = Array.isArray(parsed) ? parsed : [];
+        } catch { DATA_CACHE.surprises = []; }
+        return DATA_CACHE.surprises;
+    },
+
+    saveSurprise: (item: Surprise) => StorageService._saveInternal('surprises', CACHE_KEYS.SURPRISES, item, 'surp', 'surprises'),
+
+    deleteSurprise: async (id: string) => {
+        addPendingDelete('surprises', id);
+        const item = DATA_CACHE.surprises.find(s => s.id === id);
+        if (item?.imageId) await deleteRaw(STORES.IMAGES, item.imageId);
+        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
+        DATA_CACHE.surprises = DATA_CACHE.surprises.filter(s => s.id !== id);
+        await writeRaw(STORES.DATA, CACHE_KEYS.SURPRISES, DATA_CACHE.surprises);
+        notifyUpdate({ source: 'user', action: 'delete', table: 'surprises', id });
+    },
+
+    markSurpriseDelivered: async (id: string) => {
+        DATA_CACHE.surprises = DATA_CACHE.surprises.map(s =>
+            s.id === id ? { ...s, delivered: true, deliveredAt: new Date().toISOString() } : s
+        );
+        await writeRaw(STORES.DATA, CACHE_KEYS.SURPRISES, DATA_CACHE.surprises);
+        notifyUpdate({ source: 'user', action: 'save', table: 'surprises', id });
+    },
+
+    // ── Voice Notes ──────────────────────────────────────────────────────────
+    getVoiceNotes: (): VoiceNote[] => {
+        if (DATA_CACHE.voiceNotes.length > 0) return DATA_CACHE.voiceNotes;
+        const raw = localStorage.getItem(CACHE_KEYS.VOICE_NOTES);
+        try {
+            const parsed = raw ? JSON.parse(raw) : [];
+            DATA_CACHE.voiceNotes = Array.isArray(parsed) ? parsed : [];
+        } catch { DATA_CACHE.voiceNotes = []; }
+        return DATA_CACHE.voiceNotes;
+    },
+
+    saveVoiceNote: (item: VoiceNote) => StorageService._saveInternal('voiceNotes', CACHE_KEYS.VOICE_NOTES, item, 'vn', 'voice_notes'),
+
+    deleteVoiceNote: async (id: string) => {
+        addPendingDelete('voice_notes', id);
+        const item = DATA_CACHE.voiceNotes.find(v => v.id === id);
+        if (item?.audioId) await deleteRaw(STORES.IMAGES, item.audioId);
+        if (item?.audioStoragePath) MediaStorageService.deleteMedia(item.audioStoragePath);
+        DATA_CACHE.voiceNotes = DATA_CACHE.voiceNotes.filter(v => v.id !== id);
+        await writeRaw(STORES.DATA, CACHE_KEYS.VOICE_NOTES, DATA_CACHE.voiceNotes);
+        notifyUpdate({ source: 'user', action: 'delete', table: 'voice_notes', id });
+    },
+
+    async saveVoiceNoteAudio(id: string, audioDataUri: string): Promise<string | null> {
+        const audioId = `vn_${id}`;
+        await writeRaw(STORES.IMAGES, audioId, audioDataUri);
+        // Try R2 upload
+        const profile = StorageService.getCoupleProfile();
+        const coupleId = profile.coupleId || 'guest';
+        const path = `${coupleId}/voice/${id}`;
+        const uploaded = await MediaStorageService.uploadMedia(audioDataUri, path);
+        return uploaded || null;
+    },
+
+    async getVoiceNoteAudio(note: VoiceNote): Promise<string | null> {
+        if (note.audioId) {
+            const cached = await readRaw(STORES.IMAGES, note.audioId);
+            if (cached) return cached as string;
+        }
+        if (note.audioStoragePath) return note.audioStoragePath;
+        return null;
     },
 
     async exportAllData() {

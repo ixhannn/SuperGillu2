@@ -193,7 +193,45 @@ export interface MoodEntry {
   note?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service';
+export interface TimeCapsule {
+  id: string;
+  senderId: string;
+  title: string;
+  message: string;
+  imageId?: string;
+  image?: string;
+  storagePath?: string;
+  unlockDate: string; // ISO string
+  createdAt: string; // ISO string
+  isUnlocked: boolean;
+}
+
+export interface Surprise {
+  id: string;
+  senderId: string;
+  title: string;
+  message: string;
+  emoji?: string;
+  imageId?: string;
+  image?: string;
+  storagePath?: string;
+  scheduledFor: string; // ISO string
+  createdAt: string; // ISO string
+  delivered: boolean;
+  deliveredAt?: string;
+}
+
+export interface VoiceNote {
+  id: string;
+  title?: string;
+  audioId?: string; // IDB key
+  audioStoragePath?: string; // R2 URL
+  duration: number; // seconds
+  createdAt: string; // ISO string
+  senderId: string;
+}
+
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'year-in-review';
 
 export type TransitionDirection = 'push' | 'pop' | 'tab' | 'modal';
 

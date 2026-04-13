@@ -610,7 +610,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
   // ── Main render ───────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full min-h-screen pb-24">
+    <div className="flex flex-col h-[100dvh] pb-24">
       <ViewHeader title="Cloud Sync ★" onBack={() => setView('home')} variant="simple" />
 
       <div data-lenis-prevent className="lenis-inner flex-1 px-4 pt-4 pb-10 overflow-y-auto">
@@ -642,7 +642,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
             </div>
           </section>
 
-          <section className="sync-surface-solid rounded-2xl overflow-hidden text-left">
+          <section data-coachmark="partner-pair" className="sync-surface-solid rounded-2xl overflow-hidden text-left">
             <div className="px-4 pt-4 pb-2 flex items-center gap-2">
               <QrCode size={14} style={{ color: 'var(--color-nav-active)' }} />
               <p className="text-sm font-bold flex-1" style={{ color: 'var(--color-text-primary)' }}>Pairing Hub</p>

@@ -145,68 +145,65 @@ label, .cursor-pointer, .spring-press, [data-press] {
  * Direction data is set via data-nav-dir on <html> in navigateWithTransition().
  */
 
-/* Root layer: tab crossfade default */
+/* Keep the shell stable. Only the named content layer should animate. */
+::view-transition-group(root),
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 280ms;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation: none !important;
 }
-::view-transition-old(root) { animation-name: vt-fade-out; }
-::view-transition-new(root) { animation-name: vt-fade-in; }
 
 /* Named main-view layer: tab crossfade default */
+::view-transition-group(main-view) {
+  animation-duration: 0ms;
+}
 ::view-transition-old(main-view),
 ::view-transition-new(main-view) {
-  animation-duration: 280ms;
+  animation-duration: 300ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
 }
-::view-transition-old(main-view) { animation-name: vt-fade-out; }
-::view-transition-new(main-view) { animation-name: vt-fade-in; }
+::view-transition-old(main-view) { animation-name: vt-tab-out; }
+::view-transition-new(main-view) { animation-name: vt-tab-in; }
 
 /* Push: drill into sub-screen */
-html[data-nav-dir="push"]::view-transition-old(root),
 html[data-nav-dir="push"]::view-transition-old(main-view) {
   animation-name: vt-slide-out-left;
-  animation-duration: 260ms;
+  animation-duration: 280ms;
 }
-html[data-nav-dir="push"]::view-transition-new(root),
 html[data-nav-dir="push"]::view-transition-new(main-view) {
   animation-name: vt-slide-in-right;
   animation-duration: 340ms;
 }
 
 /* Pop: go back */
-html[data-nav-dir="pop"]::view-transition-old(root),
 html[data-nav-dir="pop"]::view-transition-old(main-view) {
   animation-name: vt-slide-out-right;
-  animation-duration: 260ms;
+  animation-duration: 280ms;
 }
-html[data-nav-dir="pop"]::view-transition-new(root),
 html[data-nav-dir="pop"]::view-transition-new(main-view) {
   animation-name: vt-slide-in-left;
   animation-duration: 340ms;
 }
 
 /* Modal: sheet slides up from bottom */
-html[data-nav-dir="modal"]::view-transition-old(root),
 html[data-nav-dir="modal"]::view-transition-old(main-view) {
   animation-name: vt-scale-out;
-  animation-duration: 200ms;
+  animation-duration: 220ms;
 }
-html[data-nav-dir="modal"]::view-transition-new(root),
 html[data-nav-dir="modal"]::view-transition-new(main-view) {
   animation-name: vt-slide-up;
-  animation-duration: 380ms;
+  animation-duration: 340ms;
 }
 
-@keyframes vt-fade-in        { from { opacity: 0; }                             to { opacity: 1; } }
-@keyframes vt-fade-out       { from { opacity: 1; }                             to { opacity: 0; } }
-@keyframes vt-slide-in-right { from { opacity: 0; transform: translateX(6%); }  to { opacity: 1; transform: translateX(0); } }
-@keyframes vt-slide-out-left { from { opacity: 1; transform: translateX(0); }   to { opacity: 0; transform: translateX(-4%); } }
-@keyframes vt-slide-in-left  { from { opacity: 0; transform: translateX(-6%); } to { opacity: 1; transform: translateX(0); } }
-@keyframes vt-slide-out-right{ from { opacity: 1; transform: translateX(0); }   to { opacity: 0; transform: translateX(4%); } }
-@keyframes vt-slide-up       { from { opacity: 0; transform: translateY(8%); }  to { opacity: 1; transform: translateY(0); } }
-@keyframes vt-scale-out      { from { opacity: 1; transform: scale(1); }        to { opacity: 0; transform: scale(0.96); } }
+@keyframes vt-tab-in         { from { opacity: 0.74; transform: scale(0.992); }  to { opacity: 1; transform: scale(1); } }
+@keyframes vt-tab-out        { from { opacity: 1; transform: scale(1); }         to { opacity: 0.88; transform: scale(1.008); } }
+@keyframes vt-slide-in-right { from { opacity: 0.84; transform: translateX(10%) scale(0.994); }  to { opacity: 1; transform: translateX(0) scale(1); } }
+@keyframes vt-slide-out-left { from { opacity: 1; transform: translateX(0) scale(1); }            to { opacity: 0.92; transform: translateX(-3.5%) scale(0.998); } }
+@keyframes vt-slide-in-left  { from { opacity: 0.84; transform: translateX(-4.5%) scale(0.996); } to { opacity: 1; transform: translateX(0) scale(1); } }
+@keyframes vt-slide-out-right{ from { opacity: 1; transform: translateX(0) scale(1); }            to { opacity: 0.9; transform: translateX(9%) scale(0.994); } }
+@keyframes vt-slide-up       { from { opacity: 0.8; transform: translateY(8%) scale(0.988); }     to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes vt-scale-out      { from { opacity: 1; transform: scale(1); }                           to { opacity: 0.88; transform: scale(0.994); } }
 
 /* ── LONG PRESS RING — no CSS animation needed; JS drives dashoffset ─────── */
 /* The SVG inherits the element's border-radius for clip matching.             */
@@ -350,10 +347,32 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 }
 
 /* ── DARK THEME OVERRIDES (starry-night) ────────────────────────────────── */
-[data-theme="starry-night"] .view-header {
-  background: rgba(18, 20, 52, 0.75);
-  border: 1px solid rgba(129, 140, 248, 0.18);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(165, 174, 255, 0.10);
+[data-theme="starry-night"] .vh {
+  background: rgba(14, 16, 42, 0.68);
+  border-color: rgba(129, 140, 248, 0.22);
+  box-shadow:
+    inset 0 1.5px 0 rgba(165, 174, 255, 0.22),
+    0 6px 28px rgba(0, 0, 20, 0.38);
+}
+[data-theme="starry-night"] .vh::before {
+  background: radial-gradient(
+    ellipse 80% 70% at 14% 0%,
+    rgba(129, 140, 248, 0.18) 0%,
+    transparent 55%
+  );
+}
+[data-theme="starry-night"] .vh-back {
+  background: rgba(129, 140, 248, 0.14);
+  border-color: rgba(129, 140, 248, 0.30);
+  box-shadow: inset 0 1px 0 rgba(165, 174, 255, 0.28);
+  color: rgba(199, 210, 254, 0.95);
+}
+[data-theme="starry-night"] .vh-title {
+  color: rgba(226, 232, 240, 0.97);
+  text-shadow: 0 1px 8px rgba(129, 140, 248, 0.30);
+}
+[data-theme="starry-night"] .vh-sub {
+  color: rgba(148, 163, 184, 0.80);
 }
 
 [data-theme="starry-night"] .premium-glass {
@@ -581,35 +600,151 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 .sanctuary-aurora-2 { animation: sanctuary-aurora-2 28s ease-in-out infinite; will-change: transform; }
 .sanctuary-aurora-3 { animation: sanctuary-aurora-3 18s ease-in-out infinite; will-change: transform; }
 
-/* ── VIEW HEADER — standardized sticky header for all views ───────────────── */
-.view-header {
-  position: sticky;
-  top: max(env(safe-area-inset-top, 1rem), 1rem);
-  z-index: 20;
-  margin: 1rem;
-  padding: 0.5rem 1rem;
-  /* Liquid glass pill header */
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
-  -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
-  border-top: 1px solid rgba(255, 255, 255, 0.80);
-  border-left: 1px solid rgba(255, 255, 255, 0.45);
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 100px;
-  box-shadow:
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.95),
-    inset 1px 0 0 rgba(255, 255, 255, 0.35),
-    0 4px 20px rgba(232, 160, 176, 0.12),
-    0 1px 4px rgba(0, 0, 0, 0.04);
+/* ── VIEW HEADER — premium redesign ─────────────────────────────────────── */
+.vh-spacer {
+  height: calc(env(safe-area-inset-top, 0px) + 5.5rem);
+  pointer-events: none;
 }
 
-.view-header--borderless {
+/* Centering shell — fixed position only, no animation here */
+.vh-shell {
+  position: fixed;
+  top: max(env(safe-area-inset-top, 0px) + 0.55rem, 0.55rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 1.5rem), 26rem);
+  z-index: 20;
+}
+
+/* Visual pill — animated, fills the shell */
+.vh {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0.55rem 0.55rem;
+  isolation: isolate;
+
+  /* Aurora glass — barely-there, gradient bleeds through */
+  background:
+    linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 246, 249, 0.11) 45%,
+      rgba(255, 234, 242, 0.06) 100%
+    );
+  backdrop-filter: blur(32px) saturate(180%) brightness(1.03);
+  -webkit-backdrop-filter: blur(32px) saturate(180%) brightness(1.03);
+
+  /* Single-weight border — thicker on top, fades on bottom */
+  border: 1px solid rgba(255, 255, 255, 0.40);
+  border-bottom-color: rgba(255, 255, 255, 0.10);
+  border-radius: 2.25rem;
+
+  /* Layered depth — subtle, not heavy */
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0  rgba(196, 104, 126, 0.04),
+    0 8px 32px      rgba(196, 104, 126, 0.10),
+    0 2px 8px       rgba(160, 70, 95, 0.06),
+    0 0 0 0.5px     rgba(255, 255, 255, 0.18);
+}
+
+/* Specular corner glow — like sunlight catching the rim of glass */
+.vh::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse 85% 75% at 12% 0%,
+    rgba(255, 255, 255, 0.46) 0%,
+    rgba(255, 255, 255, 0.16) 28%,
+    transparent 55%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ghost / transparent variant */
+.vh--ghost {
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  border: none;
+  border-color: transparent;
   box-shadow: none;
+}
+.vh--ghost::before { display: none; }
+
+/* ── Back button — 38 px perfect circle ──────────────────────────────────── */
+.vh-back {
+  flex-shrink: 0;
+  width: 2.375rem;
+  height: 2.375rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(255, 255, 255, 0.30);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.90),
+    inset 0 -1px 0  rgba(196, 104, 126, 0.06),
+    0 3px 10px      rgba(196, 104, 126, 0.10);
+
+  color: var(--color-text-primary);
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.14s, box-shadow 0.14s;
+}
+.vh-back:active {
+  background: rgba(255, 255, 255, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.70),
+    0 1px 4px rgba(196, 104, 126, 0.08);
+}
+
+/* ── Center ──────────────────────────────────────────────────────────────── */
+.vh-center {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  position: relative;
+  z-index: 2;
+}
+
+.vh-title {
+  font-family: var(--font-serif, 'Lora', Georgia, serif);
+  font-size: 1.62rem;
+  font-weight: 700;
+  letter-spacing: -0.033em;
+  line-height: 1.08;
+  color: var(--color-text-primary);
+  text-shadow:
+    0 1px 10px rgba(255, 255, 255, 0.65),
+    0 3px 22px rgba(255, 255, 255, 0.28);
+}
+
+.vh-sub {
+  margin-top: 0.16rem;
+  font-size: 0.695rem;
+  font-weight: 600;
+  letter-spacing: 0.065em;
+  color: var(--color-text-secondary);
+  opacity: 0.84;
+}
+
+/* ── Right slot ──────────────────────────────────────────────────────────── */
+.vh-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  position: relative;
+  z-index: 2;
 }
 
 /* ── 3D DEPTH SYSTEM ─────────────────────────────────────────────────────── */
@@ -1163,16 +1298,25 @@ canvas.fixed, .fixed[aria-hidden="true"] {
   Wrapper MUST be overflow-y:auto — native scrollTop is the mechanism.
 */
 .lenis-wrapper {
+  height: 100%;
+  min-height: 0;
+  touch-action: pan-y pinch-zoom;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lenis-wrapper::-webkit-scrollbar {
+  display: none;
 }
 
 /* Content fills wrapper height on short pages. No transform needed here. */
 .lenis-content {
   min-height: 100%;
+  display: flow-root;
 }
 
 /* Safe-area top padding for device notch / status bar */
@@ -1195,23 +1339,12 @@ canvas.fixed, .fixed[aria-hidden="true"] {
 
 html.lenis,
 html.lenis body {
-  height: auto;
+  height: 100%;
+  overflow: auto;
 }
 
 .lenis:not(.lenis-autoToggle).lenis-stopped {
-  overflow: clip;
-}
-
-.lenis [data-lenis-prevent],
-.lenis [data-lenis-prevent-wheel],
-.lenis [data-lenis-prevent-touch],
-.lenis [data-lenis-prevent-vertical],
-.lenis [data-lenis-prevent-horizontal] {
-  overscroll-behavior: contain;
-}
-
-.lenis.lenis-smooth iframe {
-  pointer-events: none;
+  overflow: auto;
 }
 
 ::-webkit-scrollbar { width: 3px; }
@@ -1254,7 +1387,7 @@ html.lenis body {
 [data-tier="medium"] .glass-card-soft,
 [data-tier="medium"] .glass-ultra,
 [data-tier="medium"] .glass-nav,
-[data-tier="medium"] .view-header,
+[data-tier="medium"] .vh,
 [data-tier="medium"] .glass-3d {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -1298,7 +1431,7 @@ html.lenis body {
 [data-tier="low"] .glass-card-soft,
 [data-tier="low"] .glass-ultra,
 [data-tier="low"] .glass-nav,
-[data-tier="low"] .view-header,
+[data-tier="low"] .vh,
 [data-tier="low"] .glass-3d {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -1318,7 +1451,7 @@ html.lenis body {
 [data-tier="css-only"] .glass-card-soft,
 [data-tier="css-only"] .glass-ultra,
 [data-tier="css-only"] .glass-nav,
-[data-tier="css-only"] .view-header,
+[data-tier="css-only"] .vh,
 [data-tier="css-only"] .glass-3d {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;

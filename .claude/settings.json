@@ -4,5 +4,8 @@
       "Bash(netstat -ano)",
       "Bash(findstr '3000 3001 5173 5174')"
     ]
+  },
+  "enabledPlugins": {
+    "app-store-review@app-store-review": true
   }
 }

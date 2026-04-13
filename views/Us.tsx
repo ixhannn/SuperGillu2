@@ -134,7 +134,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
 
     return (
         <div className="min-h-screen pb-32" style={{ background: 'var(--theme-bg-main)' }}>
-            <ViewHeader title="Us" subtitle="our world together" onBack={() => setView('home')} />
+            <ViewHeader title="Us" subtitle="our world together" onBack={() => setView('home')} tone="romance" />
 
             {/* ── Shared Spaces ────────────────────────────────────────── */}
             <div className="px-5 mb-2">
@@ -144,26 +144,26 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                         {
                             emoji: '🏠', label: 'Our Room', sub: 'Decorate together',
                             view: 'our-room' as const,
-                            gradient: 'linear-gradient(145deg,#fdf2f8,#ede9fe)',
-                            border: 'rgba(167,139,250,0.25)', shadow: 'rgba(167,139,250,0.15)',
+                            gradient: 'linear-gradient(145deg, rgba(255,246,249,0.96) 0%, rgba(246,235,255,0.88) 100%)',
+                            border: 'rgba(229,186,210,0.52)', shadow: 'rgba(194,142,179,0.16)', chip: 'rgba(255,236,242,0.92)',
                         },
                         {
                             emoji: '🌿', label: 'Presence', sub: 'Feel each other',
                             view: 'presence-room' as const,
-                            gradient: 'linear-gradient(145deg,#f0fdf4,#d1fae5)',
-                            border: 'rgba(74,222,128,0.25)', shadow: 'rgba(74,222,128,0.15)',
+                            gradient: 'linear-gradient(145deg, rgba(248,252,245,0.96) 0%, rgba(225,248,234,0.88) 100%)',
+                            border: 'rgba(176,222,194,0.52)', shadow: 'rgba(119,182,149,0.16)', chip: 'rgba(239,251,243,0.92)',
                         },
                         {
                             emoji: '🎨', label: 'Draw Together', sub: 'Shared canvas',
                             view: 'canvas' as const,
-                            gradient: 'linear-gradient(145deg,#faf5ff,#ede9fe)',
-                            border: 'rgba(139,92,246,0.2)', shadow: 'rgba(139,92,246,0.12)',
+                            gradient: 'linear-gradient(145deg, rgba(251,246,255,0.96) 0%, rgba(239,236,255,0.88) 100%)',
+                            border: 'rgba(198,184,238,0.54)', shadow: 'rgba(151,132,205,0.16)', chip: 'rgba(245,240,255,0.92)',
                         },
                         {
                             emoji: '🌙', label: 'Quiet Mode', sub: 'Ambient memories',
                             view: 'quiet-mode' as const,
-                            gradient: 'linear-gradient(145deg,#f8fafc,#f1f5f9)',
-                            border: 'rgba(100,116,139,0.2)', shadow: 'rgba(100,116,139,0.1)',
+                            gradient: 'linear-gradient(145deg, rgba(255,250,245,0.96) 0%, rgba(240,244,250,0.88) 100%)',
+                            border: 'rgba(206,211,222,0.56)', shadow: 'rgba(144,153,170,0.14)', chip: 'rgba(249,246,241,0.92)',
                         },
                     ] as const).map((item, i) => (
                         <motion.button
@@ -173,17 +173,29 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                             transition={{ type: 'spring', stiffness: 340, damping: 24, delay: i * 0.06 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setView(item.view)}
-                            className="flex flex-col items-start gap-3 p-4 rounded-2xl text-left"
+                            className="relative overflow-hidden flex flex-col items-start gap-3 p-4 rounded-[1.7rem] text-left backdrop-blur-xl"
                             style={{
                                 background: item.gradient,
-                                border: `1.5px solid ${item.border}`,
-                                boxShadow: `0 4px 16px ${item.shadow}`,
+                                border: `1px solid ${item.border}`,
+                                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.92), 0 12px 24px ${item.shadow}, 0 2px 8px rgba(255,255,255,0.28)`,
                             }}
                         >
-                            <span className="text-3xl leading-none">{item.emoji}</span>
-                            <div>
-                                <p className="font-semibold text-[0.88rem] text-gray-800 leading-tight">{item.label}</p>
-                                <p className="text-[0.68rem] text-gray-400 mt-0.5">{item.sub}</p>
+                            <div
+                                className="absolute inset-x-6 top-0 h-16 rounded-b-[2rem] blur-2xl opacity-70 pointer-events-none"
+                                style={{ background: item.chip }}
+                            />
+                            <div
+                                className="w-12 h-12 rounded-[1rem] flex items-center justify-center text-[1.8rem] relative"
+                                style={{
+                                    background: item.chip,
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.92), 0 6px 14px rgba(255,255,255,0.22)',
+                                }}
+                            >
+                                <span className="leading-none">{item.emoji}</span>
+                            </div>
+                            <div className="relative">
+                                <p className="font-semibold text-[0.96rem] leading-tight" style={{ color: 'var(--color-text-primary)' }}>{item.label}</p>
+                                <p className="text-[0.78rem] mt-1" style={{ color: 'rgba(92,104,126,0.72)' }}>{item.sub}</p>
                             </div>
                         </motion.button>
                     ))}
@@ -191,6 +203,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
 
                 {/* Aura Signal — featured full-width CTA */}
                 <motion.button
+                    data-coachmark="aura-signal"
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ type: 'spring', stiffness: 300, damping: 24, delay: 0.26 }}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users, Volume2, VolumeX, Vibrate, Zap } from 'lucide-react';
+import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users, Volume2, VolumeX, Vibrate, Zap, Sparkles, Mic, Gift, Lock } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { SectionDivider } from './Home';
 import { ViewState, CoupleProfile } from '../types';
@@ -683,6 +683,26 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                 </div>
 
                 <div className="view-section pt-8 space-y-3 pb-12">
+                    {/* Premium Features shortcuts */}
+                    <div className="grid grid-cols-2 gap-2.5 mb-1">
+                        {[
+                            { label: 'Year in Review', icon: <Sparkles size={16} />, view: 'year-in-review' as ViewState, color: 'rgba(168,85,247,0.12)', textColor: '#a855f7' },
+                            { label: 'Voice Notes', icon: <Mic size={16} />, view: 'voice-notes' as ViewState, color: 'rgba(59,130,246,0.12)', textColor: '#3b82f6' },
+                            { label: 'Surprises', icon: <Gift size={16} />, view: 'surprises' as ViewState, color: 'rgba(245,158,11,0.12)', textColor: '#f59e0b' },
+                            { label: 'Time Capsules', icon: <Lock size={16} />, view: 'time-capsule' as ViewState, color: 'rgba(var(--theme-particle-1-rgb),0.12)', textColor: 'var(--color-nav-active)' },
+                        ].map(({ label, icon, view, color, textColor }) => (
+                            <button
+                                key={view}
+                                onClick={() => setView(view)}
+                                className="flex items-center gap-2.5 px-4 py-3.5 rounded-2xl text-left transition-all spring-press"
+                                style={{ background: color, border: `1px solid ${color.replace('0.12', '0.25')}` }}
+                            >
+                                <span style={{ color: textColor }}>{icon}</span>
+                                <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
+                            </button>
+                        ))}
+                    </div>
+
                     <button
                         onClick={handleSwitchIdentityClick}
                         className="w-full flex items-center justify-center gap-2 font-bold text-sm py-4 rounded-2xl bg-gray-50 border border-gray-100 text-gray-700 transition-all spring-press"

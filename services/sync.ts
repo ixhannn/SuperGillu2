@@ -57,7 +57,8 @@ class SyncServiceClass {
             return;
         }
 
-        await SupabaseService.claimLegacyRows();
+        // ensure_user_couple must run first so couple_memberships has a row
+        // before claimLegacyRows tries to look up the couple_id
         const coupleId = await SupabaseService.getCurrentCoupleId();
         if (!coupleId) {
             this.cleanupRealtimeState();
@@ -65,6 +66,7 @@ class SyncServiceClass {
             this.updateStatus('Offline (Couple Setup Failed)');
             return;
         }
+        await SupabaseService.claimLegacyRows();
         await SupabaseService.backfillRowsToCouple(coupleId);
         const profile = StorageService.getCoupleProfile();
         const linked = await SupabaseService.getLinkedPartner(coupleId);
@@ -144,6 +146,15 @@ class SyncServiceClass {
             case 'dates':
                 body = `${partner} added a new landmark in Downtown. 🏙️`;
                 break;
+            case 'time_capsules':
+                body = `${partner} sealed a Time Capsule for you. 💌`;
+                break;
+            case 'surprises':
+                body = `${partner} planned a surprise for you! 🎉`;
+                break;
+            case 'voice_notes':
+                body = `${partner} sent you a voice note. 🎙️`;
+                break;
             default:
                 return; // Don't notify for profile/status/init/etc
         }
@@ -180,7 +191,7 @@ class SyncServiceClass {
                 }
             }
 
-            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones'];
+            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes'];
 
             for (const table of tables) {
                 try {
@@ -199,7 +210,21 @@ class SyncServiceClass {
                         } else if (table === 'together_music') {
                             const local = await StorageService.getTogetherMusic();
                             const meta = StorageService.getTogetherMusicMetadata();
-                            if (local) await SupabaseService.saveSingle(table, { music_base64: local, meta });
+                            if (local) {
+                                if (local.startsWith('data:')) {
+                                    // base64 still in IDB — upload to R2 first
+                                    const coupleId = await SupabaseService.getCurrentCoupleId();
+                                    const path = `${coupleId ?? 'guest'}/music/together`;
+                                    const uploaded = await MediaStorageService.uploadMedia(local, path);
+                                    const cloudPayload = uploaded
+                                        ? { music_url: uploaded, meta }
+                                        : { music_base64: local, meta };
+                                    await SupabaseService.saveSingle(table, cloudPayload);
+                                } else {
+                                    // Already an R2 URL
+                                    await SupabaseService.saveSingle(table, { music_url: local, meta });
+                                }
+                            }
                         } else if (table === 'our_room_state') {
                             const local = StorageService.getCoupleRoomState();
                             await SupabaseService.saveSingle(table, local);
@@ -220,10 +245,14 @@ class SyncServiceClass {
                                 mood_entries: StorageService.getMoodEntries(),
                                 us_bucket_items: StorageService.getUsBucketItems(),
                                 us_wishlist_items: StorageService.getUsWishlistItems(),
-                                us_milestones: StorageService.getUsMilestones()
+                                us_milestones: StorageService.getUsMilestones(),
+                                time_capsules: StorageService.getTimeCapsules(),
+                                surprises: StorageService.getSurprises(),
+                                voice_notes: StorageService.getVoiceNotes(),
                             };
                             const mediaPrefixes: Record<string, string> = {
-                                memories: 'mem', daily_photos: 'daily', keepsakes: 'keep'
+                                memories: 'mem', daily_photos: 'daily', keepsakes: 'keep',
+                                time_capsules: 'capsule', surprises: 'surprise',
                             };
                             const localItems = (listKeyMap[table] || []).filter((it: any) => !isDeletedLocally(table, it.id));
                             for (const it of localItems) {
@@ -254,8 +283,9 @@ class SyncServiceClass {
             // Ensure Storage bucket exists
             await MediaStorageService.ensureBucket();
 
-            // Auto-migrate existing base64 data to Supabase Storage
-            if (!MediaMigrationService.isMigrated()) {
+            // Auto-migrate existing base64 data to Supabase Storage.
+            // Also runs when new content is added that doesn't have a storagePath yet.
+            if (!MediaMigrationService.isMigrated() || MediaMigrationService.hasUnmigratedMedia()) {
                 this.updateStatus('Migrating media...');
                 await MediaMigrationService.migrateAll();
                 this.updateStatus('Cloud Synced');
@@ -325,7 +355,7 @@ class SyncServiceClass {
             .subscribe();
         this.realtimeChannels.push(this.channel);
 
-        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones'];
+        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes'];
         tables.forEach(table => {
             const tableChannel = SupabaseService.client?.channel(`public:${table}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {

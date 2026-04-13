@@ -13,6 +13,7 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 
 interface DailyMomentsProps {
@@ -457,6 +458,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     const [newVideo, setNewVideo] = useState<string | null>(null);
     const [caption, setCaption] = useState('');
     const [selectedPhoto, setSelectedPhoto] = useState<DailyPhoto | null>(null);
+    const [showPremiumModal, setShowPremiumModal] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoInputRef = useRef<HTMLInputElement>(null);
@@ -504,7 +506,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             const file = e.target.files[0];
             const profile = StorageService.getCoupleProfile();
             if (!profile.isPremium) {
-                toast.show("Video uploads are a premium feature. Please upgrade to use this.", 'error');
+                setShowPremiumModal(true);
                 return;
             }
 
@@ -529,6 +531,12 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
     const handleSave = async () => {
         if (!newImage && !newVideo) return;
+
+        if (StorageService.hasReachedDailyLimit()) {
+            setShowPremiumModal(true);
+            return;
+        }
+
         setIsSaving(true);
         const now = new Date();
         const photo: DailyPhoto = {
@@ -697,6 +705,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                 )}
             </AnimatePresence>
             </div>
+            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
         </PullToRefresh>
     );
 };

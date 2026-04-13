@@ -9,6 +9,7 @@ import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { ViewHeader } from '../components/ViewHeader';
 import { SectionDivider } from './Home';
@@ -234,6 +235,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     }, [keepsakes, activeTab, profile]);
 
     const [hideTarget, setHideTarget] = useState<string | null>(null);
+    const [showPremiumModal, setShowPremiumModal] = useState(false);
 
     const handleHide = (id: string) => {
         setHideTarget(id);
@@ -264,7 +266,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
         if (file) {
             const profile = StorageService.getCoupleProfile();
             if (!profile.isPremium) {
-                toast.show("Video uploads are a premium feature. Please upgrade to use this.", 'error');
+                setShowPremiumModal(true);
                 return;
             }
             
@@ -587,6 +589,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
             onConfirm={confirmHide}
             onCancel={() => setHideTarget(null)}
         />
+        <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
         </div>
     );
 };

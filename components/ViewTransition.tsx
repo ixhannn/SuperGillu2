@@ -55,10 +55,15 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({
     return (
       <div
         className="w-full min-h-full"
+        data-transition-shell="true"
         style={{
           gridColumn:         '1 / -1',
           gridRow:            '1 / -1',
           viewTransitionName: 'main-view',
+          contain:            'paint',
+          isolation:          'isolate',
+          backfaceVisibility: 'hidden',
+          transform:          'translateZ(0)',
         }}
       >
         {children}
@@ -150,33 +155,33 @@ const FramerMotionTransition: React.FC<FMProps> = ({
     switch (dir) {
       case 'tab':
         return {
-          initial: { opacity: 0 },
-          animate: { opacity: 1, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] as any } },
-          exit:    { opacity: 0, transition: { duration: 0.12, ease: [0.55, 0, 1, 0.45] as any } },
+          initial: { opacity: 0.72, scale: 0.992 },
+          animate: { opacity: 1, scale: 1, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] as any } },
+          exit:    { opacity: 0.82, scale: 1.008, transition: { duration: 0.2, ease: [0.4, 0, 0.2, 1] as any } },
         };
       case 'push':
         return {
-          initial: { opacity: 0, x: '18%' },
-          animate: { opacity: 1, x: 0,    transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] as any } },
-          exit:    { opacity: 0, x: '-8%', transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] as any } },
+          initial: { opacity: 0.84, x: '10%', scale: 0.994 },
+          animate: { opacity: 1, x: 0, scale: 1, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] as any } },
+          exit:    { opacity: 0.92, x: '-3.5%', scale: 0.998, transition: { duration: 0.28, ease: [0.32, 0.72, 0, 1] as any } },
         };
       case 'pop':
         return {
-          initial: { opacity: 0, x: '-8%' },
-          animate: { opacity: 1, x: 0,    transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] as any } },
-          exit:    { opacity: 0, x: '18%', transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] as any } },
+          initial: { opacity: 0.84, x: '-4.5%', scale: 0.996 },
+          animate: { opacity: 1, x: 0, scale: 1, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] as any } },
+          exit:    { opacity: 0.9, x: '9%', scale: 0.994, transition: { duration: 0.28, ease: [0.32, 0.72, 0, 1] as any } },
         };
       case 'modal':
         return {
-          initial: { opacity: 0, y: '12%' },
-          animate: { opacity: 1, y: 0,   transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] as any } },
-          exit:    { opacity: 0, y: '8%', transition: { duration: 0.22, ease: [0.55, 0, 1, 0.45] as any } },
+          initial: { opacity: 0.8, y: '8%', scale: 0.988 },
+          animate: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] as any } },
+          exit:    { opacity: 0.86, y: '5%', scale: 0.994, transition: { duration: 0.24, ease: [0.4, 0, 0.2, 1] as any } },
         };
       default:
         return {
-          initial: { opacity: 0, y: 8 },
-          animate: { opacity: 1, y: 0,  transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] as any } },
-          exit:    { opacity: 0, y: -4, transition: { duration: 0.18, ease: [0.55, 0, 1, 0.45] as any } },
+          initial: { opacity: 0.82, y: 6, scale: 0.994 },
+          animate: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] as any } },
+          exit:    { opacity: 0.9, y: -2, scale: 0.998, transition: { duration: 0.22, ease: [0.4, 0, 0.2, 1] as any } },
         };
     }
   };
@@ -190,7 +195,7 @@ const FramerMotionTransition: React.FC<FMProps> = ({
         gridTemplateRows:    '1fr',
       }}
     >
-      <AnimatePresence initial={false}>
+      <AnimatePresence initial={false} mode="sync">
         <motion.div
           key={viewKey}
           custom={clickPos}
@@ -211,12 +216,15 @@ const FramerMotionTransition: React.FC<FMProps> = ({
             }
           }}
           data-transition-key={viewKey}
+          data-transition-shell="true"
           className={`w-full bg-transparent ${isMobile ? '' : 'will-change-[clip-path,opacity,transform,filter]'}`}
           style={{
             gridColumn:       '1 / -1',
             gridRow:          '1 / -1',
             transformOrigin:  'center top',
             backfaceVisibility: 'hidden',
+            contain:          'paint',
+            isolation:        'isolate',
             willChange:       isMobile ? 'auto' : undefined,
           }}
         >

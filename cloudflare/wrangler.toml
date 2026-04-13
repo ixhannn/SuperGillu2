@@ -1,0 +1,10 @@
+name = "lior-media"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "LIOR_BUCKET"
+bucket_name = "lior-media"
+
+# Set the upload secret with:
+#   wrangler secret put UPLOAD_KEY

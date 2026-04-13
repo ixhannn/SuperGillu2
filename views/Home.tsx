@@ -1,13 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
 import { differenceInDays, getYear, intervalToDuration, isAfter, setYear } from 'date-fns';
-import { MagneticButton } from '../components/MagneticButton';
-import { HolographicCard } from '../components/HolographicCard';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
@@ -430,14 +428,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         } else alert("Add some memories or notes first! 💖");
     };
 
-    // ── Section divider for visual hierarchy ──
-    const SectionDivider = ({ label }: { label: string }) => (
-        <div className="flex items-center gap-3 mb-4 mt-2 px-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{label}</span>
-            <div className="flex-1 h-[1px]" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.08), transparent)' }} />
-        </div>
-    );
-
     return (
         <div className="px-5 pt-14 pb-40 min-h-screen relative parallax-container">
             {/* Scroll-linked floating header bar */}
@@ -591,11 +581,17 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             {/* ── ACTION BUTTONS — Heartbeat & Surprise ────────────────── */}
             <ScrollReveal variant="popIn">
                 <div className="mb-5 flex gap-3 relative z-10">
-                    <MagneticButton onClick={sendHeartbeat as any} strength={0.2} className="flex-1">
+                    <div onClick={sendHeartbeat} className="flex-1">
                         <div
                             ref={heartbeatBtnRef}
-                            className={`w-full h-full group relative bg-gradient-to-br from-lior-500 to-lior-600 text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 ${receivedHeartbeat ? 'ring-2 ring-lior-300/50 animate-glow-pulse' : ''} ${isDissolving ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                            style={{ boxShadow: receivedHeartbeat ? '0 4px 24px rgba(251,207,232,0.40), 0 12px 40px rgba(251,207,232,0.15)' : '0 4px 16px rgba(251,207,232,0.20), 0 12px 32px rgba(251,207,232,0.08)' }}
+                            className={`w-full h-full group relative text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 ${receivedHeartbeat ? 'ring-2 ring-lior-300/60 animate-glow-pulse' : ''} ${isDissolving ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                            style={{
+                                background: 'linear-gradient(135deg, #fb7185 0%, #f43f5e 42%, #e11d48 100%)',
+                                border: '1px solid rgba(255,255,255,0.22)',
+                                boxShadow: receivedHeartbeat
+                                    ? 'inset 0 1px 0 rgba(255,255,255,0.26), 0 10px 28px rgba(244,63,94,0.36), 0 20px 44px rgba(225,29,72,0.18)'
+                                    : 'inset 0 1px 0 rgba(255,255,255,0.22), 0 8px 22px rgba(244,63,94,0.28), 0 16px 36px rgba(225,29,72,0.14)',
+                            }}
                         >
                             <HeartbeatRipple active={showHeartbeat} />
                             <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : ''}`}>
@@ -603,12 +599,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             </div>
                             <span className="font-bold text-sm tracking-wide">Heartbeat</span>
                         </div>
-                    </MagneticButton>
-                    <MagneticButton onClick={handleSurprise as any} strength={0.3} className="w-[4.5rem]">
+                    </div>
+                    <div onClick={handleSurprise} className="w-[4.5rem]">
                         <div className="w-full h-full bento-card text-lior-500 p-5 flex items-center justify-center spring-press">
                             <Gift size={22} />
                         </div>
-                    </MagneticButton>
+                    </div>
                 </div>
             </ScrollReveal>
 
@@ -742,7 +738,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <>
                                 <img
                                     src={otdImage}
-                                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-[20s] ease-linear hover:scale-110"
+                                    className="absolute inset-0 w-full h-full object-cover"
                                     alt="On this day"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
@@ -755,9 +751,14 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             </div>
                             <div className="flex items-end justify-between">
                                 <div>
-                                    <h3 className="font-serif text-2xl font-bold mb-1 drop-shadow-md">
-                                        {getYear(new Date()) - getYear(new Date(onThisDayMemory.date))} year ago today
-                                    </h3>
+                                    {(() => {
+                                        const years = getYear(new Date()) - getYear(new Date(onThisDayMemory.date));
+                                        return (
+                                            <h3 className="font-serif text-2xl font-bold mb-1 drop-shadow-md">
+                                                {years} year{years !== 1 ? 's' : ''} ago today
+                                            </h3>
+                                        );
+                                    })()}
                                     {onThisDayMemory.text && (
                                         <p className={`text-sm line-clamp-2 italic ${otdImage ? 'text-gray-200' : 'text-rose-100'}`}>
                                             "{onThisDayMemory.text}"
@@ -858,6 +859,124 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             </div>
                             <span className="font-semibold text-sm text-gray-800">Bonsai</span>
                             <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* ── PREMIUM SECTION ───────────────────────────────────── */}
+                <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
+                    <div className="flex items-center gap-3 mb-1">
+                        <div className="flex items-center gap-1.5">
+                            <Crown size={11} className="text-amber-500" fill="currentColor" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600">Premium</span>
+                        </div>
+                        <div className="flex-1 h-[1px]" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.25), transparent)' }} />
+                    </div>
+                </motion.div>
+
+                {/* Year in Review — full-width featured card */}
+                <motion.div variants={gridItemVariants} className="col-span-2">
+                    <motion.div
+                        whileTap={{ scale: 0.98, y: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                        onClick={() => setView('year-in-review')}
+                        className="w-full cursor-pointer"
+                    >
+                        <div
+                            className="relative overflow-hidden p-6 rounded-[1.75rem] spring-press"
+                            style={{
+                                background: 'linear-gradient(135deg, #1a0a20 0%, #2d1240 40%, #1a0a20 100%)',
+                                border: '1px solid rgba(245,158,11,0.2)',
+                                boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+                            }}
+                        >
+                            {/* Glow blob */}
+                            <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.18) 0%, transparent 70%)' }} />
+                            <div className="absolute -bottom-6 -left-6 w-28 h-28 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(236,72,153,0.12) 0%, transparent 70%)' }} />
+
+                            <div className="relative z-10 flex items-center justify-between">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Crown size={13} className="text-amber-400" fill="currentColor" />
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400/80">Premium</span>
+                                    </div>
+                                    <h3 className="font-serif text-[20px] font-bold leading-tight mb-1 text-white">Year in Review</h3>
+                                    <p className="text-[12px] text-amber-200/50 font-medium">Your love story, beautifully retold</p>
+                                </div>
+                                <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ml-4"
+                                    style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                                    <Sparkles size={24} className="text-amber-400" />
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Surprises */}
+                <motion.div variants={gridItemVariants}>
+                    <motion.div
+                        whileTap={{ scale: 0.93, y: 2 }}
+                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
+                        onClick={() => setView('surprises')}
+                        className="w-full h-full cursor-pointer"
+                    >
+                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                            <div className="absolute top-3 right-3">
+                                <Crown size={10} className="text-amber-400" fill="currentColor" />
+                            </div>
+                            <div className="mb-3">
+                                <div className="p-2.5 rounded-xl inline-block" style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.2)' }}>
+                                    <Gift size={22} style={{ color: '#8b5cf6' }} />
+                                </div>
+                            </div>
+                            <span className="font-semibold text-sm text-gray-800">Surprises</span>
+                            <span className="text-xs text-gray-400 mt-1">Plan future moments</span>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Time Capsule */}
+                <motion.div variants={gridItemVariants}>
+                    <motion.div
+                        whileTap={{ scale: 0.93, y: 2 }}
+                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
+                        onClick={() => setView('time-capsule')}
+                        className="w-full h-full cursor-pointer"
+                    >
+                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                            <div className="absolute top-3 right-3">
+                                <Crown size={10} className="text-amber-400" fill="currentColor" />
+                            </div>
+                            <div className="mb-3">
+                                <div className="p-2.5 rounded-xl inline-block" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                                    <Lock size={22} style={{ color: '#d97706' }} />
+                                </div>
+                            </div>
+                            <span className="font-semibold text-sm text-gray-800">Time Capsule</span>
+                            <span className="text-xs text-gray-400 mt-1">Seal letters for later</span>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Voice Notes — full width */}
+                <motion.div variants={gridItemVariants} className="col-span-2">
+                    <motion.div
+                        whileTap={{ scale: 0.98, y: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                        onClick={() => setView('voice-notes')}
+                        className="w-full cursor-pointer"
+                    >
+                        <div className="bento-card p-5 flex items-center gap-4 relative overflow-hidden spring-press">
+                            <div className="absolute top-3 right-4">
+                                <Crown size={10} className="text-amber-400" fill="currentColor" />
+                            </div>
+                            <div className="p-3 rounded-2xl flex-shrink-0" style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)' }}>
+                                <Mic size={24} style={{ color: '#3b82f6' }} />
+                            </div>
+                            <div>
+                                <span className="font-semibold text-sm text-gray-800 block">Voice Notes</span>
+                                <span className="text-xs text-gray-400 mt-0.5">Record messages straight from the heart</span>
+                            </div>
                         </div>
                     </motion.div>
                 </motion.div>

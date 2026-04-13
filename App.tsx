@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext, useLayoutEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { Heart } from 'lucide-react';
+import { Onboarding } from './components/Onboarding';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ViewState, TransitionDirection, ROOT_TABS } from './types';
-import { LenisScroll } from './services/LenisScroll';
 import { navigateWithTransition } from './utils/gesture';
 
 
@@ -48,6 +48,10 @@ import { OurRoom } from './views/OurRoom';
 import { Canvas } from './views/Canvas';
 import { PrivacyPolicy } from './views/PrivacyPolicy';
 import { TermsOfService } from './views/TermsOfService';
+import { TimeCapsuleView } from './views/TimeCapsule';
+import { SurprisesView } from './views/Surprises';
+import { VoiceNotesView } from './views/VoiceNotes';
+import { YearInReviewView } from './views/YearInReview';
 import { SyncService, syncEventTarget } from './services/sync';
 import { StorageService, storageEventTarget } from './services/storage';
 import { ThemeService, THEMES, ThemeId } from './services/theme';
@@ -56,50 +60,25 @@ import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
 import { AppLaunchOverlay } from './components/AppLaunchOverlay';
+import { WhatsNew } from './components/WhatsNew';
+import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
+import { FeatureDiscovery } from './services/featureDiscovery';
 
-// Onboarding component for first-time identity selection
-const Onboarding = ({ onSelect }: { onSelect: (me: string, partner: string) => void }) => {
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden animate-fade-in"
-      style={{ background: 'var(--theme-bg-main)', color: 'var(--color-text-primary)' }}>
-      <div className="absolute top-[-10%] right-[-10%] w-72 h-72 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--theme-orb-1)' }} />
-      <div className="absolute bottom-[-10%] left-[-10%] w-72 h-72 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--theme-orb-2)', animationDelay: '1s' }} />
-
-      <div className="relative z-10 text-center w-full max-sm:max-w-xs">
-        <div className="w-20 h-20 bg-white rounded-full mx-auto mb-8 shadow-elevated flex items-center justify-center text-lior-500 animate-pop-in border-[3px] border-lior-100/60">
-          <Heart size={40} fill="currentColor" className="animate-pulse-slow" />
-        </div>
-
-        <h1 className="text-headline font-serif mb-2" style={{ color: 'var(--color-text-primary)' }}>Almost there</h1>
-        <p className="mb-12 font-medium text-sm" style={{ color: 'var(--color-text-secondary)' }}>One last step.<br />Who are you?</p>
-
-        <div className="grid gap-3.5 w-full">
-          <button
-            onClick={() => onSelect('Tulika', 'Ishan')}
-            className="w-full p-4 rounded-[1.25rem] glass-card-hero flex items-center gap-4 transition-all group spring-press"
-          >
-            <div className="w-12 h-12 rounded-full bg-lior-50 flex items-center justify-center text-2xl transition-transform">👩🏻</div>
-            <div className="text-left">
-              <span className="block font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>Tulika</span>
-              <span className="text-micro tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Switch to your profile</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => onSelect('Ishan', 'Tulika')}
-            className="w-full p-4 rounded-[1.25rem] glass-card-hero flex items-center gap-4 transition-all group spring-press"
-          >
-            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl transition-transform">👨🏻</div>
-            <div className="text-left">
-              <span className="block font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>Ishan</span>
-              <span className="text-micro tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Switch to your profile</span>
-            </div>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+/** Inner component — must live inside CoachmarkProvider to access context */
+const CoachmarkTourScheduler: React.FC<{ shouldTrigger: boolean; onTriggered: () => void }> = ({ shouldTrigger, onTriggered }) => {
+  const { triggerTour } = useCoachmark();
+  useEffect(() => {
+    if (!shouldTrigger) return;
+    const t = setTimeout(() => {
+      triggerTour();
+      onTriggered();
+    }, 2600);
+    return () => clearTimeout(t);
+  }, [shouldTrigger, triggerTour, onTriggered]);
+  return null;
 };
+
+// Onboarding is now in components/Onboarding.tsx
 
 const RouteLoader = () => (
   <div
@@ -141,8 +120,11 @@ const RouteLoader = () => (
 const App = () => {
   const [currentView, setCurrentView] = useState<ViewState>('home');
   const [transitionDir, setTransitionDir] = useState<TransitionDirection>('tab');
+  const [isSwitchingView, setIsSwitchingView] = useState(false);
   const historyStack = useRef<ViewState[]>([]);
   const scrollPositions = useRef<Record<string, number>>({});
+  const pendingScrollRestore = useRef<{ view: ViewState; y: number } | null>(null);
+  const transitionLockRef = useRef(false);
   const mainScrollRef = useRef<HTMLElement | null>(null);
   // Tracks current view synchronously for pre-transition direction calculation.
   // Must be updated BEFORE state changes so direction is resolved correctly.
@@ -154,28 +136,53 @@ const App = () => {
   }, []);
 
   const getCurrentScroll = useCallback(() => {
-    if (LenisScroll.isReady) {
-      return LenisScroll.scroll;
-    }
-
     return mainScrollRef.current?.scrollTop ?? 0;
   }, []);
 
   const restoreScroll = useCallback((y: number, immediate = true) => {
-    if (LenisScroll.isReady) {
-      LenisScroll.scrollTo(y, { immediate });
-      return;
-    }
-
     mainScrollRef.current?.scrollTo({
       top: y,
       behavior: immediate ? 'auto' : 'smooth',
     });
   }, []);
 
+  useLayoutEffect(() => {
+    const pending = pendingScrollRestore.current;
+    if (!pending || pending.view !== currentView) return;
+    restoreScroll(pending.y, true);
+    pendingScrollRestore.current = null;
+  }, [currentView, restoreScroll]);
+
+  const finalizeNavigation = useCallback(() => {
+    transitionLockRef.current = false;
+    setIsSwitchingView(false);
+  }, []);
+
+  const runNavigation = useCallback((destination: ViewState, dir: TransitionDirection) => {
+    pendingScrollRestore.current = {
+      view: destination,
+      y: scrollPositions.current[destination] ?? 0,
+    };
+    transitionLockRef.current = true;
+    setIsSwitchingView(true);
+
+    navigateWithTransition(
+      () => {
+        setTransitionDir(dir);
+        setCurrentView(destination);
+      },
+      dir,
+      flushSync,
+    ).finally(() => {
+      requestAnimationFrame(() => {
+        finalizeNavigation();
+      });
+    });
+  }, [finalizeNavigation]);
+
   const navigateTo = useCallback((view: ViewState) => {
     const prev = currentViewRef.current;
-    if (prev === view) return;
+    if (prev === view || transitionLockRef.current) return;
 
     // ── Resolve direction before the transition snapshot ─────────────────────
     let dir: TransitionDirection = 'tab';
@@ -196,47 +203,18 @@ const App = () => {
     // ── View Transitions API: captures old/new DOM snapshots around setState ──
     // flushSync makes React update the DOM synchronously inside the VT callback
     // so the browser captures the correct before/after states.
-    navigateWithTransition(
-      () => {
-        setCurrentView(view);
-        setTransitionDir(dir);
-      },
-      dir,
-      flushSync,
-    );
-
-    // Restore scroll after the transition has painted (both VT and FM paths)
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const targetY = scrollPositions.current[view] ?? 0;
-        restoreScroll(targetY, true);
-      }, 10);
-    });
-  }, [getCurrentScroll, restoreScroll]);
+    runNavigation(view, dir);
+  }, [getCurrentScroll, runNavigation]);
 
   const goBack = useCallback(() => {
+    if (transitionLockRef.current) return;
     const prev        = currentViewRef.current;
     const destination = historyStack.current.pop() ?? 'home';
 
     scrollPositions.current[prev] = getCurrentScroll();
     currentViewRef.current        = destination;
-
-    navigateWithTransition(
-      () => {
-        setCurrentView(destination);
-        setTransitionDir('pop');
-      },
-      'pop',
-      flushSync,
-    );
-
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const targetY = scrollPositions.current[destination] ?? 0;
-        restoreScroll(targetY, true);
-      }, 10);
-    });
-  }, [getCurrentScroll, restoreScroll]);
+    runNavigation(destination, 'pop');
+  }, [getCurrentScroll, runNavigation]);
 
   const canGoBack = historyStack.current.length > 0;
 
@@ -245,6 +223,8 @@ const App = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [launchReady, setLaunchReady] = useState(false);
   const [showLaunchOverlay, setShowLaunchOverlay] = useState(true);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [scheduleTour, setScheduleTour] = useState(false);
 
   useEffect(() => {
     const launchTimer = window.setTimeout(() => setLaunchReady(true), 1350);
@@ -318,6 +298,11 @@ const App = () => {
         console.error("Initialization error:", err);
       } finally {
         setIsInitialized(true);
+        // Show What's New for returning users who haven't seen this version yet
+        const hasOnboarded = localStorage.getItem('lior_onboarded') === 'true';
+        if (hasOnboarded && !FeatureDiscovery.hasSeenCurrentVersion()) {
+          setTimeout(() => setShowWhatsNew(true), 1800);
+        }
         // Hide native splash screen after content is ready, with a brief
         // delay so the first paint is composited before the splash fades.
         if (Capacitor.isNativePlatform()) {
@@ -342,28 +327,13 @@ const App = () => {
         window.dispatchEvent(event);
         if (event.defaultPrevented) return;
 
-        if (historyStack.current.length > 0) {
+        if (historyStack.current.length > 0 && !transitionLockRef.current) {
           const prev        = currentViewRef.current;
           const destination = historyStack.current.pop() ?? 'home';
 
           scrollPositions.current[prev] = getCurrentScroll();
           currentViewRef.current        = destination;
-
-          navigateWithTransition(
-            () => {
-              setCurrentView(destination);
-              setTransitionDir('pop');
-            },
-            'pop',
-            flushSync,
-          );
-
-          requestAnimationFrame(() => {
-            setTimeout(() => {
-              const targetY = scrollPositions.current[destination] ?? 0;
-              restoreScroll(targetY, true);
-            }, 10);
-          });
+          runNavigation(destination, 'pop');
         } else {
           // Already at root — minimize the app (Android pattern)
           CapacitorApp.minimizeApp();
@@ -385,19 +355,53 @@ const App = () => {
 
       return () => { backHandler.then(h => h.remove()); };
     }
-  }, [getCurrentScroll, restoreScroll]);
+  }, [getCurrentScroll, runNavigation]);
 
 
-  const handleOnboardingSelect = (me: string, partner: string) => {
-    const current = StorageService.getCoupleProfile();
-    StorageService.saveCoupleProfile({ ...current, myName: me, partnerName: partner });
-    localStorage.setItem('lior_onboarded', 'true');
+  const handleOnboardingSelect = (_me: string, _partner: string) => {
+    // Profile + lior_onboarded flag are saved inside the Onboarding component
     setShowOnboarding(false);
+    // Schedule the coachmark tour for brand-new users
+    setScheduleTour(true);
   };
 
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
   };
+
+  // useMemo must be called unconditionally (Rules of Hooks) — before any early returns
+  const renderedView = useMemo(() => {
+    switch (currentView) {
+      case 'home':          return <Home setView={navigateTo} />;
+      case 'add-memory':    return <AddMemory setView={navigateTo} />;
+      case 'timeline':      return <MemoryTimeline setView={navigateTo} />;
+      case 'special-dates': return <SpecialDates setView={navigateTo} />;
+      case 'notes':         return <Notes setView={navigateTo} />;
+      case 'open-when':     return <OpenWhen setView={navigateTo} />;
+      case 'sync':          return <Sync setView={navigateTo} />;
+      case 'daily-moments': return <DailyMoments setView={navigateTo} />;
+      case 'dinner-decider':return <DinnerDecider setView={navigateTo} />;
+      case 'profile':       return <Profile setView={navigateTo} />;
+      case 'quiet-mode':    return <QuietMode setView={navigateTo} />;
+      case 'keepsakes':     return <KeepsakeBox setView={navigateTo} />;
+      case 'countdowns':    return <Countdowns setView={navigateTo} />;
+      case 'mood-calendar': return <MoodCalendar setView={navigateTo} />;
+      case 'aura-rewind':   return <AuraRewind setView={navigateTo} />;
+      case 'aura-signal':   return <AuraSignal setView={navigateTo} />;
+      case 'presence-room': return <PresenceRoom setView={navigateTo} />;
+      case 'bonsai-bloom':  return <BonsaiBloom setView={navigateTo} />;
+      case 'us':            return <Us setView={navigateTo} />;
+      case 'our-room':      return <OurRoom setView={navigateTo} />;
+      case 'canvas':        return <Canvas setView={navigateTo} />;
+      case 'privacy-policy': return <PrivacyPolicy setView={navigateTo} />;
+      case 'terms-of-service': return <TermsOfService setView={navigateTo} />;
+      case 'time-capsule':  return <TimeCapsuleView setView={navigateTo} />;
+      case 'surprises':     return <SurprisesView setView={navigateTo} />;
+      case 'voice-notes':   return <VoiceNotesView setView={navigateTo} />;
+      case 'year-in-review': return <YearInReviewView setView={navigateTo} />;
+      default:              return <Home setView={navigateTo} />;
+    }
+  }, [currentView, navigateTo]);
 
   // Global Loading State
   if (!isInitialized) {
@@ -426,52 +430,37 @@ const App = () => {
 
   // First-time Onboarding Check
   if (showOnboarding) {
-    return <Onboarding onSelect={handleOnboardingSelect} />;
+    return <Onboarding onComplete={handleOnboardingSelect} />;
   }
-
-  // Simple Router based on viewState
-  const renderView = () => {
-    switch (currentView) {
-      case 'home':          return <Home setView={navigateTo} />;
-      case 'add-memory':    return <AddMemory setView={navigateTo} />;
-      case 'timeline':      return <MemoryTimeline setView={navigateTo} />;
-      case 'special-dates': return <SpecialDates setView={navigateTo} />;
-      case 'notes':         return <Notes setView={navigateTo} />;
-      case 'open-when':     return <OpenWhen setView={navigateTo} />;
-      case 'sync':          return <Sync setView={navigateTo} />;
-      case 'daily-moments': return <DailyMoments setView={navigateTo} />;
-      case 'dinner-decider':return <DinnerDecider setView={navigateTo} />;
-      case 'profile':       return <Profile setView={navigateTo} />;
-      case 'quiet-mode':    return <QuietMode setView={navigateTo} />;
-      case 'keepsakes':     return <KeepsakeBox setView={navigateTo} />;
-      case 'countdowns':    return <Countdowns setView={navigateTo} />;
-      case 'mood-calendar': return <MoodCalendar setView={navigateTo} />;
-      case 'aura-rewind':   return <AuraRewind setView={navigateTo} />;
-      case 'aura-signal':   return <AuraSignal setView={navigateTo} />;
-      case 'presence-room': return <PresenceRoom setView={navigateTo} />;
-      case 'bonsai-bloom':  return <BonsaiBloom setView={navigateTo} />;
-      case 'us':            return <Us setView={navigateTo} />;
-      case 'our-room':      return <OurRoom setView={navigateTo} />;
-      case 'canvas':        return <Canvas setView={navigateTo} />;
-      case 'privacy-policy': return <PrivacyPolicy setView={navigateTo} />;
-      case 'terms-of-service': return <TermsOfService setView={navigateTo} />;
-      default:              return <Home setView={navigateTo} />;
-    }
-  };
 
   return (
     <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
-      <ErrorBoundary>
-        <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef}>
-          <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
-            {renderView()}
-          </ViewTransition>
-        </Layout>
-        <AuraSignalReceiver />
-        <AnimatePresence>
-          {showLaunchOverlay && <AppLaunchOverlay />}
-        </AnimatePresence>
-      </ErrorBoundary>
+      <CoachmarkProvider>
+        <ErrorBoundary>
+          <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef} isSwitchingView={isSwitchingView}>
+            <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
+              {renderedView}
+            </ViewTransition>
+          </Layout>
+          <AuraSignalReceiver />
+          <AnimatePresence>
+            {showLaunchOverlay && <AppLaunchOverlay />}
+          </AnimatePresence>
+          <AnimatePresence>
+            {showWhatsNew && (
+              <WhatsNew onClose={() => {
+                setShowWhatsNew(false);
+                // Trigger coachmark tour after What's New is dismissed
+                setScheduleTour(true);
+              }} />
+            )}
+          </AnimatePresence>
+          <CoachmarkTourScheduler
+            shouldTrigger={scheduleTour}
+            onTriggered={() => setScheduleTour(false)}
+          />
+        </ErrorBoundary>
+      </CoachmarkProvider>
     </NavigationContext.Provider>
   );
 };

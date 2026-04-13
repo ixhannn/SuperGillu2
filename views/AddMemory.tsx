@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, X, Video } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
+import { PremiumModal } from '../components/PremiumModal';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
@@ -28,6 +29,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const [image, setImage] = useState<string | null>(null);
   const [video, setVideo] = useState<string | null>(null);
   const [selectedMood, setSelectedMood] = useState('love');
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const confetti = useConfetti();
@@ -51,7 +53,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       if (file) {
           const profile = StorageService.getCoupleProfile();
           if (!profile.isPremium) {
-              toast.show("Video uploads are a premium feature. Please upgrade to use this.", 'error');
+              setShowPremiumModal(true);
               return;
           }
 
@@ -84,6 +86,12 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
   const handleSave = async () => {
     if (!text.trim() && !image && !video) return;
+
+    if (StorageService.hasReachedMemoryLimit()) {
+      setShowPremiumModal(true);
+      return;
+    }
+
     setIsSaving(true);
     
     const newMemory: Memory = {
@@ -278,6 +286,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
           />
         </motion.div>
       </motion.div>
+      <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
     </motion.div>
   );
 };

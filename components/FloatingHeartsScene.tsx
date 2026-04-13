@@ -5,7 +5,7 @@
  */
 
 import React, { useRef, useMemo, useEffect } from 'react';
-import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
+import { Canvas, useFrame, extend } from '@react-three/fiber';
 import { shaderMaterial } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -84,7 +84,6 @@ const heartGLSL = /* glsl */ `
 const DarkGlassMaterial = shaderMaterial(
   {
     uTime: 0,
-    uMouse: new THREE.Vector2(0, 0),
     uNoiseScale: 0.8,
     uNoiseSpeed: 0.12, /* Slower, more hypnotic and soothing */
     uNoiseStrength: 0.28,
@@ -101,7 +100,6 @@ const DarkGlassMaterial = shaderMaterial(
     uniform float uNoiseSpeed;
     uniform float uNoiseStrength;
     uniform float uHeartBlend;
-    uniform vec2 uMouse;
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -121,10 +119,6 @@ const DarkGlassMaterial = shaderMaterial(
 
       // Organic displacement along normal
       vec3 displaced = pos + normal * noise * uNoiseStrength;
-
-      // Subtle mouse interaction — push/pull
-      vec3 mouseDir = vec3(uMouse.x * 0.3, uMouse.y * 0.3, 0.0);
-      displaced += mouseDir * 0.08 * (1.0 - length(pos));
 
       vDisplacement = noise;
       vNoise = n1;
@@ -284,17 +278,6 @@ const OrbitalLine: React.FC<{ index: number; total: number }> = ({ index, total 
 const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ rimColor, accentColor }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<any>(null);
-  const mouse = useRef(new THREE.Vector2(0, 0));
-  const targetMouse = useRef(new THREE.Vector2(0, 0));
-
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      targetMouse.current.x = (e.clientX / window.innerWidth - 0.5) * 2;
-      targetMouse.current.y = -(e.clientY / window.innerHeight - 0.5) * 2;
-    };
-    window.addEventListener('pointermove', onMove, { passive: true });
-    return () => window.removeEventListener('pointermove', onMove);
-  }, []);
 
   useEffect(() => {
     if (!materialRef.current) return;
@@ -306,11 +289,6 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
     if (!materialRef.current || !meshRef.current) return;
 
     materialRef.current.uTime = clock.elapsedTime;
-
-    // Smooth mouse follow
-    mouse.current.x += (targetMouse.current.x - mouse.current.x) * 0.03;
-    mouse.current.y += (targetMouse.current.y - mouse.current.y) * 0.03;
-    materialRef.current.uMouse = mouse.current;
 
     // Slow gentle rotation
     meshRef.current.rotation.y = clock.elapsedTime * 0.08;
@@ -400,32 +378,6 @@ const DustField: React.FC<{ dustColor: string }> = ({ dustColor }) => {
   );
 };
 
-// ── Camera rig with smooth mouse follow ─────────────────────────────────
-const CameraRig = () => {
-  const { camera } = useThree();
-  const mouse = useRef({ x: 0, y: 0 });
-  const smooth = useRef({ x: 0, y: 0 });
-
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      mouse.current.x = (e.clientX / window.innerWidth - 0.5) * 2;
-      mouse.current.y = -(e.clientY / window.innerHeight - 0.5) * 2;
-    };
-    window.addEventListener('pointermove', onMove, { passive: true });
-    return () => window.removeEventListener('pointermove', onMove);
-  }, []);
-
-  useFrame(() => {
-    smooth.current.x += (mouse.current.x - smooth.current.x) * 0.015;
-    smooth.current.y += (mouse.current.y - smooth.current.y) * 0.015;
-    camera.position.x = smooth.current.x * 0.4;
-    camera.position.y = smooth.current.y * 0.25;
-    camera.lookAt(0, 0, 0);
-  });
-
-  return null;
-};
-
 // ── Scene composition ───────────────────────────────────────────────────
 interface FloatingThemeColors {
   rimColor: string;
@@ -458,9 +410,6 @@ const Scene: React.FC<{ theme: FloatingThemeColors }> = ({ theme }) => (
     {/* Floating dust particles */}
     <DustField dustColor={theme.dustColor} />
 
-    {/* Camera follows pointer */}
-    <CameraRig />
-
     {/* Post-processing — no mipmapBlur, higher threshold */}
     <EffectComposer>
       <Bloom
@@ -472,7 +421,7 @@ const Scene: React.FC<{ theme: FloatingThemeColors }> = ({ theme }) => (
   </>
 );
 
-export const FloatingHeartsScene: React.FC = () => {
+export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = false }) => {
   const [theme, setTheme] = React.useState<FloatingThemeColors>(() => ({
     rimColor: readThemeVar('--theme-floating-rim', '#fbcfe8'),
     accentColor: readThemeVar('--theme-floating-accent', '#fda4af'),
@@ -510,6 +459,7 @@ export const FloatingHeartsScene: React.FC = () => {
       <Canvas
         camera={{ position: [0, 0, 5], fov: 50 }}
         dpr={[1, 1]}
+        frameloop={paused ? 'demand' : 'always'}
         gl={{ alpha: true, antialias: false, powerPreference: 'high-performance' }}
       >
         <Scene theme={theme} />

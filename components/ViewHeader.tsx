@@ -2,71 +2,88 @@ import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigation } from '../App';
 import { motion } from 'framer-motion';
-import { PREMIUM_SPRING } from '../utils/constants';
 
 interface ViewHeaderProps {
-    title: string;
-    subtitle?: string;
-    onBack?: () => void;
-    variant?: 'simple' | 'centered' | 'transparent';
-    rightSlot?: React.ReactNode;
-    borderless?: boolean;
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  rightSlot?: React.ReactNode;
+  variant?: 'simple' | 'centered' | 'transparent';
+  borderless?: boolean;
+  tone?: 'default' | 'romance';
 }
 
 export const ViewHeader: React.FC<ViewHeaderProps> = ({
-    title,
-    subtitle,
-    onBack,
-    variant = 'centered',
-    rightSlot,
-    borderless = false,
+  title,
+  subtitle,
+  onBack,
+  rightSlot,
+  variant,
+  borderless = false,
 }) => {
-    const { goBack } = useNavigation();
-    const handleBack = onBack ?? goBack;
+  const { goBack } = useNavigation();
+  const handleBack = onBack ?? goBack;
+  const isGhost = borderless || variant === 'transparent';
 
-    return (
-        <div className={`view-header ${(borderless || variant === 'transparent') ? 'view-header--borderless' : ''} flex items-center justify-between px-2`}>
-            <motion.button
-                initial={{ x: -8, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-                onClick={(e) => { e.stopPropagation(); handleBack(); }}
-                aria-label="Go back"
-                className="p-3 -ml-1 min-h-[48px] min-w-[48px] flex items-center justify-center cursor-pointer rounded-full active:bg-black/5 transition-colors spring-press"
-                style={{ color: 'var(--color-text-secondary)' }}
+  return (
+    <>
+      <div className="vh-spacer" aria-hidden="true" />
+      {/* vh-shell owns fixed positioning + centering — no Framer transforms here */}
+      <div className="vh-shell">
+      <motion.header
+        className={`vh${isGhost ? ' vh--ghost' : ''}`}
+        initial={{ opacity: 0, y: -12, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {/* Left — back button */}
+        <motion.button
+          className="vh-back"
+          onClick={(e) => { e.stopPropagation(); handleBack(); }}
+          aria-label="Go back"
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.06, duration: 0.40, ease: [0.22, 1, 0.36, 1] }}
+          whileTap={{ scale: 0.86 }}
+        >
+          <ArrowLeft size={17} strokeWidth={2.6} />
+        </motion.button>
+
+        {/* Center — title + subtitle */}
+        <div className="vh-center">
+          <motion.h2
+            className="vh-title"
+            initial={{ opacity: 0, y: 7 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.09, duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {title}
+          </motion.h2>
+
+          {subtitle && (
+            <motion.p
+              className="vh-sub"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.18, duration: 0.40, ease: [0.22, 1, 0.36, 1] }}
             >
-                <ArrowLeft size={24} strokeWidth={2.2} />
-            </motion.button>
-
-            {variant === 'centered' ? (
-                <motion.div 
-                    initial={{ y: 5, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={PREMIUM_SPRING}
-                    className="text-center absolute left-1/2 -translate-x-1/2 pointer-events-none w-max max-w-[65%]"
-                >
-                    <h2 className="text-xl font-serif font-bold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>{title}</h2>
-                    {subtitle && (
-                        <p className="text-micro-bold mt-0.5" style={{ color: 'var(--color-pink-deep)' }}>{subtitle}</p>
-                    )}
-                </motion.div>
-            ) : (
-                <motion.div 
-                    initial={{ x: 10, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={PREMIUM_SPRING}
-                    className="flex-1 ml-3"
-                >
-                    <h2 className="text-xl font-serif font-bold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>{title}</h2>
-                    {subtitle && (
-                        <p className="text-micro-bold mt-0.5" style={{ color: 'var(--color-pink-deep)' }}>{subtitle}</p>
-                    )}
-                </motion.div>
-            )}
-
-            <div className="flex items-center gap-2">
-                {rightSlot || <div className="w-[48px]" />}
-            </div>
+              {subtitle}
+            </motion.p>
+          )}
         </div>
-    );
+
+        {/* Right — action slot */}
+        <div className="vh-actions">
+          {rightSlot ?? (
+            <div
+              className="vh-back"
+              aria-hidden="true"
+              style={{ opacity: 0, pointerEvents: 'none' }}
+            />
+          )}
+        </div>
+      </motion.header>
+      </div>
+    </>
+  );
 };

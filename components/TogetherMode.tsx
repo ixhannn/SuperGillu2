@@ -3,10 +3,12 @@ import { Sparkles, Heart, RefreshCw } from 'lucide-react';
 import { syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
 import { StorageService } from '../services/storage';
+import { useNavigation } from '../App';
 
 export const TogetherMode = () => {
     const [active, setActive] = useState(false);
     const [profile, setProfile] = useState(() => StorageService.getCoupleProfile());
+    const { currentView } = useNavigation();
 
     useEffect(() => {
         const onStart = (e: any) => {
@@ -34,7 +36,7 @@ export const TogetherMode = () => {
         };
     }, []);
 
-    if (!active) return null;
+    if (!active || currentView === 'home') return null;
 
     return (
         <div

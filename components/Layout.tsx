@@ -1,5 +1,4 @@
-import React, { useRef, useEffect, useState, createContext, useContext, memo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useRef, useEffect, createContext, useContext, memo, useCallback } from 'react';
 import { BottomNav } from './BottomNav';
 import { LiveBackground3D } from './LiveBackground3D';
 import { FloatingHeartsScene } from './FloatingHeartsScene';
@@ -10,7 +9,6 @@ import { TouchTrailCanvas } from './TouchTrailCanvas';
 import { PhysicsConfetti, ConfettiHandle } from './PhysicsConfetti';
 import { ViewState } from '../types';
 import { startBreathingRhythm } from '../utils/BreathingRhythm';
-import { LenisScroll } from '../services/LenisScroll';
 import { SafeRender } from './SafeRender';
 
 interface LayoutProps {
@@ -18,6 +16,7 @@ interface LayoutProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
   registerScrollRef?: (el: HTMLElement | null) => void;
+  isSwitchingView?: boolean;
   notifications?: {
     timeline?: boolean;
     moments?: boolean;
@@ -30,29 +29,21 @@ export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number)
 });
 export const useConfetti = () => useContext(ConfettiContext);
 
-export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, registerScrollRef, notifications }) => {
+export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, registerScrollRef, isSwitchingView = false, notifications }) => {
   // wrapperRef = overflow:hidden clip container (Lenis "wrapper")
   const wrapperRef  = useRef<HTMLElement>(null);
-  // contentRef = the div Lenis translates (Lenis "content")
-  const contentRef  = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const prevView = useRef(currentView);
 
   // Boot Lenis once both DOM refs are available.
   useEffect(() => {
     const wrapper = wrapperRef.current;
-    const content = contentRef.current;
-    if (!wrapper || !content) return;
-
-    LenisScroll.init(wrapper, content);
+    if (!wrapper) return;
 
     // Pass wrapper as scroll ref — App.tsx uses LenisScroll.scroll / scrollTo
     // instead of scrollTop, so this is just a stable ref handle.
     if (registerScrollRef) registerScrollRef(wrapper);
 
     return () => {
-      LenisScroll.destroy();
       if (registerScrollRef) registerScrollRef(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,15 +70,6 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
     circle.addEventListener('animationend', () => circle.remove(), { once: true });
   }, []);
 
-  useEffect(() => {
-    if (prevView.current !== currentView) {
-      setIsTransitioning(true);
-      prevView.current = currentView;
-      const timer = setTimeout(() => setIsTransitioning(false), 600);
-      return () => clearTimeout(timer);
-    }
-  }, [currentView]);
-
   return (
     <ConfettiContext.Provider value={{ trigger: (x, y) => confettiRef.current?.trigger(x, y) }}>
       <div
@@ -98,23 +80,9 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
         }}
         onPointerDown={handleRipple}
       >
-        {/* Page transition progress bar */}
-        <AnimatePresence>
-          {isTransitioning && (
-            <motion.div
-              className="fixed top-0 left-0 right-0 h-[2px] z-[100]"
-              style={{ background: 'var(--theme-progress-gradient, linear-gradient(90deg, #f43f5e, #e879f9, #f43f5e))' }}
-              initial={{ scaleX: 0, transformOrigin: 'left' }}
-              animate={{ scaleX: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            />
-          )}
-        </AnimatePresence>
-
         {/* Ambient background layers — wrapped so GPU/WebGL crashes don't take down the app */}
-        <SafeRender><LiveBackground3D /></SafeRender>
-        <SafeRender><FloatingHeartsScene /></SafeRender>
+        <SafeRender><LiveBackground3D paused={isSwitchingView} /></SafeRender>
+        <SafeRender><FloatingHeartsScene paused={isSwitchingView} /></SafeRender>
 
         {/* Vignette */}
         <div
@@ -139,10 +107,19 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
         <main
           ref={wrapperRef}
           className="lenis-wrapper flex-1 min-h-0 relative z-10 w-full max-w-md mx-auto"
+          style={{
+            overflowAnchor: 'none',
+            backfaceVisibility: 'hidden',
+            transform: 'translateZ(0)',
+          }}
         >
           <div
-            ref={contentRef}
             className="lenis-content pt-safe pb-32"
+            style={{
+              minHeight: '100%',
+              contain: 'paint',
+              isolation: 'isolate',
+            }}
           >
             {children}
           </div>

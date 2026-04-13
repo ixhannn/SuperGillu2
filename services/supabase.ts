@@ -134,7 +134,10 @@ export const SupabaseService = {
     fetchAll: async (table: string): Promise<any[] | null> => {
         if (!SupabaseService.client) return [];
         const coupleId = await SupabaseService.getCurrentCoupleId();
-        if (!coupleId) return [];
+        // Return null (not []) when coupleId is unknown — null tells reconcileCloud
+        // to SKIP this table entirely, preventing CLOUD EMPTY PROTECTION from wiping
+        // existing rows with empty local data.
+        if (!coupleId) return null;
 
         const { data, error } = await SupabaseService.client.from(table).select('*');
         if (error) return null; // Return null so we know it failed (e.g. table missing)

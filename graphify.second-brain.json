@@ -1,0 +1,17 @@
+{
+  "roots": [
+    "App.tsx",
+    "index.tsx",
+    "types.ts",
+    "capacitor.config.ts",
+    "vite.config.ts",
+    "components",
+    "hooks",
+    "services",
+    "utils",
+    "views",
+    "workers",
+    "supabase/functions",
+    "android/app/src/main/java"
+  ]
+}

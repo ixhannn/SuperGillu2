@@ -731,13 +731,17 @@ export function navigateWithTransition(
   navigate: () => void,
   direction: NavDirection = 'tab',
   flushSync?: (fn: () => void) => void,
-): void {
+): Promise<void> {
   if (typeof document === 'undefined' || !('startViewTransition' in document)) {
     navigate();
-    return;
+    return Promise.resolve();
   }
 
-  document.documentElement.dataset.navDir = direction;
+  const root = document.documentElement;
+  const navToken = String((Number(root.dataset.navToken || '0') || 0) + 1);
+  root.dataset.navDir = direction;
+  root.dataset.navActive = 'true';
+  root.dataset.navToken = navToken;
 
   const vt = (document as Document & {
     startViewTransition: (cb: () => void) => { finished: Promise<void> };
@@ -746,8 +750,12 @@ export function navigateWithTransition(
     else navigate();
   });
 
-  vt.finished.finally(() => {
-    delete document.documentElement.dataset.navDir;
+  return vt.finished.catch(() => undefined).finally(() => {
+    if (root.dataset.navToken === navToken) {
+      delete root.dataset.navDir;
+      delete root.dataset.navActive;
+      delete root.dataset.navToken;
+    }
   });
 }
 
@@ -1079,73 +1087,7 @@ export function attachLongPress(el: HTMLElement, opts: LongPressOptions): () => 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 12. MAGNETIC ELEMENT — pointer-proximity spring attraction
-//
-//     A global pointermove listener watches all cursor/touch movement.
-//     When the pointer enters the configured radius, the element springs
-//     toward the cursor with smooth spring follow (stiffness 220, damping 18).
-//     On exit, it springs back to origin — with a subtle overshoot.
-//
-//     Usage:
-//       const cleanup = attachMagnetic(buttonEl, { strength: 0.18, radius: 80 });
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface MagneticOptions {
-  /** Pull strength as fraction of pointer distance (default 0.18) */
-  strength?: number;
-  /** Radius in px around the element centre where field is active (default 80) */
-  radius?: number;
-}
-
-export function attachMagnetic(el: HTMLElement, opts: MagneticOptions = {}): () => void {
-  const strength = opts.strength ?? 0.18;
-  const radius   = opts.radius   ?? 80;
-
-  let tracking = false;
-
-  // Smooth spring follow during attraction; overshoot on release
-  const sx = new SpringValue(0, { stiffness: 220, damping: 18, mass: 1 });
-  const sy = new SpringValue(0, { stiffness: 220, damping: 18, mass: 1 });
-
-  const applyT = (): void => {
-    el.style.transform = `translate(${sx.value.toFixed(2)}px,${sy.value.toFixed(2)}px)`;
-  };
-
-  sx.onChange(applyT);
-  sy.onChange(applyT);
-
-  const onMove = (e: PointerEvent): void => {
-    const rect  = el.getBoundingClientRect();
-    const cx    = rect.left + rect.width  / 2;
-    const cy    = rect.top  + rect.height / 2;
-    const dx    = e.clientX - cx;
-    const dy    = e.clientY - cy;
-    const dist  = Math.hypot(dx, dy);
-
-    if (dist < radius) {
-      tracking = true;
-      // Attraction tapers smoothly toward the field edge
-      const falloff = 1 - dist / radius;
-      sx.to(dx * strength * (0.5 + 0.5 * falloff));
-      sy.to(dy * strength * (0.5 + 0.5 * falloff));
-    } else if (tracking) {
-      tracking = false;
-      sx.to(0);
-      sy.to(0);
-    }
-  };
-
-  document.addEventListener('pointermove', onMove, { passive: true });
-
-  return () => {
-    document.removeEventListener('pointermove', onMove);
-    sx.destroy();
-    sy.destroy();
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 13. REACT HOOK EXTENSIONS for new gesture types
+// 12. REACT HOOK EXTENSIONS for new gesture types
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1162,24 +1104,6 @@ export function useLongPress(
   useEffect(() => {
     if (!ref.current) return;
     return attachLongPress(ref.current, opts);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref]);
-}
-
-/**
- * useMagnetic — attach magnetic button effect to a ref.
- *
- *   const ref = useRef<HTMLButtonElement>(null);
- *   useMagnetic(ref, { strength: 0.2, radius: 100 });
- *   return <button ref={ref}>Attract</button>;
- */
-export function useMagnetic(
-  ref: RefObject<HTMLElement | null>,
-  opts: MagneticOptions = {},
-): void {
-  useEffect(() => {
-    if (!ref.current) return;
-    return attachMagnetic(ref.current, opts);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref]);
 }
