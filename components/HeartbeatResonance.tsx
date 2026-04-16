@@ -138,7 +138,8 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
           }
         }
 
-        // ── Draw cores ────────────────────────────────────────────
+        // ── Draw cores ─────────────────────────────────────────────
+        // shadowBlur = GPU compositor path, zero gradient allocations per frame.
         const drawCore = (
           x: number, y: number,
           hb: number,
@@ -147,26 +148,20 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
         ) => {
           const baseR = W * 0.042;
           const r = baseR * (1 + hb * 0.55);
-          const glowR = r * 4.5;
 
-          // Outer atmospheric glow
-          const outerGlow = ctx.createRadialGradient(x, y, 0, x, y, glowR);
-          outerGlow.addColorStop(0,   `rgba(${glowColor},${(0.25 + hb * 0.3).toFixed(3)})`);
-          outerGlow.addColorStop(0.4, `rgba(${glowColor},${(0.08 + hb * 0.12).toFixed(3)})`);
-          outerGlow.addColorStop(1,   `rgba(${glowColor},0)`);
-          ctx.beginPath();
-          ctx.arc(x, y, glowR, 0, Math.PI * 2);
-          ctx.fillStyle = outerGlow;
-          ctx.fill();
-
-          // Inner core with radial highlight
-          const core = ctx.createRadialGradient(x - r * 0.25, y - r * 0.25, 0, x, y, r);
-          core.addColorStop(0, `rgba(255,255,255,${(0.7 + hb * 0.3).toFixed(3)})`);
-          core.addColorStop(0.4, primaryColor);
-          core.addColorStop(1, `rgba(${glowColor},0.9)`);
+          // Outer atmospheric glow via shadowBlur (hardware-accelerated, no GC)
+          ctx.shadowBlur  = r * 10 * (0.6 + hb * 0.4);
+          ctx.shadowColor = `rgba(${glowColor},${(0.5 + hb * 0.3).toFixed(2)})`;
           ctx.beginPath();
           ctx.arc(x, y, r, 0, Math.PI * 2);
-          ctx.fillStyle = core;
+          ctx.fillStyle = primaryColor;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Specular highlight — tiny white arc, no allocation
+          ctx.beginPath();
+          ctx.arc(x - r * 0.22, y - r * 0.22, r * 0.32, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${(0.55 + hb * 0.35).toFixed(2)})`;
           ctx.fill();
         };
 

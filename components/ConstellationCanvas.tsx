@@ -293,7 +293,7 @@ export const ConstellationCanvas: React.FC = () => {
             // Perfect sync shockwave
             if (syncProgress > 0.985) {
               const wave = ((t % 2000) / 2000);
-              const waveR = gR * 3 * wave;
+              const waveR = r * 3 * wave;
               const waveA = (1 - wave) * 0.5 * (syncProgress - 0.985) / 0.015;
               ctx.beginPath();
               ctx.arc(s.x, s.y, waveR, 0, Math.PI * 2);

@@ -188,13 +188,14 @@ export const GravityBloom: React.FC<GravityBloomProps> = ({ scrollContainer }) =
           } else if (p.type === 'heart') {
             drawHeart(ctx, p.x, p.y, p.size, p.rotation);
           } else {
-            // spark — glowing point
-            const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
-            grd.addColorStop(0, `rgba(${p.color},${alpha.toFixed(3)})`);
-            grd.addColorStop(1, `rgba(${p.color},0)`);
+            // spark — two-layer soft disc, zero gradient allocation
             ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fillStyle = grd;
+            ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${p.color},${(alpha * 0.25).toFixed(3)})`;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * 0.85, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${p.color},${alpha.toFixed(3)})`;
             ctx.fill();
           }
         }

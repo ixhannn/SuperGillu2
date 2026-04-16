@@ -35,6 +35,7 @@ const pool: Particle[] = Array.from({ length: POOL_SIZE }, () => ({
 }));
 
 let poolHead = 0;
+let _trailActive = 0; // live particle count — skip loop when 0
 function acquire(): Particle | null {
   for (let i = 0; i < POOL_SIZE; i++) {
     const idx = (poolHead + i) % POOL_SIZE;
@@ -100,6 +101,7 @@ export const TouchTrailCanvas: React.FC = () => {
         p.maxSize = Math.random() * 5 + 3;
         p.speed = speed;
         p.active = true;
+        _trailActive++;
       }
     };
 
@@ -136,6 +138,7 @@ export const TouchTrailCanvas: React.FC = () => {
       minTier: 'medium',
 
       tick(delta) {
+        if (_trailActive === 0) return; // idle — skip 800 iterations
         ctx.clearRect(0, 0, W, H);
 
         const decay = delta / LIFETIME_MS;
@@ -145,7 +148,7 @@ export const TouchTrailCanvas: React.FC = () => {
           if (!p.active) continue;
 
           p.life -= decay;
-          if (p.life <= 0) { p.active = false; continue; }
+          if (p.life <= 0) { p.active = false; _trailActive--; continue; }
 
           p.vx *= 0.88;
           p.vy *= 0.88;
@@ -185,6 +188,7 @@ export const TouchTrailCanvas: React.FC = () => {
       window.removeEventListener('pointerup',   onPointerUp);
       // Reset pool
       for (const p of pool) p.active = false;
+      _trailActive = 0;
     };
   }, []);
 

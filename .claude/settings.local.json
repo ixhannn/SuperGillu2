@@ -3,7 +3,17 @@
     "allow": [
       "Bash(npx tsc:*)",
       "Bash(npx cap:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(cat \"C:/Users/Sameer/.claude/hooks/\"*.json)",
+      "Bash(GIT_DIR=\"C:/Users/Sameer/Downloads/Lior/.git\" GIT_WORK_TREE=\"C:/Users/Sameer/Downloads/Lior\" git status)",
+      "Bash(GIT_DIR=\"C:/Users/Sameer/Downloads/Lior/.git\" GIT_WORK_TREE=\"C:/Users/Sameer/Downloads/Lior\" git log --oneline -5)",
+      "Bash(git:*)",
+      "Bash(env)",
+      "Bash(echo \"exit: $?\")",
+      "Read(//c/Users/Sameer/Downloads/tulika/.git/**)",
+      "Read(//c/Users/Sameer/Downloads/tulika/.git/worktrees/focused-khayyam/**)",
+      "Bash(npx vite:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
     ]
   },
   "hooks": {
@@ -13,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/tulika/.dual-graph/prime.ps1\""
+            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/Lior/.dual-graph/prime.ps1\""
           }
         ]
       }
@@ -24,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/tulika/.dual-graph/stop_hook.ps1\""
+            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/Lior/.dual-graph/stop_hook.ps1\""
           }
         ]
       }
@@ -35,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/tulika/.dual-graph/prime.ps1\""
+            "command": "powershell -NoProfile -File \"C:/Users/Sameer/Downloads/Lior/.dual-graph/prime.ps1\""
           }
         ]
       }

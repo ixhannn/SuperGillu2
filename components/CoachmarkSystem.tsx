@@ -1,351 +1,326 @@
 /**
- * CoachmarkSystem — spotlight-based feature discovery.
+ * CoachmarkSystem - first-run guided tour with route awareness.
  *
- * Usage:
- *   1. Wrap any element with data-coachmark="key"
- *   2. Call triggerCoachmark('key') from anywhere in the app
- *   3. The overlay spotlights that element with a callout bubble
- *
- * The system queues coachmarks and shows them one at a time.
- * Seen state persists in localStorage via FeatureDiscovery.
+ * Design goals:
+ * - move to the correct route before presenting a step
+ * - avoid broken spotlights when targets are occluded by the nav, keyboard, or another layer
+ * - fall back to richer card steps when a live spotlight is not safe to show
+ * - keep copy consistent: what it is, why it matters, what to do now
+ * - prefer action-led CTAs instead of passive "Next" buttons
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { FeatureDiscovery } from '../services/featureDiscovery';
 import { Haptics } from '../services/haptics';
+import { ViewState } from '../types';
 
-// ─── Coachmark definitions ────────────────────────────────────────────────────
+export type CoachmarkMode = 'spotlight' | 'card';
+type PreviewKind =
+  | 'capture'
+  | 'moments'
+  | 'countdowns'
+  | 'letters'
+  | 'bonsai'
+  | 'aura'
+  | 'themes'
+  | 'music';
 
 export interface CoachmarkDef {
-    key: string;
-    emoji: string;
-    title: string;
-    body: string;
-    calloutPosition?: 'above' | 'below' | 'auto';  // default: auto
+  key: string;
+  title: string;
+  emoji: string;
+  mode?: CoachmarkMode;
+  route?: ViewState;
+  actionView?: ViewState;
+  actionLabel: string;
+  actionAdvanceDelay?: number;
+  calloutPosition?: 'above' | 'below' | 'auto';
+  accentColor?: string;
+  gradient?: string;
+  where?: string;
+  preview: PreviewKind;
+  whatIs: string;
+  whyItMatters: string;
+  doThisNow: string;
+  fallbackToCard?: boolean;
 }
 
 export const COACHMARKS: CoachmarkDef[] = [
-    {
-        key: 'center-fab',
-        emoji: '📸',
-        title: 'Add a memory',
-        body: 'Tap this button any time to capture a moment — a photo, a note, or just a feeling.',
-        calloutPosition: 'above',
-    },
-    {
-        key: 'daily-moments',
-        emoji: '🌅',
-        title: 'Daily Moments',
-        body: 'Send your partner a photo from your day. It disappears in 24 hours — like a private story just for two.',
-        calloutPosition: 'above',
-    },
-    {
-        key: 'aura-signal',
-        emoji: '💫',
-        title: 'Aura Signal',
-        body: 'Send a silent wave. No words needed — just let them know you\'re thinking of them.',
-        calloutPosition: 'below',
-    },
-    {
-        key: 'partner-pair',
-        emoji: '🔗',
-        title: 'Invite your partner',
-        body: 'Tap here to generate a QR code. Once they scan it, your space is truly shared.',
-        calloutPosition: 'below',
-    },
+  {
+    key: 'center-fab',
+    title: 'Capture every moment',
+    emoji: '📸',
+    actionLabel: 'Open composer',
+    actionView: 'add-memory',
+    calloutPosition: 'above',
+    accentColor: '#fb7185',
+    gradient: 'linear-gradient(135deg, #fb7185 0%, #f43f5e 100%)',
+    where: 'Bottom nav',
+    preview: 'capture',
+    whatIs: 'This is the fastest way to add a memory, note, or feeling from anywhere in the app.',
+    whyItMatters: 'The app gets better as your shared story fills up. This is the button you will use most.',
+    doThisNow: 'Tap it once so you know where new memories start.',
+    fallbackToCard: true,
+  },
+  {
+    key: 'daily-moments',
+    title: 'Daily Moments',
+    emoji: '🌆',
+    actionLabel: 'Open Daily Moments',
+    actionView: 'daily-moments',
+    calloutPosition: 'above',
+    accentColor: '#38bdf8',
+    gradient: 'linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)',
+    where: 'Bottom nav',
+    preview: 'moments',
+    whatIs: 'Daily Moments is your private 24-hour story for the two of you.',
+    whyItMatters: 'It captures the tiny things that matter today without turning everything into permanent archive.',
+    doThisNow: 'Open it and imagine the kind of everyday photo you would drop here first.',
+    fallbackToCard: true,
+  },
+  {
+    key: 'countdowns',
+    title: 'Count down together',
+    emoji: '⏳',
+    route: 'home',
+    actionLabel: 'Open countdowns',
+    actionView: 'countdowns',
+    calloutPosition: 'below',
+    accentColor: '#f59e0b',
+    gradient: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)',
+    where: 'Home',
+    preview: 'countdowns',
+    whatIs: 'This card keeps your next important date or plan visible at a glance.',
+    whyItMatters: 'Shared anticipation creates rhythm. Trips, anniversaries, and plans feel closer when you see them often.',
+    doThisNow: 'Open countdowns and picture the first event you would add.',
+    fallbackToCard: true,
+  },
+  {
+    key: 'open-when',
+    title: 'Open When letters',
+    emoji: '💌',
+    route: 'home',
+    actionLabel: 'Open letters',
+    actionView: 'open-when',
+    calloutPosition: 'below',
+    accentColor: '#60a5fa',
+    gradient: 'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)',
+    where: 'Home',
+    preview: 'letters',
+    whatIs: 'Open When lets you write letters for specific moods or moments.',
+    whyItMatters: 'It gives comfort in advance. The right note can already be waiting when one of you needs it.',
+    doThisNow: 'Open the feature and think of one message worth saving for later.',
+    fallbackToCard: true,
+  },
+  {
+    key: 'bonsai',
+    title: 'Your shared Bonsai',
+    emoji: '🌱',
+    route: 'home',
+    actionLabel: 'See the bonsai',
+    actionView: 'bonsai-bloom',
+    calloutPosition: 'below',
+    accentColor: '#34d399',
+    gradient: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
+    where: 'Home',
+    preview: 'bonsai',
+    whatIs: 'The bonsai grows as the relationship fills with memories and care.',
+    whyItMatters: 'It turns progress into something you can feel visually instead of burying it in stats.',
+    doThisNow: 'Open the bonsai once so you know where your shared growth lives.',
+    fallbackToCard: true,
+  },
+  {
+    key: 'aura-signal',
+    title: 'Aura Signal',
+    emoji: '✨',
+    mode: 'card',
+    route: 'us',
+    actionLabel: 'Try Aura Signal',
+    actionView: 'aura-signal',
+    actionAdvanceDelay: 260,
+    accentColor: '#818cf8',
+    gradient: 'linear-gradient(140deg, #1e1b4b 0%, #4f46e5 45%, #fbbf24 100%)',
+    where: 'Us -> Aura Signal',
+    preview: 'aura',
+    whatIs: 'Aura Signal is a soft, wordless ping you can send instantly.',
+    whyItMatters: 'Not every moment needs a message. Sometimes a small signal says enough.',
+    doThisNow: 'Send one safe test signal so you know how quickly it feels.',
+  },
+  {
+    key: 'theme-picker',
+    title: 'Make it feel like you',
+    emoji: '🎨',
+    mode: 'card',
+    route: 'profile',
+    actionLabel: 'Open Aesthetic Studio',
+    actionView: 'profile',
+    accentColor: '#a855f7',
+    gradient: 'linear-gradient(140deg, #2d1b4e 0%, #7c3aed 45%, #ec4899 100%)',
+    where: 'Profile -> Aesthetic Studio',
+    preview: 'themes',
+    whatIs: 'Aesthetic Studio changes the whole mood of your shared space with handcrafted themes.',
+    whyItMatters: 'A visual tone changes how the app feels every day, not just how it looks once.',
+    doThisNow: 'Open the studio and notice how different palettes change the room instantly.',
+  },
+  {
+    key: 'together-music',
+    title: 'Your song, always playing',
+    emoji: '🎵',
+    mode: 'card',
+    route: 'profile',
+    actionLabel: 'Open music setup',
+    actionView: 'profile',
+    accentColor: '#f97316',
+    gradient: 'linear-gradient(140deg, #1c1917 0%, #c2410c 45%, #fbbf24 100%)',
+    where: 'Profile -> Aesthetic Studio',
+    preview: 'music',
+    whatIs: 'Together Music lets you upload the track that belongs to both of you.',
+    whyItMatters: 'A shared song changes the emotional texture of the app more than any single visual setting.',
+    doThisNow: 'Open the setup so you know where your soundtrack lives when you are ready.',
+  },
 ];
 
-// ─── Context ──────────────────────────────────────────────────────────────────
-
 interface CoachmarkCtx {
-    triggerCoachmark: (key: string) => void;
-    triggerTour: () => void;        // show all unseen coachmarks in order
-    dismissAll: () => void;
+  triggerCoachmark: (key: string) => void;
+  triggerTour: () => void;
+  dismissAll: () => void;
 }
 
 const CoachmarkContext = createContext<CoachmarkCtx>({
-    triggerCoachmark: () => {},
-    triggerTour: () => {},
-    dismissAll: () => {},
+  triggerCoachmark: () => {},
+  triggerTour: () => {},
+  dismissAll: () => {},
 });
 
 export const useCoachmark = () => useContext(CoachmarkContext);
 
-// ─── Spotlight overlay ────────────────────────────────────────────────────────
+const SPOTLIGHT_PAD = 12;
+const TARGET_WAIT_MS = 140;
+const TARGET_WAIT_ATTEMPTS = 10;
+const ROUTE_WAIT_ATTEMPTS = 16;
+const ROUTE_WAIT_MS = 100;
 
 interface SpotlightState {
-    rect: DOMRect;
-    def: CoachmarkDef;
-    queueLength: number;
+  rect: DOMRect;
+  def: CoachmarkDef;
 }
 
-const PADDING = 10; // px around target
+interface ActiveStep {
+  def: CoachmarkDef;
+  queue: CoachmarkDef[];
+  stepIndex: number;
+  total: number;
+  renderMode: CoachmarkMode;
+  spotlight: SpotlightState | null;
+}
 
-const Spotlight: React.FC<{
-    state: SpotlightState;
-    onNext: () => void;
-    onSkipAll: () => void;
-    queueIndex: number;
-}> = ({ state, onNext, onSkipAll, queueIndex }) => {
-    const { rect, def } = state;
+const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
-    const spotLeft   = rect.left   - PADDING;
-    const spotTop    = rect.top    - PADDING;
-    const spotWidth  = rect.width  + PADDING * 2;
-    const spotHeight = rect.height + PADDING * 2;
-    const spotRadius = Math.min(spotWidth, spotHeight, 28);
+const findCoachmarkTarget = (key: string) =>
+  document.querySelector<HTMLElement>(`[data-coachmark="${key}"]`);
 
-    // Decide callout position: prefer above unless target is in top 40% of screen
-    const autoPos = rect.top > window.innerHeight * 0.4 ? 'above' : 'below';
-    const calloutPos = def.calloutPosition === 'auto' || !def.calloutPosition ? autoPos : def.calloutPosition;
+const getOcclusionBounds = () => {
+  const visualTop = window.visualViewport?.offsetTop ?? 0;
+  const visualBottom = window.visualViewport
+    ? window.visualViewport.offsetTop + window.visualViewport.height
+    : window.innerHeight;
+  const navTop = document
+    .querySelector<HTMLElement>('[data-tour-occluder="bottom-nav"]')
+    ?.getBoundingClientRect().top;
 
-    const calloutTop = calloutPos === 'above'
-        ? spotTop - 12   // anchor to bottom of callout
-        : spotTop + spotHeight + 12;
-
-    return (
-        <motion.div
-            key={def.key}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{ position: 'fixed', inset: 0, zIndex: 900 }}
-            onClick={onNext}
-        >
-            {/* Dark overlay using SVG with a hole */}
-            <svg
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-                xmlns="http://www.w3.org/2000/svg"
-            >
-                <defs>
-                    <mask id="coachmark-mask">
-                        <rect width="100%" height="100%" fill="white" />
-                        <rect
-                            x={spotLeft}
-                            y={spotTop}
-                            width={spotWidth}
-                            height={spotHeight}
-                            rx={spotRadius}
-                            ry={spotRadius}
-                            fill="black"
-                        />
-                    </mask>
-                </defs>
-                <rect
-                    width="100%"
-                    height="100%"
-                    fill="rgba(15,8,12,0.78)"
-                    mask="url(#coachmark-mask)"
-                />
-            </svg>
-
-            {/* Pulsing glow ring around target */}
-            <motion.div
-                animate={{ scale: [1, 1.18, 1], opacity: [0.6, 0.2, 0.6] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                style={{
-                    position: 'absolute',
-                    left: spotLeft - 6,
-                    top: spotTop - 6,
-                    width: spotWidth + 12,
-                    height: spotHeight + 12,
-                    borderRadius: spotRadius + 6,
-                    border: '2px solid rgba(196,104,126,0.9)',
-                    boxShadow: '0 0 20px rgba(196,104,126,0.6)',
-                    pointerEvents: 'none',
-                }}
-            />
-
-            {/* Callout bubble */}
-            <motion.div
-                initial={{ opacity: 0, y: calloutPos === 'above' ? 12 : -12, scale: 0.94 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.94 }}
-                transition={{ type: 'spring' as const, damping: 24, stiffness: 320, delay: 0.12 }}
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                    position: 'absolute',
-                    left: Math.max(16, Math.min(spotLeft, window.innerWidth - 320 - 16)),
-                    width: Math.min(320, window.innerWidth - 32),
-                    ...(calloutPos === 'above'
-                        ? { bottom: window.innerHeight - calloutTop }
-                        : { top: calloutTop }),
-                    background: 'rgba(255,252,252,0.96)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    borderRadius: 20,
-                    padding: '18px 20px 16px',
-                    boxShadow: '0 16px 48px rgba(15,8,12,0.28), 0 4px 16px rgba(15,8,12,0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
-                    border: '1px solid rgba(255,255,255,0.9)',
-                }}
-            >
-                {/* Arrow pointing to spotlight */}
-                <div style={{
-                    position: 'absolute',
-                    left: Math.max(20, Math.min(spotLeft + spotWidth / 2 - Math.max(16, Math.min(spotLeft, window.innerWidth - 320 - 16)) - 8, 296)),
-                    ...(calloutPos === 'above' ? { bottom: -8 } : { top: -8 }),
-                    width: 16, height: 8,
-                    overflow: 'hidden',
-                }}>
-                    <div style={{
-                        width: 16, height: 16,
-                        background: 'rgba(255,252,252,0.96)',
-                        transform: `rotate(45deg) ${calloutPos === 'above' ? 'translateY(-8px)' : 'translateY(0)'}`,
-                        transformOrigin: calloutPos === 'above' ? 'bottom' : 'top',
-                        boxShadow: '0 2px 8px rgba(15,8,12,0.12)',
-                    }} />
-                </div>
-
-                {/* Content */}
-                <div className="flex items-start gap-3 mb-3">
-                    <span style={{ fontSize: 28, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>{def.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                        <p className="font-bold text-[15px] mb-1" style={{ color: 'var(--color-text-primary)' }}>
-                            {def.title}
-                        </p>
-                        <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                            {def.body}
-                        </p>
-                    </div>
-                    <button
-                        onClick={onSkipAll}
-                        className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5"
-                        style={{ background: 'rgba(0,0,0,0.06)' }}
-                        aria-label="Skip tour"
-                    >
-                        <X size={13} style={{ color: 'var(--color-text-secondary)' }} />
-                    </button>
-                </div>
-
-                <div className="flex items-center justify-between">
-                    {/* Progress dots */}
-                    <div className="flex gap-1.5 items-center">
-                        {Array.from({ length: state.queueLength + queueIndex + 1 }).slice(0, state.queueLength + queueIndex + 1).map((_, i) => (
-                            <div
-                                key={i}
-                                style={{
-                                    width: i === queueIndex ? 16 : 6,
-                                    height: 6,
-                                    borderRadius: 100,
-                                    background: i === queueIndex ? 'var(--color-nav-active)' : 'rgba(196,104,126,0.25)',
-                                    transition: 'all 0.2s',
-                                }}
-                            />
-                        ))}
-                    </div>
-
-                    <button
-                        onClick={onNext}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-[13px]"
-                        style={{
-                            background: 'linear-gradient(135deg, #d4637a 0%, #c4687e 100%)',
-                            color: '#fff',
-                            border: 'none',
-                            boxShadow: '0 4px 14px rgba(196,104,126,0.35)',
-                        }}
-                    >
-                        Got it!
-                    </button>
-                </div>
-            </motion.div>
-        </motion.div>
-    );
+  return {
+    top: visualTop + 16,
+    bottom: Math.min(navTop ?? window.innerHeight, visualBottom) - 16,
+  };
 };
 
-// ─── Provider ────────────────────────────────────────────────────────────────
+const clampPoint = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-export const CoachmarkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [queue, setQueue]         = useState<CoachmarkDef[]>([]);
-    const [spotlight, setSpotlight] = useState<SpotlightState | null>(null);
-    const [queueIndex, setQueueIndex] = useState(0);
-    const activeKeyRef = useRef<string | null>(null);
+const targetIsUncovered = (target: HTMLElement, rect: DOMRect) => {
+  const bounds = getOcclusionBounds();
+  if (rect.top < bounds.top || rect.bottom > bounds.bottom) return false;
+  if (rect.width <= 0 || rect.height <= 0) return false;
 
-    const resolveSpotlight = useCallback((def: CoachmarkDef, queueLen: number) => {
-        const el = document.querySelector<HTMLElement>(`[data-coachmark="${def.key}"]`);
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        setSpotlight({ rect, def, queueLength: queueLen });
-        activeKeyRef.current = def.key;
-        Haptics.press();
-        return true;
-    }, []);
+  const sampleXs = [rect.left + rect.width * 0.25, rect.left + rect.width * 0.5, rect.left + rect.width * 0.75];
+  const sampleYs = [rect.top + rect.height * 0.25, rect.top + rect.height * 0.5, rect.top + rect.height * 0.75];
 
-    const triggerCoachmark = useCallback((key: string) => {
-        if (FeatureDiscovery.isCoachmarkSeen(key) || FeatureDiscovery.areAllCoachmarksSeen()) return;
-        const def = COACHMARKS.find((c) => c.key === key);
-        if (!def) return;
-        setQueue([def]);
-        setQueueIndex(0);
-        resolveSpotlight(def, 1);
-    }, [resolveSpotlight]);
+  for (const x of sampleXs) {
+    for (const y of sampleYs) {
+      const clampedX = clampPoint(x, 8, window.innerWidth - 8);
+      const clampedY = clampPoint(y, 8, window.innerHeight - 8);
+      const topElement = document.elementFromPoint(clampedX, clampedY);
+      if (!topElement) return false;
+      if (target === topElement || target.contains(topElement)) return true;
+    }
+  }
 
-    const triggerTour = useCallback(() => {
-        if (FeatureDiscovery.areAllCoachmarksSeen()) return;
-        const unseen = COACHMARKS.filter((c) => !FeatureDiscovery.isCoachmarkSeen(c.key));
-        if (unseen.length === 0) return;
-        setQueue(unseen);
-        setQueueIndex(0);
-        resolveSpotlight(unseen[0], unseen.length);
-    }, [resolveSpotlight]);
+  return false;
+};
 
-    const advance = useCallback(() => {
-        if (activeKeyRef.current) {
-            FeatureDiscovery.markCoachmarkSeen(activeKeyRef.current);
-        }
-        setQueue((prev) => {
-            const next = prev.slice(1);
-            if (next.length === 0) {
-                setSpotlight(null);
-                activeKeyRef.current = null;
-                setQueueIndex(0);
-            } else {
-                setQueueIndex((i) => i + 1);
-                setTimeout(() => resolveSpotlight(next[0], next.length), 80);
-            }
-            return next;
-        });
-    }, [resolveSpotlight]);
+const measureSpotlight = (def: CoachmarkDef): SpotlightState | null => {
+  const target = findCoachmarkTarget(def.key);
+  if (!target) return null;
+  const rect = target.getBoundingClientRect();
+  if (!targetIsUncovered(target, rect)) return null;
+  return { rect, def };
+};
 
-    const dismissAll = useCallback(async () => {
-        await Haptics.softTap();
-        if (activeKeyRef.current) FeatureDiscovery.markCoachmarkSeen(activeKeyRef.current);
-        FeatureDiscovery.markAllCoachmarksSeen();
-        setQueue([]);
-        setSpotlight(null);
-        activeKeyRef.current = null;
-        setQueueIndex(0);
-    }, []);
+const ensureSpotlightReady = async (def: CoachmarkDef): Promise<SpotlightState | null> => {
+  for (let attempt = 0; attempt < TARGET_WAIT_ATTEMPTS; attempt += 1) {
+    const target = findCoachmarkTarget(def.key);
+    if (!target) {
+      await sleep(TARGET_WAIT_MS);
+      continue;
+    }
 
-    // Recalculate rect on scroll / resize
-    useEffect(() => {
-        if (!activeKeyRef.current) return;
-        const recalc = () => {
-            const key = activeKeyRef.current;
-            if (!key) return;
-            const def = COACHMARKS.find((c) => c.key === key);
-            if (!def) return;
-            resolveSpotlight(def, queue.length);
-        };
-        window.addEventListener('resize', recalc, { passive: true });
-        return () => window.removeEventListener('resize', recalc);
-    }, [queue.length, resolveSpotlight]);
+    let rect = target.getBoundingClientRect();
+    const bounds = getOcclusionBounds();
+    const targetCenter = rect.top + rect.height / 2;
+    const safeCenter = bounds.top + (bounds.bottom - bounds.top) / 2;
 
-    return (
-        <CoachmarkContext.Provider value={{ triggerCoachmark, triggerTour, dismissAll }}>
-            {children}
-            <AnimatePresence>
-                {spotlight && (
-                    <Spotlight
-                        key={spotlight.def.key}
-                        state={spotlight}
-                        queueIndex={queueIndex}
-                        onNext={advance}
-                        onSkipAll={dismissAll}
-                    />
-                )}
-            </AnimatePresence>
-        </CoachmarkContext.Provider>
-    );
+    if (rect.top < bounds.top + 12 || rect.bottom > bounds.bottom - 12) {
+      const delta = targetCenter - safeCenter;
+      window.scrollBy({ top: delta, behavior: attempt === 0 ? 'smooth' : 'auto' });
+      await sleep(attempt === 0 ? 260 : TARGET_WAIT_MS);
+      rect = target.getBoundingClientRect();
+    }
+
+    if (targetIsUncovered(target, rect)) {
+      return { rect, def };
+    }
+
+    await sleep(TARGET_WAIT_MS);
+  }
+
+  return null;
+};
+
+const chooseSpotlightLayout = (rect: DOMRect, preferred?: 'above' | 'below' | 'auto') => {
+  const bounds = getOcclusionBounds();
+  const availableAbove = rect.top - bounds.top - 16;
+  const availableBelow = bounds.bottom - rect.bottom - 16;
+  const compact = rect.width > window.innerWidth * 0.52 || Math.min(availableAbove, availableBelow) < 190 || window.innerWidth < 390;
+  const preferredPlacement = preferred && preferred !== 'auto'
+    ? preferred
+    : availableBelow >= availableAbove
+      ? 'below'
+      : 'above';
+  const minHeight = compact ? 200 : 238;
+  const placement =
+    preferredPlacement === 'below' && availableBelow >= minHeight
+      ? 'below'
+      : preferredPlacement === 'above' && availableAbove >= minHeight
+        ? 'above'
+        : availableBelow >= availableAbove
+          ? 'below'
+          : 'above';
+
+  return {
+    bounds,
+    compact,
+    placement,
+    bubbleWidth: compact ? Math.min(274, window.innerWidth - 32) : Math.min(324, window.innerWidth - 32),
+  };
 };

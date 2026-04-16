@@ -53,6 +53,9 @@ import { TimeCapsuleView } from './views/TimeCapsule';
 import { SurprisesView } from './views/Surprises';
 import { VoiceNotesView } from './views/VoiceNotes';
 import { YearInReviewView } from './views/YearInReview';
+import { PartnerIntelligenceView } from './views/PartnerIntelligenceView';
+import { DailyVideoView } from './views/DailyVideoView';
+import { WeeklyRecapView } from './views/WeeklyRecapView';
 import { SyncService, syncEventTarget } from './services/sync';
 import { StorageService, storageEventTarget } from './services/storage';
 import { ThemeService, THEMES, ThemeId } from './services/theme';
@@ -61,6 +64,7 @@ import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
 import { AppLaunchOverlay } from './components/AppLaunchOverlay';
+import { DevPanel } from './components/DevPanel';
 import { WhatsNew } from './components/WhatsNew';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
@@ -430,6 +434,9 @@ const App = () => {
       case 'surprises':     return <SurprisesView setView={navigateTo} />;
       case 'voice-notes':   return <VoiceNotesView setView={navigateTo} />;
       case 'year-in-review': return <YearInReviewView setView={navigateTo} />;
+      case 'partner-intelligence': return <PartnerIntelligenceView setView={navigateTo} />;
+      case 'daily-video': return <DailyVideoView setView={navigateTo} />;
+      case 'weekly-recap': return <WeeklyRecapView setView={navigateTo} />;
       default:              return <Home setView={navigateTo} />;
     }
   }, [currentView, navigateTo]);
@@ -476,46 +483,114 @@ const App = () => {
   }
 
   return (
-    <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
-      <CoachmarkProvider>
-        <ErrorBoundary>
-          <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef} isSwitchingView={isSwitchingView}>
-            <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
-              {renderedView}
-            </ViewTransition>
-          </Layout>
-          <AuraSignalReceiver />
-          {/* Predictive prefetch ghost — hidden, zero layout impact */}
-          {prefetchView && prefetchView !== currentView && (
-            <div
-              aria-hidden="true"
-              style={{
-                position: 'absolute', visibility: 'hidden',
-                pointerEvents: 'none', width: 0, height: 0, overflow: 'hidden',
-              }}
-            >
-              {getPrefetchContent(prefetchView)}
-            </div>
-          )}
-          <AnimatePresence>
-            {showLaunchOverlay && <AppLaunchOverlay />}
-          </AnimatePresence>
-          <AnimatePresence>
-            {showWhatsNew && (
-              <WhatsNew onClose={() => {
-                setShowWhatsNew(false);
-                // Trigger coachmark tour after What's New is dismissed
-                setScheduleTour(true);
-              }} />
+    <>
+      <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
+        <CoachmarkProvider>
+          <ErrorBoundary>
+            <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef} isSwitchingView={isSwitchingView}>
+              <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
+                {renderedView}
+              </ViewTransition>
+            </Layout>
+            <AuraSignalReceiver />
+            {/* Predictive prefetch ghost — hidden, zero layout impact */}
+            {prefetchView && prefetchView !== currentView && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute', visibility: 'hidden',
+                  pointerEvents: 'none', width: 0, height: 0, overflow: 'hidden',
+                }}
+              >
+                {getPrefetchContent(prefetchView)}
+              </div>
             )}
-          </AnimatePresence>
-          <CoachmarkTourScheduler
-            shouldTrigger={scheduleTour}
-            onTriggered={() => setScheduleTour(false)}
-          />
-        </ErrorBoundary>
-      </CoachmarkProvider>
-    </NavigationContext.Provider>
+            <AnimatePresence>
+              {showLaunchOverlay && <AppLaunchOverlay />}
+            </AnimatePresence>
+            <AnimatePresence>
+              {showWhatsNew && (
+                <WhatsNew onClose={() => {
+                  setShowWhatsNew(false);
+                  setScheduleTour(true);
+                }} />
+              )}
+            </AnimatePresence>
+            <CoachmarkTourScheduler
+              shouldTrigger={scheduleTour}
+              onTriggered={() => setScheduleTour(false)}
+            />
+          </ErrorBoundary>
+        </CoachmarkProvider>
+      </NavigationContext.Provider>
+      <DevPanel actions={[
+        {
+          label: '▶ Replay splash screen',
+          action: () => {
+            setShowLaunchOverlay(true);
+            setTimeout(() => setShowLaunchOverlay(false), 2200);
+          },
+        },
+        {
+          label: '📰 Show What\'s New',
+          action: () => setShowWhatsNew(true),
+        },
+        {
+          label: '🗺 Trigger coachmark tour',
+          action: () => {
+            FeatureDiscovery.resetAll();
+            setScheduleTour(true);
+          },
+        },
+        {
+          label: '🏠 Go to Home',
+          action: () => navigateTo('home'),
+        },
+        {
+          label: '⚠ Clear onboarding flag',
+          action: () => {
+            localStorage.removeItem('lior_onboarded');
+            localStorage.removeItem('lior_manual_override');
+            window.location.reload();
+          },
+          danger: true,
+        },
+        {
+          label: '🔍 Debug memory media fields',
+          action: () => {
+            const mems = StorageService.getMemories();
+            if (mems.length === 0) {
+              console.warn('[MediaDebug] No memories found');
+              return;
+            }
+            mems.slice(0, 3).forEach((m: any, i: number) => {
+              console.log(`[MediaDebug] Memory ${i} (${m.id}):`, {
+                imageId: m.imageId || null,
+                storagePath: m.storagePath || null,
+                hasInlineImage: !!(m.image && m.image.length > 0),
+                inlineImageLen: m.image ? m.image.length : 0,
+                videoId: m.videoId || null,
+                videoStoragePath: m.videoStoragePath || null,
+                hasInlineVideo: !!(m.video && m.video.length > 0),
+              });
+            });
+            console.log(`[MediaDebug] Total memories: ${mems.length}`);
+          },
+        },
+        {
+          label: '🔄 Recover images from cloud',
+          action: async () => {
+            console.log('[MediaDebug] Starting cloud image recovery...');
+            try {
+              await StorageService.recoverImagesFromCloud();
+              console.log('[MediaDebug] Recovery complete');
+            } catch (e) {
+              console.error('[MediaDebug] Recovery failed', e);
+            }
+          },
+        },
+      ]} />
+    </>
   );
 };
 

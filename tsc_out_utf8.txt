@@ -1,0 +1,159 @@
+﻿components/FloatingHeartsScene.tsx(265,11): error TS2322: Type 'RefObject<Line<BufferGeometry<NormalBufferAttributes, BufferGeometryEventMap>, Material | Material[], Object3DEventMap>>' is not assignable to type 'Ref<SVGLineElement>'.
+  Type 'RefObject<Line<BufferGeometry<NormalBufferAttributes, BufferGeometryEventMap>, Material | Material[], Object3DEventMap>>' is not assignable to type 'RefObject<SVGLineElement>'.
+    Type 'Line<BufferGeometry<NormalBufferAttributes, BufferGeometryEventMap>, Material | Material[], Object3DEventMap>' is missing the following properties from type 'SVGLineElement': x1, x2, y1, y2, and 286 more.
+components/StaggeredText.tsx(52,22): error TS2322: Type '{ visible: { opacity: number; y: number; filter: string; transition: { type: string; damping: number; stiffness: number; }; }; hidden: { opacity: number; y: number; filter: string; transition: { type: string; damping: number; stiffness: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; filter: string; transition: { type: string; damping: number; stiffness: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; filter: string; transition: { type: string; damping: number; stiffness: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; filter: string; transition: { type: string; damping: number; stiffness: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; damping: number; stiffness: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; damping: number; stiffness: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; damping: number; stiffness: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+supabase/functions/auth-proxy/index.ts(14,30): error TS2307: Cannot find module 'https://esm.sh/@supabase/supabase-js@2' or its corresponding type declarations.
+supabase/functions/auth-proxy/index.ts(31,1): error TS2304: Cannot find name 'Deno'.
+supabase/functions/auth-proxy/index.ts(36,5): error TS2304: Cannot find name 'Deno'.
+supabase/functions/auth-proxy/index.ts(37,5): error TS2304: Cannot find name 'Deno'.
+views/DinnerDecider.tsx(231,40): error TS2322: Type '{ hidden: { opacity: number; y: number; }; show: { opacity: number; y: number; transition: { duration: number; ease: number[]; }; }; }' is not assignable to type 'Variants'.
+  Property 'show' is incompatible with index signature.
+    Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ duration: number; ease: number[]; }' is not assignable to type 'Transition<any>'.
+              Type '{ duration: number; ease: number[]; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ duration: number; ease: number[]; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'ease' are incompatible.
+                    Type 'number[]' is not assignable to type 'Easing | Easing[]'.
+                      Type 'number[]' is not assignable to type 'EasingFunction | Easing[]'.
+                        Type 'number[]' is not assignable to type 'Easing[]'.
+                          Type 'number' is not assignable to type 'Easing'.
+views/Home.tsx(799,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(819,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(839,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(859,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(879,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(890,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(928,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(951,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/Home.tsx(974,29): error TS2322: Type '{ hidden: { opacity: number; y: number; scale: number; rotateX: number; }; visible: { opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }; }' is not assignable to type 'Variants'.
+  Property 'visible' is incompatible with index signature.
+    Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; scale: number; rotateX: number; transition: { type: string; stiffness: number; damping: number; mass: number; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'Transition<any>'.
+              Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ type: string; stiffness: number; damping: number; mass: number; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'type' are incompatible.
+                    Type 'string' is not assignable to type 'AnimationGeneratorType'.
+views/OpenWhen.tsx(121,13): error TS2322: Type '{ hidden: { opacity: number; y: number; }; show: { opacity: number; y: number; transition: { duration: number; ease: number[]; }; }; }' is not assignable to type 'Variants'.
+  Property 'show' is incompatible with index signature.
+    Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ duration: number; ease: number[]; }' is not assignable to type 'Transition<any>'.
+              Type '{ duration: number; ease: number[]; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ duration: number; ease: number[]; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'ease' are incompatible.
+                    Type 'number[]' is not assignable to type 'Easing | Easing[]'.
+                      Type 'number[]' is not assignable to type 'EasingFunction | Easing[]'.
+                        Type 'number[]' is not assignable to type 'Easing[]'.
+                          Type 'number' is not assignable to type 'Easing'.
+views/SpecialDates.tsx(149,17): error TS2322: Type '{ hidden: { opacity: number; y: number; }; show: { opacity: number; y: number; transition: { duration: number; ease: number[]; }; }; }' is not assignable to type 'Variants'.
+  Property 'show' is incompatible with index signature.
+    Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'Variant'.
+      Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ opacity: number; y: number; transition: { duration: number; ease: number[]; }; }' is not assignable to type '{ transition?: Transition<any>; transitionEnd?: ResolvedValues$1; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ duration: number; ease: number[]; }' is not assignable to type 'Transition<any>'.
+              Type '{ duration: number; ease: number[]; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ duration: number; ease: number[]; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'ease' are incompatible.
+                    Type 'number[]' is not assignable to type 'Easing | Easing[]'.
+                      Type 'number[]' is not assignable to type 'EasingFunction | Easing[]'.
+                        Type 'number[]' is not assignable to type 'Easing[]'.
+                          Type 'number' is not assignable to type 'Easing'.

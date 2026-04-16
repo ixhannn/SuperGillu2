@@ -3,6 +3,7 @@ import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 import { MediaMigrationService } from './mediaMigration';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { isDailyMomentExpired } from '../shared/mediaRetention.js';
 
 export const syncEventTarget = new EventTarget();
 
@@ -20,6 +21,37 @@ class SyncServiceClass {
     private amILeader = false;
     private activeSessionId: string | null = null;
     private reconcileInFlight: Promise<void> | null = null;
+
+    private getMediaFallbackId(table: string, item: any): string {
+        if (item?.imageId) return item.imageId;
+        if (!item?.id) return '';
+        const prefixByTable: Record<string, string> = {
+            memories: 'mem',
+            daily_photos: 'daily',
+            keepsakes: 'keep',
+            time_capsules: 'cap',
+            surprises: 'surp',
+        };
+        const prefix = prefixByTable[table];
+        return prefix ? `${prefix}_${item.id}` : '';
+    }
+
+    private async backfillMissingCloudImagePayload(table: string, item: any): Promise<void> {
+        const mediaTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises']);
+        if (!mediaTables.has(table) || !item?.id || item.image || item.storagePath) return;
+        if (table === 'daily_photos' && isDailyMomentExpired(item)) return;
+
+        const mediaId = this.getMediaFallbackId(table, item);
+        if (!mediaId) return;
+
+        try {
+            const localImage = await StorageService.getImageLocalOnly(mediaId);
+            if (!localImage) return;
+            await SupabaseService.upsertItem(table, { ...item, image: localImage, imageId: mediaId });
+        } catch {
+            // Best-effort cloud healing.
+        }
+    }
 
     private cleanupRealtimeState() {
         if (this.presenceInterval) {
@@ -179,6 +211,8 @@ class SyncServiceClass {
 
         this.reconcileInFlight = (async () => {
         try {
+            await StorageService.cleanupDailyPhotos();
+
             // Re-send any deletions that may have failed previously (offline, crash, etc.)
             // Tombstones are NEVER removed — they permanently block resurrection from partner's cache
             const pending = getPendingDeletes();
@@ -192,10 +226,13 @@ class SyncServiceClass {
             }
 
             const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes'];
+            const rowEnvelopeTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes', 'together_music']);
 
             for (const table of tables) {
                 try {
-                    const cloudItems = await SupabaseService.fetchAll(table);
+                    const cloudItems = rowEnvelopeTables.has(table)
+                        ? await SupabaseService.fetchAllRows(table)
+                        : await SupabaseService.fetchAll(table);
                     // Null signifies a fetch error, meaning the table likely doesn't exist
                     if (cloudItems === null) continue;
 
@@ -208,21 +245,30 @@ class SyncServiceClass {
                             const local = StorageService.getPetStats();
                             await SupabaseService.saveSingle(table, local);
                         } else if (table === 'together_music') {
-                            const local = await StorageService.getTogetherMusic();
+                            const local = await StorageService.getStoredTogetherMusicSource();
                             const meta = StorageService.getTogetherMusicMetadata();
                             if (local) {
-                                if (local.startsWith('data:')) {
+                                const needsMigration = local.startsWith('data:')
+                                    || !(await MediaStorageService.isScopedToCurrentUser(local));
+                                if (needsMigration) {
                                     // base64 still in IDB — upload to R2 first
-                                    const coupleId = await SupabaseService.getCurrentCoupleId();
-                                    const path = `${coupleId ?? 'guest'}/music/together`;
-                                    const uploaded = await MediaStorageService.uploadMedia(local, path);
+                                    const payload = local.startsWith('data:')
+                                        ? local
+                                        : await MediaStorageService.downloadMedia(local);
+                                    if (!payload) continue;
+                                    const path = await MediaStorageService.buildCustomPath('singleton', 'together-music', 'track', {
+                                        ownerUserId: meta?.ownerUserId,
+                                        timestamp: meta?.date,
+                                    });
+                                    const uploaded = await MediaStorageService.uploadMedia(payload, path);
+                                    const verified = uploaded ? await MediaStorageService.probeR2Path(uploaded) : false;
                                     const cloudPayload = uploaded
-                                        ? { music_url: uploaded, meta }
-                                        : { music_base64: local, meta };
+                                        && verified === true
+                                        ? { music_url: uploaded, meta, ownerUserId: meta?.ownerUserId }
+                                        : { music_base64: payload, meta, ownerUserId: meta?.ownerUserId };
                                     await SupabaseService.saveSingle(table, cloudPayload);
                                 } else {
-                                    // Already an R2 URL
-                                    await SupabaseService.saveSingle(table, { music_url: local, meta });
+                                    await SupabaseService.saveSingle(table, { music_url: local, meta, ownerUserId: meta?.ownerUserId });
                                 }
                             }
                         } else if (table === 'our_room_state') {
@@ -252,7 +298,7 @@ class SyncServiceClass {
                             };
                             const mediaPrefixes: Record<string, string> = {
                                 memories: 'mem', daily_photos: 'daily', keepsakes: 'keep',
-                                time_capsules: 'capsule', surprises: 'surprise',
+                                time_capsules: 'cap', surprises: 'surp',
                             };
                             const localItems = (listKeyMap[table] || []).filter((it: any) => !isDeletedLocally(table, it.id));
                             for (const it of localItems) {
@@ -265,13 +311,15 @@ class SyncServiceClass {
                     } else {
                         // CLOUD HAS DATA: Pull it down, skipping locally-deleted items
                         for (const item of cloudItems) {
-                            if (item?.id && isDeletedLocally(table, item.id)) {
+                            const logicalId = item?.data?.id || item?.id;
+                            if (logicalId && isDeletedLocally(table, logicalId)) {
                                 // Re-send delete to cloud in case it didn't go through
-                                await SupabaseService.deleteItem(table, item.id);
+                                await SupabaseService.deleteItem(table, logicalId);
                                 // Intentionally NOT calling removePendingDelete — tombstone stays forever
                                 continue;
                             }
                             await StorageService.handleCloudUpdate(table, item);
+                            await this.backfillMissingCloudImagePayload(table, item?.data ?? item);
                         }
                     }
                 } catch (tableError) {
@@ -285,11 +333,15 @@ class SyncServiceClass {
 
             // Auto-migrate existing base64 data to Supabase Storage.
             // Also runs when new content is added that doesn't have a storagePath yet.
-            if (!MediaMigrationService.isMigrated() || MediaMigrationService.hasUnmigratedMedia()) {
+            if (!MediaMigrationService.isMigrated() || await MediaMigrationService.hasUnmigratedMedia()) {
                 this.updateStatus('Migrating media...');
                 await MediaMigrationService.migrateAll();
                 this.updateStatus('Cloud Synced');
             }
+
+            // Retry any R2 uploads that failed in a previous session
+            // (e.g. user was offline when they saved a memory)
+            await StorageService.retryPendingUploads();
         } catch (e) {
             console.warn("Reconciliation failed", e);
         } finally {
@@ -319,10 +371,37 @@ class SyncServiceClass {
                 if (['couple_profile', 'pet_stats', 'together_music', 'our_room_state'].includes(detail.table)) {
                     await SupabaseService.saveSingle(detail.table, detail.item);
                 } else {
-                    // Strip base64 blobs from cloud payload when Storage path exists
                     const cleanItem = { ...detail.item };
+
+                    // Once media lives in R2, Supabase keeps metadata only.
+                    // That prevents the canonical copy from drifting back into JSON rows.
                     if (cleanItem.storagePath) delete cleanItem.image;
                     if (cleanItem.videoStoragePath) delete cleanItem.video;
+
+                    // Guarantee image base64 is in Supabase as a partner fallback.
+                    // Only do this while an item is still pending migration to R2.
+                    const mediaTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises']);
+                    if (mediaTables.has(detail.table) && !cleanItem.storagePath && !cleanItem.image && cleanItem.imageId) {
+                        try {
+                            const stored = await StorageService.getImageLocalOnly(cleanItem.imageId);
+                            if (stored) {
+                                cleanItem.image = stored;
+                            }
+                        } catch {
+                            // Best-effort — cloud push continues without image fallback
+                        }
+                    }
+                    if (mediaTables.has(detail.table) && !cleanItem.videoStoragePath && !cleanItem.video && cleanItem.videoId) {
+                        try {
+                            const stored = await StorageService.getImageLocalOnly(cleanItem.videoId);
+                            if (stored) {
+                                cleanItem.video = stored;
+                            }
+                        } catch {
+                            // Best-effort — cloud push continues without video fallback
+                        }
+                    }
+
                     await SupabaseService.upsertItem(detail.table, cleanItem);
                 }
             } else if (detail.action === 'delete') {
@@ -363,7 +442,7 @@ class SyncServiceClass {
                         const logicalId = payload.new?.data?.id || payload.new?.id;
                         // Skip if locally tombstoned — the delete is still propagating to cloud
                         if (logicalId && isDeletedLocally(table, logicalId)) return;
-                        StorageService.handleCloudUpdate(table, payload.new?.data ?? payload.new);
+                        StorageService.handleCloudUpdate(table, payload.new);
                     } else if (payload.eventType === 'DELETE') {
                         const rawId = payload.old?.data?.id || payload.old?.id;
                         const logicalId = (typeof rawId === 'string' && rawId.includes(':'))

@@ -103,8 +103,13 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       mood: selectedMood
     };
 
-    // Optimistic UI: Save runs in background, instantly return to timeline
-    StorageService.saveMemory(newMemory).catch(e => console.error("Background save failed", e));
+    try {
+      await StorageService.saveMemory(newMemory);
+    } catch (e: any) {
+      setIsSaving(false);
+      alert(e?.message || 'Memory could not be saved.');
+      return;
+    }
     feedback.celebrate();
     confetti.trigger();
     setView('timeline');

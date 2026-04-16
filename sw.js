@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'tulika-v3';
+const CACHE_NAME = 'lior-v4';
 
 // Lifecycle: Install
 self.addEventListener('install', (event) => {
@@ -80,7 +80,7 @@ self.addEventListener('push', (event) => {
   try {
     const data = event.data.json();
     event.waitUntil(
-      self.registration.showNotification(data.title || 'Tulika', {
+      self.registration.showNotification(data.title || 'Lior', {
         body: data.body || 'New update!',
         icon: '/icon.svg',
         badge: '/icon.svg',
@@ -89,7 +89,7 @@ self.addEventListener('push', (event) => {
     );
   } catch (e) {
     event.waitUntil(
-      self.registration.showNotification('Tulika', {
+      self.registration.showNotification('Lior', {
         body: event.data.text(),
         icon: '/icon.svg'
       })

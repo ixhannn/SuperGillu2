@@ -1,35 +1,32 @@
-
-import React, { useState, useEffect } from 'react';
-import { Heart, ArrowRight, Loader2, AlertCircle, Lock } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { AlertCircle, Loader2, Lock, ShieldCheck, Sparkles } from 'lucide-react';
 import { SupabaseService } from '../services/supabase';
 import { feedback } from '../utils/feedback';
 
-// ── Auth Proxy ──────────────────────────────────────────────────────────────
-// All auth calls go through the Edge Function, which enforces rate limits
-// server-side (by IP + email) before touching Supabase Auth.
-// A 429 response includes retry_after_seconds so the UI can show a countdown.
+const getSupabaseAuthConfig = () => {
+    const url = import.meta.env.VITE_SUPABASE_URL?.trim() || localStorage.getItem('lior_sb_url')?.trim() || '';
+    const key = import.meta.env.VITE_SUPABASE_KEY?.trim() || localStorage.getItem('lior_sb_key')?.trim() || '';
+    return {
+        url,
+        key,
+        isConfigured: Boolean(url && key),
+    };
+};
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim() ||
-    localStorage.getItem('lior_sb_url') ||
-    'https://zogdcuapmnbltdvqsrga.supabase.co';
+async function authProxy(type: 'login' | 'signup' | 'reset', email: string, password?: string) {
+    const { url, key, isConfigured } = getSupabaseAuthConfig();
+    if (!isConfigured) {
+        return { error: 'Cloud sync is not configured yet. Add your Supabase URL and anon key first.', status: 0 };
+    }
 
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_KEY?.trim() ||
-    localStorage.getItem('lior_sb_key') ||
-    'sb_publishable_KRRnxuRIWdlgHbn_g65dfQ_Mzzg5Vjl';
-
-async function authProxy(
-    type: 'login' | 'signup' | 'reset',
-    email: string,
-    password?: string,
-): Promise<{ data?: any; error?: string; retry_after_seconds?: number; status: number; proxyUnavailable?: boolean }> {
     try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/auth-proxy`, {
+        const res = await fetch(`${url}/functions/v1/auth-proxy`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'apikey': key,
+                'Authorization': `Bearer ${key}`,
             },
             body: JSON.stringify({ type, email, password }),
         });
@@ -38,20 +35,12 @@ async function authProxy(
         try {
             body = await res.json();
         } catch {
-            return {
-                error: 'Auth gateway unavailable.',
-                status: res.status,
-                proxyUnavailable: true,
-            };
+            return { error: 'Auth gateway unavailable.', status: res.status, proxyUnavailable: true };
         }
 
         return { ...body, status: res.status };
     } catch {
-        return {
-            error: 'Auth gateway unavailable.',
-            status: 0,
-            proxyUnavailable: true,
-        };
+        return { error: 'Auth gateway unavailable.', status: 0, proxyUnavailable: true };
     }
 }
 
@@ -69,9 +58,7 @@ async function directAuthFallback(type: 'login' | 'signup' | 'reset', email: str
         return error ? { error: error.message } : { data };
     }
 
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
-    });
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
     return error ? { error: error.message } : { data: {} };
 }
 
@@ -81,37 +68,95 @@ interface AuthProps {
     onTerms?: () => void;
 }
 
-const AuthBackground = () => (
-    <>
-        <div className="absolute inset-0 pointer-events-none"
-            style={{ background: 'var(--theme-bg-main)' }} />
-        <div
-            className="absolute -top-[10%] -right-[5%] w-[400px] h-[400px] rounded-full pointer-events-none animate-morph-blob opacity-60"
-            style={{ background: 'var(--theme-orb-1)', filter: 'blur(80px)' }}
-        />
-        <div
-            className="absolute -bottom-[5%] -left-[5%] w-[350px] h-[350px] rounded-full pointer-events-none animate-morph-blob opacity-40"
-            style={{ background: 'var(--theme-orb-2)', filter: 'blur(80px)', animationDelay: '6s' }}
-        />
-    </>
-);
+const pageTextStyle: React.CSSProperties = {
+    fontFamily: '"Nunito Sans", sans-serif',
+};
 
-const glassInput: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.72)',
+const surfaceStyle: React.CSSProperties = {
+    background: 'linear-gradient(180deg, rgba(255,250,248,0.54) 0%, rgba(247,241,243,0.82) 100%)',
+    border: '1px solid rgba(255,255,255,0.24)',
+    boxShadow: '0 14px 30px rgba(39,16,31,0.10), inset 0 1px 0 rgba(255,255,255,0.7)',
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
-    border: '1.5px solid rgba(255,255,255,0.95)',
-    color: 'var(--color-text-primary)',
-    borderRadius: 'var(--radius-lg)',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 6px rgba(var(--theme-particle-1-rgb),0.04)',
 };
 
-const primaryBtn: React.CSSProperties = {
-    background: 'linear-gradient(135deg, var(--color-pink-primary) 0%, var(--color-pink-deep) 100%)',
-    boxShadow: '0 12px 32px rgba(var(--color-pink-primary-rgb), 0.25), inset 0 1px 0 rgba(255,255,255,0.3)',
-    borderRadius: 'var(--radius-lg)',
+const fieldStyle: React.CSSProperties = {
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.58) 0%, rgba(255,248,250,0.44) 100%)',
+    border: '1px solid rgba(111,76,95,0.08)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 6px 14px rgba(58,24,44,0.04)',
 };
 
+const invalidFieldStyle: React.CSSProperties = {
+    border: '1px solid rgba(191,104,127,0.20)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.68), 0 0 0 2px rgba(191,104,127,0.06)',
+};
+
+const toggleTrackStyle: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.16)',
+    border: '1px solid rgba(255,255,255,0.18)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)',
+};
+
+const buttonStyle: React.CSSProperties = {
+    background: 'linear-gradient(135deg, #bf5f79 0%, #a45169 58%, #823e4f 100%)',
+    boxShadow: '0 10px 20px rgba(130,62,79,0.14), inset 0 1px 0 rgba(255,255,255,0.16)',
+};
+
+const StatusBanner = ({ tone, message }: { tone: 'error' | 'success' | 'warning'; message: React.ReactNode }) => {
+    const tones = {
+        error: { cls: 'border-red-100/60 bg-white/62 text-red-700', icon: <AlertCircle size={15} className="mt-0.5 shrink-0" /> },
+        success: { cls: 'border-emerald-100/60 bg-white/62 text-emerald-700', icon: <Sparkles size={15} className="mt-0.5 shrink-0" /> },
+        warning: { cls: 'border-orange-100/60 bg-white/62 text-orange-700', icon: <Lock size={15} className="mt-0.5 shrink-0" /> },
+    } as const;
+    const current = tones[tone];
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -4, height: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] as const }}
+            className="overflow-hidden"
+            style={pageTextStyle}
+        >
+            <div className={`rounded-[0.95rem] border px-3.5 py-2.5 text-[11.5px] ${current.cls}`}>
+                <div className="flex items-start gap-2.5">
+                    {current.icon}
+                    <div className="leading-[1.55]">{message}</div>
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+type AuthFieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
+    label: string;
+    invalid?: boolean;
+    supportText?: string | null;
+};
+
+const AuthField = ({ label, invalid, supportText, ...props }: AuthFieldProps) => (
+    <label className="block" style={pageTextStyle}>
+        <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>
+            {label}
+        </span>
+        <div
+            className="rounded-[0.96rem] transition-all duration-300 focus-within:-translate-y-0.5 focus-within:ring-1 focus-within:ring-lior-500/12"
+            style={invalid ? { ...fieldStyle, ...invalidFieldStyle } : fieldStyle}
+        >
+            <input
+                {...props}
+                aria-invalid={invalid || undefined}
+                className="w-full bg-transparent px-4 py-[0.92rem] text-[15px] outline-none placeholder:opacity-34"
+            />
+        </div>
+        {supportText && (
+            <span className="mt-1.5 block text-[10.5px] leading-5" style={{ color: invalid ? '#b7657e' : 'var(--color-text-secondary)' }}>
+                {supportText}
+            </span>
+        )}
+    </label>
+);
 
 export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms }) => {
     const [email, setEmail] = useState('');
@@ -122,13 +167,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     const [error, setError] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [rateLimitSecs, setRateLimitSecs] = useState(0);
+    const [submitAttempted, setSubmitAttempted] = useState(false);
+    const reducedMotion = useReducedMotion();
+    const { isConfigured } = getSupabaseAuthConfig();
 
-    // Countdown ticker — driven by server 429 retry_after_seconds
     useEffect(() => {
         if (rateLimitSecs <= 0) return;
         const id = setInterval(() => {
-            setRateLimitSecs(s => {
-                if (s <= 1) { clearInterval(id); return 0; }
+            setRateLimitSecs((s) => {
+                if (s <= 1) {
+                    clearInterval(id);
+                    return 0;
+                }
                 return s - 1;
             });
         }, 1000);
@@ -139,32 +189,47 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         SupabaseService.init();
         if (SupabaseService.client) {
             const { data: { subscription } } = SupabaseService.client.auth.onAuthStateChange((event, session) => {
-                if (event === 'SIGNED_IN' && session) {
-                    onLogin();
-                }
+                if (event === 'SIGNED_IN' && session) onLogin();
             });
             return () => subscription.unsubscribe();
         }
     }, [onLogin]);
 
-    const handleForgotPassword = async () => {
-        if (!email) { setError('Enter your email address first.'); return; }
-        feedback.tap();
-        setLoading(true);
+    const clearFeedback = () => {
         setError(null);
         setSuccessMsg(null);
+    };
+
+    const switchMode = (mode: 'login' | 'signup') => {
+        feedback.tap();
+        setIsForgotPassword(false);
+        setIsSignUp(mode === 'signup');
+        setSubmitAttempted(false);
+        clearFeedback();
+    };
+
+    const trimmedEmail = email.trim();
+    const emailInvalid = submitAttempted && !trimmedEmail;
+    const passwordInvalid = submitAttempted && !isForgotPassword && !password;
+
+    const handleForgotPassword = async () => {
+        setSubmitAttempted(true);
+        if (!trimmedEmail) {
+            setError('Enter your email address first.');
+            feedback.error();
+            return;
+        }
+
+        feedback.tap();
+        setLoading(true);
+        clearFeedback();
+
         try {
-            let result = await authProxy('reset', email);
-            if (result.proxyUnavailable) {
-                result = { ...(await directAuthFallback('reset', email)), status: 200 };
-            }
-            if (result.status === 429) {
-                setRateLimitSecs(result.retry_after_seconds ?? 600);
-            } else if (result.error) {
-                setError(result.error);
-            } else {
-                setSuccessMsg('Password reset email sent! Check your inbox.');
-            }
+            let result = await authProxy('reset', trimmedEmail);
+            if (result.proxyUnavailable) result = { ...(await directAuthFallback('reset', trimmedEmail)), status: 200 };
+            if (result.status === 429) setRateLimitSecs(result.retry_after_seconds ?? 600);
+            else if (result.error) setError(result.error);
+            else setSuccessMsg('Password reset email sent. Check your inbox.');
         } catch {
             setError('Network error. Please check your connection.');
         } finally {
@@ -173,27 +238,29 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     };
 
     const handleAuth = async () => {
-        if (!email || !password) return;
+        setSubmitAttempted(true);
+        if (!trimmedEmail || !password) {
+            setError('Complete both fields to continue.');
+            feedback.error();
+            return;
+        }
+
         feedback.tap();
         setLoading(true);
-        setError(null);
+        clearFeedback();
+
         try {
-            let result = await authProxy(isSignUp ? 'signup' : 'login', email, password);
-            if (result.proxyUnavailable) {
-                result = { ...(await directAuthFallback(isSignUp ? 'signup' : 'login', email, password)), status: 200 };
-            }
-            if (result.status === 429) {
-                setRateLimitSecs(result.retry_after_seconds ?? 600);
-            } else if (result.error) {
+            let result = await authProxy(isSignUp ? 'signup' : 'login', trimmedEmail, password);
+            if (result.proxyUnavailable) result = { ...(await directAuthFallback(isSignUp ? 'signup' : 'login', trimmedEmail, password)), status: 200 };
+            if (result.status === 429) setRateLimitSecs(result.retry_after_seconds ?? 600);
+            else if (result.error) {
                 setError(result.error);
                 feedback.error();
             } else if (isSignUp && !result.data?.session) {
-                setError('Confirmation email sent! Check your inbox (and spam).');
+                setSuccessMsg('Confirmation email sent. Check your inbox and spam folder.');
             } else {
                 const sb = SupabaseService.client;
-                if (sb && result.data?.session) {
-                    await sb.auth.setSession(result.data.session);
-                }
+                if (sb && result.data?.session) await sb.auth.setSession(result.data.session);
                 onLogin();
             }
         } catch {
@@ -203,207 +270,218 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         }
     };
 
-    const InfoBanner = ({ msg }: { msg: string }) => (
-        <motion.div
-            key="success"
-            initial={{ opacity: 0, y: -8, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: 'auto' }}
-            exit={{ opacity: 0, y: -4, height: 0 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden mb-5"
-        >
-            <div className="bg-green-50/90 text-green-700 p-4 rounded-2xl text-[13px] font-medium leading-relaxed flex items-start gap-3 border border-green-100 items-center">
-                <div className="flex-1">{msg}</div>
-            </div>
-        </motion.div>
-    );
+    const headline = isForgotPassword ? 'Reset password' : isSignUp ? 'Create your space' : 'Welcome back';
+    const subtitle = isForgotPassword
+        ? 'We will send a reset link.'
+        : isSignUp
+            ? 'Begin a softer place for two.'
+            : 'Enter your private space.';
 
-    const ErrorBanner = ({ msg }: { msg: string }) => (
-        <motion.div
-            key="error"
-            initial={{ opacity: 0, y: -8, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: 'auto' }}
-            exit={{ opacity: 0, y: -4, height: 0 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden mb-5"
-        >
-            <div className="bg-red-50/95 text-red-600 p-4 rounded-2xl text-[13px] font-medium leading-relaxed flex items-start gap-3 border border-red-100">
-                <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <div className="flex-1">
-                    {msg}
-                </div>
-            </div>
-        </motion.div>
-    );
+    const buttonLabel = loading
+        ? isForgotPassword
+            ? 'Sending...'
+            : isSignUp
+                ? 'Creating...'
+                : 'Entering...'
+        : isForgotPassword
+            ? 'Send reset link'
+            : isSignUp
+                ? 'Create my space'
+                : 'Enter Lior';
 
     return (
-        <div className="min-h-screen flex flex-col items-center pt-[10vh] pb-10 px-6 relative overflow-y-auto no-scrollbar"
-            style={{ color: 'var(--color-text-primary)' }}>
-            <AuthBackground />
-
+        <div className="relative min-h-screen overflow-x-hidden overflow-y-auto" style={{ ...pageTextStyle, color: 'var(--color-text-primary)' }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, #1c1219 0%, #3e333e 46%, #86707a 79%, #efe5dc 100%)' }} />
             <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.8 }}
-                className="relative z-10 w-full max-w-sm"
-            >
-                <div className="glass-card shadow-float overflow-hidden relative" style={{ borderRadius: 'var(--radius-xl)' }}>
-                    {/* Soft gradient wash */}
-                    <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-lior-500/10 to-transparent pointer-events-none" />
+                className="absolute left-1/2 top-[-7rem] h-[24rem] w-[24rem] -translate-x-1/2 rounded-full"
+                style={{ background: 'radial-gradient(circle, rgba(255,242,234,0.22) 0%, rgba(246,201,216,0.08) 34%, transparent 66%)', filter: 'blur(74px)' }}
+                animate={reducedMotion ? undefined : { scale: [1, 1.025, 1], opacity: [0.54, 0.72, 0.54] }}
+                transition={reducedMotion ? undefined : { duration: 12, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 108%, rgba(126,84,105,0.09) 0%, transparent 28%)' }} />
 
-                    <div className="p-8 pb-6 relative">
-                        {/* Brand mark */}
-                        <motion.div
-                            initial={{ scale: 0.8, opacity: 0, y: 12 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            transition={{ delay: 0.1, type: 'spring', stiffness: 450, damping: 22 }}
-                            className="flex flex-col items-center mb-10"
-                        >
-                            <div
-                                className="flex items-center justify-center mb-5 animate-breathe shadow-lg"
-                                style={{
-                                    width: '4.5rem',
-                                    height: '4.5rem',
-                                    borderRadius: '1.25rem',
-                                    background: 'linear-gradient(135deg, var(--color-pink-primary) 0%, var(--color-pink-deep) 100%)',
-                                    boxShadow: '0 12px 32px rgba(var(--color-pink-primary-rgb),0.3), inset 0 1px 0 rgba(255,255,255,0.4)',
-                                }}
-                            >
-                                <Heart size={32} fill="white" className="text-white" />
-                            </div>
+            <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[390px] flex-col px-5 md:max-w-[408px] md:py-5">
+                <div
+                    className="flex min-h-[100dvh] flex-col md:min-h-0"
+                    style={{
+                        paddingTop: 'max(env(safe-area-inset-top), clamp(1.35rem, 3.2vh, 1.8rem))',
+                        paddingBottom: 'max(env(safe-area-inset-bottom), clamp(1rem, 2.6vh, 1.3rem))',
+                    }}
+                >
+                    <div className="flex-shrink-0 pt-1 text-center">
+                        <span className="text-[11px] font-semibold tracking-[0.38em] text-white/84">LIOR</span>
+                    </div>
 
-                            <h1 className="text-3xl font-serif font-bold tracking-tight leading-none mb-2"
-                                style={{ color: 'var(--color-text-primary)' }}>
-                                Super Gillu
-                            </h1>
-                            <p className="text-[14px] font-medium tracking-wide uppercase opacity-60" style={{ color: 'var(--color-text-secondary)' }}>
-                                Moments that matter
-                            </p>
-                        </motion.div>
+                    <div
+                        className="pointer-events-none relative flex flex-1 items-start justify-center"
+                        style={{ minHeight: 'clamp(6.4rem, 15vh, 9rem)', maxHeight: 'clamp(8rem, 18vh, 10rem)' }}
+                    >
+                        <div
+                            className="absolute top-[8%] h-[11.75rem] w-[11.75rem] rounded-full"
+                            style={{ background: 'radial-gradient(circle, rgba(255,243,236,0.22) 0%, rgba(247,208,220,0.05) 40%, transparent 72%)', filter: 'blur(20px)' }}
+                        />
+                    </div>
 
-                        {/* Navigation Tabs */}
-                        {!isForgotPassword && (
-                            <div
-                                className="flex items-center p-1.5 bg-white/40 backdrop-blur-md rounded-2xl mb-6 border border-white/60 shadow-sm"
-                            >
-                                {(['login', 'signup'] as const).map(tab => {
-                                    const active = tab === (isSignUp ? 'signup' : 'login');
-                                    return (
-                                        <button
-                                            key={tab}
-                                            onClick={() => { feedback.tap(); setIsSignUp(tab === 'signup'); setError(null); setSuccessMsg(null); }}
-                                            className="flex-1 py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all spring-press relative"
-                                            style={{
-                                                color: active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                                            }}
-                                        >
-                                            {active && (
-                                                <motion.div 
-                                                    layoutId="auth-tab" 
-                                                    className="absolute inset-0 bg-white rounded-xl shadow-md border border-white/80"
-                                                    transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                                                />
-                                            )}
-                                            <span className="relative z-10">{tab === 'login' ? 'Log In' : 'Sign Up'}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {isForgotPassword && (
-                            <div className="mb-6">
-                                <p className="text-[15px] text-center font-medium leading-relaxed px-4" style={{ color: 'var(--color-text-secondary)' }}>
-                                    We'll send a magic link to your email to get you back in.
+                    <motion.div
+                        initial={reducedMotion ? undefined : { opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.44, ease: [0.22, 1, 0.36, 1] }}
+                        className="relative mt-auto flex-shrink-0 rounded-[1.72rem]"
+                        style={{
+                            ...surfaceStyle,
+                            paddingTop: 'clamp(1.05rem, 2vh, 1.2rem)',
+                            paddingBottom: 'clamp(1.05rem, 2vh, 1.2rem)',
+                            paddingLeft: 'clamp(1.05rem, 3.8vw, 1.2rem)',
+                            paddingRight: 'clamp(1.05rem, 3.8vw, 1.2rem)',
+                        }}
+                    >
+                        <div className="mb-5">
+                            {isForgotPassword && (
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>
+                                    Recovery
                                 </p>
+                            )}
+                            <h1
+                                className={`${isForgotPassword ? 'mt-2' : ''} text-[1.82rem] font-bold leading-[1.04] tracking-[-0.03em]`}
+                                style={{ color: 'var(--color-text-primary)' }}
+                            >
+                                {headline}
+                            </h1>
+                            <p className="mt-2 max-w-[14rem] text-[12.5px] leading-[1.62]" style={{ color: 'var(--color-text-secondary)' }}>
+                                {subtitle}
+                            </p>
+                        </div>
+
+                        {!isForgotPassword && (
+                            <div className="mb-4 rounded-[0.98rem] p-1" style={toggleTrackStyle}>
+                                <div className="grid grid-cols-2 gap-1">
+                                    {(['login', 'signup'] as const).map((tab) => {
+                                        const active = tab === (isSignUp ? 'signup' : 'login');
+                                        return (
+                                            <button
+                                                key={tab}
+                                                onClick={() => switchMode(tab)}
+                                                className="relative rounded-[0.86rem] py-2.5 text-[11px] font-semibold"
+                                                style={{ color: active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
+                                            >
+                                                {active && (
+                                                    <motion.div
+                                                        layoutId="auth-tab"
+                                                        className="absolute inset-0 rounded-[0.86rem]"
+                                                        style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(255,246,248,0.68) 100%)', border: '1px solid rgba(255,255,255,0.52)', boxShadow: '0 6px 14px rgba(74,31,54,0.05)' }}
+                                                        transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+                                                    />
+                                                )}
+                                                <span className="relative z-10">{tab === 'login' ? 'Sign in' : 'Sign up'}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 
-                        <AnimatePresence mode="wait">
-                            {rateLimitSecs > 0 && (
-                                <motion.div
-                                    key="ratelimit"
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="mb-5 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-[13px] text-orange-700 flex flex-col items-center gap-2"
-                                >
-                                    <Lock size={18} className="text-orange-400" />
-                                    <p className="font-bold uppercase tracking-widest text-[10px]">Security Lock</p>
-                                    <p>Try again in <strong>{Math.floor(rateLimitSecs / 60)}:{String(rateLimitSecs % 60).padStart(2, '0')}</strong></p>
-                                </motion.div>
-                            )}
-                            {!rateLimitSecs && error && <ErrorBanner msg={error} />}
-                            {!rateLimitSecs && successMsg && <InfoBanner msg={successMsg} />}
-                        </AnimatePresence>
+                        <div className="mb-4 space-y-2.5">
+                            <AnimatePresence mode="wait">
+                                {!isConfigured && (
+                                    <StatusBanner
+                                        tone="warning"
+                                        message="Cloud sync is not configured yet. Add your Supabase URL and anon key through the setup flow or environment variables before signing in."
+                                    />
+                                )}
+                                {rateLimitSecs > 0 && <StatusBanner tone="warning" message={<>Try again in <strong>{Math.floor(rateLimitSecs / 60)}:{String(rateLimitSecs % 60).padStart(2, '0')}</strong>.</>} />}
+                                {!rateLimitSecs && error && <StatusBanner tone="error" message={error} />}
+                                {!rateLimitSecs && successMsg && <StatusBanner tone="success" message={successMsg} />}
+                            </AnimatePresence>
+                        </div>
 
-                        <div className="space-y-4">
-                            <input
+                        <div className="space-y-3.5">
+                            <AuthField
+                                label="Email"
                                 type="email"
                                 value={email}
+                                invalid={emailInvalid}
+                                supportText={emailInvalid ? 'Email is required.' : null}
                                 onFocus={() => feedback.tap()}
-                                onChange={e => setEmail(e.target.value)}
-                                placeholder="Email address"
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="you@example.com"
                                 autoComplete="email"
-                                className="w-full py-4.5 px-6 outline-none transition-all placeholder:opacity-40"
-                                style={glassInput}
+                                autoCapitalize="none"
+                                autoCorrect="off"
                             />
                             {!isForgotPassword && (
-                                <input
+                                <AuthField
+                                    label="Password"
                                     type="password"
                                     value={password}
+                                    invalid={passwordInvalid}
+                                    supportText={passwordInvalid ? 'Password is required.' : null}
                                     onFocus={() => feedback.tap()}
-                                    onChange={e => setPassword(e.target.value)}
-                                    placeholder="Password"
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder={isSignUp ? 'Create a secure password' : 'Enter your password'}
                                     autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                                    className="w-full py-4.5 px-6 outline-none transition-all placeholder:opacity-40"
-                                    style={glassInput}
                                 />
                             )}
                         </div>
 
-                        {!isForgotPassword && !isSignUp && (
-                            <div className="flex justify-end mt-3">
+                        <div className="mt-4 flex items-center justify-end">
+                            {!isForgotPassword ? (
+                                !isSignUp && (
+                                    <button
+                                        onClick={() => {
+                                            feedback.tap();
+                                            setIsForgotPassword(true);
+                                            setSubmitAttempted(false);
+                                            clearFeedback();
+                                        }}
+                                        className="text-[11px] font-medium transition-opacity hover:opacity-80"
+                                        style={{ color: 'var(--color-nav-active)' }}
+                                    >
+                                        Forgot password?
+                                    </button>
+                                )
+                            ) : (
                                 <button
-                                    onClick={() => { feedback.tap(); setIsForgotPassword(true); setError(null); setSuccessMsg(null); }}
-                                    className="text-[12px] font-bold uppercase tracking-wider text-lior-500 opacity-80"
+                                    onClick={() => {
+                                        feedback.tap();
+                                        setIsForgotPassword(false);
+                                        setSubmitAttempted(false);
+                                        clearFeedback();
+                                    }}
+                                    className="text-[11px] font-medium transition-opacity hover:opacity-80"
+                                    style={{ color: 'var(--color-nav-active)' }}
                                 >
-                                    Forgot password?
+                                    Back to sign in
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
-                        <div className="mt-8">
-                            <motion.button
-                                whileTap={{ scale: 0.96 }}
-                                onClick={isForgotPassword ? handleForgotPassword : handleAuth}
-                                disabled={loading || rateLimitSecs > 0}
-                                className="w-full py-5 font-bold text-white uppercase tracking-[0.15em] text-[13px] flex items-center justify-center gap-3 disabled:opacity-40 shadow-xl"
-                                style={primaryBtn}
-                            >
-                                {loading ? <Loader2 size={20} className="animate-spin" /> : (
-                                    <>
-                                        {isForgotPassword ? 'Reset Password' : (isSignUp ? 'Create Account' : 'Sign in')}
-                                        <ArrowRight size={18} />
-                                    </>
-                                )}
-                            </motion.button>
-                        </div>
-                    </div>
+                        <motion.button
+                            whileTap={{ scale: 0.988 }}
+                            onClick={isForgotPassword ? handleForgotPassword : handleAuth}
+                            disabled={loading || rateLimitSecs > 0}
+                            className="relative mt-5 flex w-full items-center justify-center overflow-hidden rounded-[1.02rem] py-3.5 text-[13.5px] font-semibold text-white disabled:opacity-40"
+                            style={buttonStyle}
+                        >
+                            <div className="absolute inset-0 opacity-30" style={{ background: 'linear-gradient(120deg, rgba(255,255,255,0.12) 0%, transparent 44%, transparent 80%, rgba(255,224,205,0.08) 100%)' }} />
+                            <span className="relative z-10 flex items-center gap-2">
+                                {loading && <Loader2 size={16} className="animate-spin" />}
+                                <span>{buttonLabel}</span>
+                            </span>
+                        </motion.button>
 
-                    {/* Footer Links */}
-                    <div className="p-8 pt-0 flex flex-col items-center gap-5">
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest opacity-40" style={{ color: 'var(--color-text-secondary)' }}>
-                            <Lock size={12} strokeWidth={2.5} />
-                            Private & Encrypted
+                        <div className="mt-4 flex items-center justify-center gap-2 text-[10.5px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                            <ShieldCheck size={13} />
+                            Encrypted and private
                         </div>
-                        <div className="flex items-center gap-4 text-[11px] font-bold" style={{ color: 'var(--color-text-secondary)' }}>
-                            <button onClick={() => { feedback.tap(); onPrivacyPolicy?.(); }} className="transition-opacity">Privacy</button>
-                            <span className="opacity-20">·</span>
-                            <button onClick={() => { feedback.tap(); onTerms?.(); }} className="transition-opacity">Terms</button>
+
+                        <div className="mt-4 flex items-center justify-center gap-4 text-[10.5px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                            <button onClick={() => { feedback.tap(); onPrivacyPolicy?.(); }} className="transition-opacity hover:opacity-80">Privacy</button>
+                            <span className="h-1 w-1 rounded-full bg-current opacity-20" />
+                            <button onClick={() => { feedback.tap(); onTerms?.(); }} className="transition-opacity hover:opacity-80">Terms</button>
                         </div>
-                    </div>
+                    </motion.div>
                 </div>
-            </motion.div>
+            </div>
         </div>
     );
 };

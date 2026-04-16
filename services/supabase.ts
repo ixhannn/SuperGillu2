@@ -8,6 +8,15 @@ let cachedCoupleId: string | null = null;
 
 const buildTenantRowId = (tenantId: string, logicalId: string) => `${tenantId}:${logicalId}`;
 
+export interface SupabaseRowEnvelope<T = any> {
+    id: string;
+    user_id?: string | null;
+    couple_id?: string | null;
+    data: T;
+    created_at?: string;
+    updated_at?: string;
+}
+
 export const SupabaseService = {
     client: null as SupabaseClient | null,
 
@@ -145,12 +154,30 @@ export const SupabaseService = {
         return data.map((row: any) => row.data);
     },
 
+    fetchAllRows: async (table: string): Promise<SupabaseRowEnvelope[] | null> => {
+        if (!SupabaseService.client) return [];
+        const coupleId = await SupabaseService.getCurrentCoupleId();
+        if (!coupleId) return null;
+
+        const { data, error } = await SupabaseService.client.from(table).select('*');
+        if (error) return null;
+        return (data ?? []) as SupabaseRowEnvelope[];
+    },
+
     fetchSingle: async (table: string, id: string = 'singleton'): Promise<any | null> => {
         if (!SupabaseService.client) return null;
         const rowId = await SupabaseService.getTenantRowId(id);
         const { data, error } = await SupabaseService.client.from(table).select('*').eq('id', rowId).single();
         if (error || !data) return null;
         return data.data;
+    },
+
+    fetchSingleRow: async (table: string, id: string = 'singleton'): Promise<SupabaseRowEnvelope | null> => {
+        if (!SupabaseService.client) return null;
+        const rowId = await SupabaseService.getTenantRowId(id);
+        const { data, error } = await SupabaseService.client.from(table).select('*').eq('id', rowId).single();
+        if (error || !data) return null;
+        return data as SupabaseRowEnvelope;
     },
 
     saveSingle: async (table: string, data: any) => {

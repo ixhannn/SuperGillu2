@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 
 interface StaggeredTextProps {
   text: string;
@@ -10,7 +10,7 @@ interface StaggeredTextProps {
 export const StaggeredText: React.FC<StaggeredTextProps> = ({ text, className = "", delay = 0 }) => {
   const words = text.split(" ");
 
-  const container = {
+  const container: Variants = {
     hidden: { opacity: 0 },
     visible: (i = 1) => ({
       opacity: 1,
@@ -18,13 +18,13 @@ export const StaggeredText: React.FC<StaggeredTextProps> = ({ text, className = 
     }),
   };
 
-  const child = {
+  const child: Variants = {
     visible: {
       opacity: 1,
       y: 0,
       filter: 'blur(0px)',
       transition: {
-        type: "spring",
+        type: 'spring' as const,
         damping: 12,
         stiffness: 100,
       },
@@ -34,7 +34,7 @@ export const StaggeredText: React.FC<StaggeredTextProps> = ({ text, className = 
       y: 20,
       filter: 'blur(8px)',
       transition: {
-        type: "spring",
+        type: 'spring' as const,
         damping: 12,
         stiffness: 100,
       },

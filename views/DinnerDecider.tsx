@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Utensils, RotateCw } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import { ViewState, DinnerOption } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.06 } }
 };
 
-const staggerItem = {
+const staggerItem: Variants = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] as const } }
 };
 
 interface DinnerDeciderProps {
@@ -179,7 +179,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                       transform={`rotate(${textRotation}, ${labelX * 0.6}, ${labelY * 0.6})`}
                       style={{ textShadow: '0 0.005em 0.01em rgba(0,0,0,0.4)', pointerEvents: 'none' }}
                     >
-                      {opt.text.length > 12 ? opt.text.slice(0, 12) + '…' : opt.text}
+                      {opt.text.length > 12 ? opt.text.slice(0, 12) + 'â€¦' : opt.text}
                     </text>
                   </g>
                 );
@@ -192,7 +192,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
         {winner && (
           <div className="mb-6 bg-lior-500 text-white px-6 py-4 rounded-2xl animate-elastic-pop text-center shadow-lg shadow-lior-500/30 ring-1 ring-lior-200">
             <p className="text-xs uppercase font-bold opacity-90 mb-1 tracking-wider">We are eating</p>
-            <p className="text-2xl font-serif font-bold">{winner}! 🍽️</p>
+            <p className="text-2xl font-serif font-bold">{winner}! ðŸ½ï¸</p>
           </div>
         )}
 

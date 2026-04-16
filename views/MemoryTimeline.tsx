@@ -60,7 +60,7 @@ function useVideoBlobUrl(src: string | null): string | null {
 
 /* ─── Surprise modal ─── */
 const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => void }) => {
-    const { src: imageUrl } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
+    const { src: imageUrl, handleError: handleImgError } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
 
     return ReactDOM.createPortal(
         <motion.div
@@ -93,7 +93,7 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
                     <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden -rotate-1">
                         {imageUrl ? (
                             <div className="aspect-[4/3] overflow-hidden">
-                                <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" />
+                                <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" onError={handleImgError} />
                             </div>
                         ) : (
                             <div className="aspect-[4/3] bg-lior-50 flex items-center justify-center text-lior-200">
@@ -125,13 +125,14 @@ const MemoryCard: React.FC<{
     onDelete: (id: string) => void;
 }> = ({ memory, index, featured = false, onClick, onDelete }) => {
     const isVideo = !!memory.video || !!memory.videoId;
-    const { src: thumbUrl, isLoading } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
-    const { src: videoThumbUrl } = useLiorMedia(
+    const { src: thumbUrl, isLoading, handleError: handleThumbError } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
+    const { src: videoThumbUrl, handleError: handleVideoThumbError } = useLiorMedia(
         !memory.imageId ? memory.videoId : undefined,
         !memory.imageId ? memory.video : undefined,
         !memory.imageId ? memory.videoStoragePath : undefined,
     );
     const mediaUrl = thumbUrl || videoThumbUrl;
+    const handleMediaError = thumbUrl ? handleThumbError : handleVideoThumbError;
     const dateLabel = new Date(memory.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
     const mood = MOOD_MAP[memory.mood] || '✨';
 
@@ -155,7 +156,7 @@ const MemoryCard: React.FC<{
             {isLoading ? (
                 <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
             ) : mediaUrl ? (
-                <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} />
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center" style={{ color: 'var(--color-text-secondary)' }}>
                     <ImageIcon size={28} className="opacity-30" />
@@ -394,7 +395,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
     onDelete: (id: string) => void;
 }) => {
     const isVideo = !!memory.video || !!memory.videoId;
-    const { src: rawSrc, isLoading } = useLiorMedia(
+    const { src: rawSrc, isLoading, handleError: handleMediaError } = useLiorMedia(
         memory.videoId || memory.imageId,
         memory.video || memory.image,
         memory.videoStoragePath || memory.storagePath,
@@ -524,7 +525,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                         ) : mediaSrc ? (
                             isVideo
                                 ? <InlineVideoPlayer src={mediaSrc} />
-                                : <img src={mediaSrc} alt="Memory"
+                                : <img src={mediaSrc} alt="Memory" onError={handleMediaError}
                                     style={{ display: 'block', width: '100%', maxHeight: '55vh', objectFit: 'contain', background: '#000' }} />
                         ) : (
                             <div className="flex items-center justify-center" style={{ height: '36vh' }}>
@@ -664,6 +665,12 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         return () => storageEventTarget.removeEventListener('storage-update', load);
     }, []);
 
+    // Background image recovery: if any images are missing from local IDB,
+    // pull them back from Supabase cloud. Fires once on mount, safe to re-run.
+    useEffect(() => {
+        StorageService.recoverImagesFromCloud().catch(() => {});
+    }, []);
+
     useEffect(() => {
         if (recoveryAttemptedRef.current) return;
         if (!SyncService.isConnected) return;
@@ -680,6 +687,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         if (SyncService.isConnected) {
             setIsRecoveringCloud(true);
             await SyncService.refreshFromCloud().catch(() => {});
+            await StorageService.recoverImagesFromCloud().catch(() => {});
             setIsRecoveringCloud(false);
         } else {
             await new Promise(r => setTimeout(r, 800));

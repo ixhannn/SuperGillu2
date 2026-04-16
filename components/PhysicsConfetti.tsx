@@ -46,6 +46,7 @@ const CONFETTI_POOL: ConfettiParticle[] = Array.from({ length: POOL_SIZE }, () =
 }));
 
 let poolIdx = 0;
+let _confettiActive = 0; // active particle count — skip loop when 0
 function acquireConfetti(): ConfettiParticle | null {
   for (let i = 0; i < POOL_SIZE; i++) {
     const idx = (poolIdx + i) % POOL_SIZE;
@@ -86,6 +87,7 @@ function explode(cx: number, cy: number, count: number): void {
     p.w = Math.random() * 10 + 6;
     p.h = p.shape === 'rect' ? Math.random() * 14 + 4 : p.w;
     p.active = true;
+    _confettiActive++;
   }
 }
 
@@ -149,6 +151,7 @@ const PhysicsConfettiInner: React.ForwardRefRenderFunction<ConfettiHandle> = (_p
       minTier: 'medium',
 
       tick(delta) {
+        if (_confettiActive === 0) return; // idle — skip 400 iterations
         ctx.clearRect(0, 0, W, H);
 
         for (let i = 0; i < POOL_SIZE; i++) {
@@ -171,7 +174,7 @@ const PhysicsConfettiInner: React.ForwardRefRenderFunction<ConfettiHandle> = (_p
 
           // Slow life decay after initial burst
           p.life -= 0.00018 * delta;
-          if (p.life < 0 || p.y < -100) { p.active = false; continue; }
+          if (p.life < 0 || p.y < -100) { p.active = false; _confettiActive--; continue; }
 
           // Alpha: full for first 70%, then fade
           const alpha = p.life > 0.3 ? 0.88 : (p.life / 0.3) * 0.88;
@@ -203,6 +206,7 @@ const PhysicsConfettiInner: React.ForwardRefRenderFunction<ConfettiHandle> = (_p
       AnimationEngine.unregister('physics-confetti');
       ro.disconnect();
       for (const p of CONFETTI_POOL) p.active = false;
+      _confettiActive = 0;
     };
   }, []);
 

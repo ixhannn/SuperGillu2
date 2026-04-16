@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint } from 'lucide-react';
-import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, Brain, Video, Film } from 'lucide-react';
+import { motion, AnimatePresence, useInView, type Variants } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
@@ -10,6 +10,7 @@ import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
 import { CouplePet } from '../components/CouplePet';
+import { InsightWhisper } from '../components/InsightWhisper';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -161,16 +162,16 @@ const scrollVariants = {
     }
 };
 
-const gridContainerVariants = {
+const gridContainerVariants: Variants = {
     hidden: {},
     visible: { transition: { staggerChildren: 0.08, delayChildren: 0.03 } }
 };
 
-const gridItemVariants = {
+const gridItemVariants: Variants = {
     hidden: { opacity: 0, y: 32, scale: 0.92, rotateX: 4 },
     visible: {
         opacity: 1, y: 0, scale: 1, rotateX: 0,
-        transition: { type: "spring", stiffness: 380, damping: 22, mass: 0.7 }
+        transition: { type: "spring" as const, stiffness: 380, damping: 22, mass: 0.7 }
     }
 };
 
@@ -691,6 +692,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             {/* ── COUNTDOWN CARD ───────────────────────────────────────── */}
             <ScrollReveal variant="slideFromRight">
                 <TiltCard
+                    data-coachmark="countdowns"
                     maxTilt={14}
                     glare
                     onClick={() => setView('countdowns')}
@@ -729,6 +731,9 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </TiltCard>
             </ScrollReveal>
+
+            {/* ── PARTNER INSIGHT WHISPER ────────────────────────────── */}
+            <InsightWhisper setView={setView} />
 
             {/* ── TODAY'S QUESTION ─────────────────────────────────────── */}
             <div className="mb-5 relative z-10">
@@ -802,7 +807,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('open-when')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                        <div data-coachmark="open-when" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
                             <div className="mb-3">
                                 <div className="p-2.5 rounded-xl inline-block bg-blue-50 border border-blue-100/50">
                                     <Mail size={22} className="text-blue-500" />
@@ -862,7 +867,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         onClick={() => setView('bonsai-bloom')}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                        <div data-coachmark="bonsai" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
                             <div className="mb-3">
                                 <div className="p-2.5 rounded-xl inline-block bg-emerald-50 border border-emerald-100/50">
                                     <TreeDeciduous size={22} className="text-emerald-500" />
@@ -987,6 +992,103 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <div>
                                 <span className="font-semibold text-sm text-gray-800 block">Voice Notes</span>
                                 <span className="text-xs text-gray-400 mt-0.5">Record messages straight from the heart</span>
+                            </div>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Daily Video Moments — featured premium card */}
+                <motion.div variants={gridItemVariants} className="col-span-2">
+                    <motion.div
+                        whileTap={{ scale: 0.98, y: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                        onClick={() => setView('daily-video')}
+                        className="w-full cursor-pointer"
+                    >
+                        <div
+                            className="relative overflow-hidden p-6 rounded-[1.75rem] spring-press"
+                            style={{
+                                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%)',
+                                border: '1px solid rgba(168, 85, 247, 0.25)',
+                                boxShadow: '0 4px 24px rgba(168, 85, 247, 0.15)',
+                            }}
+                        >
+                            {/* Glow effects */}
+                            <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.2) 0%, transparent 70%)' }} />
+                            <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(236,72,153,0.15) 0%, transparent 70%)' }} />
+
+                            <div className="relative z-10 flex items-center justify-between">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Crown size={13} className="text-purple-400" fill="currentColor" />
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400/80">Premium</span>
+                                    </div>
+                                    <h3 className="font-serif text-[20px] font-bold leading-tight mb-1 text-white">Daily Video Moments</h3>
+                                    <p className="text-[12px] text-purple-200/50 font-medium">10 seconds of your day, compiled monthly</p>
+                                </div>
+                                <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ml-4"
+                                    style={{ background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.3)' }}>
+                                    <Video size={24} className="text-purple-400" />
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Weekly Recap Video — premium card */}
+                <motion.div variants={gridItemVariants} className="col-span-2">
+                    <motion.div
+                        whileTap={{ scale: 0.98, y: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                        onClick={() => setView('weekly-recap')}
+                        className="w-full cursor-pointer"
+                    >
+                        <div
+                            className="relative overflow-hidden p-5 rounded-[1.75rem] spring-press"
+                            style={{
+                                background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)',
+                                border: '1px solid rgba(99, 102, 241, 0.25)',
+                                boxShadow: '0 4px 24px rgba(99, 102, 241, 0.15)',
+                            }}
+                        >
+                            <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(129,140,248,0.2) 0%, transparent 70%)' }} />
+
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                                    style={{ background: 'rgba(129,140,248,0.2)', border: '1px solid rgba(129,140,248,0.3)' }}>
+                                    <Film size={22} className="text-indigo-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Crown size={11} className="text-indigo-400" fill="currentColor" />
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-indigo-400/80">Premium</span>
+                                    </div>
+                                    <h3 className="font-semibold text-[15px] text-white">Weekly Recap</h3>
+                                    <p className="text-[11px] text-indigo-200/50">Your memories compiled every Sunday</p>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Partner Intelligence — premium insight card */}
+                <motion.div variants={gridItemVariants} className="col-span-2">
+                    <motion.div
+                        whileTap={{ scale: 0.98, y: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                        onClick={() => setView('partner-intelligence')}
+                        className="w-full cursor-pointer"
+                    >
+                        <div className="bento-card p-5 flex items-center gap-4 relative overflow-hidden spring-press">
+                            <div className="absolute top-3 right-4">
+                                <Crown size={10} className="text-amber-400" fill="currentColor" />
+                            </div>
+                            <div className="p-3 rounded-2xl flex-shrink-0" style={{ background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+                                <Brain size={24} style={{ color: '#8b5cf6' }} />
+                            </div>
+                            <div>
+                                <span className="font-semibold text-sm text-gray-800 block">Partner Insights</span>
+                                <span className="text-xs text-gray-400 mt-0.5">Quiet observations about your connection</span>
                             </div>
                         </div>
                     </motion.div>

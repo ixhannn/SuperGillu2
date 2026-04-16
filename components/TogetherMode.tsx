@@ -10,6 +10,25 @@ export const TogetherMode = () => {
     const [profile, setProfile] = useState(() => StorageService.getCoupleProfile());
     const { currentView } = useNavigation();
 
+    // ── Start solo ambient playback on first user interaction ──
+    useEffect(() => {
+        let started = false;
+        const tryStart = () => {
+            if (started) return;
+            started = true;
+            StorageService.getTogetherMusic().then(src => {
+                if (src) AmbientService.startSolo();
+            });
+        };
+        // Use capture so we catch the very first tap/click
+        window.addEventListener('touchstart', tryStart, { once: true, capture: true, passive: true });
+        window.addEventListener('mousedown',  tryStart, { once: true, capture: true });
+        return () => {
+            window.removeEventListener('touchstart', tryStart, { capture: true });
+            window.removeEventListener('mousedown',  tryStart, { capture: true });
+        };
+    }, []);
+
     useEffect(() => {
         const onStart = (e: any) => {
             const { startTime } = e.detail;
@@ -20,7 +39,8 @@ export const TogetherMode = () => {
 
         const onEnd = () => {
             setActive(false);
-            AmbientService.stop();
+            // Keep music playing but at solo (quieter) volume
+            AmbientService.downgradeToSolo();
         };
 
         const refreshProfile = () => setProfile(StorageService.getCoupleProfile());

@@ -21,7 +21,7 @@ interface KeepsakeBoxProps {
 const normalizeSenderName = (senderId?: string) => senderId === 'Lior' ? 'Tulika' : senderId;
 
 const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick }) => {
-    const { src: mediaSrc } = useLiorMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, keepsake.storagePath || keepsake.videoStoragePath);
+    const { src: mediaSrc, handleError: handleMediaError } = useLiorMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, keepsake.storagePath || keepsake.videoStoragePath);
 
     const formattedDate = new Date(keepsake.date).toLocaleDateString(undefined, {
         year: 'numeric', month: 'short', day: 'numeric'
@@ -58,14 +58,14 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
 
                     {mediaSrc && (keepsake.type === 'photo' || keepsake.type === 'memory') && (
                         <div className="rounded-xl overflow-hidden mb-3 border-2 border-white/10 bg-white/5 transform transition-all duration-500">
-                            <img src={mediaSrc} className="w-full h-auto" alt="Keepsake" />
+                            <img src={mediaSrc} className="w-full h-auto" alt="Keepsake" onError={handleMediaError} />
                         </div>
                     )}
 
                     {mediaSrc && keepsake.type === 'video' && (
                         <div className="rounded-xl overflow-hidden mb-3 border-2 border-white/10 bg-black transform transition-all duration-500">
                             <div className="relative flex items-center justify-center">
-                                <video src={mediaSrc} className="w-full h-auto" />
+                                <video src={mediaSrc} className="w-full h-auto" onError={handleMediaError} />
                                 <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                                     <PlayCircle size={32} className="text-white opacity-80" />
                                 </div>
@@ -113,7 +113,7 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
 // Extracted to separate component so we can use hooks conditionally for the specific opened keepsake
 const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void }> = ({ keepsake, onClose }) => {
     // For detail views, we want the FULL resolution image/video
-    const { src: mediaUrl, isLoading } = useLiorMedia(
+    const { src: mediaUrl, isLoading, handleError: handleMediaError } = useLiorMedia(
         keepsake.videoId || keepsake.imageId,
         keepsake.video || keepsake.image,
         keepsake.videoStoragePath || keepsake.storagePath
@@ -144,9 +144,9 @@ const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void 
                            </div>
                         ) : (
                             keepsake.video || keepsake.videoId ? (
-                                <video src={mediaUrl || ''} controls autoPlay className="max-w-full max-h-[40vh] object-contain relative z-10" />
+                                <video src={mediaUrl || ''} controls autoPlay className="max-w-full max-h-[40vh] object-contain relative z-10" onError={handleMediaError} />
                             ) : (
-                                <img src={mediaUrl || ''} className="max-w-full max-h-[40vh] object-contain relative z-10" alt="Keepsake" />
+                                <img src={mediaUrl || ''} className="max-w-full max-h-[40vh] object-contain relative z-10" alt="Keepsake" onError={handleMediaError} />
                             )
                         )}
                     </div>
@@ -306,9 +306,13 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
             isHidden: false
         };
 
-        await StorageService.saveKeepsake(newKeepsake);
-        feedback.celebrate();
-        resetCompose();
+        try {
+            await StorageService.saveKeepsake(newKeepsake);
+            feedback.celebrate();
+            resetCompose();
+        } catch (error: any) {
+            alert(error?.message || 'Keepsake could not be saved.');
+        }
     };
 
     const resetCompose = () => {

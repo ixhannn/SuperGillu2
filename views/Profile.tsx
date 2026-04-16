@@ -3,11 +3,12 @@ import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, Shi
 import { ViewHeader } from '../components/ViewHeader';
 import { SectionDivider } from './Home';
 import { ViewState, CoupleProfile } from '../types';
-import { StorageService } from '../services/storage';
+import { StorageService, storageEventTarget } from '../services/storage';
 import { ThemeService, THEMES, ThemeId } from '../services/theme';
 import { SupabaseService } from '../services/supabase';
 import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
+import { formatBytes } from '../shared/mediaPolicy.js';
 
 interface ProfileProps {
     setView: (view: ViewState) => void;
@@ -33,6 +34,17 @@ const FROSTED_PANEL_STYLE: React.CSSProperties = {
     boxShadow: 'var(--shadow-sm)',
 };
 
+const APPLE_GLASS_STYLE: React.CSSProperties = {
+    background: 'var(--theme-surface-glass)',
+    backdropFilter: 'blur(40px) saturate(220%) brightness(1.08)',
+    WebkitBackdropFilter: 'blur(40px) saturate(220%) brightness(1.08)',
+    borderTop: '1.5px solid rgba(255, 255, 255, 0.55)',
+    borderLeft: '1.5px solid rgba(255, 255, 255, 0.35)',
+    borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08), inset 0 2px 2px rgba(255, 255, 255, 0.4), inset 1px 0 1px rgba(255, 255, 255, 0.2)',
+};
+
 export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const [profile, setProfile] = useState<CoupleProfile>({
         myName: '',
@@ -46,6 +58,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const [audioOn, setAudioOn] = useState(Audio.isEnabled());
     const [showIdentityModal, setShowIdentityModal] = useState(false);
     const [storageInfo, setStorageInfo] = useState<{ used: string, type: string }>({ used: '0 KB', type: 'Checking...' });
+    const [managedStats, setManagedStats] = useState(StorageService.getManagedStorageStats());
     const [musicMeta, setMusicMeta] = useState<{ name: string } | null>(null);
     const [musicError, setMusicError] = useState<string | null>(null);
 
@@ -54,6 +67,9 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const musicInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
+        const refreshStorageStats = () => {
+            setManagedStats(StorageService.getManagedStorageStats());
+        };
         const data = StorageService.getCoupleProfile();
         setProfile(data);
 
@@ -73,7 +89,12 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         const meta = StorageService.getTogetherMusicMetadata();
         setMusicMeta(meta);
 
+        const handleStorageUpdate = () => refreshStorageStats();
+        storageEventTarget.addEventListener('storage-update', handleStorageUpdate);
+        refreshStorageStats();
+
         return () => {
+            storageEventTarget.removeEventListener('storage-update', handleStorageUpdate);
             ThemeService.cleanup();
         };
     }, []);
@@ -270,96 +291,171 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         reader.readAsText(file);
     };
 
+    // ── Toggle row component (reused for haptics + sound) ──────────────────────
+    const ToggleRow = ({
+        icon, label, description, on, onToggle, noBorder,
+    }: { icon: React.ReactNode; label: string; description: string; on: boolean; onToggle: () => void; noBorder?: boolean }) => (
+        <div
+            className="flex items-center justify-between py-4"
+            style={noBorder ? {} : { borderBottom: '1px solid rgba(var(--color-text-primary-rgb, 45,31,37), 0.07)' }}
+        >
+            <div className="flex items-center gap-4">
+                <div
+                    className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: on ? 'var(--color-nav-active)' : 'rgba(0,0,0,0.06)' }}
+                >
+                    <span style={{ color: on ? '#fff' : 'var(--color-text-secondary)' }}>{icon}</span>
+                </div>
+                <div>
+                    <p className="text-base font-semibold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{label}</p>
+                    <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{description}</p>
+                </div>
+            </div>
+            <button
+                onClick={onToggle}
+                className="relative flex-shrink-0 transition-all duration-300 spring-press outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                style={{
+                    width: 50, height: 28, borderRadius: 100,
+                    background: on ? 'var(--color-nav-active)' : 'rgba(0,0,0,0.12)',
+                    boxShadow: on ? '0 2px 10px rgba(var(--theme-particle-1-rgb), 0.4)' : 'none',
+                }}
+                aria-pressed={on}
+            >
+                <span
+                    className="absolute rounded-full bg-white shadow-sm transition-all duration-300"
+                    style={{ width: 22, height: 22, top: 3, left: on ? 25 : 3 }}
+                />
+            </button>
+        </div>
+    );
+
     return (
         <div className="flex flex-col h-full min-h-screen">
             <ViewHeader
-                title="Couple Profile"
+                title="Profile"
                 onBack={() => setView('home')}
                 variant="centered"
                 rightSlot={
                     <button
                         onClick={save}
                         disabled={isSaving}
-                        className="px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all text-white"
-                        style={{ background: 'var(--theme-nav-center-bg-active)' }}
+                        className="px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 transition-all text-white"
+                        style={{ background: 'var(--theme-nav-center-bg-active)', opacity: isSaving ? 0.7 : 1 }}
                     >
-                        {isSaving ? (
-                            <>
-                                <Save size={16} className="animate-bounce" /> Saved
-                            </>
-                        ) : 'Save'}
+                        {isSaving ? <><Save size={14} className="animate-spin" /> Saving…</> : 'Save'}
                     </button>
                 }
             />
 
-            <div className="view-container">
-                {/* Photo Upload — Hero Alignment */}
-                <div className="view-section flex flex-col items-center">
-                    <div
-                        onClick={() => fileInputRef.current?.click()}
-                        className="group relative w-40 h-40 rounded-full border-2 border-white/20 overflow-hidden cursor-pointer mb-6 transition-all duration-500 spring-press ring-4 ring-lior-100/30"
-                        style={{ background: 'var(--theme-surface-glass)', boxShadow: 'var(--shadow-lg)' }}
-                    >
-                        {profile.photo ? (
-                            <img src={profile.photo} className="w-full h-full object-cover" alt="Couple" />
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-lior-300">
-                                <Heart size={48} className="mb-1" fill="currentColor" />
-                                <span className="text-micro-bold opacity-60">Upload Photo</span>
-                            </div>
-                        )}
+            <div className="view-container space-y-6 pb-16">
 
-                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-40 transition-opacity">
-                            <Camera className="text-white" size={32} />
+                {/* ── HERO: photo + couple names ────────────────────────── */}
+                <div className="px-5 pt-2">
+                    <div
+                        className="relative rounded-3xl overflow-hidden"
+                        style={{
+                            background: `linear-gradient(145deg, ${activeTheme.palette[100]} 0%, ${activeTheme.palette[300]} 60%, ${activeTheme.palette[500]} 100%)`,
+                            boxShadow: `0 12px 40px ${activeTheme.palette[400]}44`,
+                        }}
+                    >
+                        {/* shimmer */}
+                        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.04) 55%, transparent 100%)' }} />
+
+                        <div className="relative z-10 flex items-center gap-5 p-6">
+                            {/* Photo */}
+                            <div
+                                onClick={() => fileInputRef.current?.click()}
+                                className="relative cursor-pointer flex-shrink-0 spring-press"
+                            >
+                                <div
+                                    className="w-20 h-20 rounded-2xl overflow-hidden"
+                                    style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.18), 0 0 0 3px rgba(255,255,255,0.6)' }}
+                                >
+                                    {profile.photo ? (
+                                        <img src={profile.photo} className="w-full h-full object-cover" alt="Couple" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.35)' }}>
+                                            <Heart size={28} fill="currentColor" style={{ color: activeTheme.palette[600] }} />
+                                        </div>
+                                    )}
+                                </div>
+                                <div
+                                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center"
+                                    style={{ background: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+                                >
+                                    <Camera size={12} style={{ color: activeTheme.palette[500] }} />
+                                </div>
+                                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" ref={fileInputRef} className="hidden" onChange={handleImageUpload} />
+                            </div>
+
+                            {/* Names */}
+                            <div className="min-w-0">
+                                {profile.myName || profile.partnerName ? (
+                                    <p className="font-serif text-2xl font-bold text-white leading-tight drop-shadow-sm">
+                                        {profile.myName || '—'}
+                                        <span className="mx-2 opacity-60">&</span>
+                                        {profile.partnerName || '—'}
+                                    </p>
+                                ) : (
+                                    <p className="font-serif text-xl text-white/60">Add your names below</p>
+                                )}
+                                {profile.anniversaryDate && (
+                                    <p className="text-[12px] mt-1 font-medium" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                                        Together since {new Date(profile.anniversaryDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── IDENTITY FIELDS ───────────────────────────────────── */}
+                <div className="px-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] mb-4 ml-1" style={{ color: 'var(--color-text-secondary)' }}>Your Identity</p>
+                    <div className="rounded-[2rem] p-5 space-y-4" style={APPLE_GLASS_STYLE}>
+                        {/* My Name */}
+                        <div>
+                            <label className="text-xs font-bold uppercase tracking-[0.1em] block mb-2" style={{ color: 'var(--color-text-secondary)' }}>My Name</label>
+                            <input
+                                type="text"
+                                value={profile.myName}
+                                onChange={(e) => handleChange('myName', e.target.value)}
+                                className="w-full rounded-2xl px-4 py-3.5 text-[20px] font-serif font-semibold outline-none placeholder:opacity-30 transition-all focus:ring-2 focus:ring-opacity-50"
+                                style={{ color: 'var(--color-text-primary)', background: 'rgba(100,100,100, 0.08)', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                                placeholder="Your name"
+                            />
                         </div>
 
-                        <input
-                            type="file"
-                            accept="image/png, image/jpeg, image/jpg, image/webp"
-                            ref={fileInputRef}
-                            className="hidden"
-                            onChange={handleImageUpload}
-                        />
+                        {/* Partner Name */}
+                        <div>
+                            <label className="text-xs font-bold uppercase tracking-[0.1em] block mb-2 mt-1" style={{ color: 'var(--color-text-secondary)' }}>Partner's Name</label>
+                            <input
+                                type="text"
+                                value={profile.partnerName}
+                                onChange={(e) => handleChange('partnerName', e.target.value)}
+                                className="w-full rounded-2xl px-4 py-3.5 text-[20px] font-serif font-semibold outline-none placeholder:opacity-30 transition-all focus:ring-2 focus:ring-opacity-50"
+                                style={{ color: 'var(--color-text-primary)', background: 'rgba(100,100,100, 0.08)', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                                placeholder="Their name"
+                            />
+                        </div>
+
+                        {/* Anniversary */}
+                        <div>
+                            <label className="text-xs font-bold uppercase tracking-[0.1em] block mb-2 mt-1" style={{ color: 'var(--color-text-secondary)' }}>Together Since</label>
+                            <input
+                                type="date"
+                                value={profile.anniversaryDate ? new Date(profile.anniversaryDate).toISOString().split('T')[0] : ''}
+                                onChange={(e) => handleChange('anniversaryDate', new Date(e.target.value).toISOString())}
+                                className="w-full rounded-2xl px-4 py-3.5 text-[16px] font-semibold outline-none transition-all focus:ring-2 focus:ring-opacity-50"
+                                style={{ color: 'var(--color-text-primary)', background: 'rgba(100,100,100, 0.08)', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                            />
+                        </div>
                     </div>
                 </div>
 
-                <div className="view-section space-y-4">
-                    <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-micro-bold text-gray-400 block mb-2 opacity-60 group-focus-within:opacity-100 group-focus-within:text-lior-500 transition-all">My Name</label>
-                        <input
-                            type="text"
-                            value={profile.myName}
-                            onChange={(e) => handleChange('myName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-2xl outline-none text-gray-800 placeholder:text-gray-300 transition-all"
-                            placeholder="Your name"
-                        />
-                    </div>
-
-                    <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-micro-bold text-gray-400 block mb-2 opacity-60 group-focus-within:opacity-100 group-focus-within:text-lior-500 transition-all">Partner's Name</label>
-                        <input
-                            type="text"
-                            value={profile.partnerName}
-                            onChange={(e) => handleChange('partnerName', e.target.value)}
-                            className="w-full bg-transparent font-serif text-2xl outline-none text-gray-800 placeholder:text-gray-300 transition-all"
-                            placeholder="Their name"
-                        />
-                    </div>
-
-                    <div className="p-5 rounded-2xl glass-card-premium shadow-none border-none ring-1 ring-inset ring-white/10 group focus-within:ring-lior-400/40 transition-all duration-300" style={FROSTED_PANEL_STYLE}>
-                        <label className="text-micro-bold text-gray-400 block mb-2 opacity-60 group-focus-within:opacity-100 group-focus-within:text-lior-500 transition-all">Relationship Start Date</label>
-                        <input
-                            type="date"
-                            value={profile.anniversaryDate ? new Date(profile.anniversaryDate).toISOString().split('T')[0] : ''}
-                            onChange={(e) => handleChange('anniversaryDate', new Date(e.target.value).toISOString())}
-                            className="w-full bg-transparent font-bold text-lg outline-none text-gray-800 transition-all"
-                        />
-                    </div>
-                </div>
-
-                {/* Theme Selector — Aesthetic Personalization */}
-                <div className="view-section">
-                    <SectionDivider label="Aesthetic Studio" />
+                {/* ── THEME PICKER — UNCHANGED ──────────────────────────── */}
+                <div className="px-5">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: 'var(--color-text-secondary)' }}>Aesthetic Studio</p>
                     <div className="rounded-[2.5rem] glass-card-premium overflow-hidden p-0 border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
 
                         {/* Active theme hero */}
@@ -494,270 +590,250 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     </div>
                 </div>
 
-                {/* Music Upload — Shared Vibe */}
-                <div className="view-section">
-                    <SectionDivider label="Shared Vibe" />
-                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
-
+                {/* ── YOUR SONG ─────────────────────────────────────────── */}
+                <div className="px-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] mb-4 ml-1" style={{ color: 'var(--color-text-secondary)' }}>Your Song</p>
+                    <div className="rounded-2xl overflow-hidden premium-skeuo-glass">
                         {musicMeta ? (
-                            <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.14)' }}>
-                                <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="p-2.5 rounded-full flex-shrink-0" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.15)', color: 'var(--color-nav-active)' }}>
-                                        <Music size={20} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-bold truncate pr-2 leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-                                            {musicMeta.name}
-                                        </p>
-                                        <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-nav-active)' }}>
-                                            Custom Song Active
-                                        </p>
-                                    </div>
+                            /* Active song row */
+                            <div className="flex items-center gap-4 p-5">
+                                <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                                    style={{ background: 'var(--color-nav-active)', boxShadow: '0 4px 14px rgba(var(--theme-particle-1-rgb),0.4)' }}
+                                >
+                                    <Music size={20} color="#fff" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[15px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{musicMeta.name}</p>
+                                    <p className="text-[12px] mt-0.5 font-medium" style={{ color: 'var(--color-nav-active)' }}>Playing in the background ♪</p>
                                 </div>
                                 <button
                                     onClick={handleRemoveMusic}
-                                    className="p-2 rounded-full transition-all"
-                                    style={{ color: 'var(--color-text-secondary)' }}
+                                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 spring-press"
+                                    style={{ background: 'rgba(0,0,0,0.06)' }}
                                     title="Remove song"
                                 >
-                                    <Trash2 size={18} />
+                                    <Trash2 size={15} style={{ color: 'var(--color-text-secondary)' }} />
                                 </button>
                             </div>
                         ) : (
-                            <>
-                                <div className="flex items-center gap-4">
-                                    <button
-                                        onClick={() => musicInputRef.current?.click()}
-                                        className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2 active:scale-95 transition-all"
-                                        style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)', color: 'var(--color-text-primary)' }}
-                                    >
-                                        <Upload size={16} /> Upload Song
-                                    </button>
-                                    <input
-                                        type="file"
-                                        accept="audio/*"
-                                        ref={musicInputRef}
-                                        className="hidden"
-                                        onChange={handleMusicUpload}
-                                    />
+                            /* Upload CTA */
+                            <button
+                                onClick={() => musicInputRef.current?.click()}
+                                className="w-full flex items-center gap-4 p-5 spring-press transition-opacity active:opacity-70"
+                            >
+                                <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                                    style={{ background: 'rgba(var(--theme-particle-1-rgb),0.1)', border: '1.5px dashed rgba(var(--theme-particle-1-rgb),0.3)' }}
+                                >
+                                    <Upload size={18} style={{ color: 'var(--color-nav-active)' }} />
                                 </div>
-
-                                {musicError ? (
-                                    <p className="text-[10px] text-red-500 font-bold mt-2 flex items-center gap-1 animate-pulse">
-                                        <AlertCircle size={10} /> {musicError}
-                                    </p>
-                                ) : (
-                                    <p className="text-[10px] mt-2 leading-tight" style={{ color: 'var(--color-text-secondary)' }}>
-                                        This song will play when both of you are online at the same time. Max 10MB.
-                                    </p>
-                                )}
-                            </>
+                                <div className="text-left">
+                                    <p className="text-[15px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>Add your song</p>
+                                    <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>Plays softly in the background · Max 10 MB</p>
+                                </div>
+                            </button>
+                        )}
+                        <input type="file" accept="audio/*" ref={musicInputRef} className="hidden" onChange={handleMusicUpload} />
+                        {musicError && (
+                            <div className="px-5 pb-4">
+                                <p className="text-[12px] text-red-500 font-medium flex items-center gap-1.5">
+                                    <AlertCircle size={12} /> {musicError}
+                                </p>
+                            </div>
                         )}
                     </div>
                 </div>
 
-                {/* Feel Settings — Haptics & Sound */}
-                <div className="view-section">
-                    <SectionDivider label="Tactile & Sound" />
-                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
+                {/* ── FEEL: haptics + sound ──────────────────────────────── */}
+                <div className="px-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] mb-4 ml-1" style={{ color: 'var(--color-text-secondary)' }}>Feel & Sound</p>
+                    <div className="rounded-2xl px-5" style={APPLE_GLASS_STYLE}>
+                        <ToggleRow
+                            icon={<Vibrate size={17} />}
+                            label="Haptic Feedback"
+                            description="Vibrations on taps and interactions"
+                            on={hapticsOn}
+                            onToggle={handleToggleHaptics}
+                        />
+                        <ToggleRow
+                            icon={audioOn ? <Volume2 size={17} /> : <VolumeX size={17} />}
+                            label="UI Sounds"
+                            description="Soft clicks, swooshes & chimes"
+                            on={audioOn}
+                            onToggle={handleToggleAudio}
+                            noBorder
+                        />
+                    </div>
+                </div>
 
-                        {/* Haptics Toggle */}
-                        <div className="flex items-center justify-between py-3 border-b" style={{ borderColor: 'color-mix(in srgb, var(--color-text-primary) 10%, transparent)' }}>
+                {/* ── DATA & BACKUP ─────────────────────────────────────── */}
+                <div className="px-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] mb-4 ml-1" style={{ color: 'var(--color-text-secondary)' }}>Your Data</p>
+                    <div className="rounded-2xl overflow-hidden" style={APPLE_GLASS_STYLE}>
+                        {/* Storage usage row */}
+                        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(var(--color-text-primary-rgb,45,31,37), 0.07)' }}>
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: `rgba(var(--theme-particle-1-rgb), 0.14)` }}>
-                                    <Vibrate size={15} style={{ color: 'var(--color-nav-active)' }} />
+                                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.06)' }}>
+                                    <Database size={17} style={{ color: 'var(--color-text-secondary)' }} />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Haptic Feedback</p>
-                                    <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>Physical touch responses</p>
+                                    <p className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>Local storage</p>
+                                    <p className="text-[13px] mt-0.5 opacity-80" style={{ color: 'var(--color-text-primary)' }}>{storageInfo.type}</p>
                                 </div>
                             </div>
-                            <button
-                                onClick={handleToggleHaptics}
-                                className="relative w-12 h-6 rounded-full transition-all duration-300 spring-press"
-                                style={{
-                                    background: hapticsOn ? `rgba(var(--theme-particle-1-rgb), 1)` : 'rgba(0,0,0,0.15)',
-                                    boxShadow: hapticsOn ? `0 2px 12px rgba(var(--theme-particle-1-rgb), 0.4)` : 'none',
-                                }}
-                                aria-pressed={hapticsOn}
-                            >
-                                <span
-                                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300"
-                                    style={{ left: hapticsOn ? '26px' : '2px' }}
-                                />
-                            </button>
+                            <span className="text-[15px] font-bold font-mono" style={{ color: 'var(--color-text-primary)' }}>{storageInfo.used}</span>
                         </div>
 
-                        {/* Audio Toggle */}
-                        <div className="flex items-center justify-between py-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: `rgba(var(--theme-particle-1-rgb), 0.14)` }}>
-                                    {audioOn
-                                        ? <Volume2 size={15} style={{ color: 'var(--color-nav-active)' }} />
-                                        : <VolumeX size={15} style={{ color: 'var(--color-text-secondary)' }} />
-                                    }
+                        <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(var(--color-text-primary-rgb,45,31,37), 0.07)' }}>
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(59,130,246,0.1)' }}>
+                                        <HardDrive size={17} style={{ color: '#2563eb' }} />
+                                    </div>
+                                    <div>
+                                        <p className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>Cloud media budget</p>
+                                        <p className="text-[13px] mt-0.5 opacity-80" style={{ color: 'var(--color-text-primary)' }}>
+                                            Managed R2 media tracked by feature
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>UI Sounds</p>
-                                    <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>Clicks, swooshes & chimes</p>
-                                </div>
+                                <span className="text-[13px] font-bold font-mono text-right" style={{ color: 'var(--color-text-primary)' }}>
+                                    {formatBytes(managedStats.totalBytes)} / {formatBytes(managedStats.totalQuotaBytes)}
+                                </span>
                             </div>
-                            <button
-                                onClick={handleToggleAudio}
-                                className="relative w-12 h-6 rounded-full transition-all duration-300 spring-press"
-                                style={{
-                                    background: audioOn ? `rgba(var(--theme-particle-1-rgb), 1)` : 'rgba(0,0,0,0.15)',
-                                    boxShadow: audioOn ? `0 2px 12px rgba(var(--theme-particle-1-rgb), 0.4)` : 'none',
-                                }}
-                                aria-pressed={audioOn}
-                            >
-                                <span
-                                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300"
-                                    style={{ left: audioOn ? '26px' : '2px' }}
-                                />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Storage Status — Vault Integrity */}
-                <div className="view-section">
-                    <SectionDivider label="Vault Integrity" />
-                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
-                        <div className="flex justify-between items-center mb-6">
-                            <label className="text-micro-bold text-lior-500 flex items-center gap-2">
-                                <HardDrive size={14} /> Local Storage
-                            </label>
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-lior-50 text-lior-500 ring-1 ring-lior-100">
-                                <ShieldCheck size={12} /> {storageInfo.type}
+                            <div className="mt-3 space-y-2">
+                                {managedStats.breakdown
+                                    .filter((entry) => entry.bytes > 0)
+                                    .sort((a, b) => b.bytes - a.bytes)
+                                    .slice(0, 4)
+                                    .map((entry) => (
+                                        <div key={entry.feature} className="flex items-center justify-between text-[12px]">
+                                            <span style={{ color: 'var(--color-text-secondary)' }}>
+                                                {entry.label} {entry.itemCount > 0 ? `· ${entry.itemCount}` : ''}
+                                            </span>
+                                            <span className="font-mono" style={{ color: 'var(--color-text-primary)' }}>
+                                                {formatBytes(entry.bytes)}
+                                            </span>
+                                        </div>
+                                    ))}
+                                {managedStats.breakdown.every((entry) => entry.bytes === 0) && (
+                                    <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                                        No managed media stored yet.
+                                    </p>
+                                )}
                             </div>
                         </div>
 
-                        <div className="flex justify-between items-end">
-                            <div>
-                                <p className="text-3xl font-mono font-bold text-gray-800">{storageInfo.used}</p>
-                                <p className="text-micro-bold text-gray-400 opacity-60 mt-1">Local Memory Footprint</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-micro-bold text-gray-800">Database Engine</p>
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest opacity-60">IndexedDB Active</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Data & Backup Section */}
-                <div className="view-section">
-                    <SectionDivider label="Continuity" />
-                    <div className="p-6 rounded-[2.5rem] glass-card-premium border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
-
-                        <div className="flex gap-4">
-                            <button
-                                onClick={handleDownloadBackup}
-                                disabled={isBackingUp}
-                                className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest flex flex-col items-center gap-2 bg-gray-50 border border-gray-100 text-gray-700 active:scale-95 transition-all"
-                            >
-                                {isBackingUp ? <Download size={20} className="animate-bounce" /> : <Download size={20} />}
-                                <span>Export</span>
-                            </button>
-
-                            <button
-                                onClick={() => backupInputRef.current?.click()}
-                                className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest flex flex-col items-center gap-2 bg-gray-50 border border-gray-100 text-gray-700 active:scale-95 transition-all"
-                            >
-                                <Upload size={20} />
-                                <span>Import</span>
-                            </button>
-                            <input
-                                type="file"
-                                accept=".json"
-                                ref={backupInputRef}
-                                className="hidden"
-                                onChange={handleRestoreBackup}
-                            />
-                        </div>
-                        <p className="text-[11px] mt-6 leading-relaxed text-gray-500 font-medium">
-                            Download a copy of your memories to keep them safe forever. You can restore this file anytime if you switch devices.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="view-section pt-8 space-y-3 pb-12">
-                    {/* Premium Features shortcuts */}
-                    <div className="grid grid-cols-2 gap-2.5 mb-1">
-                        {[
-                            { label: 'Year in Review', icon: <Sparkles size={16} />, view: 'year-in-review' as ViewState, color: 'rgba(168,85,247,0.12)', textColor: '#a855f7' },
-                            { label: 'Voice Notes', icon: <Mic size={16} />, view: 'voice-notes' as ViewState, color: 'rgba(59,130,246,0.12)', textColor: '#3b82f6' },
-                            { label: 'Surprises', icon: <Gift size={16} />, view: 'surprises' as ViewState, color: 'rgba(245,158,11,0.12)', textColor: '#f59e0b' },
-                            { label: 'Time Capsules', icon: <Lock size={16} />, view: 'time-capsule' as ViewState, color: 'rgba(var(--theme-particle-1-rgb),0.12)', textColor: 'var(--color-nav-active)' },
-                        ].map(({ label, icon, view, color, textColor }) => (
-                            <button
-                                key={view}
-                                onClick={() => setView(view)}
-                                className="flex items-center gap-2.5 px-4 py-3.5 rounded-2xl text-left transition-all spring-press"
-                                style={{ background: color, border: `1px solid ${color.replace('0.12', '0.25')}` }}
-                            >
-                                <span style={{ color: textColor }}>{icon}</span>
-                                <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    <button
-                        onClick={handleSwitchIdentityClick}
-                        className="w-full flex items-center justify-center gap-2 font-bold text-sm py-4 rounded-2xl bg-gray-50 border border-gray-100 text-gray-700 transition-all spring-press"
-                    >
-                        <Users size={16} /> Switch Identity
-                    </button>
-
-                    <button
-                        onClick={handleSignOut}
-                        className="w-full flex items-center justify-center gap-2 text-red-500 font-bold text-sm bg-red-50 py-4 rounded-2xl border border-red-100 transition-all spring-press"
-                    >
-                        <LogOut size={16} /> Sign Out
-                    </button>
-                </div>
-            </div>
-
-            {/* Identity Switch Modal */}
-            {showIdentityModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-backdrop-enter" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)' }}>
-                    <div className="glass-card-hero w-full max-w-sm p-6 animate-modal-enter relative">
+                        {/* Export row */}
                         <button
-                            onClick={() => setShowIdentityModal(false)}
-                            className="absolute top-4 right-4 p-2 rounded-full transition-colors spring-press"
-                            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)', color: 'var(--color-text-secondary)' }}
+                            onClick={handleDownloadBackup}
+                            disabled={isBackingUp}
+                            className="w-full flex items-center justify-between px-5 py-4 spring-press transition-opacity active:opacity-70"
+                            style={{ borderBottom: '1px solid rgba(var(--color-text-primary-rgb,45,31,37), 0.07)' }}
                         >
-                            <X size={20} />
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.1)' }}>
+                                    {isBackingUp ? <Download size={17} className="animate-bounce" style={{ color: '#059669' }} /> : <Download size={17} style={{ color: '#059669' }} />}
+                                </div>
+                                <div className="text-left">
+                                    <p className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>Export backup</p>
+                                    <p className="text-[13px] mt-0.5 font-medium opacity-80" style={{ color: 'var(--color-text-primary)' }}>Download all your memories as a file</p>
+                                </div>
+                            </div>
+                            <span className="text-[13px] font-semibold" style={{ color: '#059669' }}>Export</span>
                         </button>
 
-                        <h3 className="font-serif font-bold text-2xl text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>Who are you?</h3>
-                        <p className="text-center text-sm mb-8" style={{ color: 'var(--color-text-secondary)' }}>Select your identity to switch profiles.</p>
-
-                        <div className="space-y-4">
-                            <button
-                                onClick={() => handleIdentitySelect('Tulika')}
-                                className="w-full p-4 rounded-2xl flex items-center gap-4 transition-all group spring-press"
-                                style={{ background: 'rgba(var(--theme-particle-1-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.18)' }}
-                            >
-                                <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-transform" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.15)' }}>👩🏻</div>
-                                <div className="text-left">
-                                    <span className="block font-bold text-lg transition-colors" style={{ color: 'var(--color-text-primary)' }}>Tulika</span>
-                                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Switch to Tulika's view</span>
+                        {/* Import row */}
+                        <button
+                            onClick={() => backupInputRef.current?.click()}
+                            className="w-full flex items-center justify-between px-5 py-4 spring-press transition-opacity active:opacity-70"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(59,130,246,0.1)' }}>
+                                    <Upload size={17} style={{ color: '#3b82f6' }} />
                                 </div>
-                            </button>
-
-                            <button
-                                onClick={() => handleIdentitySelect('Ishan')}
-                                className="w-full p-4 rounded-2xl flex items-center gap-4 transition-all group spring-press"
-                                style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)' }}
-                            >
-                                <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-transform" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.15)' }}>👨🏻</div>
                                 <div className="text-left">
-                                    <span className="block font-bold text-lg transition-colors" style={{ color: 'var(--color-text-primary)' }}>Ishan</span>
-                                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Switch to Ishan's view</span>
+                                    <p className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>Import backup</p>
+                                    <p className="text-[13px] mt-0.5 font-medium opacity-80" style={{ color: 'var(--color-text-primary)' }}>Restore from a previous export file</p>
                                 </div>
-                            </button>
+                            </div>
+                            <span className="text-[13px] font-semibold" style={{ color: '#3b82f6' }}>Import</span>
+                        </button>
+
+                        <input type="file" accept=".json" ref={backupInputRef} className="hidden" onChange={handleRestoreBackup} />
+                    </div>
+                </div>
+
+                {/* ── ACCOUNT ───────────────────────────────────────────── */}
+                <div className="px-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] mb-4 ml-1" style={{ color: 'var(--color-text-secondary)' }}>Account</p>
+                    <div className="rounded-2xl overflow-hidden space-y-2">
+                        <button
+                            onClick={handleSwitchIdentityClick}
+                            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl spring-press"
+                            style={APPLE_GLASS_STYLE}
+                        >
+                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.06)' }}>
+                                <Users size={17} style={{ color: 'var(--color-text-primary)' }} />
+                            </div>
+                            <div className="text-left flex-1 ml-2">
+                                <p className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>Switch identity</p>
+                                <p className="text-[13px] mt-0.5 font-medium opacity-80" style={{ color: 'var(--color-text-primary)' }}>Change who you're logged in as</p>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={handleSignOut}
+                            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl spring-press"
+                            style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.15)' }}
+                        >
+                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.1)' }}>
+                                <LogOut size={17} style={{ color: '#ef4444' }} />
+                            </div>
+                            <div className="text-left flex-1 ml-2">
+                                <p className="text-base font-semibold" style={{ color: '#ef4444' }}>Sign out</p>
+                                <p className="text-[13px] mt-0.5" style={{ color: 'rgba(239,68,68,0.6)' }}>You can sign back in anytime</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            {/* ── IDENTITY MODAL ────────────────────────────────────────── */}
+            {showIdentityModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(14px)' }}>
+                    <div className="w-full max-w-sm rounded-3xl p-6 relative" style={APPLE_GLASS_STYLE}>
+                        <button
+                            onClick={() => setShowIdentityModal(false)}
+                            className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center spring-press"
+                            style={{ background: 'rgba(0,0,0,0.07)' }}
+                        >
+                            <X size={16} style={{ color: 'var(--color-text-secondary)' }} />
+                        </button>
+
+                        <h3 className="font-serif font-bold text-2xl mb-1" style={{ color: 'var(--color-text-primary)' }}>Who are you?</h3>
+                        <p className="text-[13px] mb-6" style={{ color: 'var(--color-text-secondary)' }}>Choose your identity to switch the active profile.</p>
+
+                        <div className="space-y-3">
+                            {[
+                                { name: 'Tulika', emoji: '👩🏻' },
+                                { name: 'Ishan',  emoji: '👨🏻' },
+                            ].map(({ name, emoji }) => (
+                                <button
+                                    key={name}
+                                    onClick={() => handleIdentitySelect(name)}
+                                    className="w-full flex items-center gap-4 p-4 rounded-2xl spring-press text-left"
+                                    style={{ background: 'rgba(var(--theme-particle-1-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-1-rgb),0.15)' }}
+                                >
+                                    <span className="text-3xl leading-none">{emoji}</span>
+                                    <div>
+                                        <p className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{name}</p>
+                                        <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>Switch to {name}'s view</p>
+                                    </div>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>

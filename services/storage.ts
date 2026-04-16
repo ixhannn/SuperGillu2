@@ -3,6 +3,14 @@ import { SupabaseService } from './supabase';
 import { MediaStorageService, compressImage } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
 import { normalizeCoupleRoom, migrateFromOldRoom } from '../components/room/roomSoul';
+import { isDailyMomentExpired } from '../shared/mediaRetention.js';
+import {
+    COUPLE_TOTAL_STORAGE_BUDGET_BYTES,
+    estimateDataUriBytes,
+    formatBytes,
+    getFeatureStorageBudgetBytes,
+    getMimeTypeFromDataUri,
+} from '../shared/mediaPolicy.js';
 
 
 // ENSURING WE STAY ON V11 FOR DATA CONTINUITY
@@ -244,6 +252,38 @@ const CACHE_KEYS = {
     TIME_CAPSULES: 'lior_time_capsules',
     SURPRISES: 'lior_surprises',
     VOICE_NOTES: 'lior_voice_notes',
+    PENDING_UPLOADS: 'lior_pending_uploads',
+};
+
+/* ─── Pending upload retry queue ─── */
+// When R2 upload fails (network down, misconfigured worker, etc.), the item's
+// IDs are saved here. On the next successful sync cycle, retryPendingUploads()
+// reads the queue, re-reads the media from IDB, and retries the upload.
+export type PendingUpload = {
+    listKey: string;         // keyof DATA_CACHE, e.g. 'memories'
+    storageKey: string;      // CACHE_KEYS value, e.g. 'lior_memories'
+    prefix: string;          // 'mem' | 'daily' | 'keep' etc.
+    itemId: string;
+    hasImage: boolean;
+    hasVideo: boolean;
+};
+
+const _getPendingUploads = (): PendingUpload[] => {
+    try { return JSON.parse(localStorage.getItem(CACHE_KEYS.PENDING_UPLOADS) || '[]'); } catch { return []; }
+};
+
+const _savePendingUploads = (list: PendingUpload[]) => {
+    localStorage.setItem(CACHE_KEYS.PENDING_UPLOADS, JSON.stringify(list));
+};
+
+const _addPendingUpload = (entry: PendingUpload) => {
+    const list = _getPendingUploads();
+    const exists = list.find(u => u.listKey === entry.listKey && u.itemId === entry.itemId);
+    if (!exists) _savePendingUploads([...list, entry]);
+};
+
+const _removePendingUpload = (listKey: string, itemId: string) => {
+    _savePendingUploads(_getPendingUploads().filter(u => !(u.listKey === listKey && u.itemId === itemId)));
 };
 
 /* ─── Pending delete tombstones ─── */
@@ -415,6 +455,144 @@ const notifyUpdate = (detail: StorageUpdateDetail) => {
     storageEventTarget.dispatchEvent(new CustomEvent('storage-update', { detail }));
 };
 
+const MEDIA_OWNER_TABLES = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes']);
+const TABLE_TO_MEDIA_FEATURE: Record<string, string> = {
+    memories: 'memories',
+    daily_photos: 'daily-moments',
+    keepsakes: 'keepsakes',
+    time_capsules: 'time-capsules',
+    surprises: 'surprises',
+    voice_notes: 'voice-notes',
+    together_music: 'together-music',
+};
+const TOGETHER_MUSIC_SOURCE_KEY = 'custom_together_music';
+type TogetherMusicMetadata = { name: string; date: string; size: number; mimeType?: string; ownerUserId?: string };
+type VoiceNoteAudioSaveResult = { storagePath: string | null; byteSize: number; mimeType: string };
+type ManagedStorageFeature = 'memories' | 'daily-moments' | 'keepsakes' | 'time-capsules' | 'surprises' | 'voice-notes' | 'together-music';
+type ManagedStorageBreakdown = { feature: ManagedStorageFeature; label: string; bytes: number; quotaBytes: number | null; itemCount: number };
+
+const isInlineMediaPayload = (value?: string | null) => typeof value === 'string' && value.startsWith('data:');
+
+const getMediaTimestamp = (item: any): string | undefined => {
+    const candidate = item?.date || item?.createdAt || item?.meta?.date;
+    return typeof candidate === 'string' && candidate ? candidate : undefined;
+};
+
+const MANAGED_FEATURE_LABELS: Record<ManagedStorageFeature, string> = {
+    memories: 'Memories',
+    'daily-moments': 'Daily Moments',
+    keepsakes: 'Keepsakes',
+    'time-capsules': 'Time Capsules',
+    surprises: 'Surprises',
+    'voice-notes': 'Voice Notes',
+    'together-music': 'Together Music',
+};
+
+const extractInlineMediaMeta = (value?: string | null): { bytes: number; mimeType: string } | null => {
+    if (!isInlineMediaPayload(value)) return null;
+    return {
+        bytes: estimateDataUriBytes(value),
+        mimeType: getMimeTypeFromDataUri(value),
+    };
+};
+
+const getManagedItemBytes = (item: any): number => (
+    Number(item?.imageBytes || 0)
+    + Number(item?.videoBytes || 0)
+    + Number(item?.audioBytes || 0)
+);
+
+const getFeatureItemsForBudget = (feature: ManagedStorageFeature): any[] => {
+    switch (feature) {
+        case 'memories':
+            return DATA_CACHE.memories;
+        case 'daily-moments':
+            return filterActiveDailyPhotos(DATA_CACHE.dailyPhotos);
+        case 'keepsakes':
+            return DATA_CACHE.keepsakes;
+        case 'time-capsules':
+            return DATA_CACHE.timeCapsules;
+        case 'surprises':
+            return DATA_CACHE.surprises;
+        case 'voice-notes':
+            return DATA_CACHE.voiceNotes;
+        case 'together-music': {
+            const meta = StorageService.getTogetherMusicMetadata();
+            return meta ? [{ size: meta.size }] : [];
+        }
+        default:
+            return [];
+    }
+};
+
+const getFeatureBytesForBudget = (feature: ManagedStorageFeature): number => {
+    if (feature === 'together-music') {
+        const meta = StorageService.getTogetherMusicMetadata();
+        return Number(meta?.size || 0);
+    }
+    return getFeatureItemsForBudget(feature).reduce((sum, item) => sum + getManagedItemBytes(item), 0);
+};
+
+const getManagedStorageTotals = () => {
+    const features = Object.keys(MANAGED_FEATURE_LABELS) as ManagedStorageFeature[];
+    const breakdown = features.map((feature) => ({
+        feature,
+        label: MANAGED_FEATURE_LABELS[feature],
+        bytes: getFeatureBytesForBudget(feature),
+        quotaBytes: getFeatureStorageBudgetBytes(feature),
+        itemCount: getFeatureItemsForBudget(feature).length,
+    }));
+    const totalBytes = breakdown.reduce((sum, entry) => sum + entry.bytes, 0);
+    return {
+        totalBytes,
+        totalQuotaBytes: COUPLE_TOTAL_STORAGE_BUDGET_BYTES,
+        breakdown,
+    };
+};
+
+const assertManagedStorageBudget = (
+    feature: ManagedStorageFeature,
+    incomingBytes: number,
+    excludeBytes = 0,
+) => {
+    if (!(incomingBytes > 0)) return;
+
+    const { totalBytes } = getManagedStorageTotals();
+    const featureBytes = getFeatureBytesForBudget(feature);
+    const totalAfter = Math.max(0, totalBytes - excludeBytes) + incomingBytes;
+    const featureAfter = Math.max(0, featureBytes - excludeBytes) + incomingBytes;
+    const featureBudget = getFeatureStorageBudgetBytes(feature);
+
+    if (featureBudget && featureAfter > featureBudget) {
+        throw new Error(`${MANAGED_FEATURE_LABELS[feature]} is over its storage budget (${formatBytes(featureAfter)} / ${formatBytes(featureBudget)}). Delete older media before adding more.`);
+    }
+
+    if (totalAfter > COUPLE_TOTAL_STORAGE_BUDGET_BYTES) {
+        throw new Error(`Your shared media storage is full (${formatBytes(totalAfter)} / ${formatBytes(COUPLE_TOTAL_STORAGE_BUDGET_BYTES)}). Delete older media before uploading more.`);
+    }
+};
+
+const stripInternalRowMeta = <T extends Record<string, any>>(item: T): T => {
+    const next = { ...item };
+    delete next.__rowMeta;
+    return next;
+};
+
+const resolveOwnerUserId = async (item: any, source: 'user' | 'sync', existingItem?: any): Promise<string | undefined> => {
+    const explicitOwner = item?.ownerUserId || existingItem?.ownerUserId;
+    if (explicitOwner) return explicitOwner;
+
+    const rowOwner = item?.__rowMeta?.userId || item?.user_id;
+    if (typeof rowOwner === 'string' && rowOwner) return rowOwner;
+
+    if (source !== 'user' || !SupabaseService.init()) return undefined;
+    const currentUserId = await SupabaseService.getCurrentUserId();
+    return currentUserId ?? undefined;
+};
+
+const filterActiveDailyPhotos = <T extends { expiresAt?: string }>(items: T[], now = Date.now()): T[] =>
+    items.filter((item) => !isDailyMomentExpired(item, now));
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 const getDB = (): Promise<IDBDatabase> => {
     if (dbPromise) return dbPromise;
@@ -525,6 +703,7 @@ export const StorageService = {
 
             // Sync music
             this.syncMusicFromCloud();
+            await this.cleanupDailyPhotos();
 
             this.isInitialized = true;
             notifyUpdate({ source: 'sync', action: 'save', table: 'init', id: 'all' });
@@ -536,7 +715,8 @@ export const StorageService = {
     async syncMusicFromCloud() {
         if (!SupabaseService.init()) return;
         try {
-            const cloudMusic = await SupabaseService.fetchSingle('together_music');
+            const cloudRow = await SupabaseService.fetchSingleRow('together_music');
+            const cloudMusic = cloudRow?.data;
             if (!cloudMusic) return;
             const localMeta = this.getTogetherMusicMetadata();
             const hasUpdate = !localMeta || (cloudMusic.meta?.date && cloudMusic.meta.date !== localMeta.date);
@@ -544,13 +724,17 @@ export const StorageService = {
 
             if (cloudMusic.music_url) {
                 // Store R2 URL directly — audio element can stream from it
-                await writeRaw(STORES.IMAGES, 'custom_together_music', cloudMusic.music_url);
+                await writeRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY, cloudMusic.music_url);
             } else if (cloudMusic.music_base64) {
-                await writeRaw(STORES.IMAGES, 'custom_together_music', cloudMusic.music_base64);
+                await writeRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY, cloudMusic.music_base64);
             }
             if (cloudMusic.meta) {
-                localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(cloudMusic.meta));
-                await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, cloudMusic.meta);
+                const metaWithOwner: TogetherMusicMetadata = {
+                    ...cloudMusic.meta,
+                    ownerUserId: cloudMusic.ownerUserId || cloudRow?.user_id || localMeta?.ownerUserId,
+                };
+                localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(metaWithOwner));
+                await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, metaWithOwner);
             }
         } catch (e) { }
     },
@@ -565,24 +749,43 @@ export const StorageService = {
     },
 
     async getImage(mediaId: string, cloudPayload?: string, storagePath?: string): Promise<string | null> {
-        if (!mediaId && !storagePath) return cloudPayload || null;
+        const legacyPayloadPath = !storagePath && MediaStorageService.isMediaReference(cloudPayload) ? cloudPayload : undefined;
+        const resolvedStoragePath = storagePath || legacyPayloadPath;
+        if (!mediaId && !resolvedStoragePath) return cloudPayload || null;
 
         // 1. RAM cache
-        const cacheKey = mediaId || storagePath || '';
+        const cacheKey = mediaId || resolvedStoragePath || '';
         if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
 
-        // 2. R2 / Cloud storage URL — preferred source of truth once migration is done
-        if (storagePath) {
-            const url = await MediaStorageService.getAccessibleUrl(storagePath);
-            if (url) return url;
-        }
-
-        // 3. IndexedDB local cache (LiorVault — for items not yet uploaded to R2)
+        // 2. IndexedDB local cache — checked FIRST before cloud URL.
+        //    Local data is faster, always fresh, and resilient to R2 outages / URL staleness.
+        //    Items uploaded from this device always have their base64 here.
         if (mediaId) {
             const local = await readRaw(STORES.IMAGES, mediaId);
             if (local) {
                 if (local.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, local);
                 return local;
+            }
+        }
+
+        // 3. R2 / Cloud storage URL — used when IDB doesn't have the image
+        //    (e.g. partner's item synced from cloud, or IDB was evicted by browser).
+        //    If the path is still pointing at legacy Supabase storage, recover that
+        //    payload instead of returning a dead R2 URL.
+        if (resolvedStoragePath) {
+            const url = await MediaStorageService.getAccessibleUrl(resolvedStoragePath);
+            if (url) {
+                // Background: download and cache in IDB so future loads are instant
+                // and offline-resilient.  Fire-and-forget — never blocks the caller.
+                this._cacheR2Image(cacheKey, url).catch(() => {});
+                return url;
+            }
+
+            const recovered = await MediaStorageService.downloadMedia(resolvedStoragePath);
+            if (recovered) {
+                if (mediaId) await writeRaw(STORES.IMAGES, mediaId, recovered);
+                if (recovered.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, recovered);
+                return recovered;
             }
         }
 
@@ -597,11 +800,60 @@ export const StorageService = {
         }
 
         // 5. Legacy fallback: base64 stored inline in cloud JSON column
-        if (cloudPayload) {
+        if (cloudPayload?.startsWith('data:')) {
             if (mediaId) await writeRaw(STORES.IMAGES, mediaId, cloudPayload);
             if (cloudPayload.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, cloudPayload);
             return cloudPayload;
         }
+        return null;
+    },
+
+    /**
+     * Fallback resolver used when a cloud URL fails to load in the browser.
+     * Re-queries using only local sources (IDB, legacy IDB, inline base64).
+     * Never returns an http URL — only base64 or null.
+     */
+    async getImageLocalOnly(mediaId: string, cloudPayload?: string, storagePath?: string): Promise<string | null> {
+        const legacyPayloadPath = !storagePath && MediaStorageService.isMediaReference(cloudPayload) ? cloudPayload : undefined;
+        const resolvedStoragePath = storagePath || legacyPayloadPath;
+        if (!mediaId && !cloudPayload && !resolvedStoragePath) return null;
+
+        if (mediaId) {
+            const cacheKey = mediaId;
+            if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
+
+            const local = await readRaw(STORES.IMAGES, mediaId);
+            if (local) {
+                if (local.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, local);
+                return local;
+            }
+
+            const legacy = await readFromLegacyVault(mediaId);
+            if (legacy) {
+                await writeRaw(STORES.IMAGES, mediaId, legacy);
+                if (legacy.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, legacy);
+                return legacy;
+            }
+        }
+
+        if (cloudPayload?.startsWith('data:')) {
+            if (mediaId) await writeRaw(STORES.IMAGES, mediaId, cloudPayload);
+            if (cloudPayload.length < 2_000_000) MEDIA_MEMORY_CACHE.set(mediaId, cloudPayload);
+            return cloudPayload;
+        }
+
+        if (resolvedStoragePath) {
+            const cacheKey = mediaId || resolvedStoragePath;
+            if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
+
+            const recovered = await MediaStorageService.downloadMedia(resolvedStoragePath);
+            if (recovered) {
+                if (mediaId) await writeRaw(STORES.IMAGES, mediaId, recovered);
+                if (recovered.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, recovered);
+                return recovered;
+            }
+        }
+
         return null;
     },
 
@@ -610,36 +862,76 @@ export const StorageService = {
         const normalizedItem = listKey === 'keepsakes'
             ? normalizeKeepsakeSender(sanitizedItem)
             : sanitizedItem;
-        const toSaveMetadata = { ...normalizedItem };
+        const list = [...(DATA_CACHE[listKey] as any[])];
+        const idx = list.findIndex(i => i.id === item.id);
+        const existingItem = idx >= 0 ? list[idx] : undefined;
+        const ownerUserId = prefix && table && MEDIA_OWNER_TABLES.has(table)
+            ? await resolveOwnerUserId(normalizedItem, source, existingItem)
+            : normalizedItem.ownerUserId || existingItem?.ownerUserId;
+        const toSaveMetadata = stripInternalRowMeta({
+            ...normalizedItem,
+            ownerUserId,
+        });
         const rawImage = normalizedItem.image;
         const rawVideo = normalizedItem.video;
+        const imageToStore = isInlineMediaPayload(rawImage) ? await compressImage(rawImage) : undefined;
+        const videoToStore = isInlineMediaPayload(rawVideo) ? rawVideo : undefined;
+        const imageRef = !imageToStore && MediaStorageService.isMediaReference(rawImage) ? rawImage : undefined;
+        const videoRef = !videoToStore && MediaStorageService.isMediaReference(rawVideo) ? rawVideo : undefined;
+        const managedFeature = table ? TABLE_TO_MEDIA_FEATURE[table] as ManagedStorageFeature | undefined : undefined;
+        const imageMeta = extractInlineMediaMeta(imageToStore);
+        const videoMeta = extractInlineMediaMeta(videoToStore);
+        const replacedBytes =
+            (imageMeta ? Number(existingItem?.imageBytes || 0) : 0)
+            + (videoMeta ? Number(existingItem?.videoBytes || 0) : 0);
 
-        // Compress image before writing to IDB + R2 (reduces storage 5-10x for photos)
-        const imageToStore = rawImage ? await compressImage(rawImage) : rawImage;
+        if (source === 'user' && managedFeature) {
+            assertManagedStorageBudget(
+                managedFeature,
+                Number(imageMeta?.bytes || 0) + Number(videoMeta?.bytes || 0),
+                replacedBytes,
+            );
+        }
 
         if (imageToStore && prefix) {
-            const imageId = normalizedItem.imageId || `${prefix}_${normalizedItem.id}`;
+            const imageId = normalizedItem.imageId || existingItem?.imageId || `${prefix}_${normalizedItem.id}`;
             await writeRaw(STORES.IMAGES, imageId, imageToStore);
             if (imageToStore.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, imageToStore);
             toSaveMetadata.imageId = imageId;
-            delete toSaveMetadata.image;
+            toSaveMetadata.imageBytes = imageMeta?.bytes;
+            toSaveMetadata.imageMimeType = imageMeta?.mimeType;
+        } else if (imageRef && !toSaveMetadata.storagePath) {
+            toSaveMetadata.storagePath = imageRef;
+        } else if (existingItem?.imageBytes && !hasOwn(toSaveMetadata, 'imageBytes')) {
+            toSaveMetadata.imageBytes = existingItem.imageBytes;
+            toSaveMetadata.imageMimeType = existingItem.imageMimeType;
         }
+        delete toSaveMetadata.image;
 
-        if (rawVideo && prefix) {
-            const videoId = normalizedItem.videoId || `${prefix}_vid_${normalizedItem.id}`;
-            await writeRaw(STORES.IMAGES, videoId, rawVideo);
+        if (videoToStore && prefix) {
+            const videoId = normalizedItem.videoId || existingItem?.videoId || `${prefix}_vid_${normalizedItem.id}`;
+            await writeRaw(STORES.IMAGES, videoId, videoToStore);
             toSaveMetadata.videoId = videoId;
-            delete toSaveMetadata.video;
+            toSaveMetadata.videoBytes = videoMeta?.bytes;
+            toSaveMetadata.videoMimeType = videoMeta?.mimeType;
+        } else if (videoRef && !toSaveMetadata.videoStoragePath) {
+            toSaveMetadata.videoStoragePath = videoRef;
+        } else if (existingItem?.videoBytes && !hasOwn(toSaveMetadata, 'videoBytes')) {
+            toSaveMetadata.videoBytes = existingItem.videoBytes;
+            toSaveMetadata.videoMimeType = existingItem.videoMimeType;
         }
+        delete toSaveMetadata.video;
 
-        // Preserve existing storagePaths and IDs from previous saves
-        const list = [...(DATA_CACHE[listKey] as any[])];
-        const idx = list.findIndex(i => i.id === item.id);
         if (idx >= 0) {
             if (!toSaveMetadata.imageId && list[idx].imageId) toSaveMetadata.imageId = list[idx].imageId;
             if (!toSaveMetadata.videoId && list[idx].videoId) toSaveMetadata.videoId = list[idx].videoId;
             if (!toSaveMetadata.storagePath && list[idx].storagePath) toSaveMetadata.storagePath = list[idx].storagePath;
             if (!toSaveMetadata.videoStoragePath && list[idx].videoStoragePath) toSaveMetadata.videoStoragePath = list[idx].videoStoragePath;
+            if (!toSaveMetadata.imageBytes && list[idx].imageBytes) toSaveMetadata.imageBytes = list[idx].imageBytes;
+            if (!toSaveMetadata.imageMimeType && list[idx].imageMimeType) toSaveMetadata.imageMimeType = list[idx].imageMimeType;
+            if (!toSaveMetadata.videoBytes && list[idx].videoBytes) toSaveMetadata.videoBytes = list[idx].videoBytes;
+            if (!toSaveMetadata.videoMimeType && list[idx].videoMimeType) toSaveMetadata.videoMimeType = list[idx].videoMimeType;
+            if (!toSaveMetadata.ownerUserId && list[idx].ownerUserId) toSaveMetadata.ownerUserId = list[idx].ownerUserId;
             list[idx] = toSaveMetadata;
         } else {
             list.unshift(toSaveMetadata);
@@ -649,34 +941,58 @@ export const StorageService = {
         await writeRaw(STORES.DATA, storageKey, list);
 
         if (table) {
-            notifyUpdate({ source, action: 'save', table, id: normalizedItem.id, item: { ...toSaveMetadata, image: imageToStore, video: rawVideo } });
+            notifyUpdate({
+                source,
+                action: 'save',
+                table,
+                id: normalizedItem.id,
+                item: { ...toSaveMetadata, image: imageToStore ?? imageRef, video: videoToStore ?? videoRef },
+            });
         }
 
-        // Background: Upload to Supabase Storage (non-blocking, fire-and-forget)
-        if (prefix && source === 'user') {
-            this._uploadToStorage(listKey, storageKey, toSaveMetadata, prefix, imageToStore, rawVideo);
+        if (prefix) {
+            this._uploadToStorage(listKey, storageKey, toSaveMetadata, prefix, imageToStore, videoToStore, table);
         }
     },
 
-    async _uploadToStorage(listKey: keyof typeof DATA_CACHE, storageKey: string, metadata: any, prefix: string, rawImage?: string, rawVideo?: string) {
+    async _uploadToStorage(listKey: keyof typeof DATA_CACHE, storageKey: string, metadata: any, prefix: string, rawImage?: string, rawVideo?: string, table?: string) {
         try {
             let updated = false;
+            const cleanupPaths: string[] = [];
+            const timestamp = getMediaTimestamp(metadata);
+            const pathOptions = { ownerUserId: metadata.ownerUserId, timestamp };
+            const imageNeedsMigration = !!(rawImage || metadata.storagePath)
+                && (!metadata.storagePath || !(await MediaStorageService.isScopedToCurrentUser(metadata.storagePath)));
+            const videoNeedsMigration = !!(rawVideo || metadata.videoStoragePath)
+                && (!metadata.videoStoragePath || !(await MediaStorageService.isScopedToCurrentUser(metadata.videoStoragePath)));
 
-            if (rawImage && !metadata.storagePath) {
-                const path = await MediaStorageService.buildPath(prefix, metadata.id, 'image');
-                const result = await MediaStorageService.uploadMedia(rawImage, path);
-                if (result) {
-                    metadata.storagePath = result;
-                    updated = true;
+            if (imageNeedsMigration) {
+                const previousPath = metadata.storagePath;
+                const payload = rawImage || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
+                if (payload) {
+                    const path = await MediaStorageService.buildPath(prefix, metadata.id, 'image', pathOptions);
+                    const result = await MediaStorageService.uploadMedia(payload, path);
+                    const verified = result ? await MediaStorageService.probeR2Path(result) : false;
+                    if (result && verified === true) {
+                        metadata.storagePath = result;
+                        if (previousPath && previousPath !== result) cleanupPaths.push(previousPath);
+                        updated = true;
+                    }
                 }
             }
 
-            if (rawVideo && !metadata.videoStoragePath) {
-                const path = await MediaStorageService.buildPath(prefix, metadata.id, 'video');
-                const result = await MediaStorageService.uploadMedia(rawVideo, path);
-                if (result) {
-                    metadata.videoStoragePath = result;
-                    updated = true;
+            if (videoNeedsMigration) {
+                const previousPath = metadata.videoStoragePath;
+                const payload = rawVideo || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
+                if (payload) {
+                    const path = await MediaStorageService.buildPath(prefix, metadata.id, 'video', pathOptions);
+                    const result = await MediaStorageService.uploadMedia(payload, path);
+                    const verified = result ? await MediaStorageService.probeR2Path(result) : false;
+                    if (result && verified === true) {
+                        metadata.videoStoragePath = result;
+                        if (previousPath && previousPath !== result) cleanupPaths.push(previousPath);
+                        updated = true;
+                    }
                 }
             }
 
@@ -685,12 +1001,153 @@ export const StorageService = {
                 const list = DATA_CACHE[listKey] as any[];
                 const idx = list.findIndex(i => i.id === metadata.id);
                 if (idx >= 0) {
-                    list[idx] = { ...list[idx], storagePath: metadata.storagePath, videoStoragePath: metadata.videoStoragePath };
+                    list[idx] = {
+                        ...list[idx],
+                        storagePath: metadata.storagePath,
+                        videoStoragePath: metadata.videoStoragePath,
+                        ownerUserId: metadata.ownerUserId || list[idx].ownerUserId,
+                    };
                     await writeRaw(STORES.DATA, storageKey, list);
+
+                    // Push storagePath to Supabase so it survives IDB eviction.
+                    // Also fires storageEventTarget so MemoryTimeline re-renders
+                    // with updated storagePath and useLiorMedia can use R2 fallback.
+                    if (table) {
+                        notifyUpdate({ source: 'user', action: 'save', table, id: metadata.id, item: list[idx] });
+                    }
+                }
+
+                for (const cleanupPath of cleanupPaths) {
+                    if (cleanupPath && cleanupPath !== metadata.storagePath && cleanupPath !== metadata.videoStoragePath) {
+                        await MediaStorageService.deleteMedia(cleanupPath);
+                    }
                 }
             }
+
+            // If upload succeeded for both, remove from pending queue (if it was there)
+            const needsImage = !!(rawImage || metadata.storagePath)
+                && (!metadata.storagePath || !(await MediaStorageService.isScopedToCurrentUser(metadata.storagePath)));
+            const needsVideo = !!(rawVideo || metadata.videoStoragePath)
+                && (!metadata.videoStoragePath || !(await MediaStorageService.isScopedToCurrentUser(metadata.videoStoragePath)));
+            if (!needsImage && !needsVideo) {
+                _removePendingUpload(listKey, metadata.id);
+            }
         } catch (e) {
-            console.warn('Background storage upload failed:', e);
+            console.warn('Background storage upload failed — queued for retry:', e);
+            // Queue for retry on next sync cycle so media is never permanently lost
+            _addPendingUpload({
+                listKey,
+                storageKey,
+                prefix,
+                itemId: metadata.id,
+                hasImage: !!(rawImage || metadata.storagePath),
+                hasVideo: !!(rawVideo || metadata.videoStoragePath),
+            });
+        }
+    },
+
+    /**
+     * Retry R2 uploads that failed in a previous session.
+     * Called by the sync service after a successful cloud connection is established.
+     * Reads media from IDB (where it was safely persisted) and uploads to R2.
+     */
+    async retryPendingUploads(): Promise<void> {
+        const queue = _getPendingUploads();
+        if (queue.length === 0) return;
+
+        console.info(`[upload-retry] Retrying ${queue.length} pending upload(s)…`);
+
+        for (const entry of queue) {
+            try {
+                const cacheList = DATA_CACHE[entry.listKey as keyof typeof DATA_CACHE] as any[] | undefined;
+                if (!cacheList) continue;
+                const item = cacheList.find((i: any) => i.id === entry.itemId);
+                if (!item) {
+                    _removePendingUpload(entry.listKey, entry.itemId);
+                    continue;
+                }
+
+                let updated = false;
+                const cleanupPaths: string[] = [];
+                const pathOptions = {
+                    ownerUserId: item.ownerUserId,
+                    timestamp: getMediaTimestamp(item),
+                };
+
+                const imageNeedsMigration = entry.hasImage
+                    && !!(item.imageId || item.storagePath)
+                    && (!item.storagePath || !(await MediaStorageService.isScopedToCurrentUser(item.storagePath)));
+                if (imageNeedsMigration) {
+                    const previousPath = item.storagePath;
+                    const imgData = item.imageId ? await readRaw(STORES.IMAGES, item.imageId) as string | null : null;
+                    const payload = imgData || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
+                    if (payload) {
+                        const path = await MediaStorageService.buildPath(entry.prefix, item.id, 'image', pathOptions);
+                        const result = await MediaStorageService.uploadMedia(payload, path);
+                        const verified = result ? await MediaStorageService.probeR2Path(result) : false;
+                        if (result && verified === true) {
+                            item.storagePath = result;
+                            if (previousPath && previousPath !== result) cleanupPaths.push(previousPath);
+                            updated = true;
+                        }
+                    }
+                }
+
+                const videoNeedsMigration = entry.hasVideo
+                    && !!(item.videoId || item.videoStoragePath)
+                    && (!item.videoStoragePath || !(await MediaStorageService.isScopedToCurrentUser(item.videoStoragePath)));
+                if (videoNeedsMigration) {
+                    const previousPath = item.videoStoragePath;
+                    const vidData = item.videoId ? await readRaw(STORES.IMAGES, item.videoId) as string | null : null;
+                    const payload = vidData || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
+                    if (payload) {
+                        const path = await MediaStorageService.buildPath(entry.prefix, item.id, 'video', pathOptions);
+                        const result = await MediaStorageService.uploadMedia(payload, path);
+                        const verified = result ? await MediaStorageService.probeR2Path(result) : false;
+                        if (result && verified === true) {
+                            item.videoStoragePath = result;
+                            if (previousPath && previousPath !== result) cleanupPaths.push(previousPath);
+                            updated = true;
+                        }
+                    }
+                }
+
+                if (updated) {
+                    const idx = (cacheList as any[]).findIndex((i: any) => i.id === item.id);
+                    if (idx >= 0) {
+                        (cacheList as any[])[idx] = {
+                            ...(cacheList as any[])[idx],
+                            storagePath: item.storagePath,
+                            videoStoragePath: item.videoStoragePath,
+                            ownerUserId: item.ownerUserId || (cacheList as any[])[idx].ownerUserId,
+                        };
+                        await writeRaw(STORES.DATA, entry.storageKey, cacheList);
+                        // Push storagePath to Supabase and refresh UI
+                        const tableForCache: Record<string, string> = {
+                            memories: 'memories', dailyPhotos: 'daily_photos',
+                            keepsakes: 'keepsakes', timeCapsules: 'time_capsules', surprises: 'surprises',
+                        };
+                        const tbl = tableForCache[entry.listKey];
+                        if (tbl) notifyUpdate({ source: 'user', action: 'save', table: tbl, id: item.id, item: (cacheList as any[])[idx] });
+                    }
+                    for (const cleanupPath of cleanupPaths) {
+                        if (cleanupPath && cleanupPath !== item.storagePath && cleanupPath !== item.videoStoragePath) {
+                            await MediaStorageService.deleteMedia(cleanupPath);
+                        }
+                    }
+                }
+                const remainingImage = entry.hasImage
+                    && (!item.storagePath || !(await MediaStorageService.isScopedToCurrentUser(item.storagePath)));
+                const remainingVideo = entry.hasVideo
+                    && (!item.videoStoragePath || !(await MediaStorageService.isScopedToCurrentUser(item.videoStoragePath)));
+                if (!remainingImage && !remainingVideo) {
+                    _removePendingUpload(entry.listKey, entry.itemId);
+                    if (updated) console.info(`[upload-retry] Uploaded ${entry.itemId}`);
+                }
+            } catch (e) {
+                console.warn(`[upload-retry] Still failed for ${entry.itemId}:`, e);
+                // Leave in queue — will retry next time
+            }
         }
     },
 
@@ -716,7 +1173,19 @@ export const StorageService = {
         notifyUpdate({ source: 'user', action: 'delete', table: 'memories', id });
     },
 
-    getDailyPhotos: () => DATA_CACHE.dailyPhotos,
+    async _purgeDailyPhotoLocalOnly(id: string, notifySource: 'sync' | 'user' = 'sync') {
+        const item = DATA_CACHE.dailyPhotos.find(p => p.id === id);
+        if (item?.imageId) {
+            await deleteRaw(STORES.IMAGES, item.imageId);
+            MEDIA_MEMORY_CACHE.delete(item.imageId);
+        }
+        if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
+        DATA_CACHE.dailyPhotos = DATA_CACHE.dailyPhotos.filter(p => p.id !== id);
+        await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, DATA_CACHE.dailyPhotos);
+        notifyUpdate({ source: notifySource, action: 'save', table: 'daily_photos', id });
+    },
+
+    getDailyPhotos: () => filterActiveDailyPhotos(DATA_CACHE.dailyPhotos),
     saveDailyPhoto: (p: DailyPhoto) => StorageService._saveInternal('dailyPhotos', CACHE_KEYS.DAILY_PHOTOS, p, 'daily', 'daily_photos'),
     deleteDailyPhoto: async (id: string) => {
         addPendingDelete('daily_photos', id);
@@ -740,22 +1209,9 @@ export const StorageService = {
         const expired = DATA_CACHE.dailyPhotos.filter(p => new Date(p.expiresAt) <= now);
 
         if (expired.length > 0) {
-            // Memory Leak Fix: Actually delete the blobs from IndexedDB
             for (const item of expired) {
-                if (item.imageId) {
-                    await deleteRaw(STORES.IMAGES, item.imageId);
-                    MEDIA_MEMORY_CACHE.delete(item.imageId);
-                }
-                if (item.videoId) {
-                    await deleteRaw(STORES.IMAGES, item.videoId);
-                }
+                await this._purgeDailyPhotoLocalOnly(item.id, 'sync');
             }
-
-            // Keep only valid photos
-            const valid = DATA_CACHE.dailyPhotos.filter(p => new Date(p.expiresAt) > now);
-            DATA_CACHE.dailyPhotos = valid;
-            await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, valid);
-            notifyUpdate({ source: 'sync', action: 'save', table: 'daily_photos', id: 'cleanup' });
         }
     },
 
@@ -825,10 +1281,20 @@ export const StorageService = {
     },
 
     async handleCloudUpdate(table: string, data: any) {
-        const item = data.data || data;
+        const rowMeta = data?.data
+            ? { userId: data.user_id, coupleId: data.couple_id }
+            : undefined;
+        const item = rowMeta ? { ...data.data, __rowMeta: rowMeta } : (data.data || data);
         if (!item) return;
         const singletonTables = new Set(['couple_profile', 'pet_stats', 'together_music', 'our_room_state']);
         if (!singletonTables.has(table) && !item.id) return;
+
+        if (table === 'daily_photos' && isDailyMomentExpired(item)) {
+            if (DATA_CACHE.dailyPhotos.some((photo) => photo.id === item.id)) {
+                await this._purgeDailyPhotoLocalOnly(item.id, 'sync');
+            }
+            return;
+        }
 
         // Never restore a tombstoned item — it was deleted locally and cloud hasn't caught up yet
         if (isDeletedLocally(table, item.id)) return;
@@ -846,9 +1312,9 @@ export const StorageService = {
             us_bucket_items: { cache: 'usBucketItems', key: CACHE_KEYS.US_BUCKET_ITEMS },
             us_wishlist_items: { cache: 'usWishlistItems', key: CACHE_KEYS.US_WISHLIST_ITEMS },
             us_milestones: { cache: 'usMilestones', key: CACHE_KEYS.US_MILESTONES },
-            time_capsules: { cache: 'timeCapsules', key: CACHE_KEYS.TIME_CAPSULES, prefix: 'capsule' },
-            surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES, prefix: 'surprise' },
-            voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES },
+            time_capsules: { cache: 'timeCapsules', key: CACHE_KEYS.TIME_CAPSULES, prefix: 'cap' },
+            surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES, prefix: 'surp' },
+            voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES, prefix: 'vn' },
         };
 
         if (tableMap[table]) {
@@ -856,7 +1322,7 @@ export const StorageService = {
             const list = DATA_CACHE[config.cache] as any[];
             const isNew = !list.find(i => i.id === item.id);
             
-            await this._saveInternal(config.cache, config.key, item, config.prefix, undefined, 'sync');
+            await this._saveInternal(config.cache, config.key, item, config.prefix, table, 'sync');
 
             // Send push notification if app is in background and item is new
             if (isNew && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
@@ -894,10 +1360,15 @@ export const StorageService = {
         } else if (table === 'together_music') {
             const musicData = item.music_url || item.music_base64;
             if (musicData) {
-                await writeRaw(STORES.IMAGES, 'custom_together_music', musicData);
+                await writeRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY, musicData);
                 if (item.meta) {
-                    localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(item.meta));
-                    writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, item.meta);
+                    const localMeta = this.getTogetherMusicMetadata();
+                    const metaWithOwner: TogetherMusicMetadata = {
+                        ...item.meta,
+                        ownerUserId: item.ownerUserId || rowMeta?.userId || localMeta?.ownerUserId,
+                    };
+                    localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(metaWithOwner));
+                    await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, metaWithOwner);
                 }
                 notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton' });
             }
@@ -949,7 +1420,7 @@ export const StorageService = {
             await writeRaw(STORES.DATA, cfg.key, DATA_CACHE[cfg.cache]);
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
         } else if (table === 'together_music') {
-            await deleteRaw(STORES.IMAGES, 'custom_together_music');
+            await deleteRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY);
             await deleteRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META);
             localStorage.removeItem(CACHE_KEYS.TOGETHER_MUSIC_META);
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
@@ -967,29 +1438,53 @@ export const StorageService = {
 
     saveTogetherMusic: async (file: File) => {
         if (file.size > 10 * 1024 * 1024) throw new Error("File too large. Max size is 10MB.");
+        assertManagedStorageBudget('together-music', file.size, Number(StorageService.getTogetherMusicMetadata()?.size || 0));
         return new Promise<void>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = async (e) => {
                 const base64 = e.target?.result as string;
                 try {
-                    await writeRaw(STORES.IMAGES, 'custom_together_music', base64);
-                    const meta = { name: file.name, date: new Date().toISOString(), size: file.size };
+                    const previousSource = await readRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY) as string | null;
+                    const hasCloud = SupabaseService.init();
+                    const ownerUserId = hasCloud ? await SupabaseService.getCurrentUserId() ?? undefined : undefined;
+                    const meta: TogetherMusicMetadata = {
+                        name: file.name,
+                        date: new Date().toISOString(),
+                        size: file.size,
+                        mimeType: file.type || getMimeTypeFromDataUri(base64),
+                        ownerUserId,
+                    };
+                    let storedSource = base64;
+                    let cloudPayload: any = { music_base64: base64, meta, ownerUserId };
+
+                    if (hasCloud) {
+                        // Upload audio to R2 — avoid storing large base64 in Supabase JSONB
+                        const path = await MediaStorageService.buildCustomPath('singleton', 'together-music', 'track', {
+                            ownerUserId,
+                            timestamp: meta.date,
+                        });
+                        const uploaded = await MediaStorageService.uploadMedia(base64, path);
+                        const verified = uploaded ? await MediaStorageService.probeR2Path(uploaded) : false;
+                        if (uploaded && verified === true) {
+                            storedSource = uploaded;
+                            cloudPayload = { music_url: uploaded, meta, ownerUserId };
+                        }
+                    }
+                    await writeRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY, storedSource);
                     localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(meta));
                     await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, meta);
-
-                    if (SupabaseService.init()) {
-                        // Upload audio to R2 — avoid storing large base64 in Supabase JSONB
-                        const coupleId = await SupabaseService.getCurrentCoupleId();
-                        const path = `${coupleId ?? 'guest'}/music/together`;
-                        const uploaded = await MediaStorageService.uploadMedia(base64, path);
-                        const cloudPayload = uploaded
-                            ? { music_url: uploaded, meta }
-                            : { music_base64: base64, meta }; // fallback if R2 unavailable
+                    if (hasCloud) {
                         await SupabaseService.saveSingle('together_music', cloudPayload);
-                        notifyUpdate({ source: 'user', action: 'save', table: 'together_music', id: 'singleton', item: cloudPayload });
-                    } else {
-                        notifyUpdate({ source: 'user', action: 'save', table: 'together_music', id: 'singleton', item: { music_base64: base64, meta } });
                     }
+                    if (
+                        previousSource &&
+                        previousSource !== storedSource &&
+                        !storedSource.startsWith('data:') &&
+                        MediaStorageService.isMediaReference(previousSource)
+                    ) {
+                        await MediaStorageService.deleteMedia(previousSource);
+                    }
+                    notifyUpdate({ source: 'user', action: 'save', table: 'together_music', id: 'singleton', item: cloudPayload });
                     resolve();
                 } catch (err) { reject(err); }
             };
@@ -998,14 +1493,24 @@ export const StorageService = {
         });
     },
 
-    getTogetherMusic: async (): Promise<string | null> => readRaw(STORES.IMAGES, 'custom_together_music'),
-    getTogetherMusicMetadata: (): { name: string, date: string, size: number } | null => {
+    getStoredTogetherMusicSource: async (): Promise<string | null> => readRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY),
+    getTogetherMusic: async (): Promise<string | null> => {
+        const stored = await readRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY) as string | null;
+        if (!stored) return null;
+        if (stored.startsWith('data:')) return stored;
+        return await MediaStorageService.getAccessibleUrl(stored) || stored;
+    },
+    getTogetherMusicMetadata: (): TogetherMusicMetadata | null => {
         const str = localStorage.getItem(CACHE_KEYS.TOGETHER_MUSIC_META);
         return str ? JSON.parse(str) : null;
     },
 
     deleteTogetherMusic: async () => {
-        await deleteRaw(STORES.IMAGES, 'custom_together_music');
+        const storedSource = await readRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY) as string | null;
+        if (storedSource && MediaStorageService.isMediaReference(storedSource)) {
+            await MediaStorageService.deleteMedia(storedSource);
+        }
+        await deleteRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY);
         await deleteRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META);
         localStorage.removeItem(CACHE_KEYS.TOGETHER_MUSIC_META);
         if (SupabaseService.init()) await SupabaseService.deleteItem('together_music', 'singleton');
@@ -1500,7 +2005,7 @@ export const StorageService = {
         const profile = StorageService.getCoupleProfile();
         if (profile.isPremium) return false;
         const today = new Date().toISOString().split('T')[0];
-        const todayPhotos = DATA_CACHE.dailyPhotos.filter(p => p.createdAt.startsWith(today));
+        const todayPhotos = filterActiveDailyPhotos(DATA_CACHE.dailyPhotos).filter(p => p.createdAt.startsWith(today));
         return todayPhotos.length >= this.FREE_DAILY_LIMIT;
     },
 
@@ -1591,15 +2096,24 @@ export const StorageService = {
         notifyUpdate({ source: 'user', action: 'delete', table: 'voice_notes', id });
     },
 
-    async saveVoiceNoteAudio(id: string, audioDataUri: string): Promise<string | null> {
+    async saveVoiceNoteAudio(id: string, audioDataUri: string, options?: { ownerUserId?: string; createdAt?: string }): Promise<VoiceNoteAudioSaveResult> {
         const audioId = `vn_${id}`;
+        const byteSize = estimateDataUriBytes(audioDataUri);
+        const mimeType = getMimeTypeFromDataUri(audioDataUri);
+        const existingNote = DATA_CACHE.voiceNotes.find(v => v.id === id);
+        assertManagedStorageBudget('voice-notes', byteSize, Number(existingNote?.audioBytes || 0));
         await writeRaw(STORES.IMAGES, audioId, audioDataUri);
-        // Try R2 upload
-        const profile = StorageService.getCoupleProfile();
-        const coupleId = profile.coupleId || 'guest';
-        const path = `${coupleId}/voice/${id}`;
+        const path = await MediaStorageService.buildCustomPath(id, 'voice-notes', 'audio', {
+            ownerUserId: options?.ownerUserId,
+            timestamp: options?.createdAt,
+        });
         const uploaded = await MediaStorageService.uploadMedia(audioDataUri, path);
-        return uploaded || null;
+        const verified = uploaded ? await MediaStorageService.probeR2Path(uploaded) : false;
+        return {
+            storagePath: uploaded && verified === true ? uploaded : null,
+            byteSize,
+            mimeType,
+        };
     },
 
     async getVoiceNoteAudio(note: VoiceNote): Promise<string | null> {
@@ -1607,7 +2121,11 @@ export const StorageService = {
             const cached = await readRaw(STORES.IMAGES, note.audioId);
             if (cached) return cached as string;
         }
-        if (note.audioStoragePath) return note.audioStoragePath;
+        if (note.audioStoragePath) {
+            return await MediaStorageService.getAccessibleUrl(note.audioStoragePath)
+                || await MediaStorageService.downloadMedia(note.audioStoragePath)
+                || note.audioStoragePath;
+        }
         return null;
     },
 
@@ -1616,7 +2134,11 @@ export const StorageService = {
             Promise.all(DATA_CACHE.memories.map((item) => this._getItemWithImages(item, 'mem'))),
             Promise.all(DATA_CACHE.dailyPhotos.map((item) => this._getItemWithImages(item, 'daily'))),
             Promise.all(DATA_CACHE.keepsakes.map((item) => this._getItemWithImages(item, 'keep'))),
-            this.getTogetherMusic()
+            this.getStoredTogetherMusicSource().then(async (stored) => {
+                if (!stored) return null;
+                if (stored.startsWith('data:')) return stored;
+                return await MediaStorageService.downloadMedia(stored);
+            })
         ]);
 
         return {
@@ -1683,7 +2205,7 @@ export const StorageService = {
             await writeRaw(STORES.DATA, CACHE_KEYS.PARTNER_STATUS, data.partnerStatus);
         }
         if (data.togetherMusic?.base64) {
-            await writeRaw(STORES.IMAGES, 'custom_together_music', data.togetherMusic.base64);
+            await writeRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY, data.togetherMusic.base64);
             if (data.togetherMusic.meta) {
                 localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(data.togetherMusic.meta));
                 await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, data.togetherMusic.meta);
@@ -1697,6 +2219,10 @@ export const StorageService = {
     async getStorageUsage() {
         if (navigator.storage && navigator.storage.estimate) return await navigator.storage.estimate();
         return null;
+    },
+
+    getManagedStorageStats(): { totalBytes: number; totalQuotaBytes: number; breakdown: ManagedStorageBreakdown[] } {
+        return getManagedStorageTotals();
     },
 
     /**
@@ -1713,6 +2239,8 @@ export const StorageService = {
             { table: 'memories', cache: 'memories', prefix: 'mem' },
             { table: 'daily_photos', cache: 'dailyPhotos', prefix: 'daily' },
             { table: 'keepsakes', cache: 'keepsakes', prefix: 'keep' },
+            { table: 'time_capsules', cache: 'timeCapsules', prefix: 'cap' },
+            { table: 'surprises', cache: 'surprises', prefix: 'surp' },
         ];
 
         for (const { table, cache, prefix } of mediaTables) {
@@ -1720,37 +2248,91 @@ export const StorageService = {
                 const cloudItems = await SupabaseService.fetchAll(table);
                 if (!cloudItems) continue;
 
+                const cacheKeyMap: Record<string, string> = {
+                    memories: CACHE_KEYS.MEMORIES,
+                    dailyPhotos: CACHE_KEYS.DAILY_PHOTOS,
+                    keepsakes: CACHE_KEYS.KEEPSAKES,
+                    timeCapsules: CACHE_KEYS.TIME_CAPSULES,
+                    surprises: CACHE_KEYS.SURPRISES,
+                };
+
                 for (const raw of cloudItems) {
                     const item = raw?.data || raw;
                     if (!item?.id) continue;
 
                     const imageId = item.imageId || `${prefix}_${item.id}`;
                     const videoId = item.videoId || `${prefix}_vid_${item.id}`;
+                    const imagePath = item.storagePath || (MediaStorageService.isMediaReference(item.image) ? item.image : null);
+                    const videoPath = item.videoStoragePath || (MediaStorageService.isMediaReference(item.video) ? item.video : null);
 
-                    // Recover image if cloud has it and local doesn't
-                    if (item.image) {
+                    // Recover image if cloud has base64 and local IDB doesn't
+                    if (item.image?.startsWith('data:')) {
                         const existing = await readRaw(STORES.IMAGES, imageId);
                         if (!existing) {
                             await writeRaw(STORES.IMAGES, imageId, item.image);
                             if (item.image.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, item.image);
                             recovered++;
                         }
+                    } else if (imagePath) {
+                        const existing = await readRaw(STORES.IMAGES, imageId);
+                        if (!existing) {
+                            const restored = await MediaStorageService.downloadMedia(imagePath);
+                            if (restored) {
+                                await writeRaw(STORES.IMAGES, imageId, restored);
+                                if (restored.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, restored);
+                                recovered++;
+                            }
+                        }
+                    }
 
-                        // Ensure metadata has imageId reference
-                        const list = DATA_CACHE[cache] as any[];
-                        const idx = list.findIndex(i => i.id === item.id);
-                        if (idx >= 0 && !list[idx].imageId) {
-                            list[idx] = { ...list[idx], imageId };
-                            await writeRaw(STORES.DATA, CACHE_KEYS[cache === 'memories' ? 'MEMORIES' : cache === 'dailyPhotos' ? 'DAILY_PHOTOS' : 'KEEPSAKES'], list);
+                    // If cloud has storagePath but local metadata doesn't, restore it so
+                    // useLiorMedia can serve the image via R2 even when IDB is empty.
+                    // Also covers the case where Supabase has no base64 but does have R2 path.
+                    const list = DATA_CACHE[cache] as any[];
+                    const idx = list.findIndex(i => i.id === item.id);
+                    if (idx >= 0) {
+                        let metaChanged = false;
+                        const updated = { ...list[idx] };
+
+                        if (!updated.imageId && imageId) {
+                            updated.imageId = imageId;
+                            metaChanged = true;
+                        }
+                        if (!updated.storagePath && imagePath) {
+                            updated.storagePath = imagePath;
+                            metaChanged = true;
+                            // Warm the RAM cache with the R2 URL immediately
+                            const r2Url = await MediaStorageService.getAccessibleUrl(imagePath).catch(() => null);
+                            if (r2Url) {
+                                MEDIA_MEMORY_CACHE.set(imageId, r2Url);
+                            }
+                        }
+                        if (!updated.videoStoragePath && videoPath) {
+                            updated.videoStoragePath = videoPath;
+                            metaChanged = true;
+                        }
+                        if (metaChanged) {
+                            list[idx] = updated;
+                            const ck = cacheKeyMap[cache];
+                            if (ck) await writeRaw(STORES.DATA, ck, list);
                         }
                     }
 
                     // Recover video if cloud has it
-                    if (item.video) {
+                    if (item.video?.startsWith('data:')) {
                         const existing = await readRaw(STORES.IMAGES, videoId);
                         if (!existing) {
                             await writeRaw(STORES.IMAGES, videoId, item.video);
                             recovered++;
+                        }
+                    } else if (videoPath) {
+                        const existing = await readRaw(STORES.IMAGES, videoId);
+                        if (!existing) {
+                            const restored = await MediaStorageService.downloadMedia(videoPath);
+                            if (restored) {
+                                await writeRaw(STORES.IMAGES, videoId, restored);
+                                recovered++;
+                            }
                         }
                     }
                 }
@@ -1771,14 +2353,43 @@ export const StorageService = {
      */
     async _getItemWithImages(item: any, prefix: string): Promise<any> {
         const enriched = { ...item };
-        if (item.imageId) {
+        if (item.imageId && !item.storagePath) {
             const img = await readRaw(STORES.IMAGES, item.imageId);
             if (img) enriched.image = img;
         }
-        if (item.videoId) {
+        if (item.videoId && !item.videoStoragePath) {
             const vid = await readRaw(STORES.IMAGES, item.videoId);
             if (vid) enriched.video = vid;
         }
         return enriched;
+    },
+
+    /**
+     * Background: fetch an image from an R2 URL and cache it in IDB so future
+     * loads are instant and survive R2 outages / offline usage.
+     * Fire-and-forget — never blocks calling code, never throws to the caller.
+     */
+    async _cacheR2Image(idbKey: string, url: string): Promise<void> {
+        if (!idbKey || !url) return;
+        // Don't re-download if already cached
+        const existing = await readRaw(STORES.IMAGES, idbKey);
+        if (existing) return;
+
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const base64: string = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            if (!base64 || !base64.startsWith('data:')) return;
+            await writeRaw(STORES.IMAGES, idbKey, base64);
+            if (base64.length < 2_000_000) MEDIA_MEMORY_CACHE.set(idbKey, base64);
+        } catch {
+            // Best-effort — next getImage will try R2 again
+        }
     }
 };

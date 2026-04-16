@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Heart, Calendar } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { feedback } from '../utils/feedback';
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.08 } }
 };
 
-const staggerItem = {
+const staggerItem: Variants = {
   hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } }
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const } }
 };
 import { differenceInDays, isFuture } from 'date-fns';
 import { ConfirmModal } from '../components/ConfirmModal';

@@ -53,9 +53,10 @@ const WaxSeal: React.FC<{ size?: number }> = ({ size = 72 }) => (
 const OpenedLetter: React.FC<{
     capsule: TimeCapsule;
     imageUrl?: string | null;
+    handleImageError?: () => void;
     onDelete: (id: string) => void;
     justOpened?: boolean;
-}> = ({ capsule, imageUrl, onDelete, justOpened = false }) => (
+}> = ({ capsule, imageUrl, handleImageError, onDelete, justOpened = false }) => (
     <motion.div
         layout
         initial={justOpened ? { opacity: 0, y: 12 } : { opacity: 0, scale: 0.97 }}
@@ -78,7 +79,7 @@ const OpenedLetter: React.FC<{
         }} />
 
         {imageUrl && (
-            <img src={imageUrl} alt="" className="w-full h-44 object-cover" />
+            <img src={imageUrl} alt="" className="w-full h-44 object-cover" onError={handleImageError} />
         )}
 
         <div className="px-6 pt-5 pb-6">
@@ -153,7 +154,7 @@ const LetterCard: React.FC<{
 }> = ({ capsule, onUnlock, onDelete }) => {
     const [stage, setStage] = useState<OpenStage>(capsule.isUnlocked ? 'opened' : 'sealed');
     const [justOpened, setJustOpened] = useState(false);
-    const { src: imageUrl } = useLiorMedia(capsule.imageId, capsule.image, capsule.storagePath);
+    const { src: imageUrl, handleError: handleImageError } = useLiorMedia(capsule.imageId, capsule.image, capsule.storagePath);
 
     const canUnlock = !capsule.isUnlocked && new Date(capsule.unlockDate) <= new Date();
     const daysLeft = Math.ceil((new Date(capsule.unlockDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -171,7 +172,7 @@ const LetterCard: React.FC<{
     };
 
     if (stage === 'opened') {
-        return <OpenedLetter capsule={capsule} imageUrl={imageUrl} onDelete={onDelete} justOpened={justOpened} />;
+        return <OpenedLetter capsule={capsule} imageUrl={imageUrl} handleImageError={handleImageError} onDelete={onDelete} justOpened={justOpened} />;
     }
 
     return (

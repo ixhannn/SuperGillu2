@@ -11,6 +11,6 @@
 
 1. Install dependencies:
    `npm install`
-2. If you want cloud sync, configure Supabase from the in-app setup screen or provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY`.
+2. If you want cloud sync, provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` or use a previously saved in-app Supabase configuration.
 3. Run the app:
    `npm run dev`

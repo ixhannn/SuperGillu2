@@ -1,14 +1,21 @@
 {
   "name": "lior",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "media:migrate:legacy": "node scripts/migrate_legacy_supabase_media_to_r2.mjs",
     "brain:build": "python scripts/graphify_second_brain.py",
-    "brain:watch": "python scripts/graphify_second_brain.py --watch"
+    "brain:watch": "python scripts/graphify_second_brain.py --watch",
+    "typecheck": "npm run typecheck:app && npm run typecheck:supabase",
+    "typecheck:app": "npx tsc --noEmit -p tsconfig.json",
+    "typecheck:supabase": "npx tsc --noEmit -p tsconfig.supabase.json"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "0.8.12"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",

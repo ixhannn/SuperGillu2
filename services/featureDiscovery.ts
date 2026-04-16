@@ -1,13 +1,12 @@
+import { APP_VERSION } from '../appVersion';
+
 /**
  * FeatureDiscovery — tracks what users have seen so we show each
  * intro exactly once and never nag them.
  */
 
-export const APP_VERSION = '2.1';
-
 export const FeatureDiscovery = {
-    // ── What's New ────────────────────────────────────────────────────────────
-
+    // What's New
     hasSeenCurrentVersion(): boolean {
         return localStorage.getItem('lior_seen_version') === APP_VERSION;
     },
@@ -16,8 +15,7 @@ export const FeatureDiscovery = {
         localStorage.setItem('lior_seen_version', APP_VERSION);
     },
 
-    // ── Coachmarks ────────────────────────────────────────────────────────────
-
+    // Coachmarks
     isCoachmarkSeen(key: string): boolean {
         const seen = this._getSeenCoachmarks();
         return seen.includes(key);
@@ -46,8 +44,7 @@ export const FeatureDiscovery = {
         }
     },
 
-    // ── Dev helpers ───────────────────────────────────────────────────────────
-
+    // Dev helpers
     resetAll(): void {
         localStorage.removeItem('lior_seen_version');
         localStorage.removeItem('lior_coachmarks_seen');

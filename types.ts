@@ -3,10 +3,15 @@ export interface Memory {
   id: string;
   image?: string; // Data URI (Legacy or Sync transport)
   imageId?: string; // ID for IndexedDB
+  imageBytes?: number;
+  imageMimeType?: string;
   video?: string; // Data URI for Video
   videoId?: string; // ID for IndexedDB
+  videoBytes?: number;
+  videoMimeType?: string;
   storagePath?: string; // Supabase Storage path for image
   videoStoragePath?: string; // Supabase Storage path for video
+  ownerUserId?: string; // Stable uploader/owner identity for media namespacing
   text: string;
   date: string; // ISO string
   mood: string;
@@ -38,11 +43,16 @@ export interface Envelope {
 export interface DailyPhoto {
   id: string;
   imageId?: string;
+  imageBytes?: number;
+  imageMimeType?: string;
   image?: string; // For sync transport
   videoId?: string;
+  videoBytes?: number;
+  videoMimeType?: string;
   video?: string;
   storagePath?: string; // Supabase Storage path for image
   videoStoragePath?: string; // Supabase Storage path for video
+  ownerUserId?: string; // Stable uploader/owner identity for media namespacing
   caption: string;
   createdAt: string;
   expiresAt: string;
@@ -68,10 +78,15 @@ export interface Keepsake {
   content?: string;
   image?: string; // Data URI
   imageId?: string; // ID for IndexedDB
+  imageBytes?: number;
+  imageMimeType?: string;
   video?: string;
   videoId?: string;
+  videoBytes?: number;
+  videoMimeType?: string;
   storagePath?: string; // Supabase Storage path for image
   videoStoragePath?: string; // Supabase Storage path for video
+  ownerUserId?: string; // Stable uploader/owner identity for media namespacing
   spotifyLink?: string;
   date: string; // ISO String
   isHidden: boolean; // Soft delete only
@@ -199,8 +214,11 @@ export interface TimeCapsule {
   title: string;
   message: string;
   imageId?: string;
+  imageBytes?: number;
+  imageMimeType?: string;
   image?: string;
   storagePath?: string;
+  ownerUserId?: string; // Stable uploader/owner identity for media namespacing
   unlockDate: string; // ISO string
   createdAt: string; // ISO string
   isUnlocked: boolean;
@@ -213,8 +231,11 @@ export interface Surprise {
   message: string;
   emoji?: string;
   imageId?: string;
+  imageBytes?: number;
+  imageMimeType?: string;
   image?: string;
   storagePath?: string;
+  ownerUserId?: string; // Stable uploader/owner identity for media namespacing
   scheduledFor: string; // ISO string
   createdAt: string; // ISO string
   delivered: boolean;
@@ -225,13 +246,174 @@ export interface VoiceNote {
   id: string;
   title?: string;
   audioId?: string; // IDB key
+  audioBytes?: number;
+  audioMimeType?: string;
   audioStoragePath?: string; // R2 URL
+  ownerUserId?: string; // Stable uploader/owner identity for media namespacing
   duration: number; // seconds
   createdAt: string; // ISO string
   senderId: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'year-in-review';
+// ── Daily Voice Moments (10-second ritual) ─────────────────────────
+export interface DailyVoiceMoment {
+  id: string;
+  odCoupleId: string;
+  odUserId: string;
+  momentDate: string; // YYYY-MM-DD in user's local timezone
+  audioId?: string; // IndexedDB key
+  audioStoragePath?: string; // Supabase/R2 path
+  audioDurationMs: number; // max 10000
+  waveformData: number[]; // 64 amplitude values 0-1
+  recordedAt: string; // ISO timestamp
+  listenedByPartner: boolean;
+  listenedAt?: string;
+}
+
+export interface VoiceMomentSettings {
+  userId: string;
+  nudgeWindowStart: string; // "07:00"
+  nudgeWindowEnd: string; // "10:00"
+  revealTime: string; // "22:00"
+  notificationsEnabled: boolean;
+  timezone: string;
+  streakCount: number;
+  longestStreak: number;
+  totalMoments: number;
+  lastMomentDate?: string;
+}
+
+export interface VoiceMomentDay {
+  date: string;
+  userMoment?: DailyVoiceMoment;
+  partnerMoment?: DailyVoiceMoment;
+  bothRecorded: boolean;
+}
+
+export interface OnThisDay {
+  date: string;
+  daysAgo: number;
+  label: string; // "1 year ago", "6 months ago", etc.
+  moments: VoiceMomentDay;
+}
+
+// ── Partner Intelligence ────────────────────────────────────────────
+export type InsightCategory = 'emotional_state' | 'connection_pattern' | 'meaningful_date' | 'appreciation' | 'nudge';
+
+export interface PartnerInsight {
+  id: string;
+  coupleId: string;
+  targetUserId: string; // who sees this insight
+  aboutUserId?: string; // who the insight is about (null for couple-level)
+  category: InsightCategory;
+  insightKey: string; // e.g., 'mood_decline_sustained'
+  insightText: string;
+  confidence: number; // 0-1, only surface if > 0.7
+  dataPoints?: Record<string, unknown>;
+  createdAt: string;
+  seenAt?: string;
+  dismissedAt?: string;
+}
+
+export interface InsightAggregates {
+  coupleId: string;
+  userId: string;
+  computedAt: string;
+  moodAverage30d: number;
+  moodAverage7d: number;
+  moodTrend7d: 'rising' | 'falling' | 'stable';
+  moodByDayOfWeek: Record<string, number>;
+  daysActive30d: number;
+  voiceNotesSent30d: number;
+  voiceNotesAvgLengthMs: number;
+  notesSent30d: number;
+  notesSentiment30d: 'positive' | 'neutral' | 'negative' | 'mixed';
+  memoriesAdded30d: number;
+  dailyMomentStreak: number;
+  avgSessionHour: number;
+  lateNightSessions7d: number;
+  auraSignalsSent7d: number;
+  auraAvgResponseTimeMs: number;
+  bonsaiWaters7d: number;
+}
+
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'year-in-review' | 'partner-intelligence' | 'daily-video' | 'weekly-recap';
+
+// ── Daily Video Moments (10-second clips → monthly compilation) ─────
+export interface DailyVideoClip {
+  id: string;
+  odCoupleId: string;
+  odUserId: string;
+  clipDate: string; // YYYY-MM-DD in user's local timezone
+  videoId?: string; // IndexedDB key
+  videoStoragePath?: string; // Supabase/R2 path
+  thumbnailId?: string; // IndexedDB key for thumbnail
+  thumbnailStoragePath?: string;
+  durationMs: number; // max 10000
+  recordedAt: string; // ISO timestamp
+  watchedByPartner: boolean;
+  watchedAt?: string;
+}
+
+export interface VideoMomentDay {
+  date: string;
+  userClip?: DailyVideoClip;
+  partnerClip?: DailyVideoClip;
+  bothRecorded: boolean;
+}
+
+export interface MonthlyVideoCompilation {
+  id: string;
+  coupleId: string;
+  month: string; // YYYY-MM
+  videoId?: string; // IndexedDB key
+  videoStoragePath?: string;
+  thumbnailId?: string;
+  thumbnailStoragePath?: string;
+  durationMs: number;
+  clipCount: number;
+  generatedAt: string; // ISO timestamp
+  status: 'pending' | 'generating' | 'ready' | 'failed';
+}
+
+export interface VideoMomentSettings {
+  odCoupleId: string;
+  userId: string;
+  reminderEnabled: boolean;
+  reminderTime: string; // "20:00"
+  timezone: string;
+  streakCount: number;
+  longestStreak: number;
+  totalClips: number;
+  lastClipDate?: string;
+}
+
+// ── Weekly Recap Video ──────────────────────────────────────────────
+export interface WeeklyRecap {
+  id: string;
+  coupleId: string;
+  weekStart: string; // YYYY-MM-DD (Sunday)
+  weekEnd: string; // YYYY-MM-DD (Saturday)
+  videoId?: string; // IndexedDB key
+  videoStoragePath?: string;
+  thumbnailId?: string;
+  thumbnailStoragePath?: string;
+  durationMs: number;
+  generatedAt: string; // ISO timestamp
+  status: 'pending' | 'generating' | 'ready' | 'failed';
+  stats: WeeklyRecapStats;
+}
+
+export interface WeeklyRecapStats {
+  memoriesCount: number;
+  notesCount: number;
+  moodsLogged: number;
+  avgMoodScore: number;
+  moodTrend: 'up' | 'down' | 'stable';
+  specialDatesCount: number;
+  dailyClipsCount: number;
+  highlightMoments: string[]; // IDs of featured items
+}
 
 export type TransitionDirection = 'push' | 'pop' | 'tab' | 'modal';
 

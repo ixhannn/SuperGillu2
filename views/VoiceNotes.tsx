@@ -230,17 +230,24 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
         };
 
         // Save audio to IDB first, then attempt R2 upload
-        const cloudUrl = await StorageService.saveVoiceNoteAudio(id, pendingAudio.dataUri);
-        if (cloudUrl) newNote.audioStoragePath = cloudUrl;
+        try {
+            const audioResult = await StorageService.saveVoiceNoteAudio(id, pendingAudio.dataUri, { createdAt: newNote.createdAt });
+            newNote.audioBytes = audioResult.byteSize;
+            newNote.audioMimeType = audioResult.mimeType;
+            if (audioResult.storagePath) newNote.audioStoragePath = audioResult.storagePath;
 
-        await StorageService.saveVoiceNote(newNote);
-        setNotes(StorageService.getVoiceNotes());
+            await StorageService.saveVoiceNote(newNote);
+            setNotes(StorageService.getVoiceNotes());
 
-        setPendingAudio(null);
-        setTitle('');
-        setIsSaving(false);
-        feedback.celebrate();
-        toast.show('Voice note saved!', 'success');
+            setPendingAudio(null);
+            setTitle('');
+            feedback.celebrate();
+            toast.show('Voice note saved!', 'success');
+        } catch (error: any) {
+            toast.show(error?.message || 'Voice note could not be saved.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleDiscard = () => {

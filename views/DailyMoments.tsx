@@ -15,6 +15,7 @@ import { feedback } from '../utils/feedback';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
+import { isDailyMomentExpired } from '../shared/mediaRetention.js';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -26,7 +27,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
     const mediaId = isVideo ? photo.imageId : (photo.imageId || photo.videoId);
     const mediaData = isVideo ? photo.image : (photo.image || photo.video);
 
-    const { src: mediaUrl, isLoading } = useLiorMedia(mediaId, mediaData, photo.storagePath);
+    const { src: mediaUrl, isLoading, handleError: handleMediaError } = useLiorMedia(mediaId, mediaData, photo.storagePath);
     const [timeLeft, setTimeLeft] = useState('');
 
     useEffect(() => {
@@ -90,7 +91,8 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                                 transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
                                 src={mediaUrl} 
                                 className="relative w-full h-full object-cover z-[1]" 
-                                alt="Video thumbnail" 
+                                alt="Video thumbnail"
+                                onError={handleMediaError}
                             />
                             <div className="absolute inset-0 flex items-center justify-center z-[2]">
                                 <div className="bg-white/30 backdrop-blur-lg p-3 rounded-full border border-white/40 shadow-2xl transition-transform">
@@ -106,7 +108,8 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
                             src={mediaUrl} 
                             className="relative w-full h-full object-cover z-[1]" 
-                            alt="Daily moment" 
+                            alt="Daily moment"
+                            onError={handleMediaError}
                         />
                     )}
 
@@ -210,7 +213,7 @@ const PostViewer: React.FC<{
     onClose: () => void;
 }> = ({ photo, onClose }) => {
     const isVideo = !!photo.video || !!photo.videoId;
-    const { src: mediaSrc, isLoading: mediaLoading } = useLiorMedia(
+    const { src: mediaSrc, isLoading: mediaLoading, handleError: handleMediaError } = useLiorMedia(
         isVideo ? (photo.videoId || photo.imageId) : photo.imageId,
         isVideo ? (photo.video || photo.image) : photo.image,
         isVideo ? (photo.videoStoragePath || photo.storagePath) : photo.storagePath
@@ -334,6 +337,7 @@ const PostViewer: React.FC<{
                             className="absolute inset-0 w-full h-full object-cover blur-3xl scale-110 opacity-40"
                             alt=""
                             aria-hidden="true"
+                            onError={handleMediaError}
                         />
                         {isVideo ? (
                             <video
@@ -342,12 +346,14 @@ const PostViewer: React.FC<{
                                 controls
                                 autoPlay
                                 playsInline
+                                onError={handleMediaError}
                             />
                         ) : (
                             <img
                                 src={mediaSrc}
                                 className="relative z-[1] max-w-full max-h-[50vh] object-contain"
                                 alt="Moment"
+                                onError={handleMediaError}
                             />
                         )}
                     </>
@@ -466,8 +472,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     useEffect(() => {
         const load = () => {
             const data = StorageService.getDailyPhotos();
-            const now = new Date();
-            const valid = data.filter(p => new Date(p.expiresAt) > now);
+            const valid = data.filter((p) => !isDailyMomentExpired(p));
             setPhotos(valid.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
         };
         load();
@@ -483,8 +488,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     const handleRefresh = async () => {
         await new Promise(r => setTimeout(r, 1000));
         const data = StorageService.getDailyPhotos();
-        const now = new Date();
-        const valid = data.filter(p => new Date(p.expiresAt) > now);
+        const valid = data.filter((p) => !isDailyMomentExpired(p));
         setPhotos(valid.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     };
 
@@ -549,14 +553,19 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             senderId: StorageService.getDeviceId()
         };
 
-        await StorageService.saveDailyPhoto(photo);
-        setIsUploading(false);
-        setNewImage(null);
-        setNewVideo(null);
-        setCaption('');
-        setIsSaving(false);
-        feedback.celebrate();
-        toast.show("Moment added successfully!", "success");
+        try {
+            await StorageService.saveDailyPhoto(photo);
+            setIsUploading(false);
+            setNewImage(null);
+            setNewVideo(null);
+            setCaption('');
+            feedback.celebrate();
+            toast.show("Moment added successfully!", "success");
+        } catch (error: any) {
+            toast.show(error?.message || "Moment upload failed.", "error");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const cancelUpload = () => {

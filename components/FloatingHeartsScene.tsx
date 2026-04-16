@@ -7,7 +7,7 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, extend } from '@react-three/fiber';
 import { shaderMaterial } from '@react-three/drei';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
+// Bloom removed — forced second full render pass at 120fps; use CSS glow instead
 import * as THREE from 'three';
 import { readThemeVar } from '../utils/themeVars';
 
@@ -247,6 +247,25 @@ const OrbitalLine: React.FC<{ index: number; total: number }> = ({ index, total 
     return new THREE.BufferGeometry().setFromPoints(points);
   }, [index, total]);
 
+  const material = useMemo(() => {
+    return new THREE.LineBasicMaterial({
+      color: '#ffffff',
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+  }, []);
+
+  const line = useMemo(() => new THREE.Line(geometry, material), [geometry, material]);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      material.dispose();
+    };
+  }, [geometry, material]);
+
   useFrame(({ clock }) => {
     if (!ref.current) return;
     const t = clock.elapsedTime;
@@ -261,17 +280,7 @@ const OrbitalLine: React.FC<{ index: number; total: number }> = ({ index, total 
     ref.current.rotation.z = Math.cos(t * 0.08 + index) * 0.1;
   });
 
-  return (
-    <line ref={ref} geometry={geometry}>
-      <lineBasicMaterial
-        color="#ffffff"
-        transparent
-        opacity={0.1}
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-      />
-    </line>
-  );
+  return <primitive object={line} ref={ref} />;
 };
 
 // ── Main morphing dark glass blob ───────────────────────────────────────
@@ -301,7 +310,7 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
 
   return (
     <mesh ref={meshRef}>
-      <icosahedronGeometry args={[1.6, 32]} />
+      <icosahedronGeometry args={[1.6, 6]} />
       <darkGlassMaterial
         ref={materialRef}
         transparent
@@ -314,7 +323,7 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
 
 // ── Floating dust motes ─────────────────────────────────────────────────
 const DustField: React.FC<{ dustColor: string }> = ({ dustColor }) => {
-  const count = 80;
+  const count = 40;
   const ref = useRef<THREE.Points>(null);
 
   const [positions, velocities] = useMemo(() => {
@@ -409,15 +418,6 @@ const Scene: React.FC<{ theme: FloatingThemeColors }> = ({ theme }) => (
 
     {/* Floating dust particles */}
     <DustField dustColor={theme.dustColor} />
-
-    {/* Post-processing — no mipmapBlur, higher threshold */}
-    <EffectComposer>
-      <Bloom
-        intensity={0.5}
-        luminanceThreshold={0.5}
-        luminanceSmoothing={0.9}
-      />
-    </EffectComposer>
   </>
 );
 

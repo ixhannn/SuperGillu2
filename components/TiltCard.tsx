@@ -13,6 +13,7 @@ interface TiltCardProps {
   glare?: boolean;
   scale?: number;
   onClick?: () => void;
+  'data-coachmark'?: string;
 }
 
 export const TiltCard: React.FC<TiltCardProps> = ({
@@ -20,11 +21,13 @@ export const TiltCard: React.FC<TiltCardProps> = ({
   className = '',
   style = {},
   onClick,
+  'data-coachmark': dataCoachmark,
 }) => (
   <div
     className={`relative spring-press ${className}`}
     style={style}
     onClick={onClick}
+    {...(dataCoachmark ? { 'data-coachmark': dataCoachmark } : {})}
   >
     {children}
   </div>
