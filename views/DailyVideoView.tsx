@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Video, Play, Pause, Calendar, Film, Lock, Check, X,
+  Video, Play, Pause, Calendar, Film, Lock, Check, X, Heart, Crown,
   ChevronLeft, ChevronRight, ArrowLeft, RotateCcw, Download, Sparkles, RefreshCw
 } from 'lucide-react';
 import { ViewState, VideoMomentDay, MonthlyVideoCompilation, DailyVideoClip } from '../types';
@@ -20,6 +20,89 @@ type ViewMode = 'today' | 'calendar' | 'compilations';
 type RecordingPhase = 'preview' | 'countdown' | 'recording' | 'review';
 
 const MAX_DURATION_MS = 10000;
+
+type MonthSummary = {
+  month: string;
+  totalClips: number;
+  daysCaptured: number;
+  duetDays: number;
+  totalDurationMs: number;
+  coverage: number;
+};
+
+const formatDurationLabel = (durationMs: number): string => {
+  if (durationMs < 60000) return `${Math.ceil(durationMs / 1000)}s`;
+  const minutes = Math.floor(durationMs / 60000);
+  const seconds = Math.round((durationMs % 60000) / 1000);
+  return `${minutes}m ${seconds}s`;
+};
+
+const summarizeMonth = (month: string, clips: DailyVideoClip[]): MonthSummary => {
+  const uniqueDays = new Set(clips.map(clip => clip.clipDate));
+  const byDay = new Map<string, number>();
+
+  clips.forEach((clip) => {
+    byDay.set(clip.clipDate, (byDay.get(clip.clipDate) || 0) + 1);
+  });
+
+  const [year, monthNumber] = month.split('-').map(Number);
+  const daysInMonth = getDaysInMonth(new Date(year, monthNumber - 1, 1));
+
+  return {
+    month,
+    totalClips: clips.length,
+    daysCaptured: uniqueDays.size,
+    duetDays: [...byDay.values()].filter((count) => count > 1).length,
+    totalDurationMs: clips.reduce((sum, clip) => sum + clip.durationMs, 0),
+    coverage: daysInMonth > 0 ? Math.round((uniqueDays.size / daysInMonth) * 100) : 0,
+  };
+};
+
+const useClipThumbnail = (clip?: DailyVideoClip | null) => {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!clip) {
+      setThumbnailUrl(null);
+      return undefined;
+    }
+
+    VideoMomentsService.getThumbnailUrl(clip).then((url) => {
+      if (!cancelled) setThumbnailUrl(url);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clip?.id, clip?.thumbnailId, clip?.thumbnailStoragePath]);
+
+  return thumbnailUrl;
+};
+
+const useCompilationThumbnail = (compilation?: MonthlyVideoCompilation | null) => {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!compilation) {
+      setThumbnailUrl(null);
+      return undefined;
+    }
+
+    VideoMomentsService.getCompilationThumbnailUrl(compilation).then((url) => {
+      if (!cancelled) setThumbnailUrl(url);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [compilation?.id, compilation?.thumbnailId, compilation?.thumbnailStoragePath]);
+
+  return thumbnailUrl;
+};
 
 // ── Countdown Ring ────────────────────────────────────────────────────
 const CountdownRing: React.FC<{ progress: number; size?: number }> = ({ progress, size = 160 }) => {
@@ -546,17 +629,37 @@ const SuccessAnimation: React.FC<{ onComplete: () => void }> = ({ onComplete }) 
 // ── Today View ────────────────────────────────────────────────────────
 const TodayView: React.FC<{
   todayClips: VideoMomentDay;
-  isUnlocked: boolean;
   streak: number;
+  longestStreak: number;
+  totalClips: number;
   partnerName: string;
   onRecord: () => void;
   onReRecord: () => void;
-}> = ({ todayClips, isUnlocked, streak, partnerName, onRecord, onReRecord }) => {
+}> = ({ todayClips, streak, longestStreak, totalClips, partnerName, onRecord, onReRecord }) => {
   const [playingVideo, setPlayingVideo] = useState<'user' | 'partner' | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const userThumbnail = useClipThumbnail(todayClips.userClip);
+  const partnerThumbnail = useClipThumbnail(todayClips.partnerClip);
 
   const userRecorded = !!todayClips.userClip;
   const partnerRecorded = !!todayClips.partnerClip;
+  const isUnlocked = userRecorded;
+
+  const headline = todayClips.bothRecorded
+    ? 'Today is fully captured'
+    : userRecorded
+      ? `Your clip is in. Waiting for ${partnerName}.`
+      : partnerRecorded
+        ? `${partnerName} already dropped a moment`
+        : 'Record today\'s 10 seconds';
+
+  const supportingCopy = todayClips.bothRecorded
+    ? 'Both sides of the day are in the vault. Watch them now or let them feed next month\'s film.'
+    : userRecorded
+      ? 'Your partner will unlock this pair the moment they post theirs.'
+      : partnerRecorded
+        ? 'Record yours to unlock their clip and keep the ritual alive.'
+        : 'A tiny ritual done consistently becomes the premium part of the story.';
 
   const handlePlay = async (whose: 'user' | 'partner') => {
     const clip = whose === 'user' ? todayClips.userClip : todayClips.partnerClip;
@@ -1133,6 +1236,409 @@ const CompilationsView: React.FC = () => {
                 </div>
               )}
             </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const PremiumTodayView: React.FC<{
+  todayClips: VideoMomentDay;
+  streak: number;
+  longestStreak: number;
+  totalClips: number;
+  partnerName: string;
+  onRecord: () => void;
+  onReRecord: () => void;
+}> = ({ todayClips, streak, longestStreak, totalClips, partnerName, onRecord, onReRecord }) => {
+  const [playingVideo, setPlayingVideo] = useState<'user' | 'partner' | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const userThumbnail = useClipThumbnail(todayClips.userClip);
+  const partnerThumbnail = useClipThumbnail(todayClips.partnerClip);
+  const userRecorded = !!todayClips.userClip;
+  const partnerRecorded = !!todayClips.partnerClip;
+
+  const headline = todayClips.bothRecorded
+    ? 'Today is fully captured'
+    : userRecorded
+      ? `Your clip is in. Waiting for ${partnerName}.`
+      : partnerRecorded
+        ? `${partnerName} already posted`
+        : 'Record today\'s 10 seconds';
+
+  const supportingCopy = todayClips.bothRecorded
+    ? 'Both sides of the day are ready to replay, and they will roll straight into the monthly film.'
+    : userRecorded
+      ? 'Your side is safe. The pair completes when your partner drops theirs.'
+      : partnerRecorded
+        ? 'Record yours to unlock their clip and keep the ritual alive.'
+        : 'One honest clip per day is what makes this feel premium by the end of the month.';
+
+  const handlePlay = async (whose: 'user' | 'partner') => {
+    const clip = whose === 'user' ? todayClips.userClip : todayClips.partnerClip;
+    if (!clip) return;
+    const url = await VideoMomentsService.getVideoUrl(clip);
+    if (url) {
+      setVideoUrl(url);
+      setPlayingVideo(whose);
+      if (whose === 'partner' && !clip.watchedByPartner) {
+        VideoMomentsService.markWatched(clip.id);
+      }
+    }
+    feedback.tap();
+  };
+
+  return (
+    <div className="flex flex-col flex-1 px-4 py-4">
+      <AnimatePresence>
+        {playingVideo && videoUrl && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black flex items-center justify-center" onClick={() => { setPlayingVideo(null); setVideoUrl(null); }}>
+            <video src={videoUrl} autoPlay playsInline controls className="max-w-full max-h-full" onEnded={() => { setPlayingVideo(null); setVideoUrl(null); }} />
+            <button onClick={() => { setPlayingVideo(null); setVideoUrl(null); }} className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 p-2 rounded-full bg-white/20">
+              <X size={20} className="text-white" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="rounded-[2rem] p-5" style={{ background: 'linear-gradient(145deg, rgba(30,21,29,0.92) 0%, rgba(73,41,46,0.88) 56%, rgba(127,78,66,0.82) 100%)', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 18px 42px rgba(18,10,16,0.24)' }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">
+            <Crown size={12} />
+            10 Seconds Daily
+          </div>
+          {streak > 0 && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-300/12 px-3 py-1 text-[11px] font-semibold text-amber-100">
+              <Heart size={13} />
+              {streak} day streak
+            </div>
+          )}
+        </div>
+        <h2 className="mt-4 font-serif text-[1.95rem] leading-[1.02] text-white">{headline}</h2>
+        <p className="mt-3 text-[0.92rem] leading-relaxed text-white/68">{supportingCopy}</p>
+        <div className="mt-5 grid grid-cols-3 gap-2.5">
+          {[
+            { label: 'Clips saved', value: totalClips.toString() },
+            { label: 'Current streak', value: streak.toString() },
+            { label: 'Best streak', value: longestStreak.toString() },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl bg-white/8 px-3 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/42">{item.label}</p>
+              <p className="mt-1 text-[1.05rem] font-medium text-white">{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 flex-1 space-y-4">
+        {!userRecorded ? (
+          <>
+            <div className="rounded-[2rem] p-6 text-center" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/46">Today\'s prompt</p>
+              <h3 className="mt-3 font-serif text-[1.7rem] leading-[1.06] text-white">Capture one unfiltered slice of the day</h3>
+              <p className="mt-3 text-[0.92rem] leading-relaxed text-white/62">No montage. No editing. Just one real moment that future-you will be glad you kept.</p>
+              <motion.button whileTap={{ scale: 0.95 }} onClick={onRecord} className="mt-6 inline-flex h-20 w-20 items-center justify-center rounded-full shadow-2xl" style={{ background: 'linear-gradient(135deg, #8b5c56 0%, #d59d73 100%)', boxShadow: '0 0 44px rgba(213,157,115,0.28)' }}>
+                <Video size={30} className="text-white" strokeWidth={1.6} />
+              </motion.button>
+            </div>
+            {partnerRecorded ? (
+              <div className="overflow-hidden rounded-[1.75rem]" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div className="relative h-40">
+                  {partnerThumbnail ? <img src={partnerThumbnail} alt={`${partnerName}'s clip preview`} className="h-full w-full object-cover blur-[10px] scale-110" /> : <div className="h-full w-full bg-gradient-to-br from-rose-400/25 to-amber-300/10" />}
+                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
+                    <Lock size={22} className="text-white/80" />
+                    <p className="mt-3 text-sm font-medium text-white">{partnerName} already recorded today</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/68">Record your own 10 seconds to unlock their clip.</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[1.5rem] bg-white/6 px-4 py-4 text-[0.88rem] leading-relaxed text-white/58">
+                When both of you keep this ritual alive, the month starts feeling like a real film instead of a pile of clips.
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="overflow-hidden rounded-[1.85rem]" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div className="relative h-44">
+                {userThumbnail ? <img src={userThumbnail} alt="Your daily clip" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-br from-amber-300/20 to-rose-300/10" />}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/52">Your clip</p>
+                    <p className="mt-1 text-[1.1rem] font-medium text-white">{formatDurationLabel(todayClips.userClip!.durationMs)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <motion.button whileTap={{ scale: 0.92 }} onClick={() => handlePlay('user')} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/18 backdrop-blur-sm"><Play size={18} className="ml-0.5 text-white" fill="currentColor" /></motion.button>
+                    <motion.button whileTap={{ scale: 0.92 }} onClick={onReRecord} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/12 backdrop-blur-sm"><RefreshCw size={17} className="text-white/78" /></motion.button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {partnerRecorded ? (
+              <div className="overflow-hidden rounded-[1.85rem]" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div className="relative h-44">
+                  {partnerThumbnail ? <img src={partnerThumbnail} alt={`${partnerName}'s clip`} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-br from-rose-300/18 to-amber-200/10" />}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between gap-4 p-4">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/52">{partnerName}'s clip</p>
+                      <p className="mt-1 text-[1.1rem] font-medium text-white">{formatDurationLabel(todayClips.partnerClip!.durationMs)}{!todayClips.partnerClip!.watchedByPartner && <span className="ml-2 text-xs text-amber-200">New</span>}</p>
+                    </div>
+                    <motion.button whileTap={{ scale: 0.92 }} onClick={() => handlePlay('partner')} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/18 backdrop-blur-sm"><Play size={18} className="ml-0.5 text-white" fill="currentColor" /></motion.button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[1.5rem] bg-white/6 px-4 py-4 text-[0.88rem] leading-relaxed text-white/58">
+                Your side of the day is locked in. When {partnerName} adds theirs, both clips will roll straight into the same monthly film.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DayDetailCard: React.FC<{ day: VideoMomentDay | null; partnerName: string; onPlay: (clip: DailyVideoClip) => void }> = ({ day, partnerName, onPlay }) => {
+  const userThumbnail = useClipThumbnail(day?.userClip);
+  const partnerThumbnail = useClipThumbnail(day?.partnerClip);
+
+  if (!day) {
+    return <div className="rounded-[1.5rem] bg-white/6 px-4 py-5 text-[0.88rem] leading-relaxed text-white/58">Tap any recorded day to inspect the clips saved there.</div>;
+  }
+
+  return (
+    <div className="rounded-[1.7rem] p-4" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+      <p className="text-[0.82rem] text-white/56">{format(new Date(day.date), 'EEEE, MMMM d')}</p>
+      <div className="mt-4 space-y-3">
+        {[day.userClip && { title: 'Your clip', clip: day.userClip, thumb: userThumbnail }, day.partnerClip && { title: `${partnerName}'s clip`, clip: day.partnerClip, thumb: partnerThumbnail }].filter(Boolean).map((item) => {
+          const safeItem = item as { title: string; clip: DailyVideoClip; thumb: string | null };
+          return (
+            <button key={safeItem.clip.id} onClick={() => onPlay(safeItem.clip)} className="flex w-full items-center gap-3 overflow-hidden rounded-[1.35rem] bg-white/6 p-3 text-left">
+              <div className="h-16 w-16 overflow-hidden rounded-2xl bg-white/8">
+                {safeItem.thumb ? <img src={safeItem.thumb} alt={safeItem.title} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Play size={16} className="text-white/58" /></div>}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-white">{safeItem.title}</p>
+                <p className="mt-1 text-xs text-white/52">{formatDurationLabel(safeItem.clip.durationMs)}</p>
+              </div>
+              <Play size={16} className="text-white/64" fill="currentColor" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const CalendarExperience: React.FC<{ partnerName: string }> = ({ partnerName }) => {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<VideoMomentDay | null>(null);
+  const [monthClips, setMonthClips] = useState<Map<string, VideoMomentDay>>(new Map());
+  const [playingVideo, setPlayingVideo] = useState<string | null>(null);
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth() + 1;
+
+  const loadMonth = useCallback(async () => {
+    setMonthClips(await VideoMomentsService.getClipsForMonth(year, month));
+  }, [month, year]);
+
+  useEffect(() => {
+    loadMonth();
+    const handleUpdate = () => loadMonth();
+    videoMomentsEventTarget.addEventListener('video-moments-update', handleUpdate);
+    return () => videoMomentsEventTarget.removeEventListener('video-moments-update', handleUpdate);
+  }, [loadMonth]);
+
+  const dayEntries = [...monthClips.values()];
+  const summary = summarizeMonth(`${year}-${String(month).padStart(2, '0')}`, dayEntries.flatMap((day) => [day.userClip, day.partnerClip].filter(Boolean) as DailyVideoClip[]));
+  const daysInMonth = getDaysInMonth(currentDate);
+  const firstDayOfWeek = getDay(startOfMonth(currentDate));
+
+  const handlePlayClip = async (clip: DailyVideoClip) => {
+    const url = await VideoMomentsService.getVideoUrl(clip);
+    if (url) setPlayingVideo(url);
+  };
+
+  const days = [];
+  for (let i = 0; i < firstDayOfWeek; i += 1) days.push(<div key={`empty-${i}`} className="aspect-square" />);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dayData = monthClips.get(dateStr);
+    const bothRecorded = dayData?.bothRecorded || false;
+    const hasClips = !!dayData;
+    days.push(
+      <button key={dateStr} onClick={() => setSelectedDay(dayData || null)} className="aspect-square rounded-xl text-sm transition-colors" style={{ background: bothRecorded ? 'rgba(213,157,115,0.45)' : hasClips ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)', color: hasClips ? '#fff' : 'rgba(255,255,255,0.4)' }}>
+        {day}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex-1 px-4 py-4 space-y-4">
+      <AnimatePresence>{playingVideo && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black flex items-center justify-center" onClick={() => setPlayingVideo(null)}><video src={playingVideo} autoPlay playsInline controls className="max-w-full max-h-full" /><button onClick={() => setPlayingVideo(null)} className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 p-2 rounded-full bg-white/20"><X size={20} className="text-white" /></button></motion.div>}</AnimatePresence>
+
+      <div className="grid grid-cols-3 gap-2.5">
+        {[
+          { label: 'Days captured', value: summary.daysCaptured },
+          { label: 'Duet days', value: summary.duetDays },
+          { label: 'Coverage', value: `${summary.coverage}%` },
+        ].map((item) => <div key={item.label} className="rounded-2xl bg-white/6 px-3 py-3"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/42">{item.label}</p><p className="mt-1 text-[1.05rem] font-medium text-white">{item.value}</p></div>)}
+      </div>
+
+      <div className="rounded-[1.8rem] p-4" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="mb-4 flex items-center justify-between">
+          <button onClick={() => { setCurrentDate(new Date(year, month - 2, 1)); setSelectedDay(null); }} className="p-2"><ChevronLeft size={20} className="text-white/66" /></button>
+          <h3 className="text-base font-semibold text-white">{format(currentDate, 'MMMM yyyy')}</h3>
+          <button onClick={() => { const now = new Date(); if (year < now.getFullYear() || (year === now.getFullYear() && month <= now.getMonth() + 1)) { setCurrentDate(new Date(year, month, 1)); setSelectedDay(null); } }} className="p-2"><ChevronRight size={20} className="text-white/66" /></button>
+        </div>
+        <div className="grid grid-cols-7 gap-1.5 mb-2">{['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => <div key={d} className="text-center text-xs text-white/40 py-1.5">{d}</div>)}</div>
+        <div className="grid grid-cols-7 gap-1.5">{days}</div>
+      </div>
+
+      <DayDetailCard day={selectedDay} partnerName={partnerName} onPlay={handlePlayClip} />
+    </div>
+  );
+};
+
+const FilmCard: React.FC<{
+  month: string;
+  compilation: MonthlyVideoCompilation | null;
+  summary: MonthSummary | null;
+  generating: boolean;
+  progress: number;
+  onGenerate: () => void;
+  onPlay: () => void;
+  onDownload: () => void;
+}> = ({ month, compilation, summary, generating, progress, onGenerate, onPlay, onDownload }) => {
+  const thumbnail = useCompilationThumbnail(compilation);
+  const [year, monthNumber] = month.split('-');
+  const monthTitle = new Date(Number(year), Number(monthNumber) - 1, 1).toLocaleString('default', { month: 'long' });
+
+  return (
+    <div className="overflow-hidden rounded-[1.8rem]" style={{ background: compilation ? 'linear-gradient(145deg, rgba(32,24,31,0.94) 0%, rgba(89,53,49,0.88) 100%)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+      <div className="relative h-36">
+        {thumbnail ? <img src={thumbnail} alt={`${monthTitle} compilation`} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-br from-amber-300/18 to-rose-300/10" />}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/46">{monthTitle} {year}</p>
+          <p className="mt-1 text-[1.12rem] font-medium text-white">{summary ? `${summary.daysCaptured} days captured` : 'Monthly film'}</p>
+          <p className="text-xs text-white/58">{summary ? `${summary.totalClips} clips, ${summary.duetDays} duet days, ${summary.coverage}% coverage` : 'Ready when the archive has enough moments.'}</p>
+        </div>
+      </div>
+      <div className="p-4">
+        {compilation ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-white/62">{formatDurationLabel(compilation.durationMs)}</p>
+            <div className="flex gap-2">
+              <button onClick={onPlay} className="rounded-full bg-white/12 p-2.5"><Play size={16} className="text-white" fill="currentColor" /></button>
+              <button onClick={onDownload} className="rounded-full bg-white/12 p-2.5"><Download size={16} className="text-white/78" /></button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <button onClick={onGenerate} disabled={generating} className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #8b5c56 0%, #d59d73 100%)' }}>
+              <Film size={14} />
+              {generating ? `${Math.round(progress * 100)}%` : 'Create film'}
+            </button>
+            {generating && <div className="mt-3 h-1.5 w-full rounded-full bg-white/10 overflow-hidden"><motion.div className="h-full bg-gradient-to-r from-amber-300 to-rose-300" initial={{ width: 0 }} animate={{ width: `${progress * 100}%` }} transition={{ duration: 0.2 }} /></div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const FilmsExperience: React.FC = () => {
+  const [months, setMonths] = useState<string[]>([]);
+  const [compilations, setCompilations] = useState<MonthlyVideoCompilation[]>([]);
+  const [summaries, setSummaries] = useState<Record<string, MonthSummary>>({});
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+
+  const loadFilms = useCallback(async () => {
+    const monthKeys = await VideoMomentsService.getMonthsWithRecordings();
+    const allCompilations = await VideoMomentsService.getAllCompilations();
+    const monthEntries = await Promise.all(monthKeys.map(async (month) => {
+      const clips = await VideoMomentsService.getClipsForCompilation(month);
+      return [month, summarizeMonth(month, clips)] as const;
+    }));
+    setMonths(monthKeys);
+    setCompilations(allCompilations);
+    setSummaries(Object.fromEntries(monthEntries));
+  }, []);
+
+  useEffect(() => {
+    loadFilms();
+    const handleUpdate = () => loadFilms();
+    videoMomentsEventTarget.addEventListener('video-moments-update', handleUpdate);
+    return () => videoMomentsEventTarget.removeEventListener('video-moments-update', handleUpdate);
+  }, [loadFilms]);
+
+  const handleGenerate = async (month: string) => {
+    setGenerating(month);
+    setProgress(0);
+    try {
+      const result = await VideoCompilerService.compileMonthlyVideo(month, { onProgress: setProgress });
+      const clips = await VideoMomentsService.getClipsForCompilation(month);
+      await VideoMomentsService.saveCompilation(month, result.blob, result.thumbnail, result.duration, clips.length);
+      await loadFilms();
+      feedback.celebrate();
+    } catch (err) {
+      console.error('Compilation failed:', err);
+      toast.show('Failed to create compilation', 'error');
+    } finally {
+      setGenerating(null);
+    }
+  };
+
+  const handlePlay = async (compilation: MonthlyVideoCompilation) => {
+    const url = await VideoMomentsService.getCompilationVideoUrl(compilation);
+    if (url) setPlayingUrl(url);
+  };
+
+  const handleDownload = async (compilation: MonthlyVideoCompilation) => {
+    const url = await VideoMomentsService.getCompilationVideoUrl(compilation);
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lior-10-seconds-daily-${compilation.month}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.show('Download started', 'success');
+  };
+
+  if (months.length === 0) {
+    return <div className="flex-1 flex flex-col items-center justify-center px-6"><div className="w-20 h-20 rounded-full flex items-center justify-center mb-4 bg-white/5"><Film size={32} className="text-white/30" /></div><h3 className="text-white font-semibold mb-2">No monthly films yet</h3><p className="text-white/40 text-sm text-center max-w-xs">Start recording daily clips and this section turns into your premium archive.</p></div>;
+  }
+
+  return (
+    <div className="flex-1 px-4 py-4 space-y-4">
+      <AnimatePresence>{playingUrl && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black flex items-center justify-center" onClick={() => setPlayingUrl(null)}><video src={playingUrl} autoPlay playsInline controls className="max-w-full max-h-full" /><button onClick={() => setPlayingUrl(null)} className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 p-2 rounded-full bg-white/20"><X size={20} className="text-white" /></button></motion.div>}</AnimatePresence>
+      <div className="rounded-[1.7rem] bg-white/6 px-4 py-4 text-[0.9rem] leading-relaxed text-white/64">Each monthly film now reads like a highlight reel instead of dumping full raw clips end to end.</div>
+      <div className="space-y-3">
+        {months.map((month) => {
+          const compilation = compilations.find((item) => item.month === month) || null;
+          return (
+            <FilmCard
+              key={month}
+              month={month}
+              compilation={compilation}
+              summary={summaries[month] || null}
+              generating={generating === month}
+              progress={progress}
+              onGenerate={() => handleGenerate(month)}
+              onPlay={() => compilation && handlePlay(compilation)}
+              onDownload={() => compilation && handleDownload(compilation)}
+            />
           );
         })}
       </div>

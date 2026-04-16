@@ -485,7 +485,7 @@ const App = () => {
   return (
     <>
       <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
-        <CoachmarkProvider>
+        <CoachmarkProvider currentView={currentView} navigateTo={navigateTo}>
           <ErrorBoundary>
             <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef} isSwitchingView={isSwitchingView}>
               <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>

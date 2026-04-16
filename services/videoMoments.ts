@@ -381,6 +381,17 @@ export const VideoMomentsService = {
   },
 
   /**
+   * Get compilation thumbnail URL
+   */
+  async getCompilationThumbnailUrl(compilation: MonthlyVideoCompilation): Promise<string | null> {
+    if (compilation.thumbnailId) {
+      const local = await readRaw<string>(STORES.IMAGES, compilation.thumbnailId);
+      if (local) return local;
+    }
+    return null;
+  },
+
+  /**
    * Update streak information
    */
   async updateStreak(): Promise<void> {

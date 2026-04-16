@@ -8,6 +8,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3002,
       host: '0.0.0.0',
+      watch: {
+        ignored: ['**/android/**', '**/graphify-out/**', '**/.claude/**', '**/dist/**'],
+      },
+    },
+    optimizeDeps: {
+      entries: ['index.html'],
     },
     plugins: [react(), splitVendorChunkPlugin()],
     build: {
