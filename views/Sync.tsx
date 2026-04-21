@@ -9,7 +9,7 @@ import jsQR from 'jsqr';
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState } from '../types';
 import { SyncService, syncEventTarget } from '../services/sync';
-import { StorageService } from '../services/storage';
+import { StorageService, storageEventTarget } from '../services/storage';
 import { SupabaseService } from '../services/supabase';
 import { MediaMigrationService } from '../services/mediaMigration';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -23,6 +23,11 @@ interface SyncProps {
 type ScanPhase = 'idle' | 'requesting' | 'scanning' | 'claiming' | 'success' | 'error';
 
 export const Sync: React.FC<SyncProps> = ({ setView }) => {
+  const getLinkedPartnerLabel = useCallback(() => {
+    const profile = StorageService.getCoupleProfile();
+    return profile.partnerUserId ? (profile.partnerName || 'your partner') : '';
+  }, []);
+
   // ── Sync state ───────────────────────────────────────────────────────────────
   const [status, setStatus]                 = useState(SyncService.status);
   const [lastSync, setLastSync]             = useState(SyncService.lastSyncTime);
@@ -45,10 +50,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [scanMsg, setScanMsg]     = useState('');
   const [manualCode, setManualCode] = useState('');
   const [manualClaiming, setManualClaiming] = useState(false);
-  const [linkedPartner, setLinkedPartner] = useState(() => {
-    const p = StorageService.getCoupleProfile();
-    return p.partnerUserId ? (p.partnerName || 'your partner') : '';
-  });
+  const [linkedPartner, setLinkedPartner] = useState(() => getLinkedPartnerLabel());
 
   // ── Refs ─────────────────────────────────────────────────────────────────────
   const videoRef     = useRef<HTMLVideoElement>(null);
@@ -72,6 +74,19 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     syncEventTarget.addEventListener('sync-update', handle);
     return () => syncEventTarget.removeEventListener('sync-update', handle);
   }, []);
+
+  useEffect(() => {
+    const refreshLinkedPartner = () => {
+      setLinkedPartner(getLinkedPartnerLabel());
+    };
+    storageEventTarget.addEventListener('storage-update', refreshLinkedPartner);
+    syncEventTarget.addEventListener('sync-update', refreshLinkedPartner);
+    refreshLinkedPartner();
+    return () => {
+      storageEventTarget.removeEventListener('storage-update', refreshLinkedPartner);
+      syncEventTarget.removeEventListener('sync-update', refreshLinkedPartner);
+    };
+  }, [getLinkedPartnerLabel]);
 
   // ── On mount: auto-generate QR if not yet linked ─────────────────────────────
   useEffect(() => {

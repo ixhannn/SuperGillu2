@@ -1,4 +1,5 @@
-import { APP_VERSION } from '../appVersion';
+import { WHATS_NEW_RELEASE_ID } from '../appVersion';
+import { StorageService } from './storage';
 
 /**
  * FeatureDiscovery — tracks what users have seen so we show each
@@ -8,11 +9,11 @@ import { APP_VERSION } from '../appVersion';
 export const FeatureDiscovery = {
     // What's New
     hasSeenCurrentVersion(): boolean {
-        return localStorage.getItem('lior_seen_version') === APP_VERSION;
+        return StorageService.getSeenReleaseVersion() === WHATS_NEW_RELEASE_ID;
     },
 
     markCurrentVersionSeen(): void {
-        localStorage.setItem('lior_seen_version', APP_VERSION);
+        StorageService.setSeenReleaseVersion(WHATS_NEW_RELEASE_ID);
     },
 
     // Coachmarks
@@ -24,12 +25,12 @@ export const FeatureDiscovery = {
     markCoachmarkSeen(key: string): void {
         const seen = this._getSeenCoachmarks();
         if (!seen.includes(key)) {
-            localStorage.setItem('lior_coachmarks_seen', JSON.stringify([...seen, key]));
+            StorageService.setSeenCoachmarks([...seen, key]);
         }
     },
 
     markAllCoachmarksSeen(): void {
-        localStorage.setItem('lior_coachmarks_seen', JSON.stringify(['__all__']));
+        StorageService.setSeenCoachmarks(['__all__']);
     },
 
     areAllCoachmarksSeen(): boolean {
@@ -37,16 +38,12 @@ export const FeatureDiscovery = {
     },
 
     _getSeenCoachmarks(): string[] {
-        try {
-            return JSON.parse(localStorage.getItem('lior_coachmarks_seen') || '[]');
-        } catch {
-            return [];
-        }
+        return StorageService.getSeenCoachmarks();
     },
 
     // Dev helpers
     resetAll(): void {
-        localStorage.removeItem('lior_seen_version');
-        localStorage.removeItem('lior_coachmarks_seen');
+        StorageService.clearSeenReleaseVersion();
+        StorageService.clearSeenCoachmarks();
     },
 };

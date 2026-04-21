@@ -30,7 +30,7 @@ export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number)
 export const useConfetti = () => useContext(ConfettiContext);
 
 export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, registerScrollRef, isSwitchingView = false, notifications }) => {
-  // wrapperRef = overflow:hidden clip container (Lenis "wrapper")
+  // wrapperRef = overflow:hidden clip container for the app's main scroll root.
   const wrapperRef  = useRef<HTMLElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
 
@@ -39,8 +39,7 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    // Pass wrapper as scroll ref — App.tsx uses LenisScroll.scroll / scrollTo
-    // instead of scrollTop, so this is just a stable ref handle.
+    // Pass the wrapper to App.tsx so navigation can restore scroll position.
     if (registerScrollRef) registerScrollRef(wrapper);
 
     return () => {
@@ -108,7 +107,9 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           ref={wrapperRef}
           className="lenis-wrapper flex-1 min-h-0 relative z-10 w-full max-w-md mx-auto"
           style={{
+            background: 'transparent',
             overflowAnchor: 'none',
+            overscrollBehaviorY: 'none',
             backfaceVisibility: 'hidden',
             transform: 'translateZ(0)',
           }}

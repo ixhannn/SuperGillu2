@@ -1,6 +1,29 @@
 import path from 'path';
-import { defineConfig, loadEnv, splitVendorChunkPlugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+
+/**
+ * In dev mode, Vite's React Refresh runtime uses `new Function()` which
+ * requires 'unsafe-eval' in the CSP. This plugin relaxes the CSP meta tag
+ * during development only — production builds keep the strict policy.
+ */
+function devCspPlugin(): Plugin {
+  return {
+    name: 'dev-csp-relax',
+    transformIndexHtml(html, ctx) {
+      if (ctx.server) {
+        return html.replace(
+          /script-src 'self' 'unsafe-inline'/,
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+        ).replace(
+          /connect-src 'self'/,
+          "connect-src 'self' ws://localhost:* ws://0.0.0.0:*",
+        );
+      }
+      return html;
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   loadEnv(mode, '.', '');
@@ -15,7 +38,7 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       entries: ['index.html'],
     },
-    plugins: [react(), splitVendorChunkPlugin()],
+    plugins: [react(), devCspPlugin()],
     build: {
       chunkSizeWarningLimit: 2200,
       rollupOptions: {

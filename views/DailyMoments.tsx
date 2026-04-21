@@ -15,7 +15,7 @@ import { feedback } from '../utils/feedback';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
-import { isDailyMomentExpired } from '../shared/mediaRetention.js';
+import { getDailyMomentCountdown, isDailyMomentExpired } from '../shared/mediaRetention.js';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -32,18 +32,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
 
     useEffect(() => {
         const updateTimer = () => {
-            const now = new Date();
-            const expires = new Date(photo.expiresAt);
-            const diff = expires.getTime() - now.getTime();
-
-            if (diff <= 0) {
-                setTimeLeft('Expired');
-                return;
-            }
-
-            const hours = Math.floor(diff / (1000 * 60 * 60));
-            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-            setTimeLeft(`${hours}h ${minutes}m left`);
+            setTimeLeft(getDailyMomentCountdown(photo).label);
         };
 
         updateTimer();
@@ -281,11 +270,7 @@ const PostViewer: React.FC<{
     const dateStr = postedAt.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
     // Calculate time left
-    const now = new Date();
-    const expires = new Date(photo.expiresAt);
-    const diff = expires.getTime() - now.getTime();
-    const hoursLeft = Math.max(0, Math.floor(diff / (1000 * 60 * 60)));
-    const minsLeft = Math.max(0, Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)));
+    const countdown = getDailyMomentCountdown(photo);
 
     return ReactDOM.createPortal(
         <motion.div
@@ -320,7 +305,7 @@ const PostViewer: React.FC<{
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-lior-500 bg-lior-500/15 px-2.5 py-1 rounded-full">
                         <Clock size={10} className="inline mr-1" />
-                        {hoursLeft}h {minsLeft}m
+                        {countdown.compactLabel}
                     </span>
                 </div>
             </div>

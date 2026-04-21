@@ -23,8 +23,8 @@ import { readThemeColorList } from '../utils/themeVars';
 export type ParticlePreset = 'spark' | 'plasma' | 'ink';
 
 // ── Particle counts ────────────────────────────────────────────────
-const BOKEH_COUNT   = 40;   // large, slow, dreamy
-const SPARKLE_COUNT = 20;   // small, faster, bright accents
+const BOKEH_COUNT   = 24;   // large, slow, dreamy
+const SPARKLE_COUNT = 10;   // small, drifting accents
 const TOTAL         = BOKEH_COUNT + SPARKLE_COUNT;
 
 const PRESETS: Record<ParticlePreset, {
@@ -38,22 +38,22 @@ const PRESETS: Record<ParticlePreset, {
     bokehColors: ['#f472b6', '#ec4899', '#db2777', '#be185d', '#9d174d'],
     sparkleColors: ['#f472b6', '#ec4899', '#db2777', '#ffffff'],
     bokehFreqMult: 1,
-    sparkleFreqMult: 1,
-    alphaScale: 1,
+    sparkleFreqMult: 0.55,
+    alphaScale: 0.55,
   },
   plasma: {
     bokehColors: ['#f472b6', '#e879f9', '#c084fc', '#a855f7', '#7e22ce'],
     sparkleColors: ['#f0abfc', '#e879f9', '#c084fc', '#ffffff'],
     bokehFreqMult: 1.2,
-    sparkleFreqMult: 1.35,
-    alphaScale: 1.05,
+    sparkleFreqMult: 0.65,
+    alphaScale: 0.58,
   },
   ink: {
     bokehColors: ['#374151', '#4b5563', '#6b7280', '#be185d', '#9d174d'],
     sparkleColors: ['#6b7280', '#9ca3af', '#f9a8d4', '#ffffff'],
     bokehFreqMult: 0.8,
-    sparkleFreqMult: 0.9,
-    alphaScale: 0.9,
+    sparkleFreqMult: 0.50,
+    alphaScale: 0.50,
   },
 };
 
@@ -97,7 +97,10 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
       antialias: false,
       powerPreference: 'high-performance',
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    // Render at reduced resolution — the bokeh shader already produces soft
+    // Gaussian particles, so a lower pixel ratio creates a naturally blurred
+    // look without the massive GPU cost of a CSS filter: blur() post-process.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0) * 0.35);
 
     // ── Scene & Camera ────────────────────────────────────────────
     const scene = new THREE.Scene();
@@ -238,8 +241,8 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
           float depthFade = clamp(1.0 - dist / 75.0, 0.0, 1.0);
           float depthFade2 = depthFade * depthFade;
 
-          // Subtle — lower alpha for a dreamy, soft-focus feel
-          vAlpha = breathe * mix(0.32, 0.18, 1.0 - depthFade2) * uAlphaScale;
+          // Whisper-quiet — stays atmospheric, never fights content
+          vAlpha = breathe * mix(0.16, 0.08, 1.0 - depthFade2) * uAlphaScale;
 
           gl_PointSize = size * uPixelRatio * (52.0 / max(dist, 4.0));
           gl_Position  = projectionMatrix * mvPosition;
@@ -258,19 +261,18 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
           float alpha;
 
           if (vIsSparkle > 0.5) {
-            // Sparkles: crisp bright point + tight halo
-            float core = exp(-d * d * 80.0);
-            float halo = exp(-d * d * 18.0) * 0.35;
+            // Sparkles: soft diffuse point — no crisp edge
+            float core = exp(-d * d * 40.0);
+            float halo = exp(-d * d * 10.0) * 0.25;
             alpha = vAlpha * (core + halo);
           } else {
-            // Bokeh: hard disc edge + intense bright core
-            float disc = smoothstep(0.50, 0.30, d);        // crisp hard edge
-            float core = exp(-d * d * 22.0) * 0.90;        // punchy bright centre
-            alpha = vAlpha * (disc * 0.55 + core);
+            // Bokeh: pure soft Gaussian — no hard disc, no punchy core
+            float glow = exp(-d * d * 8.0);
+            alpha = vAlpha * glow;
           }
 
-          // Strong warm highlight at centre
-          vec3 col = vColor + exp(-d * d * 35.0) * vec3(0.18, 0.08, 0.06);
+          // Gentle warm highlight at centre (reduced intensity)
+          vec3 col = vColor + exp(-d * d * 35.0) * vec3(0.08, 0.04, 0.03);
 
           gl_FragColor = vec4(col, alpha);
         }
@@ -368,7 +370,7 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
       ref={canvasRef}
       aria-hidden="true"
       className="fixed inset-0 z-0 pointer-events-none"
-      style={{ display: 'block', width: '100vw', height: '100vh', filter: 'blur(18px)', transform: 'scale(1.04)' }}
+      style={{ display: 'block', width: '100vw', height: '100vh', transform: 'scale(1.06)' }}
     />
   );
 };

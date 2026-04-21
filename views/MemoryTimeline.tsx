@@ -1,7 +1,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Trash2, Image as ImageIcon, PlayCircle, Plus, Calendar, Sparkles, Heart, X, Pause, Play, Volume2, VolumeX, Send, MessageCircle, CornerDownRight } from 'lucide-react';
+import { Trash2, Image as ImageIcon, PlayCircle, Plus, Calendar, Sparkles, Heart, X, Pause, Play, Volume2, VolumeX, Send, MessageCircle, CornerDownRight, Mic } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory, Note, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -11,6 +11,7 @@ import { toast } from '../utils/toast';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface MemoryTimelineProps {
@@ -125,14 +126,21 @@ const MemoryCard: React.FC<{
     onDelete: (id: string) => void;
 }> = ({ memory, index, featured = false, onClick, onDelete }) => {
     const isVideo = !!memory.video || !!memory.videoId;
-    const { src: thumbUrl, isLoading, handleError: handleThumbError } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
-    const { src: videoThumbUrl, handleError: handleVideoThumbError } = useLiorMedia(
-        !memory.imageId ? memory.videoId : undefined,
-        !memory.imageId ? memory.video : undefined,
-        !memory.imageId ? memory.videoStoragePath : undefined,
+    const hasAudio = !!memory.audioId;
+    const { src: thumbUrl, isLoading: isImageLoading, handleError: handleThumbError } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
+    const hasImagePreviewSource = !!(memory.imageId || memory.image || memory.storagePath);
+    const shouldResolveVideoPreview = isVideo && (!hasImagePreviewSource || (!thumbUrl && !isImageLoading));
+    const { src: rawVideoPreviewUrl, isLoading: isVideoLoading, handleError: handleVideoThumbError } = useLiorMedia(
+        shouldResolveVideoPreview ? memory.videoId : undefined,
+        shouldResolveVideoPreview ? memory.video : undefined,
+        shouldResolveVideoPreview ? memory.videoStoragePath : undefined,
     );
-    const mediaUrl = thumbUrl || videoThumbUrl;
-    const handleMediaError = thumbUrl ? handleThumbError : handleVideoThumbError;
+    const videoPreviewUrl = useVideoBlobUrl(shouldResolveVideoPreview ? rawVideoPreviewUrl : null);
+    const isVideoPreviewPending = shouldResolveVideoPreview && !!rawVideoPreviewUrl && !videoPreviewUrl;
+    const mediaLoading = isImageLoading || (!!shouldResolveVideoPreview && (isVideoLoading || isVideoPreviewPending) && !thumbUrl);
+    const mediaUrl = thumbUrl || videoPreviewUrl;
+    const mediaKind = thumbUrl ? 'image' : videoPreviewUrl ? 'video' : null;
+    const handleMediaError = mediaKind === 'video' ? handleVideoThumbError : handleThumbError;
     const dateLabel = new Date(memory.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
     const mood = MOOD_MAP[memory.mood] || '✨';
 
@@ -153,10 +161,23 @@ const MemoryCard: React.FC<{
                 background: 'rgba(var(--theme-particle-2-rgb),0.08)',
             }}
         >
-            {isLoading ? (
+            {mediaLoading ? (
                 <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
             ) : mediaUrl ? (
-                <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} />
+                mediaKind === 'video' ? (
+                    <video
+                        src={mediaUrl}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        muted
+                        playsInline
+                        autoPlay
+                        loop
+                        preload="metadata"
+                        onError={handleMediaError}
+                    />
+                ) : (
+                    <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} />
+                )
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center" style={{ color: 'var(--color-text-secondary)' }}>
                     <ImageIcon size={28} className="opacity-30" />
@@ -168,6 +189,42 @@ const MemoryCard: React.FC<{
                     <div className="bg-white/25 backdrop-blur-md p-2.5 rounded-full border border-white/40 shadow-xl">
                         <PlayCircle size={featured ? 34 : 24} className="text-white" fill="currentColor" />
                     </div>
+                </div>
+            )}
+
+            {/* Audio-only memory — special card design */}
+            {hasAudio && !mediaUrl && !mediaLoading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+                    style={{ background: 'linear-gradient(135deg, rgba(244,63,94,0.12), rgba(168,85,247,0.08))' }}>
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center"
+                        style={{ background: 'linear-gradient(135deg, rgba(244,63,94,0.2), rgba(236,72,153,0.15))', border: '1.5px solid rgba(244,63,94,0.25)' }}>
+                        <Mic size={22} className="text-rose-400" />
+                    </div>
+                    {/* Mini waveform bars */}
+                    <div className="flex items-center gap-[2px] h-6">
+                        {Array.from({ length: 16 }, (_, i) => {
+                            const h = Math.sin((i / 16) * Math.PI) * 20 + 4;
+                            return <div key={i} className="rounded-full" style={{ width: 2.5, height: h, background: `rgba(244,63,94,${0.25 + Math.sin((i / 16) * Math.PI) * 0.35})` }} />;
+                        })}
+                    </div>
+                    {memory.audioDuration && (
+                        <span className="text-[10px] font-mono tabular-nums" style={{ color: 'rgba(244,63,94,0.6)' }}>
+                            {Math.floor(memory.audioDuration / 60).toString().padStart(2, '0')}:{Math.floor(memory.audioDuration % 60).toString().padStart(2, '0')}
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {/* Audio badge on photo/video cards */}
+            {hasAudio && mediaUrl && (
+                <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full"
+                    style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                    <Mic size={11} className="text-rose-400" />
+                    {memory.audioDuration && (
+                        <span className="text-[9px] font-mono tabular-nums text-white/80">
+                            {Math.floor(memory.audioDuration / 60)}:{Math.floor(memory.audioDuration % 60).toString().padStart(2, '0')}
+                        </span>
+                    )}
                 </div>
             )}
 
@@ -208,7 +265,7 @@ const MemoryCard: React.FC<{
 };
 
 /* ─── Inline video player — capped height, contained ─── */
-const InlineVideoPlayer = ({ src }: { src: string }) => {
+const InlineVideoPlayer = ({ src, onError }: { src: string; onError?: () => void }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [playing, setPlaying] = useState(false);
     const [muted, setMuted] = useState(false);
@@ -259,6 +316,7 @@ const InlineVideoPlayer = ({ src }: { src: string }) => {
                 playsInline
                 preload="auto"
                 style={{ display: 'block', maxWidth: '100%', maxHeight: '58vh', objectFit: 'contain' }}
+                onError={onError}
                 onTimeUpdate={e => setProgress((e.currentTarget.currentTime / (e.currentTarget.duration || 1)) * 100)}
                 onLoadedMetadata={e => {
                     setDuration(e.currentTarget.duration);
@@ -319,6 +377,110 @@ const InlineVideoPlayer = ({ src }: { src: string }) => {
                     </motion.div>
                 )}
             </AnimatePresence>
+        </div>
+    );
+};
+
+/* ─── Inline audio player for memories with voice notes ─── */
+const InlineAudioPlayer: React.FC<{ memory: Memory }> = ({ memory }) => {
+    const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        if (memory.audioId) {
+            // Reuse the VoiceNote audio loader — audioId is the IndexedDB key
+            StorageService.getVoiceNoteAudio({ audioId: memory.audioId, audioStoragePath: memory.audioStoragePath } as any).then(url => {
+                if (active && url) setAudioUrl(url);
+            });
+        }
+        return () => { active = false; };
+    }, [memory.audioId, memory.audioStoragePath]);
+
+    const togglePlay = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!audioUrl) return;
+        if (!audioRef.current) {
+            audioRef.current = new Audio(audioUrl);
+            audioRef.current.ontimeupdate = () => {
+                if (!audioRef.current) return;
+                const t = audioRef.current.currentTime;
+                setCurrentTime(t);
+                setProgress(t / (audioRef.current.duration || 1));
+            };
+            audioRef.current.onended = () => { setIsPlaying(false); setProgress(0); setCurrentTime(0); };
+        }
+        if (isPlaying) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+        } else {
+            audioRef.current.play().catch(() => {});
+            setIsPlaying(true);
+        }
+    };
+
+    useEffect(() => {
+        return () => { audioRef.current?.pause(); };
+    }, []);
+
+    const dur = memory.audioDuration || 0;
+    const fmtTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+
+    return (
+        <div className="mx-4 my-3 rounded-2xl p-4" style={{ background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.12)' }}>
+            <div className="flex items-center gap-3">
+                <button
+                    onClick={togglePlay}
+                    disabled={!audioUrl}
+                    className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 shadow-md disabled:opacity-40 active:scale-90 transition-transform"
+                    style={{ background: 'linear-gradient(135deg, #f43f5e, #ec4899)' }}
+                >
+                    {isPlaying
+                        ? <Pause size={16} fill="white" className="text-white" />
+                        : <Play size={16} fill="white" className="text-white" style={{ marginLeft: 2 }} />
+                    }
+                </button>
+
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <Mic size={11} className="text-rose-400 flex-shrink-0" />
+                        <span className="text-[11px] font-semibold" style={{ color: 'rgba(255,255,255,0.7)' }}>Voice Note</span>
+                    </div>
+
+                    {/* Waveform-style progress */}
+                    <div className="flex items-center gap-[2px] h-5">
+                        {Array.from({ length: 32 }, (_, i) => {
+                            const filled = i / 32 <= progress;
+                            const h = Math.sin((i / 32) * Math.PI) * 16 + 4;
+                            return (
+                                <div
+                                    key={i}
+                                    className="rounded-full transition-colors duration-150"
+                                    style={{
+                                        width: 2.5,
+                                        height: h,
+                                        background: filled
+                                            ? 'rgba(244,63,94,0.8)'
+                                            : 'rgba(255,255,255,0.12)',
+                                    }}
+                                />
+                            );
+                        })}
+                    </div>
+
+                    <div className="flex justify-between mt-1">
+                        <span className="text-[9px] tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                            {fmtTime(currentTime)}
+                        </span>
+                        <span className="text-[9px] tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                            {fmtTime(dur)}
+                        </span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
@@ -395,13 +557,25 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
     onDelete: (id: string) => void;
 }) => {
     const isVideo = !!memory.video || !!memory.videoId;
-    const { src: rawSrc, isLoading, handleError: handleMediaError } = useLiorMedia(
-        memory.videoId || memory.imageId,
-        memory.video || memory.image,
-        memory.videoStoragePath || memory.storagePath,
+    const hasAudio = !!memory.audioId;
+    const isAudioOnly = hasAudio && !memory.image && !memory.imageId && !memory.video && !memory.videoId;
+    const { src: imageSrc, isLoading: isImageLoading, handleError: handleImageError } = useLiorMedia(
+        memory.imageId,
+        memory.image,
+        memory.storagePath,
     );
-    const videoSrc = useVideoBlobUrl(isVideo ? rawSrc : null);
-    const mediaSrc = isVideo ? videoSrc : rawSrc;
+    const { src: rawVideoSrc, isLoading: isVideoLoading, handleError: handleVideoError } = useLiorMedia(
+        isVideo ? memory.videoId : undefined,
+        isVideo ? memory.video : undefined,
+        isVideo ? memory.videoStoragePath : undefined,
+    );
+    const videoSrc = useVideoBlobUrl(isVideo ? rawVideoSrc : null);
+    const mediaKind = isVideo && videoSrc ? 'video' : imageSrc ? 'image' : null;
+    const mediaSrc = mediaKind === 'video' ? videoSrc : imageSrc;
+    const mediaLoading = isVideo
+        ? (!mediaSrc && (isImageLoading || isVideoLoading || (!!rawVideoSrc && !videoSrc)))
+        : isImageLoading;
+    const handleMediaError = mediaKind === 'video' ? handleVideoError : handleImageError;
     const mood = MOOD_MAP[memory.mood] || '✨';
     const fullDate = new Date(memory.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long' });
     const time = new Date(memory.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -518,21 +692,39 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
 
                     {/* Media */}
                     <div className="w-full" style={{ background: '#000' }}>
-                        {isLoading ? (
+                        {mediaLoading ? (
                             <div className="flex items-center justify-center" style={{ height: '38vh' }}>
                                 <Skeleton type="image" className="w-full h-full rounded-none" />
                             </div>
                         ) : mediaSrc ? (
-                            isVideo
-                                ? <InlineVideoPlayer src={mediaSrc} />
+                            mediaKind === 'video'
+                                ? <InlineVideoPlayer src={mediaSrc} onError={handleVideoError} />
                                 : <img src={mediaSrc} alt="Memory" onError={handleMediaError}
                                     style={{ display: 'block', width: '100%', maxHeight: '55vh', objectFit: 'contain', background: '#000' }} />
+                        ) : isAudioOnly ? (
+                            /* Audio-only: decorative header */
+                            <div className="flex flex-col items-center justify-center py-10"
+                                style={{ background: 'linear-gradient(180deg, rgba(244,63,94,0.08) 0%, rgba(17,18,20,1) 100%)' }}>
+                                <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
+                                    style={{ background: 'rgba(244,63,94,0.12)', border: '2px solid rgba(244,63,94,0.2)' }}>
+                                    <Mic size={32} className="text-rose-400" />
+                                </div>
+                                <div className="flex items-center gap-[3px] h-8">
+                                    {Array.from({ length: 24 }, (_, i) => {
+                                        const h = Math.sin((i / 24) * Math.PI) * 28 + 4;
+                                        return <div key={i} className="rounded-full" style={{ width: 3, height: h, background: `rgba(244,63,94,${0.15 + Math.sin((i / 24) * Math.PI) * 0.25})` }} />;
+                                    })}
+                                </div>
+                            </div>
                         ) : (
                             <div className="flex items-center justify-center" style={{ height: '36vh' }}>
                                 <ImageIcon size={32} className="text-white/10" />
                             </div>
                         )}
                     </div>
+
+                    {/* Voice note player */}
+                    {hasAudio && <InlineAudioPlayer memory={memory} />}
 
                     {/* Caption */}
                     {memory.text && (
@@ -655,6 +847,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
     const [memories, setMemories] = useState<Memory[]>([]);
     const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
     const [surpriseMemory, setSurpriseMemory] = useState<Memory | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
     const [isRecoveringCloud, setIsRecoveringCloud] = useState(false);
     const recoveryAttemptedRef = useRef(false);
 
@@ -695,15 +888,22 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         setMemories(StorageService.getMemories());
     };
 
-    const handleDelete = (id: string) => {
+    const requestDelete = (id: string) => {
         feedback.tap();
+        setPendingDeleteId(id);
+    };
+
+    const confirmDelete = () => {
+        if (!pendingDeleteId) return;
+        const id = pendingDeleteId;
+        setPendingDeleteId(null);
         setMemories(prev => prev.filter(m => m.id !== id));
-        setSelectedMemory(null);
+        setSelectedMemory(current => current?.id === id ? null : current);
         StorageService.deleteMemory(id).catch(() => {
             setMemories(StorageService.getMemories());
             toast.show('Could not delete memory', 'error');
         });
-        toast.show('Memory deleted', 'success');
+        toast.show('Memory deleted forever', 'success');
     };
 
     const handleSurprise = () => {
@@ -843,7 +1043,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                         index={groupIdx * 10}
                                                         featured
                                                         onClick={() => setSelectedMemory(featured)}
-                                                        onDelete={handleDelete}
+                                                        onDelete={requestDelete}
                                                     />
                                                 </div>
                                             </AnimatePresence>
@@ -858,7 +1058,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                                 memory={m}
                                                                 index={groupIdx * 10 + i + 1}
                                                                 onClick={() => setSelectedMemory(m)}
-                                                                onDelete={handleDelete}
+                                                                onDelete={requestDelete}
                                                             />
                                                         ))}
                                                     </AnimatePresence>
@@ -878,7 +1078,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                             key={selectedMemory.id}
                             memory={selectedMemory}
                             onClose={() => setSelectedMemory(null)}
-                            onDelete={handleDelete}
+                            onDelete={requestDelete}
                         />
                     )}
                 </AnimatePresence>
@@ -892,6 +1092,17 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                         />
                     )}
                 </AnimatePresence>
+
+                <ConfirmModal
+                    isOpen={pendingDeleteId !== null}
+                    title="Delete memory?"
+                    message="This removes it from your devices and cloud vault for good."
+                    confirmLabel="Delete Forever"
+                    cancelLabel="Keep Memory"
+                    variant="danger"
+                    onConfirm={confirmDelete}
+                    onCancel={() => setPendingDeleteId(null)}
+                />
             </div>
         </PullToRefresh>
     );

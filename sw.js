@@ -1,5 +1,13 @@
+const CACHE_NAME = 'lior-v5';
 
-const CACHE_NAME = 'lior-v4';
+const cacheResponse = async (request, response) => {
+  if (request.method !== 'GET') return;
+  if (!response || response.status !== 200) return;
+  if (response.type !== 'basic') return;
+
+  const cache = await caches.open(CACHE_NAME);
+  await cache.put(request, response.clone());
+};
 
 // Lifecycle: Install
 self.addEventListener('install', (event) => {
@@ -26,6 +34,7 @@ self.addEventListener('activate', (event) => {
 // Lifecycle: Fetch
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  if (event.request.method !== 'GET') return;
 
   // 1. IGNORE API CALLS (Supabase, etc.)
   if (url.hostname.includes('supabase.co')) return;
@@ -33,29 +42,41 @@ self.addEventListener('fetch', (event) => {
   // 2. HTML / Navigation -> Network First, Fallback to Cache
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+      (async () => {
+        try {
+          const response = await fetch(event.request);
+          await cacheResponse(event.request, response);
           return response;
-        })
-        .catch(() => caches.match(event.request))
+        } catch {
+          return (await caches.match(event.request)) || (await caches.match('/')) || Response.error();
+        }
+      })()
     );
     return;
   }
 
   // 3. Assets (JS, CSS, Images) -> Stale-While-Revalidate
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
+    (async () => {
+      const cachedResponse = await caches.match(event.request);
+
+      if (cachedResponse) {
+        event.waitUntil(
+          fetch(event.request)
+            .then((networkResponse) => cacheResponse(event.request, networkResponse))
+            .catch(() => {})
+        );
+        return cachedResponse;
+      }
+
+      try {
+        const networkResponse = await fetch(event.request);
+        await cacheResponse(event.request, networkResponse);
         return networkResponse;
-      }).catch(() => { });
-      return cachedResponse || fetchPromise;
-    })
+      } catch {
+        return Response.error();
+      }
+    })()
   );
 });
 

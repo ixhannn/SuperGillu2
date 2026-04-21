@@ -9,6 +9,11 @@ export interface Memory {
   videoId?: string; // ID for IndexedDB
   videoBytes?: number;
   videoMimeType?: string;
+  audioId?: string; // IndexedDB key for voice recording
+  audioBytes?: number;
+  audioMimeType?: string;
+  audioStoragePath?: string; // R2/cloud path for audio
+  audioDuration?: number; // seconds
   storagePath?: string; // Supabase Storage path for image
   videoStoragePath?: string; // Supabase Storage path for video
   ownerUserId?: string; // Stable uploader/owner identity for media namespacing
@@ -200,6 +205,10 @@ export interface PetStats {
   };
 }
 
+export interface NavigationOptions {
+  instant?: boolean;
+}
+
 export interface MoodEntry {
   id: string;
   userId: string;
@@ -337,22 +346,296 @@ export interface InsightAggregates {
   bonsaiWaters7d: number;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'year-in-review' | 'partner-intelligence' | 'daily-video' | 'weekly-recap';
+// ── Relationship Intelligence: Signal Collection ────────────────────
 
-// ── Daily Video Moments (10-second clips → monthly compilation) ─────
+/** Daily pulse check — "How did today feel between us?" */
+export interface PulseCheck {
+  id: string;
+  userId: string;
+  score: 1 | 2 | 3 | 4 | 5;
+  question: string; // the specific question asked (rotated daily)
+  note?: string; // optional one-liner
+  createdAt: string; // ISO
+}
+
+/** Rotating pulse questions — prevents fatigue, builds richer signal */
+export const PULSE_QUESTIONS: string[] = [
+  'How did today feel between us?',
+  'Did you feel seen today?',
+  'Did you laugh together today?',
+  'Were you on the same page today?',
+  'Did you feel close today?',
+  'Was today easy or heavy between you two?',
+  'Did you feel appreciated today?',
+];
+
+/** Micro-gratitude — "One thing they did today?" (max ~15 words) */
+export interface MicroGratitude {
+  id: string;
+  userId: string;
+  aboutUserId: string;
+  text: string;
+  createdAt: string;
+}
+
+/** Weekly reflection — best moment + what felt hard */
+export interface WeeklyReflection {
+  id: string;
+  userId: string;
+  weekStart: string; // ISO Monday date
+  bestMoment: string;
+  hardThing?: string;
+  createdAt: string;
+}
+
+/** Love language entry — behavioral observation, not a quiz answer */
+export type LoveLanguageType = 'words_of_affirmation' | 'quality_time' | 'acts_of_service' | 'physical_touch' | 'gifts';
+
+export interface LoveLanguageSignal {
+  id: string;
+  userId: string; // whose love language this is about
+  language: LoveLanguageType;
+  source: 'inferred' | 'confirmed' | 'reaction' | 'reflection';
+  weight: number; // 0-1, how strong this signal is
+  sourceEventId?: string; // which reaction/memory/note triggered this
+  createdAt: string;
+}
+
+/** Reaction on partner's content (note, memory, voice note) */
+export interface ReactionEvent {
+  id: string;
+  userId: string; // who reacted
+  targetUserId: string; // whose content
+  targetType: 'note' | 'memory' | 'voice_note' | 'daily_moment';
+  targetId: string;
+  reactionType: 'heart' | 'love' | 'hug' | 'laugh' | 'cry' | 'fire';
+  createdAt: string;
+}
+
+/** Tracks when someone re-opens a specific memory or note */
+export interface RevisitEvent {
+  id: string;
+  userId: string;
+  targetType: 'note' | 'memory' | 'voice_note';
+  targetId: string;
+  createdAt: string;
+}
+
+/** "Thinking of you" tap — purest spontaneous connection signal */
+export interface ThinkingOfYouEvent {
+  id: string;
+  userId: string;
+  context?: string; // optional: "at work", "saw something that reminded me"
+  createdAt: string;
+}
+
+/** Response latency — time between partner's action and engagement */
+export interface ResponseLatencyEvent {
+  id: string;
+  userId: string; // who responded
+  triggerUserId: string; // who triggered
+  triggerType: 'note' | 'memory' | 'voice_note' | 'aura_signal' | 'thinking_of_you';
+  triggerId: string;
+  latencyMs: number;
+  createdAt: string;
+}
+
+/** Initiation tracking — who starts interactions */
+export interface InitiationEvent {
+  id: string;
+  userId: string;
+  actionType: 'note' | 'memory' | 'voice_note' | 'aura_signal' | 'thinking_of_you' | 'pulse_check';
+  createdAt: string;
+}
+
+// ── Relationship Intelligence: Relationship Model ───────────────────
+
+export interface LoveLanguageProfile {
+  primary: LoveLanguageType;
+  secondary: LoveLanguageType;
+  scores: Record<LoveLanguageType, number>; // 0-1 normalized
+  confidence: number; // 0-1, based on signal count
+  lastUpdated: string;
+}
+
+export interface EmotionalRhythm {
+  bestDays: number[]; // 0=Sun, 6=Sat — days with highest avg pulse
+  worstDays: number[];
+  bestTimeOfDay: 'morning' | 'afternoon' | 'evening' | 'night';
+  avgPulseByDay: Record<number, number>; // day-of-week → avg score
+  weekdayAvg: number;
+  weekendAvg: number;
+  confidence: number;
+}
+
+export interface InitiationPattern {
+  ratio: number; // 0-1, 0.5 = balanced, <0.5 = partner initiates more
+  userId: string;
+  partnerUserId: string;
+  last30dCount: { user: number; partner: number };
+  stressCorrelation: number; // -1 to 1: positive means initiates more when stressed
+  confidence: number;
+}
+
+export interface ResponsePattern {
+  avgLatencyMs: number;
+  latencyTrend: 'faster' | 'slower' | 'stable';
+  latencyChange7d: number; // percentage change
+  engagementDepth: number; // 0-1, based on reactions + revisits
+  confidence: number;
+}
+
+export type ClosenessTrajectory = 'growing' | 'stable' | 'drifting' | 'recovering';
+
+export interface ConversationHealth {
+  daysSinceHardConversation: number; // inferred from low pulse + reflection
+  hardConversationFrequency30d: number;
+  avoidanceRisk: 'none' | 'low' | 'moderate' | 'high';
+  confidence: number;
+}
+
+export interface RuptureCycle {
+  id: string;
+  dip: { date: string; severity: number }; // when closeness dropped
+  repair: { date: string; strength: number } | null; // when it recovered (null = ongoing)
+  durationDays: number;
+}
+
+export type RelationshipPhase =
+  | 'discovering' // first 2 weeks — system still learning
+  | 'honeymoon'
+  | 'settling'
+  | 'deepening'
+  | 'challenging'
+  | 'renewing';
+
+export interface Ritual {
+  id: string;
+  name: string;
+  description: string;
+  frequency: 'daily' | 'weekly' | 'occasional';
+  status: 'established' | 'fading' | 'suggested';
+  lastOccurrence?: string;
+  streakDays?: number;
+}
+
+export interface PartnerModelSnapshot {
+  userId: string;
+  loveLanguage: LoveLanguageProfile;
+  emotionalRhythm: EmotionalRhythm;
+  initiationPattern: InitiationPattern;
+  responsePattern: ResponsePattern;
+  topGratitudes: string[]; // most common themes in micro-gratitudes
+  revisitedContent: string[]; // IDs of most-revisited memories/notes
+}
+
+export interface RelationshipModel {
+  coupleId: string;
+  computedAt: string;
+  dataConfidence: number; // 0-1, overall model confidence
+
+  // Per-partner profiles
+  partners: [PartnerModelSnapshot, PartnerModelSnapshot];
+
+  // Couple-level patterns
+  closenessScore: { current: number; d7: number; d30: number; d90: number }; // 0-100
+  closenessTrajectory: ClosenessTrajectory;
+  conversationHealth: ConversationHealth;
+  ruptureCycles: RuptureCycle[];
+  rituals: Ritual[];
+
+  // Emotional reciprocity: when one is low, does the other show up?
+  reciprocityScore: number; // 0-1, 1 = always shows up
+  reciprocityTrend: 'improving' | 'stable' | 'declining';
+
+  // Asymmetry
+  asymmetryScore: number; // 0-1, 0 = perfectly balanced
+  asymmetryDirection: string; // userId of the one investing more
+
+  // Phase detection
+  currentPhase: RelationshipPhase;
+  phaseStartedAt: string;
+  phaseSignals: string[];
+
+  // Seasonal patterns
+  seasonalPatterns: Array<{
+    pattern: string; // "weekends are warmer", "Mondays are hard"
+    confidence: number;
+  }>;
+}
+
+// ── Relationship Intelligence: Insight Engine ───────────────────────
+
+export type DeepInsightCategory =
+  | 'deep_pattern'
+  | 'behavioral_reveal'
+  | 'trajectory'
+  | 'early_warning'
+  | 'celebration'
+  | 'love_language_insight'
+  | 'growth_nudge'
+  | 'reciprocity'
+  | 'ritual_observation';
+
+export type InsightTone = 'warm' | 'gentle' | 'curious' | 'celebratory';
+
+export type InsightSentiment = 'affirmative' | 'growth' | 'flag';
+
+export interface DeepInsight {
+  id: string;
+  coupleId: string;
+  targetUserId: string; // who sees this
+  aboutUserId?: string; // who it's about (null for couple-level)
+  category: DeepInsightCategory;
+  tone: InsightTone;
+  sentiment: InsightSentiment; // for enforcing 70/20/10 ratio
+  insightText: string;
+  specificDataRef?: string; // "March 3rd evening", "your note from last Tuesday"
+  suggestedAction?: {
+    text: string;
+    actionType: 'ritual' | 'question' | 'activity' | 'conversation' | 'reflection';
+    targetView?: string; // ViewState to navigate to
+  };
+  previousInsightId?: string; // for insight chains — follows up on a prior insight
+  confidence: number; // 0-1
+  dataPointCount: number; // how many signals contributed
+  createdAt: string;
+  seenAt?: string;
+  dismissedAt?: string;
+  actedOnAt?: string; // if they tapped the suggested action
+}
+
+/** Progressive onboarding messages for the first week */
+export interface SystemMessage {
+  id: string;
+  type: 'onboarding' | 'phase_transition' | 'data_milestone';
+  text: string;
+  subtext?: string;
+  dayThreshold: number; // show after this many days of data
+  minSignals: number; // require this many signals before showing
+  createdAt: string;
+  seenAt?: string;
+}
+
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console';
+
+// ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {
   id: string;
   odCoupleId: string;
   odUserId: string;
-  clipDate: string; // YYYY-MM-DD in user's local timezone
-  videoId?: string; // IndexedDB key
+  clipDate: string; // YYYY-MM-DD in anchor timezone
+  videoId?: string; // IndexedDB key (stores Blob)
   videoStoragePath?: string; // Supabase/R2 path
-  thumbnailId?: string; // IndexedDB key for thumbnail
+  thumbnailId?: string; // IndexedDB key for thumbnail (stores Blob)
   thumbnailStoragePath?: string;
-  durationMs: number; // max 10000
+  durationMs: number; // max 5000
   recordedAt: string; // ISO timestamp
   watchedByPartner: boolean;
   watchedAt?: string;
+  partnerVisibleAt?: string; // ISO; set when cycle's film reaches 'ready'
+  syncPending?: boolean;
+  hiddenFromPartner?: boolean;
 }
 
 export interface VideoMomentDay {
@@ -362,18 +645,25 @@ export interface VideoMomentDay {
   bothRecorded: boolean;
 }
 
-export interface MonthlyVideoCompilation {
+/**
+ * A 14-day film assembled from both partners' daily clips.
+ * Cycles are ISO-week-aligned: start on a Sunday, end on the Saturday 14 days later.
+ */
+export interface BiweeklyFilm {
   id: string;
   coupleId: string;
-  month: string; // YYYY-MM
-  videoId?: string; // IndexedDB key
+  cycleStart: string; // YYYY-MM-DD (Sunday)
+  cycleEnd: string; // YYYY-MM-DD (Saturday, cycleStart + 13)
+  videoId?: string; // IndexedDB key (Blob)
   videoStoragePath?: string;
   thumbnailId?: string;
   thumbnailStoragePath?: string;
   durationMs: number;
   clipCount: number;
+  musicTrackId?: string;
   generatedAt: string; // ISO timestamp
   status: 'pending' | 'generating' | 'ready' | 'failed';
+  progress?: number; // 0-1 during generation
 }
 
 export interface VideoMomentSettings {
@@ -386,22 +676,112 @@ export interface VideoMomentSettings {
   longestStreak: number;
   totalClips: number;
   lastClipDate?: string;
+  preferredMusicTrackId?: string;
 }
 
-// ── Weekly Recap Video ──────────────────────────────────────────────
+export interface AmbientTrack {
+  id: string;
+  name: string;
+  src: string; // /music/x.mp3
+  mood: 'warm' | 'quiet' | 'playful' | 'contemplative';
+  durationSec: number;
+  credit?: string;
+}
+
+export interface NotificationSchedule {
+  id: string;
+  kind: 'daily-clip' | 'film-ready' | 'recap-sunday' | 'cycle-3-days';
+  fireAt: string; // ISO
+  title: string;
+  body: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface NotificationPrefs {
+  dailyClipEnabled: boolean;
+  dailyClipTime: string; // "20:00"
+  recapEnabled: boolean;
+  recapTime: string; // "19:00" Sundays
+  filmReadyEnabled: boolean;
+  partnerNudgeEnabled: boolean;
+}
+
+// ── Weekly Recap (editorial) ────────────────────────────────────────
+
+export type RecapMoodBucket = 'warm' | 'quiet' | 'playful' | 'contemplative' | 'intense' | 'tender';
+
+export interface RecapPalette {
+  id: RecapMoodBucket;
+  base: string;       // page background
+  accent: string;     // line / highlight color
+  vignette: string;   // overlay gradient
+  textOnBase: string; // heading color over base
+  muted: string;      // subtle body color
+}
+
+export interface MoodPoint {
+  day: string; // YYYY-MM-DD
+  dayLabel: string; // "Sun", "Mon"…
+  me: number | null;     // 1..5 or null if no entry
+  partner: number | null;
+}
+
+export interface StreakDay {
+  date: string;
+  filled: boolean;
+}
+
+export interface RecapStat {
+  label: string;
+  value: number;
+  suffix?: string;
+  accent?: string;
+}
+
+export interface RecapHighlight {
+  title: string;
+  body: string;
+  accentColor: string;
+  date?: string;
+}
+
+/** Memory snapshot for recap sections (serializable — no blob data). */
+export interface RecapMemoryRef {
+  id: string;
+  text: string;
+  date: string;
+  mood?: string;
+  dayLabel: string;
+  hasImage: boolean;
+  hasAudio: boolean;
+}
+
+/**
+ * Declarative recap — data, not components. Serializable, archivable, exportable.
+ */
+export type RecapSection =
+  | { kind: 'cover'; palette: RecapPalette; headline: string; dateRange: string; names: [string, string] }
+  | { kind: 'numbers'; stats: RecapStat[] }
+  | { kind: 'moodJourney'; points: MoodPoint[]; insight: string; palette: RecapPalette }
+  | { kind: 'highlight'; highlight: RecapHighlight }
+  | { kind: 'headline'; memory: RecapMemoryRef; palette: RecapPalette }
+  | { kind: 'carousel'; memories: RecapMemoryRef[]; palette: RecapPalette }
+  | { kind: 'prompt'; text: string; promptType: 'shared_mood' | 'gap' | 'milestone' | 'general' }
+  | { kind: 'streak'; days: StreakDay[]; currentStreak: number; bestStreak: number }
+  | { kind: 'filmStrip'; clips: DailyVideoClip[] }
+  | { kind: 'insight'; variant: 'paragraph' | 'prompt'; text: string; label: string };
+
 export interface WeeklyRecap {
   id: string;
   coupleId: string;
   weekStart: string; // YYYY-MM-DD (Sunday)
-  weekEnd: string; // YYYY-MM-DD (Saturday)
-  videoId?: string; // IndexedDB key
-  videoStoragePath?: string;
-  thumbnailId?: string;
-  thumbnailStoragePath?: string;
-  durationMs: number;
-  generatedAt: string; // ISO timestamp
-  status: 'pending' | 'generating' | 'ready' | 'failed';
+  weekEnd: string;   // YYYY-MM-DD (Saturday)
+  palette: RecapPalette;
+  tagline: string;
+  sections: RecapSection[];
+  generatedAt: string; // ISO
   stats: WeeklyRecapStats;
+  schemaVersion: number;
 }
 
 export interface WeeklyRecapStats {
@@ -412,7 +792,23 @@ export interface WeeklyRecapStats {
   moodTrend: 'up' | 'down' | 'stable';
   specialDatesCount: number;
   dailyClipsCount: number;
-  highlightMoments: string[]; // IDs of featured items
+  heartbeatsSent: number;
+  heartbeatsReceived: number;
+  voiceNotesCount: number;
+  keepsakesOpened: number;
+  petCareDays: number;
+  bothRecordedDays: number;
+  highlightMoments: string[];
+}
+
+export interface WeeklyRecapInsight {
+  coupleId: string;
+  weekStart: string;
+  tagline: string;
+  paragraph: string;
+  nextWeekPrompt: string;
+  schemaVersion: number;
+  generatedAt: string;
 }
 
 export type TransitionDirection = 'push' | 'pop' | 'tab' | 'modal';

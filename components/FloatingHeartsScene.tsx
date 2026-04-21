@@ -211,7 +211,7 @@ const RingRipple: React.FC<{ delay: number; maxScale: number }> = ({ delay, maxS
 
   return (
     <mesh ref={ref} rotation={[Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[0.95, 1.0, 64]} />
+      <ringGeometry args={[0.95, 1.0, 32]} />
       <meshBasicMaterial
         color="#ffffff"
         transparent
@@ -230,7 +230,7 @@ const OrbitalLine: React.FC<{ index: number; total: number }> = ({ index, total 
 
   const geometry = useMemo(() => {
     const points: THREE.Vector3[] = [];
-    const segments = 128;
+    const segments = 64;
     const baseRadius = 1.3 + index * 0.25;
     const phase = (index / total) * Math.PI * 2;
 
@@ -310,7 +310,7 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
 
   return (
     <mesh ref={meshRef}>
-      <icosahedronGeometry args={[1.6, 6]} />
+      <icosahedronGeometry args={[1.6, 4]} />
       <darkGlassMaterial
         ref={materialRef}
         transparent
@@ -323,7 +323,7 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
 
 // ── Floating dust motes ─────────────────────────────────────────────────
 const DustField: React.FC<{ dustColor: string }> = ({ dustColor }) => {
-  const count = 40;
+  const count = 24;
   const ref = useRef<THREE.Points>(null);
 
   const [positions, velocities] = useMemo(() => {
@@ -458,7 +458,7 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
     >
       <Canvas
         camera={{ position: [0, 0, 5], fov: 50 }}
-        dpr={[1, 1]}
+        dpr={[0.5, 1]}
         frameloop={paused ? 'demand' : 'always'}
         gl={{ alpha: true, antialias: false, powerPreference: 'high-performance' }}
       >

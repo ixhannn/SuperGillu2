@@ -1,531 +1,501 @@
-import { DailyVideoClip, Memory, MoodEntry, Note, WeeklyRecapStats } from '../types';
+/**
+ * Bi-weekly Film Compiler.
+ *
+ * Takes a cycle's clips and renders a single Blob that is:
+ *   [title card 2.0s]
+ *     → for each day with >=1 clip:
+ *         userClip (5s, 0.3s in-dissolve, 0.3s out-dissolve)
+ *         partnerClip (5s, 0.3s in-dissolve, 0.3s out-dissolve)
+ *     → [closing collage 2.0s]
+ *
+ * Render target: 720x1280 @ 30fps, H.264 or WebM.
+ * Audio: mute original clip audio; bed is a single ambient track.
+ *
+ * Implementation notes:
+ *  - We draw every frame to an OffscreenCanvas and capture a stream.
+ *  - Each clip is played back via a hidden <video> element; on every frame
+ *    we `drawImage` that element onto the canvas, applying fade alpha.
+ *  - The ambient track is muxed in via a MediaStreamAudioDestinationNode
+ *    added to the captured stream.
+ *  - If MediaRecorder / OffscreenCanvas isn't available we return null so
+ *    the caller can fall back to a slideshow renderer (future).
+ */
+
+import { BiweeklyFilm, DailyVideoClip, VideoMomentDay } from '../types';
 import { VideoMomentsService } from './videoMoments';
+import { AmbientMusicService } from './ambientMusic';
 
-// ── Types ─────────────────────────────────────────────────────────────
-interface CompilationClip {
-  type: 'video' | 'image' | 'text';
-  src?: string; // Video/image URL
-  text?: string; // For text slides
-  subtext?: string;
-  duration: number; // ms to show
-  transition?: 'fade' | 'slide' | 'zoom' | 'none';
+const OUTPUT_W = 720;
+const OUTPUT_H = 1280;
+const FPS = 30;
+const CLIP_DURATION_MS = 5000;
+const DISSOLVE_MS = 300;
+const TITLE_MS = 2000;
+const COLLAGE_MS = 2200;
+
+export type CompilerProgress = (ratio: number, message: string) => void;
+
+export interface CompileOptions {
+  cycleStart: string;
+  cycleEnd: string;
+  days: VideoMomentDay[];
+  coupleNames?: [string, string];
+  musicTrackId?: string;
+  moodBucket?: 'warm' | 'quiet' | 'playful' | 'contemplative' | 'intense' | 'tender';
+  onProgress?: CompilerProgress;
 }
 
-interface CompilationOptions {
-  width?: number;
-  height?: number;
-  fps?: number;
-  transitionDuration?: number;
-  backgroundColor?: string;
-  includeAudio?: boolean;
-  onProgress?: (progress: number) => void;
+export interface CompileResult {
+  videoBlob: Blob;
+  thumbnailBlob: Blob | null;
+  durationMs: number;
+  clipCount: number;
+  musicTrackId?: string;
 }
 
-const DEFAULT_OPTIONS: Required<CompilationOptions> = {
-  width: 1080,
-  height: 1920,
-  fps: 30,
-  transitionDuration: 500,
-  backgroundColor: '#0f0f23',
-  includeAudio: true,
-  onProgress: () => {}
-};
+/**
+ * Compile a 14-day cycle into a single Blob. Returns null if the platform
+ * cannot render (very old browsers / no MediaRecorder).
+ */
+export async function compileCycle(options: CompileOptions): Promise<CompileResult | null> {
+  const { days, coupleNames, onProgress } = options;
 
-// ── Canvas Drawing Helpers ────────────────────────────────────────────
-const drawGradientBackground = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  colors: string[] = ['#1a1a2e', '#16213e', '#0f0f23']
-): void => {
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, colors[0]);
-  gradient.addColorStop(0.5, colors[1]);
-  gradient.addColorStop(1, colors[2]);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-};
+  if (typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement === 'undefined') {
+    return null;
+  }
 
-const drawTextSlide = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  text: string,
-  subtext?: string
-): void => {
-  drawGradientBackground(ctx, width, height);
+  // ── Ordered clip list: pair user+partner per day ──
+  const orderedClips: DailyVideoClip[] = [];
+  for (const d of days) {
+    if (d.userClip) orderedClips.push(d.userClip);
+    if (d.partnerClip) orderedClips.push(d.partnerClip);
+  }
 
-  // Main text
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `bold ${Math.floor(width / 12)}px system-ui, -apple-system, sans-serif`;
+  if (orderedClips.length === 0) return null;
 
-  const lines = wrapText(ctx, text, width * 0.8);
-  const lineHeight = Math.floor(width / 10);
-  const startY = height / 2 - (lines.length * lineHeight) / 2;
+  // Estimate total duration
+  const bodyMs = orderedClips.length * CLIP_DURATION_MS;
+  const totalMs = TITLE_MS + bodyMs + COLLAGE_MS;
 
-  lines.forEach((line, i) => {
-    ctx.fillText(line, width / 2, startY + i * lineHeight);
+  // ── Canvas + recording stream ──
+  const canvas = document.createElement('canvas');
+  canvas.width = OUTPUT_W;
+  canvas.height = OUTPUT_H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const stream = canvas.captureStream(FPS);
+
+  // ── Audio graph: bed only ──
+  const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext | undefined;
+  let audioCtx: AudioContext | null = null;
+  let destination: MediaStreamAudioDestinationNode | null = null;
+  let track = AmbientMusicService.pickForCycle({
+    cycleStart: options.cycleStart,
+    preferredId: options.musicTrackId,
+    moodBucket: options.moodBucket,
   });
 
-  // Subtext
-  if (subtext) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.font = `${Math.floor(width / 24)}px system-ui, -apple-system, sans-serif`;
-    ctx.fillText(subtext, width / 2, startY + lines.length * lineHeight + lineHeight);
-  }
-};
-
-const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const metrics = ctx.measureText(testLine);
-    if (metrics.width > maxWidth && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
+  if (AudioCtx) {
+    audioCtx = new AudioCtx();
+    destination = audioCtx.createMediaStreamDestination();
+    const buffer = await AmbientMusicService.loadBuffer(track, audioCtx);
+    if (buffer) {
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.6;
+      source.connect(gain).connect(destination);
+      // Fade in/out
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 1.2);
+      gain.gain.setValueAtTime(0.6, audioCtx.currentTime + totalMs / 1000 - 1.2);
+      gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + totalMs / 1000);
+      source.start();
     }
+    destination.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
   }
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-  return lines;
-};
 
-const drawImageCover = (
+  // ── Recorder ──
+  const mimeType = pickMimeType();
+  const recorder = new MediaRecorder(stream, {
+    mimeType,
+    videoBitsPerSecond: 3_500_000,
+    audioBitsPerSecond: 128_000,
+  });
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+  const finished: Promise<Blob> = new Promise((resolve) => {
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+  });
+
+  recorder.start(250);
+
+  // ── Pre-fetch video blob URLs for each clip ──
+  onProgress?.(0.02, 'Preparing clips…');
+  const blobUrls: (string | null)[] = await Promise.all(
+    orderedClips.map(async (c) => {
+      const blob = await VideoMomentsService.getVideoBlob(c);
+      return blob ? URL.createObjectURL(blob) : null;
+    }),
+  );
+
+  // ── Title card ──
+  await renderTitleCard(ctx, {
+    cycleStart: options.cycleStart,
+    cycleEnd: options.cycleEnd,
+    coupleNames: coupleNames ?? ['You', 'Them'],
+  });
+  onProgress?.(0.05, 'Opening…');
+
+  // ── Play each clip with soft dissolves ──
+  for (let i = 0; i < orderedClips.length; i += 1) {
+    const url = blobUrls[i];
+    if (!url) continue;
+    await renderClipWithDissolve(ctx, url);
+    onProgress?.(0.05 + (0.85 * (i + 1)) / orderedClips.length, `Clip ${i + 1} of ${orderedClips.length}`);
+  }
+
+  // ── Closing collage ──
+  await renderCollage(ctx, orderedClips);
+  onProgress?.(0.95, 'Finishing…');
+
+  // Small tail to let recorder flush
+  await wait(250);
+  recorder.stop();
+  const videoBlob = await finished;
+
+  // Cleanup blob URLs
+  blobUrls.forEach((u) => { if (u) URL.revokeObjectURL(u); });
+  if (audioCtx) { try { await audioCtx.close(); } catch {} }
+
+  // Thumbnail = first real clip frame (or title card)
+  const thumbnailBlob = await extractFirstFrameThumbnail(videoBlob).catch(() => null);
+
+  onProgress?.(1, 'Done');
+  return {
+    videoBlob,
+    thumbnailBlob,
+    durationMs: totalMs,
+    clipCount: orderedClips.length,
+    musicTrackId: track.id,
+  };
+}
+
+// ── Rendering helpers ──────────────────────────────────────────────────
+
+function pickMimeType(): string {
+  const candidates = [
+    'video/mp4;codecs=avc1',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+  ];
+  for (const type of candidates) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return 'video/webm';
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function renderTitleCard(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement | HTMLVideoElement,
-  canvasWidth: number,
-  canvasHeight: number,
-  opacity: number = 1
-): void => {
-  const imgWidth = img instanceof HTMLVideoElement ? img.videoWidth : img.width;
-  const imgHeight = img instanceof HTMLVideoElement ? img.videoHeight : img.height;
+  opts: { cycleStart: string; cycleEnd: string; coupleNames: [string, string] },
+): Promise<void> {
+  const start = performance.now();
+  while (performance.now() - start < TITLE_MS) {
+    const elapsed = performance.now() - start;
+    const t = Math.min(1, elapsed / TITLE_MS);
+    // Smooth fade in + out using a triangular envelope
+    const alpha = t < 0.15 ? t / 0.15 : t > 0.85 ? (1 - t) / 0.15 : 1;
 
-  const imgRatio = imgWidth / imgHeight;
-  const canvasRatio = canvasWidth / canvasHeight;
+    ctx.fillStyle = '#0D0B12';
+    ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
 
-  let drawWidth: number;
-  let drawHeight: number;
-  let offsetX: number;
-  let offsetY: number;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#FBEFEF';
+    ctx.textAlign = 'center';
 
-  if (imgRatio > canvasRatio) {
-    drawHeight = canvasHeight;
-    drawWidth = canvasHeight * imgRatio;
-    offsetX = (canvasWidth - drawWidth) / 2;
-    offsetY = 0;
-  } else {
-    drawWidth = canvasWidth;
-    drawHeight = canvasWidth / imgRatio;
-    offsetX = 0;
-    offsetY = (canvasHeight - drawHeight) / 2;
+    ctx.font = '500 34px Georgia, serif';
+    ctx.fillText('A fortnight, together', OUTPUT_W / 2, OUTPUT_H / 2 - 40);
+
+    ctx.font = '300 20px -apple-system, Inter, sans-serif';
+    ctx.fillStyle = '#B7A9A6';
+    ctx.fillText(formatRange(opts.cycleStart, opts.cycleEnd), OUTPUT_W / 2, OUTPUT_H / 2 + 10);
+
+    ctx.font = '300 18px -apple-system, Inter, sans-serif';
+    ctx.fillText(`${opts.coupleNames[0]} & ${opts.coupleNames[1]}`, OUTPUT_W / 2, OUTPUT_H / 2 + 56);
+
+    ctx.globalAlpha = 1;
+
+    await waitFrame();
+  }
+}
+
+async function renderClipWithDissolve(
+  ctx: CanvasRenderingContext2D,
+  blobUrl: string,
+): Promise<void> {
+  const video = document.createElement('video');
+  video.src = blobUrl;
+  video.crossOrigin = 'anonymous';
+  video.playsInline = true;
+  video.muted = true;
+  await new Promise<void>((resolve, reject) => {
+    video.onloadeddata = () => resolve();
+    video.onerror = () => reject(new Error('Clip load failed'));
+  });
+
+  video.currentTime = 0;
+  await video.play().catch(() => {});
+
+  const start = performance.now();
+  while (performance.now() - start < CLIP_DURATION_MS) {
+    const elapsed = performance.now() - start;
+    const alpha =
+      elapsed < DISSOLVE_MS
+        ? elapsed / DISSOLVE_MS
+        : elapsed > CLIP_DURATION_MS - DISSOLVE_MS
+          ? (CLIP_DURATION_MS - elapsed) / DISSOLVE_MS
+          : 1;
+
+    // Black backdrop
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
+
+    // Letterboxed aspect-fit draw
+    drawVideoCover(ctx, video);
+
+    // Fade overlay (multiply against current frame by fading black layer)
+    if (alpha < 1) {
+      ctx.fillStyle = `rgba(0,0,0,${1 - alpha})`;
+      ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
+    }
+
+    await waitFrame();
   }
 
-  ctx.globalAlpha = opacity;
-  ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-  ctx.globalAlpha = 1;
-};
+  video.pause();
+  video.src = '';
+  video.load();
+}
 
-// ── Video Compiler Service ────────────────────────────────────────────
-export const VideoCompilerService = {
-  /**
-   * Compile monthly video from daily clips
-   */
-  async compileMonthlyVideo(
-    month: string,
-    options: CompilationOptions = {}
-  ): Promise<{ blob: Blob; thumbnail: string; duration: number }> {
-    const opts = { ...DEFAULT_OPTIONS, ...options };
-    const clips = await VideoMomentsService.getClipsForCompilation(month);
-
-    if (clips.length === 0) {
-      throw new Error('No clips available for this month');
-    }
-
-    // Build compilation sequence
-    const sequence: CompilationClip[] = [];
-
-    // Intro slide
-    const [year, monthNum] = month.split('-');
-    const monthName = new Date(parseInt(year), parseInt(monthNum) - 1).toLocaleString('default', { month: 'long' });
-    sequence.push({
-      type: 'text',
-      text: `${monthName} ${year}`,
-      subtext: `${clips.length} moments together`,
-      duration: 3000,
-      transition: 'fade'
-    });
-
-    // Add each clip
-    for (const clip of clips) {
-      const videoUrl = await VideoMomentsService.getVideoUrl(clip);
-      if (videoUrl) {
-        sequence.push({
-          type: 'video',
-          src: videoUrl,
-          duration: clip.durationMs,
-          transition: 'fade'
-        });
-      }
-    }
-
-    // Outro slide
-    sequence.push({
-      type: 'text',
-      text: '💕',
-      subtext: 'Made with love',
-      duration: 2000,
-      transition: 'fade'
-    });
-
-    return this.renderSequence(sequence, opts);
-  },
-
-  /**
-   * Compile weekly recap from memories, moods, notes
-   */
-  async compileWeeklyRecap(
-    memories: Memory[],
-    moods: MoodEntry[],
-    notes: Note[],
-    stats: WeeklyRecapStats,
-    weekLabel: string,
-    options: CompilationOptions = {}
-  ): Promise<{ blob: Blob; thumbnail: string; duration: number }> {
-    const opts = { ...DEFAULT_OPTIONS, ...options };
-    const sequence: CompilationClip[] = [];
-
-    // Intro slide
-    sequence.push({
-      type: 'text',
-      text: `Your Week`,
-      subtext: weekLabel,
-      duration: 2500,
-      transition: 'fade'
-    });
-
-    // Stats slide
-    const moodEmoji = stats.moodTrend === 'up' ? '📈' : stats.moodTrend === 'down' ? '📉' : '➡️';
-    sequence.push({
-      type: 'text',
-      text: `${stats.memoriesCount} memories\n${stats.moodsLogged} moods logged ${moodEmoji}`,
-      subtext: stats.notesCount > 0 ? `${stats.notesCount} notes shared` : undefined,
-      duration: 3000,
-      transition: 'slide'
-    });
-
-    // Add memories with images
-    for (const memory of memories.slice(0, 10)) { // Limit to 10 memories
-      if (memory.image || memory.imageId) {
-        // For now, we'll just use the image URL if available
-        // In a real implementation, we'd load from IDB
-        sequence.push({
-          type: 'image',
-          src: memory.image,
-          duration: 3000,
-          transition: 'zoom'
-        });
-      } else if (memory.text) {
-        sequence.push({
-          type: 'text',
-          text: `"${memory.text.slice(0, 100)}${memory.text.length > 100 ? '...' : ''}"`,
-          subtext: new Date(memory.date).toLocaleDateString('en-US', { weekday: 'long' }),
-          duration: 3000,
-          transition: 'fade'
-        });
-      }
-    }
-
-    // Highlight notes
-    for (const note of notes.slice(0, 3)) {
-      sequence.push({
-        type: 'text',
-        text: `"${note.content.slice(0, 80)}${note.content.length > 80 ? '...' : ''}"`,
-        duration: 2500,
-        transition: 'slide'
-      });
-    }
-
-    // Outro
-    sequence.push({
-      type: 'text',
-      text: 'See you next week 💕',
-      duration: 2000,
-      transition: 'fade'
-    });
-
-    return this.renderSequence(sequence, opts);
-  },
-
-  /**
-   * Core rendering engine - renders sequence to video
-   */
-  async renderSequence(
-    sequence: CompilationClip[],
-    options: Required<CompilationOptions>
-  ): Promise<{ blob: Blob; thumbnail: string; duration: number }> {
-    const { width, height, fps, transitionDuration, backgroundColor, onProgress } = options;
-
-    // Create canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d')!;
-
-    // Calculate total duration
-    const totalDuration = sequence.reduce((sum, clip) => sum + clip.duration, 0) +
-      (sequence.length - 1) * transitionDuration;
-
-    // Set up MediaRecorder
-    const stream = canvas.captureStream(fps);
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : 'video/webm';
-
-    const mediaRecorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: 4000000 // 4 Mbps
-    });
-
-    const chunks: Blob[] = [];
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
-    };
-
-    // Preload all media
-    const loadedMedia = await this.preloadMedia(sequence);
-
-    // Start recording
-    mediaRecorder.start(100);
-
-    // Render frames
-    let thumbnail = '';
-    const startTime = performance.now();
-    let currentClipIndex = 0;
-    let clipStartTime = 0;
-
-    const renderFrame = (): Promise<void> => {
-      return new Promise((resolve) => {
-        const render = () => {
-          const elapsed = performance.now() - startTime;
-          const progress = Math.min(elapsed / totalDuration, 1);
-          onProgress(progress);
-
-          // Find current clip
-          let timeInSequence = 0;
-          let foundClip = false;
-
-          for (let i = 0; i < sequence.length; i++) {
-            const clipEnd = timeInSequence + sequence[i].duration;
-            if (elapsed < clipEnd || i === sequence.length - 1) {
-              currentClipIndex = i;
-              clipStartTime = timeInSequence;
-              foundClip = true;
-              break;
-            }
-            timeInSequence = clipEnd;
-          }
-
-          if (!foundClip || elapsed >= totalDuration) {
-            resolve();
-            return;
-          }
-
-          const clip = sequence[currentClipIndex];
-          const clipElapsed = elapsed - clipStartTime;
-          const clipProgress = Math.min(clipElapsed / clip.duration, 1);
-
-          // Clear canvas
-          ctx.fillStyle = backgroundColor;
-          ctx.fillRect(0, 0, width, height);
-
-          // Render current clip
-          this.renderClip(ctx, clip, loadedMedia.get(currentClipIndex), width, height, clipProgress);
-
-          // Handle transitions
-          if (clip.transition !== 'none' && currentClipIndex > 0) {
-            const transitionProgress = Math.min(clipElapsed / transitionDuration, 1);
-            if (transitionProgress < 1) {
-              // Blend with previous clip
-              const prevClip = sequence[currentClipIndex - 1];
-              const prevMedia = loadedMedia.get(currentClipIndex - 1);
-              ctx.globalAlpha = 1 - transitionProgress;
-              this.renderClip(ctx, prevClip, prevMedia, width, height, 1);
-              ctx.globalAlpha = 1;
-            }
-          }
-
-          // Capture thumbnail from first video frame
-          if (!thumbnail && currentClipIndex > 0) {
-            thumbnail = canvas.toDataURL('image/jpeg', 0.8);
-          }
-
-          requestAnimationFrame(render);
-        };
-
-        render();
-      });
-    };
-
-    await renderFrame();
-
-    // Stop recording and get blob
-    return new Promise((resolve) => {
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        resolve({
-          blob,
-          thumbnail: thumbnail || canvas.toDataURL('image/jpeg', 0.8),
-          duration: totalDuration
-        });
-      };
-      mediaRecorder.stop();
-    });
-  },
-
-  /**
-   * Preload all media (images and videos)
-   */
-  async preloadMedia(sequence: CompilationClip[]): Promise<Map<number, HTMLImageElement | HTMLVideoElement | null>> {
-    const loaded = new Map<number, HTMLImageElement | HTMLVideoElement | null>();
-
-    await Promise.all(sequence.map(async (clip, index) => {
-      if (clip.type === 'image' && clip.src) {
+async function renderCollage(ctx: CanvasRenderingContext2D, clips: DailyVideoClip[]): Promise<void> {
+  // Load thumbnails for up to 9 slots in a 3x3 grid
+  const slots = 9;
+  const subset = clips.slice(-slots);
+  const thumbUrls: (string | null)[] = await Promise.all(
+    subset.map((c) => VideoMomentsService.getThumbnailUrl(c)),
+  );
+  const imgs: (HTMLImageElement | null)[] = await Promise.all(
+    thumbUrls.map(async (url) => {
+      if (!url) return null;
+      return new Promise<HTMLImageElement | null>((resolve) => {
         const img = new Image();
-        img.crossOrigin = 'anonymous';
-        await new Promise<void>((resolve) => {
-          img.onload = () => resolve();
-          img.onerror = () => resolve();
-          img.src = clip.src!;
-        });
-        loaded.set(index, img);
-      } else if (clip.type === 'video' && clip.src) {
-        const video = document.createElement('video');
-        video.crossOrigin = 'anonymous';
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = 'auto';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    }),
+  );
 
-        await new Promise<void>((resolve) => {
-          video.onloadeddata = () => resolve();
-          video.onerror = () => resolve();
-          video.src = clip.src!;
-        });
-        loaded.set(index, video);
+  const cols = 3;
+  const rows = Math.ceil(slots / cols);
+  const gap = 14;
+  const margin = 48;
+  const availW = OUTPUT_W - margin * 2 - gap * (cols - 1);
+  const availH = OUTPUT_H - margin * 3 - gap * (rows - 1);
+  const cellW = availW / cols;
+  const cellH = availH / rows;
+
+  const start = performance.now();
+  while (performance.now() - start < COLLAGE_MS) {
+    const elapsed = performance.now() - start;
+    const t = Math.min(1, elapsed / COLLAGE_MS);
+    const alpha = t < 0.15 ? t / 0.15 : t > 0.85 ? (1 - t) / 0.15 : 1;
+
+    ctx.fillStyle = '#0D0B12';
+    ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
+
+    ctx.globalAlpha = alpha;
+
+    for (let i = 0; i < subset.length; i += 1) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = margin + col * (cellW + gap);
+      const y = margin + row * (cellH + gap);
+      const img = imgs[i];
+      if (img) {
+        drawImageCover(ctx, img, x, y, cellW, cellH);
       } else {
-        loaded.set(index, null);
-      }
-    }));
-
-    return loaded;
-  },
-
-  /**
-   * Render a single clip to canvas
-   */
-  renderClip(
-    ctx: CanvasRenderingContext2D,
-    clip: CompilationClip,
-    media: HTMLImageElement | HTMLVideoElement | null,
-    width: number,
-    height: number,
-    progress: number
-  ): void {
-    if (clip.type === 'text') {
-      drawTextSlide(ctx, width, height, clip.text || '', clip.subtext);
-    } else if (clip.type === 'image' && media instanceof HTMLImageElement) {
-      drawGradientBackground(ctx, width, height);
-      drawImageCover(ctx, media, width, height);
-    } else if (clip.type === 'video' && media instanceof HTMLVideoElement) {
-      // Seek video to current progress
-      const targetTime = progress * media.duration;
-      if (Math.abs(media.currentTime - targetTime) > 0.1) {
-        media.currentTime = targetTime;
-      }
-
-      if (media.paused) {
-        media.play().catch(() => {});
-      }
-
-      drawGradientBackground(ctx, width, height);
-      drawImageCover(ctx, media, width, height);
-    } else {
-      // Fallback gradient
-      drawGradientBackground(ctx, width, height);
-    }
-  },
-
-  /**
-   * Generate a preview thumbnail for a compilation
-   */
-  async generatePreviewThumbnail(
-    clips: DailyVideoClip[],
-    width: number = 400,
-    height: number = 300
-  ): Promise<string> {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d')!;
-
-    // Draw gradient background
-    drawGradientBackground(ctx, width, height);
-
-    // Draw grid of thumbnails (up to 4)
-    const thumbsToShow = clips.slice(0, 4);
-    const gridSize = thumbsToShow.length <= 1 ? 1 : 2;
-    const cellWidth = width / gridSize;
-    const cellHeight = height / gridSize;
-
-    for (let i = 0; i < thumbsToShow.length; i++) {
-      const clip = thumbsToShow[i];
-      const thumbUrl = await VideoMomentsService.getThumbnailUrl(clip);
-
-      if (thumbUrl) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        await new Promise<void>((resolve) => {
-          img.onload = () => resolve();
-          img.onerror = () => resolve();
-          img.src = thumbUrl;
-        });
-
-        const x = (i % gridSize) * cellWidth;
-        const y = Math.floor(i / gridSize) * cellHeight;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.roundRect(x + 4, y + 4, cellWidth - 8, cellHeight - 8, 8);
-        ctx.clip();
-        ctx.drawImage(img, x + 4, y + 4, cellWidth - 8, cellHeight - 8);
-        ctx.restore();
+        ctx.fillStyle = '#1A1720';
+        ctx.fillRect(x, y, cellW, cellH);
       }
     }
 
-    // Add play overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#FBEFEF';
+    ctx.textAlign = 'center';
+    ctx.font = '400 24px Georgia, serif';
+    ctx.fillText('— together —', OUTPUT_W / 2, OUTPUT_H - margin - 8);
 
-    ctx.beginPath();
-    ctx.arc(width / 2, height / 2, 30, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.fill();
+    ctx.globalAlpha = 1;
 
-    ctx.beginPath();
-    ctx.moveTo(width / 2 - 8, height / 2 - 12);
-    ctx.lineTo(width / 2 + 12, height / 2);
-    ctx.lineTo(width / 2 - 8, height / 2 + 12);
-    ctx.closePath();
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fill();
-
-    return canvas.toDataURL('image/jpeg', 0.85);
+    await waitFrame();
   }
+
+  // cleanup thumb urls
+  thumbUrls.forEach((u) => { if (u && u.startsWith('blob:')) URL.revokeObjectURL(u); });
+}
+
+function drawVideoCover(ctx: CanvasRenderingContext2D, video: HTMLVideoElement) {
+  const vw = video.videoWidth || OUTPUT_W;
+  const vh = video.videoHeight || OUTPUT_H;
+  drawSourceCover(ctx, video as CanvasImageSource, vw, vh, 0, 0, OUTPUT_W, OUTPUT_H);
+}
+
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+) {
+  drawSourceCover(ctx, img, img.naturalWidth, img.naturalHeight, dx, dy, dw, dh);
+}
+
+function drawSourceCover(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  sw: number,
+  sh: number,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+) {
+  const srcRatio = sw / sh;
+  const dstRatio = dw / dh;
+  let cropW = sw;
+  let cropH = sh;
+  let cropX = 0;
+  let cropY = 0;
+  if (srcRatio > dstRatio) {
+    cropW = sh * dstRatio;
+    cropX = (sw - cropW) / 2;
+  } else {
+    cropH = sw / dstRatio;
+    cropY = (sh - cropH) / 2;
+  }
+  ctx.drawImage(source, cropX, cropY, cropW, cropH, dx, dy, dw, dh);
+}
+
+function formatRange(start: string, end: string): string {
+  const s = new Date(start + 'T00:00:00');
+  const e = new Date(end + 'T00:00:00');
+  const sLbl = s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const eLbl = e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${sLbl} – ${eLbl}`;
+}
+
+function waitFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function extractFirstFrameThumbnail(videoBlob: Blob): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(videoBlob);
+    const video = document.createElement('video');
+    video.src = url;
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadeddata = () => {
+      video.currentTime = 0.2;
+    };
+    video.onseeked = () => {
+      const c = document.createElement('canvas');
+      c.width = 360;
+      c.height = 640;
+      const cx = c.getContext('2d');
+      if (!cx) {
+        URL.revokeObjectURL(url);
+        resolve(null);
+        return;
+      }
+      drawSourceCover(cx, video, video.videoWidth, video.videoHeight, 0, 0, 360, 640);
+      c.toBlob((blob) => {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      }, 'image/jpeg', 0.82);
+    };
+    video.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+  });
+}
+
+// ── High-level convenience ────────────────────────────────────────────
+export const VideoCompilerService = {
+  async generateFilm(options: CompileOptions): Promise<BiweeklyFilm | null> {
+    // Mark as generating so UI can show a spinner
+    const existing = await VideoMomentsService.getFilmForCycle(options.cycleStart);
+    const base: BiweeklyFilm = existing ?? {
+      id: cryptoRandomId(),
+      coupleId: 'local',
+      cycleStart: options.cycleStart,
+      cycleEnd: options.cycleEnd,
+      durationMs: 0,
+      clipCount: 0,
+      generatedAt: new Date().toISOString(),
+      status: 'generating',
+      progress: 0,
+    };
+    await VideoMomentsService.upsertFilm({ ...base, status: 'generating', progress: 0 });
+
+    try {
+      const result = await compileCycle({
+        ...options,
+        onProgress: async (ratio) => {
+          await VideoMomentsService.upsertFilm({
+            ...base,
+            status: 'generating',
+            progress: ratio,
+          });
+          options.onProgress?.(ratio, '');
+        },
+      });
+
+      if (!result) {
+        await VideoMomentsService.upsertFilm({ ...base, status: 'failed', progress: 0 });
+        return null;
+      }
+
+      const saved = await VideoMomentsService.saveFilmBlob(
+        options.cycleStart,
+        result.videoBlob,
+        result.thumbnailBlob,
+        result.durationMs,
+        result.clipCount,
+        result.musicTrackId,
+      );
+      return saved;
+    } catch (err) {
+      await VideoMomentsService.upsertFilm({ ...base, status: 'failed', progress: 0 });
+      throw err;
+    }
+  },
 };
+
+function cryptoRandomId(): string {
+  try {
+    // Prefer crypto.randomUUID when available
+    const anyCrypto = (globalThis as any).crypto;
+    if (anyCrypto?.randomUUID) return anyCrypto.randomUUID();
+  } catch {
+    // ignore
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}

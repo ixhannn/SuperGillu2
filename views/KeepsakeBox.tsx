@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Archive, Plus, Camera, Music, FileText, Lock, Gift, X, EyeOff, Video, PlayCircle } from 'lucide-react';
+import { Archive, Plus, Camera, Music, FileText, Lock, Gift, X, EyeOff, Video, PlayCircle, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, Keepsake, CoupleProfile } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { RelationshipSignals } from '../services/relationshipSignals';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { GestureModal } from '../components/GestureModal';
 import { feedback } from '../utils/feedback';
@@ -20,7 +21,7 @@ interface KeepsakeBoxProps {
 
 const normalizeSenderName = (senderId?: string) => senderId === 'Lior' ? 'Tulika' : senderId;
 
-const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick }) => {
+const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void, isReacted?: boolean, onReact?: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick, isReacted, onReact }) => {
     const { src: mediaSrc, handleError: handleMediaError } = useLiorMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, keepsake.storagePath || keepsake.videoStoragePath);
 
     const formattedDate = new Date(keepsake.date).toLocaleDateString(undefined, {
@@ -102,7 +103,15 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
                         <span className="text-micro-bold tracking-tight">
                             {formattedDate}
                         </span>
-                        <Gift size={12} />
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onReact?.(); }}
+                                className="p-1"
+                            >
+                                <Heart size={12} fill={isReacted ? '#f472b6' : 'none'} style={{ color: isReacted ? '#f472b6' : 'currentColor', opacity: isReacted ? 2.5 : 1 }} />
+                            </button>
+                            <Gift size={12} />
+                        </div>
                     </div>
                 </div>
             </motion.div>
@@ -177,6 +186,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const [selectedKeepsake, setSelectedKeepsake] = useState<Keepsake | null>(null);
     const [isComposing, setIsComposing] = useState(false);
     const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Me', partnerName: 'Partner', anniversaryDate: '' });
+    const [reactedKeepsakes, setReactedKeepsakes] = useState<Set<string>>(new Set());
 
     // Compose State
     const [type, setType] = useState<'letter' | 'photo' | 'song' | 'video'>('letter');
@@ -370,6 +380,14 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                                     myName={profile.myName}
                                     onHide={() => handleHide(k.id)}
                                     onClick={() => setSelectedKeepsake(k)}
+                                    isReacted={reactedKeepsakes.has(k.id)}
+                                    onReact={() => {
+                                        if (!reactedKeepsakes.has(k.id)) {
+                                            feedback.tap();
+                                            setReactedKeepsakes(prev => new Set([...prev, k.id]));
+                                            RelationshipSignals.recordReaction('', 'memory', k.id, 'heart').catch(() => {});
+                                        }
+                                    }}
                                 />
                             ))}
                         </div>

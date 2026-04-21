@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, X, PenLine, Trash2 } from 'lucide-react';
+import { Plus, X, PenLine, Trash2, Heart } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, Note } from '../types';
 import { StorageService } from '../services/storage';
+import { RelationshipSignals } from '../services/relationshipSignals';
 import { feedback } from '../utils/feedback';
 
 const staggerContainer = {
@@ -30,6 +31,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
   const [currentNote, setCurrentNote] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [longPressId, setLongPressId] = useState<string | null>(null);
+  const [reacted, setReacted] = useState<Set<string>>(new Set());
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePointerDown = useCallback((id: string) => {
@@ -158,6 +160,25 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
                 <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                     {new Date(note.createdAt).toLocaleDateString()}
                 </span>
+                <div className="flex items-center gap-1">
+                  <motion.button
+                    whileTap={{ scale: 1.3 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!reacted.has(note.id)) {
+                        feedback.tap();
+                        setReacted(prev => new Set([...prev, note.id]));
+                        RelationshipSignals.recordReaction('', 'note', note.id, 'heart').catch(() => {});
+                      }
+                    }}
+                    className="p-1.5"
+                  >
+                    <Heart
+                      size={14}
+                      fill={reacted.has(note.id) ? '#f472b6' : 'none'}
+                      style={{ color: reacted.has(note.id) ? '#f472b6' : 'var(--color-text-secondary)', opacity: reacted.has(note.id) ? 1 : 0.3 }}
+                    />
+                  </motion.button>
                 <AnimatePresence>
                   {longPressId === note.id && (
                     <motion.button
@@ -171,6 +192,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
                     </motion.button>
                   )}
                 </AnimatePresence>
+                </div>
             </div>
           </motion.div>
         ))}

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
-  Check,
   Gift,
   Lock,
   Palette,
@@ -12,10 +11,8 @@ import {
   Share2,
   Sparkles,
   Trash2,
-  Users,
   X,
 } from 'lucide-react';
-import { SectionDivider } from './Home';
 import { CoupleRoomState, ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
@@ -52,20 +49,25 @@ interface OurRoomProps {
 }
 
 type ModalId = 'decorate' | 'note' | 'gift' | 'style' | null;
+type ToolbarAction = {
+  id: string;
+  label: string;
+  icon: React.ReactElement<{ size?: number; strokeWidth?: number }>;
+  accent: string;
+  modal?: Exclude<ModalId, null>;
+  onClick?: () => void | Promise<void>;
+};
 
 const loadRoom = (): CoupleRoomState => StorageService.getCoupleRoomState();
 const saveRoom = (room: CoupleRoomState): void => StorageService.saveCoupleRoomState(room);
 
-const panelStyle: React.CSSProperties = {
-  background: 'var(--theme-surface-glass)',
-  backdropFilter: 'blur(24px)',
-  WebkitBackdropFilter: 'blur(24px)',
-  border: '1.5px solid var(--theme-border-crisp)',
-  boxShadow: 'var(--shadow-sm)',
-};
+const strongText = '#1c2750';
+const softText = '#8a8a9a';
 
-const softText = 'var(--color-text-secondary, #8D7E87)';
-const strongText = 'var(--color-text-primary, #2D1F25)';
+/* ─── Pixel toolbar constants ─── */
+const PIXEL_BORDER = '2px solid #5c3d2e';
+const PIXEL_SHADOW = '4px 4px 0px #3a2518';
+const NAV_CLEARANCE = 96; // BottomNav = 76px + padding buffer
 
 const categoryAccent: Record<RoomCategory, string> = {
   romantic: '#ef5da8',
@@ -160,10 +162,10 @@ const getMilestoneSubtitle = (rule: MilestoneUnlockRule, room: CoupleRoomState, 
   return `${getMilestoneProgress(rule, room, profile)} progress`;
 };
 
-const presenceFromState = (presenceState: any, partnerName: string): boolean => {
+const presenceFromState = (presenceState: any, partnerNames: readonly string[]): boolean => {
   if (!presenceState) return false;
   return Object.values(presenceState).some((entries: any) =>
-    Array.isArray(entries) && entries.some((entry) => entry?.user === partnerName),
+    Array.isArray(entries) && entries.some((entry) => partnerNames.includes(entry?.user)),
   );
 };
 
@@ -247,33 +249,10 @@ const CatalogArtwork: React.FC<{ item: RoomCatalogItem }> = ({ item }) => {
   );
 };
 
-const RoomActionButton: React.FC<{
-  label: string;
-  icon: React.ReactNode;
-  accent: string;
-  active?: boolean;
-  onClick: () => void;
-}> = ({ label, icon, accent, active, onClick }) => (
-  <motion.button
-    whileTap={{ scale: 0.96 }}
-    onClick={onClick}
-    className="rounded-[1.4rem] px-2 py-3 flex flex-col items-center justify-center gap-1 min-h-[70px]"
-    style={{
-      ...panelStyle,
-      background: active ? `${accent}1A` : 'rgba(255,255,255,0.72)',
-      border: active ? `1px solid ${accent}55` : '1px solid rgba(255,255,255,0.92)',
-      boxShadow: active ? `0 18px 32px ${accent}1F` : panelStyle.boxShadow,
-    }}
-  >
-    <div style={{ color: active ? accent : strongText }}>{icon}</div>
-    <span className="text-[10px] font-semibold tracking-[0.08em]" style={{ color: active ? accent : strongText }}>
-      {label}
-    </span>
-  </motion.button>
-);
+// Actions rendered via floating pill + slide-up sheet
 
 export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
-  const profile = StorageService.getCoupleProfile();
+  const [profile, setProfile] = useState(() => StorageService.getCoupleProfile());
   const [room, setRoom] = useState<CoupleRoomState>(loadRoom);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<ModalId>(null);
@@ -286,7 +265,10 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   const [draftRoomName, setDraftRoomName] = useState(room.roomName);
   const [partnerPresent, setPartnerPresent] = useState(false);
   const [remoteActivity, setRemoteActivity] = useState('');
+  const [knownSelfNames, setKnownSelfNames] = useState<string[]>(() => (profile.myName ? [profile.myName] : []));
+  const [knownPartnerNames, setKnownPartnerNames] = useState<string[]>(() => (profile.partnerName ? [profile.partnerName] : []));
   const stateRef = useRef(room);
+  const presenceSnapshotRef = useRef<any>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
   const pushToast = useCallback((message: string) => {
@@ -294,6 +276,10 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(''), 2200);
   }, []);
+
+  const isMyKnownName = useCallback((name?: string | null) => {
+    return Boolean(name && knownSelfNames.includes(name));
+  }, [knownSelfNames]);
 
   const persist = useCallback((next: CoupleRoomState, actionText?: string) => {
     const stamped = actionText
@@ -306,20 +292,37 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
       : next;
     const normalized = normalizeCoupleRoom(stamped);
     stateRef.current = normalized;
+    setRemoteActivity('');
     setRoom(normalized);
     saveRoom(normalized);
   }, [profile.myName]);
 
   useEffect(() => {
     stateRef.current = room;
-    setDraftRoomName(room.roomName);
-  }, [room]);
+    if (!editingName) {
+      setDraftRoomName(room.roomName);
+    }
+  }, [editingName, room]);
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   useEffect(() => {
     const onStorage = (event: Event) => {
       const detail = (event as CustomEvent).detail;
+      let nextKnownSelfNames = knownSelfNames;
+      if (detail?.table === 'couple_profile' || detail?.table === 'init') {
+        const nextProfile = StorageService.getCoupleProfile();
+        setProfile(nextProfile);
+        if (nextProfile.myName) {
+          nextKnownSelfNames = nextKnownSelfNames.includes(nextProfile.myName)
+            ? nextKnownSelfNames
+            : [...nextKnownSelfNames, nextProfile.myName];
+          setKnownSelfNames(nextKnownSelfNames);
+        }
+        if (nextProfile.partnerName) {
+          setKnownPartnerNames((current) => (current.includes(nextProfile.partnerName) ? current : [...current, nextProfile.partnerName]));
+        }
+      }
       if (detail?.table !== 'our_room_state' && detail?.table !== 'init') return;
       const previous = stateRef.current;
       const synced = loadRoom();
@@ -329,7 +332,7 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
         synced.lastTouchedAt &&
         synced.lastTouchedAt !== previous.lastTouchedAt &&
         synced.lastActorName &&
-        synced.lastActorName !== profile.myName
+        !nextKnownSelfNames.includes(synced.lastActorName)
       ) {
         const activity = `${synced.lastActorName} ${synced.lastActionText || 'updated the room'}`;
         setRemoteActivity(activity);
@@ -338,16 +341,22 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
     };
     storageEventTarget.addEventListener('storage-update', onStorage);
     return () => storageEventTarget.removeEventListener('storage-update', onStorage);
-  }, [profile.myName, pushToast]);
+  }, [knownSelfNames, pushToast]);
 
   useEffect(() => {
     const onPresence = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      setPartnerPresent(presenceFromState(detail, profile.partnerName));
+      presenceSnapshotRef.current = detail;
+      setPartnerPresent(presenceFromState(detail, knownPartnerNames));
     };
     syncEventTarget.addEventListener('presence-update', onPresence);
     return () => syncEventTarget.removeEventListener('presence-update', onPresence);
-  }, [profile.partnerName]);
+  }, [knownPartnerNames]);
+
+  useEffect(() => {
+    if (!presenceSnapshotRef.current) return;
+    setPartnerPresent(presenceFromState(presenceSnapshotRef.current, knownPartnerNames));
+  }, [knownPartnerNames]);
 
   useEffect(() => {
     if (selectedId && !room.placedItems.some((item) => item.uid === selectedId)) {
@@ -358,15 +367,16 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   useEffect(() => {
     const unlocks = checkMilestoneUnlocks(room, profile);
     if (!unlocks.length) return;
+    const current = stateRef.current;
     const nextMilestones = [
-      ...room.milestoneItems,
+      ...current.milestoneItems,
       ...unlocks.map((itemId) => ({
         milestoneId: itemId,
         unlockedAt: new Date().toISOString(),
         itemId,
       })),
     ];
-    persist({ ...room, milestoneItems: nextMilestones }, 'unlocked something special');
+    persist({ ...current, milestoneItems: nextMilestones }, 'unlocked something special');
     const names = unlocks.map((itemId) => ROOM_SHOP_BY_ID[itemId]?.name || itemId).join(', ');
     pushToast(`Unlocked: ${names}`);
   }, [
@@ -388,16 +398,9 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
 
   const selectedItemName = selectedItem ? ROOM_SHOP_BY_ID[selectedItem.itemId]?.name || 'Item' : null;
   const unopenedGifts = useMemo(
-    () => room.gifts.filter((gift) => !gift.opened && gift.from !== profile.myName),
-    [room.gifts, profile.myName],
+    () => room.gifts.filter((gift) => !gift.opened && !isMyKnownName(gift.from)),
+    [isMyKnownName, room.gifts],
   );
-  const partnerNotes = useMemo(
-    () => room.notes.filter((note) => note.author !== profile.myName),
-    [room.notes, profile.myName],
-  );
-  const latestPartnerNote = partnerNotes[0];
-  const latestGiftForMe = unopenedGifts[0];
-  const togetherDays = getDaysTogether(profile.anniversaryDate);
   const shopItems = useMemo(() => getShopItems(room, category), [room, category]);
   const roomSceneState = useMemo(() => ({
     placedItems: room.placedItems,
@@ -415,16 +418,19 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
         .slice(0, 3),
     [room.milestoneItems],
   );
+  const incomingSignals = unopenedGifts.length;
+
 
   const handlePlace = (itemId: string) => {
+    const current = stateRef.current;
     const item = ROOM_SHOP_BY_ID[itemId];
     if (!item) return;
-    if (isItemMilestoneLocked(item, room)) {
+    if (isItemMilestoneLocked(item, current)) {
       const rule = getMilestoneForItem(itemId);
       pushToast(rule ? `Unlocks with ${rule.title.toLowerCase()}` : 'This unlocks later');
       return;
     }
-    const next = placeItem(room, item, profile.myName);
+    const next = placeItem(current, item, profile.myName);
     if ('error' in next) {
       pushToast(next.error);
       return;
@@ -437,13 +443,13 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
 
   const handleRemove = () => {
     if (!selectedId) return;
-    persist(removeItem(room, selectedId), `removed ${selectedItemName || 'an item'}`);
+    persist(removeItem(stateRef.current, selectedId), `removed ${selectedItemName || 'an item'}`);
     setSelectedId(null);
   };
 
   const handleRotate = () => {
     if (!selectedId) return;
-    persist(rotateItem(room, selectedId), `rotated ${selectedItemName || 'an item'}`);
+    persist(rotateItem(stateRef.current, selectedId), `rotated ${selectedItemName || 'an item'}`);
   };
 
   const onMoveItemGrid = useCallback((id: string, gx: number, gy: number) => {
@@ -465,13 +471,14 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
       lastTouchedAt: new Date().toISOString(),
     });
     stateRef.current = stamped;
+    setRemoteActivity('');
     setRoom(stamped);
     saveRoom(stamped);
   }, [profile.myName, selectedId]);
 
   const handleAddNote = () => {
     if (!noteText.trim()) return;
-    persist(addNote(room, noteText, profile.myName), 'left a note');
+    persist(addNote(stateRef.current, noteText, profile.myName), 'left a note');
     setNoteText('');
     setActiveModal(null);
     pushToast('Note left in your room');
@@ -479,7 +486,7 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
 
   const handleSendGift = () => {
     if (!giftMsg.trim()) return;
-    persist(addGift(room, profile.myName, giftEmoji, giftMsg), 'left a gift');
+    persist(addGift(stateRef.current, profile.myName, giftEmoji, giftMsg), 'left a gift');
     setGiftMsg('');
     setGiftEmoji(GIFT_EMOJIS[0]);
     setActiveModal(null);
@@ -487,31 +494,33 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   };
 
   const handleOpenGift = (giftId: string) => {
-    persist(openGift(room, giftId), 'opened a gift');
+    persist(openGift(stateRef.current, giftId), 'opened a gift');
     pushToast('Gift opened');
   };
 
   const applyTheme = (kind: 'wallpaper' | 'floor' | 'ambient', value: string) => {
     const actionLabel = kind === 'wallpaper' ? 'changed the walls' : kind === 'floor' ? 'changed the floor' : 'changed the lighting';
-    persist({ ...room, [kind]: value }, actionLabel);
+    persist({ ...stateRef.current, [kind]: value }, actionLabel);
   };
 
   const commitRoomName = () => {
+    const current = stateRef.current;
     const nextName = draftRoomName.trim();
     setEditingName(false);
-    if (!nextName || nextName === room.roomName) {
-      setDraftRoomName(room.roomName);
+    if (!nextName || nextName === current.roomName) {
+      setDraftRoomName(current.roomName);
       return;
     }
-    persist({ ...room, roomName: nextName }, 'renamed the room');
+    persist({ ...current, roomName: nextName }, 'renamed the room');
   };
 
   const handleShare = async () => {
-    const shareText = `${room.roomName} is where ${profile.myName} and ${profile.partnerName} keep leaving notes, little gifts, and new memories for each other.`;
+    const current = stateRef.current;
+    const shareText = `${current.roomName} is where ${profile.myName} and ${profile.partnerName} keep leaving notes, little gifts, and new memories for each other.`;
     try {
       if (typeof navigator !== 'undefined' && navigator.share) {
         await navigator.share({
-          title: room.roomName,
+          title: current.roomName,
           text: shareText,
         });
       } else if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
@@ -527,673 +536,618 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
     }
   };
 
-  const actions = [
-    { id: 'decorate', label: 'Decorate', icon: <Sparkles size={18} />, accent: '#8b5cf6', modal: 'decorate' as const },
+  const actions: ToolbarAction[] = [
+    { id: 'decorate', label: 'Build', icon: <Sparkles size={18} />, accent: '#ff8c42', modal: 'decorate' as const },
     { id: 'note', label: 'Notes', icon: <PenLine size={18} />, accent: '#ef5da8', modal: 'note' as const },
-    { id: 'gift', label: 'Gifts', icon: <Gift size={18} />, accent: '#f59e0b', modal: 'gift' as const },
-    { id: 'style', label: 'Style', icon: <Palette size={18} />, accent: '#14b8a6', modal: 'style' as const },
-    { id: 'share', label: 'Share', icon: <Share2 size={18} />, accent: '#3b82f6', onClick: handleShare },
+    { id: 'gift', label: 'Gifts', icon: <Gift size={18} />, accent: '#4cc98b', modal: 'gift' as const },
+    { id: 'style', label: 'Style', icon: <Palette size={18} />, accent: '#8b5cf6', modal: 'style' as const },
+    { id: 'share', label: 'Share', icon: <Share2 size={18} />, accent: '#ffd54f', onClick: handleShare },
   ];
 
   return (
-    <div className="min-h-full px-4 pb-8 pt-4">
-      <div className="flex items-start justify-between gap-3 mb-6">
+    <div className="relative" style={{ height: '100dvh', overflow: 'hidden', background: '#0f1219' }}>
+      {/* ─── Room Scene (full viewport) ─── */}
+      <div className="absolute inset-0">
+        <RoomScene3D
+          room={roomSceneState}
+          catalogById={ROOM_SHOP_BY_ID}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onMoveItemGrid={onMoveItemGrid}
+          onDragCommit={onDragCommit}
+        />
+      </div>
+
+      {/* Soft vignette edge */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: 'radial-gradient(ellipse at 50% 30%, transparent 55%, rgba(10,12,20,0.3) 100%)' }}
+      />
+
+      {/* ─── Floating Header ─── */}
+      <div
+        className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3"
+        style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
+      >
         <motion.button
-          whileTap={{ scale: 0.96 }}
+          whileTap={{ scale: 0.92 }}
           onClick={() => setView('us')}
-          className="h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center glass-card-premium shadow-none ring-1 ring-inset ring-white/10"
-          style={panelStyle}
+          className="flex h-9 w-9 shrink-0 items-center justify-center"
+          style={{
+            background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
+            border: PIXEL_BORDER,
+            boxShadow: '2px 2px 0 #3a2518',
+          }}
         >
-          <ArrowLeft size={20} className="text-gray-800" />
+          <ArrowLeft size={15} color="#5c3d2e" strokeWidth={2.5} />
         </motion.button>
 
-        <div className="min-w-0 flex-1 text-center px-1">
-          {editingName ? (
-            <input
-              value={draftRoomName}
-              onChange={(event) => setDraftRoomName(event.target.value)}
-              onBlur={commitRoomName}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') commitRoomName();
-                if (event.key === 'Escape') {
-                  setDraftRoomName(room.roomName);
-                  setEditingName(false);
-                }
-              }}
-              autoFocus
-              className="mx-auto w-full max-w-[240px] rounded-2xl border-none glass-card-premium px-4 py-2.5 text-center text-lg font-bold text-gray-800 outline-none ring-2 ring-lior-400/30"
-            />
-          ) : (
-            <button onClick={() => setEditingName(true)} className="mx-auto block max-w-full group">
-              <h1 className="truncate text-2xl font-serif font-bold text-gray-800 leading-tight group-active:scale-95 transition-transform">
-                {room.roomName}
-              </h1>
-              <p className="text-micro-bold text-gray-400 mt-0.5 opacity-60">
-                {profile.myName} & {profile.partnerName}
-              </p>
-            </button>
-          )}
-        </div>
-
-        <div
-          className="shrink-0 rounded-2xl px-4 py-2.5 text-right glass-card-premium shadow-none ring-1 ring-inset ring-white/10"
-          style={panelStyle}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 opacity-60">
-            Decor
-          </p>
-          <p className="text-sm font-bold text-gray-800">
-            {room.placedItems.length}/{MAX_PLACED_ITEMS}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className="rounded-3xl p-5 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
-          <div className="flex items-center gap-2 mb-2">
-            <div
-              className={`h-2.5 w-2.5 rounded-full ${partnerPresent ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}
-              style={{ boxShadow: partnerPresent ? '0 0 10px rgba(34,197,94,0.4)' : 'none' }}
-            />
-            <p className="text-xs font-bold text-gray-800">
-              {partnerPresent ? `${profile.partnerName} inside` : `${togetherDays} Days`}
-            </p>
-          </div>
-          <p className="text-[11px] font-medium text-gray-400 leading-tight opacity-80">
-            {partnerPresent ? 'They are currently in the room.' : 'The time you have spent together.'}
-          </p>
-        </div>
-
-        <div className="rounded-3xl p-5 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 opacity-60">
-            Last Activity
-          </p>
-          <p className="text-xs font-bold text-gray-800 leading-snug truncate">
-            {remoteActivity || (room.lastActorName ? `${room.lastActorName} ${room.lastActionText || 'updated'}` : 'Start building...')}
-          </p>
-          <p className="mt-1 text-[10px] font-medium text-lior-400">
-            {room.lastTouchedAt ? formatRelativeTime(room.lastTouchedAt) : 'Freshly created'}
-          </p>
-        </div>
-      </div>
-
-      <div
-        className="relative mt-5 overflow-hidden rounded-[2.5rem] glass-card-premium border-none shadow-2xl ring-1 ring-inset ring-white/20"
-        style={{
-          ...panelStyle,
-          minHeight: '440px',
-          height: '58vh',
-          maxHeight: '640px',
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,245,248,0.85) 100%)',
-        }}
-      >
-        <div className="absolute inset-0">
-          <RoomScene3D
-            room={roomSceneState}
-            catalogById={ROOM_SHOP_BY_ID}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onMoveItemGrid={onMoveItemGrid}
-            onDragCommit={onDragCommit}
-          />
-        </div>
-
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: 'radial-gradient(circle at 50% 20%, rgba(255,255,255,0.4) 0%, transparent 70%)',
-          }}
-        />
-
-        <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
-          <div className="max-w-[80%] rounded-2xl px-4 py-3 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 opacity-60">
-              Cozy Haven
-            </p>
-            <p className="mt-0.5 text-xs font-bold text-gray-800 leading-snug">
-              {selectedItemName ? `Active: ${selectedItemName}` : 'Tap objects to move or rotate'}
-            </p>
-          </div>
-
-          {(partnerNotes.length > 0 || unopenedGifts.length > 0) && (
-            <div className="rounded-2xl px-3 py-2.5 text-right glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
-              <div className="flex items-center gap-1.5 justify-end">
-                 <div className="w-1.5 h-1.5 rounded-full bg-lior-500 animate-ping" />
-                 <p className="text-[10px] font-bold text-lior-500 uppercase tracking-widest">
-                   Alerts
-                 </p>
-              </div>
-              <p className="mt-0.5 text-xs font-bold text-gray-800">
-                {partnerNotes.length + unopenedGifts.length} New
-              </p>
-            </div>
-          )}
-        </div>
-
-        <AnimatePresence>
-          {room.placedItems.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="absolute inset-x-4 bottom-28 rounded-[1.5rem] px-4 py-3"
-              style={panelStyle}
-            >
-              <p className="text-[0.82rem] font-semibold" style={{ color: strongText }}>
-                Start with one piece you both love.
-              </p>
-              <p className="mt-1 text-[0.72rem] leading-relaxed" style={{ color: softText }}>
-                Add a sofa, a bed, a memory frame, or a soft little lamp and build the room from there.
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {selectedItem && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="absolute inset-x-4 bottom-4 flex items-center gap-2"
-            >
-              <div className="min-w-0 flex-1 rounded-[1.5rem] px-4 py-3" style={panelStyle}>
-                <p className="truncate text-[0.8rem] font-semibold" style={{ color: strongText }}>
-                  {selectedItemName}
-                </p>
-                <p className="mt-1 text-[0.68rem]" style={{ color: softText }}>
-                  Move it anywhere on the room grid.
-                </p>
-              </div>
-              <motion.button whileTap={{ scale: 0.96 }} onClick={handleRotate} className="rounded-[1.35rem] px-4 py-3" style={panelStyle}>
-                <RotateCw size={16} style={{ color: strongText }} />
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                onClick={handleRemove}
-                className="rounded-[1.35rem] px-4 py-3"
-                style={{ ...panelStyle, background: 'rgba(255,241,244,0.88)', border: '1px solid rgba(251,113,133,0.22)' }}
-              >
-                <Trash2 size={16} color="#e11d48" />
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      <div className="mt-4 grid grid-cols-5 gap-2">
-        {actions.map((action) => (
-          <RoomActionButton
-            key={action.id}
-            label={action.label}
-            icon={action.icon}
-            accent={action.accent}
-            active={action.modal ? activeModal === action.modal : false}
-            onClick={() => {
-              if (action.modal) {
-                setActiveModal(activeModal === action.modal ? null : action.modal);
-              } else {
-                action.onClick?.();
+        {editingName ? (
+          <input
+            value={draftRoomName}
+            onChange={(event) => setDraftRoomName(event.target.value)}
+            onBlur={commitRoomName}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commitRoomName();
+              if (event.key === 'Escape') {
+                setDraftRoomName(room.roomName);
+                setEditingName(false);
               }
             }}
+            autoFocus
+            className="px-3 py-1.5 text-sm font-extrabold outline-none"
+            style={{
+              color: '#5c3d2e',
+              background: '#faf6f0',
+              border: PIXEL_BORDER,
+              borderRadius: 0,
+            }}
           />
-        ))}
+        ) : (
+          <button
+            onClick={() => setEditingName(true)}
+            className="flex items-center gap-2 px-3 py-1.5"
+            style={{
+              background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
+              border: PIXEL_BORDER,
+              boxShadow: '2px 2px 0 #3a2518',
+            }}
+          >
+            <h1 className="text-[0.82rem] font-extrabold" style={{ color: '#5c3d2e' }}>{room.roomName}</h1>
+            <span className="text-[0.6rem] font-bold" style={{ color: '#8a6d4a' }}>{profile.myName} & {profile.partnerName}</span>
+          </button>
+        )}
+
+        <div className="flex-1" />
+
+        {partnerPresent && (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1.5"
+            style={{
+              background: 'linear-gradient(180deg, #a8e6c0, #78d4a0)',
+              border: '2px solid #2d7a4e',
+              boxShadow: '2px 2px 0 #1a5535',
+            }}
+          >
+            <span className="h-2 w-2" style={{ background: '#2d7a4e' }} />
+            <span className="text-[0.68rem] font-extrabold" style={{ color: '#1a5535' }}>{profile.partnerName}</span>
+          </div>
+        )}
       </div>
 
-      <div className="mt-6">
-        <SectionDivider label="For Each Other" />
-        <div className="grid gap-4">
-          <div className="rounded-[2rem] p-6 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold text-gray-800 mb-1">
-                  {latestPartnerNote
-                    ? `Note from ${profile.partnerName}`
-                    : latestGiftForMe
-                      ? `Gift from ${profile.partnerName}`
-                      : 'Create a Moment'}
-                </p>
-                <p className="text-[11px] font-medium text-gray-400 leading-relaxed opacity-80">
-                  {latestPartnerNote?.text ||
-                    latestGiftForMe?.message ||
-                    'Little notes and gifts build the soul of this shared room.'}
-                </p>
-              </div>
-              {(latestPartnerNote || latestGiftForMe) && (
-                <button
-                  onClick={() => setActiveModal(latestGiftForMe ? 'gift' : 'note')}
-                  className="rounded-full px-4 py-2 text-[10px] font-bold bg-lior-50 text-lior-500 ring-1 ring-lior-100 active:scale-90 transition-transform"
-                >
-                  OPEN
-                </button>
-              )}
-            </div>
-            {(latestPartnerNote || latestGiftForMe) && (
-              <div className="mt-4 flex items-center gap-3">
-                <div className="flex -space-x-2">
-                   <div className="w-6 h-6 rounded-full bg-lior-100 flex items-center justify-center text-[10px] ring-2 ring-white">👩🏻</div>
-                   <div className="w-6 h-6 rounded-full bg-lior-50 flex items-center justify-center text-[10px] ring-2 ring-white">👨🏻</div>
-                </div>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{room.gifts.length} Gifts sent</span>
-              </div>
-            )}
-          </div>
+      {/* ─── Incoming Signals Badge ─── */}
+      {incomingSignals > 0 && (
+        <motion.button
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setActiveModal(unopenedGifts.length > 0 ? 'gift' : 'note')}
+          className="absolute right-3 z-10 flex items-center gap-1.5 rounded-full px-2.5 py-1.5"
+          style={{ top: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', background: 'rgba(244,63,94,0.85)', backdropFilter: 'blur(12px)' }}
+        >
+          <Gift size={12} color="#fff" />
+          <span className="text-[0.68rem] font-bold text-white">{incomingSignals}</span>
+        </motion.button>
+      )}
 
-          {upcomingMilestones[0] && (
-            <div className="rounded-[2rem] p-6 glass-card-premium shadow-none ring-1 ring-inset ring-white/10" style={panelStyle}>
-              <div className="flex items-center justify-between mb-4">
-                 <p className="text-[10px] font-bold uppercase tracking-widest text-lior-500">
-                    Growth Milestone
-                 </p>
-                 <div className="px-2.5 py-1 rounded-full bg-gray-50 text-[10px] font-black tracking-widest text-gray-500 ring-1 ring-gray-100 uppercase">
-                    {getMilestoneSubtitle(upcomingMilestones[0], room, profile)}
-                 </div>
-              </div>
-              <p className="text-sm font-bold text-gray-800 mb-1">
-                {upcomingMilestones[0].title}
-              </p>
-              <p className="text-[11px] font-medium text-gray-400 leading-relaxed opacity-80">
-                {upcomingMilestones[0].description}
-              </p>
+      {/* ─── Empty Room Hint ─── */}
+      <AnimatePresence>
+        {room.placedItems.length === 0 && !activeModal && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-x-6 bottom-24 z-10 px-4 py-3 text-center"
+            style={{
+              background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
+              border: PIXEL_BORDER,
+              boxShadow: PIXEL_SHADOW,
+            }}
+          >
+            <p className="text-[0.85rem] font-extrabold" style={{ color: '#5c3d2e' }}>Your room is empty</p>
+            <p className="mt-1 text-[0.72rem] font-bold" style={{ color: '#8a6d4a' }}>Tap ✨ below to start building together</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Selected Item Controls ─── */}
+      <AnimatePresence>
+        {selectedItem && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="absolute inset-x-3 z-10 flex items-center gap-2"
+            style={{ bottom: `calc(${NAV_CLEARANCE + 62}px + env(safe-area-inset-bottom, 0px))` }}
+          >
+            <div
+              className="min-w-0 flex-1 px-4 py-2"
+              style={{
+                background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
+                border: PIXEL_BORDER,
+                boxShadow: '2px 2px 0 #3a2518',
+              }}
+            >
+              <p className="truncate text-[0.78rem] font-extrabold" style={{ color: '#5c3d2e' }}>{selectedItemName}</p>
             </div>
-          )}
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={handleRotate}
+              className="flex h-10 w-10 items-center justify-center"
+              style={{
+                background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
+                border: PIXEL_BORDER,
+                boxShadow: '2px 2px 0 #3a2518',
+              }}
+            >
+              <RotateCw size={14} color="#5c3d2e" strokeWidth={2.5} />
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={handleRemove}
+              className="flex h-10 w-10 items-center justify-center"
+              style={{
+                background: 'linear-gradient(180deg, #f0a0a0, #d47070)',
+                border: '2px solid #7a2020',
+                boxShadow: '2px 2px 0 #5a1515',
+              }}
+            >
+              <Trash2 size={14} color="#5a1515" strokeWidth={2.5} />
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Backdrop (when sheet open) ─── */}
+      <AnimatePresence>
+        {activeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-20"
+            style={{ background: 'rgba(0,0,0,0.3)' }}
+            onClick={() => setActiveModal(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ─── Action Sheet ─── */}
+      <AnimatePresence>
+        {activeModal && (
+          <motion.div
+            key={activeModal}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+            className="absolute inset-x-0 bottom-0 z-30 flex flex-col"
+            style={{
+              maxHeight: '55vh',
+              paddingBottom: `calc(${NAV_CLEARANCE + 58}px + env(safe-area-inset-bottom, 0px))`,
+            }}
+          >
+            <div
+              className="flex flex-col overflow-hidden"
+              style={{
+                background: 'linear-gradient(180deg, #faf6f0 0%, #f0e8d8 100%)',
+                flex: '1 1 auto',
+                maxHeight: '100%',
+                borderTop: PIXEL_BORDER,
+                borderLeft: PIXEL_BORDER,
+                borderRight: PIXEL_BORDER,
+                boxShadow: '0 -4px 0 #3a2518',
+              }}
+            >
+              {/* Drag handle — pixel style */}
+              <div className="flex justify-center pb-1 pt-2.5">
+                <div style={{ width: 24, height: 4, background: '#c9a06a', border: '1px solid #5c3d2e' }} />
+              </div>
+
+              {/* Tab row — pixel buttons */}
+              <div className="flex gap-1.5 px-3 pb-2">
+                {([
+                  { id: 'decorate' as const, label: 'Build' },
+                  { id: 'note' as const, label: 'Notes' },
+                  { id: 'gift' as const, label: 'Gifts' },
+                  { id: 'style' as const, label: 'Style' },
+                ] as const).map((tab) => {
+                  const isTabActive = activeModal === tab.id;
+                  const accent = actions.find(a => a.id === tab.id)?.accent || '#ff8c42';
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveModal(tab.id)}
+                      className="px-3 py-1.5 text-[0.7rem] font-extrabold uppercase tracking-wider transition-colors"
+                      style={{
+                        background: isTabActive ? accent : 'rgba(0,0,0,0.04)',
+                        color: isTabActive ? '#fff' : '#5c3d2e',
+                        border: isTabActive ? '2px solid #3a2518' : '2px solid transparent',
+                        borderRadius: 0,
+                        boxShadow: isTabActive ? '2px 2px 0 #3a2518' : 'none',
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Scrollable content */}
+              <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto px-3 pb-3" style={{ scrollbarWidth: 'none' }}>
+
+                {activeModal === 'decorate' && (
+                  <div className="space-y-3">
+                    {/* Category chips */}
+                    <div data-lenis-prevent className="lenis-inner flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                      {(Object.keys(CATEGORY_LABELS) as RoomCategory[]).map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setCategory(cat)}
+                          className="shrink-0 px-3 py-1.5 text-[0.65rem] font-extrabold uppercase tracking-wider transition-colors"
+                          style={{
+                            background: category === cat ? categoryAccent[cat] : 'rgba(0,0,0,0.04)',
+                            color: category === cat ? '#fff' : '#5c3d2e',
+                            border: category === cat ? '2px solid #3a2518' : '2px solid transparent',
+                            borderRadius: 0,
+                            boxShadow: category === cat ? '2px 2px 0 #3a2518' : 'none',
+                          }}
+                        >
+                          {CATEGORY_LABELS[cat]}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Stats + milestone hint */}
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[0.68rem]" style={{ color: softText }}>
+                        {room.placedItems.length}/{MAX_PLACED_ITEMS} placed
+                      </span>
+                      {upcomingMilestones[0] && (
+                        <span className="text-[0.68rem]" style={{ color: softText }}>
+                          Next: {ROOM_SHOP_BY_ID[upcomingMilestones[0].itemId]?.name || upcomingMilestones[0].title}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Item grid */}
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {shopItems.map(({ item, locked }) => (
+                        <motion.button
+                          key={item.id}
+                          whileTap={{ scale: locked ? 1 : 0.96 }}
+                          onClick={() => !locked && handlePlace(item.id)}
+                          disabled={locked || !canPlaceItem(room)}
+                          className="relative overflow-hidden rounded-2xl p-2 text-left"
+                          style={{
+                            background: locked ? 'rgba(0,0,0,0.02)' : '#fff',
+                            border: '1.5px solid rgba(0,0,0,0.06)',
+                            opacity: locked ? 0.5 : 1,
+                          }}
+                        >
+                          <div className="rounded-xl p-1" style={{ background: `${item.color}12` }}>
+                            <div className="h-14">
+                              <CatalogArtwork item={item} />
+                            </div>
+                          </div>
+                          <p className="mt-1 truncate text-[0.68rem] font-bold" style={{ color: strongText }}>
+                            {item.name}
+                          </p>
+                          {locked && <Lock size={10} className="absolute right-1.5 top-1.5" color={softText} />}
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeModal === 'note' && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <textarea
+                        value={noteText}
+                        onChange={(event) => setNoteText(event.target.value)}
+                        placeholder={`A note for ${profile.partnerName}...`}
+                        maxLength={200}
+                        rows={2}
+                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[0.82rem] outline-none"
+                        style={{ color: strongText, border: '1.5px solid rgba(0,0,0,0.08)' }}
+                      />
+                      <motion.button
+                        whileTap={{ scale: 0.92 }}
+                        onClick={handleAddNote}
+                        disabled={!noteText.trim()}
+                        className="self-end rounded-xl p-2.5"
+                        style={{ background: noteText.trim() ? '#ef5da8' : '#e0d8d0', color: '#fff' }}
+                      >
+                        <Send size={14} />
+                      </motion.button>
+                    </div>
+
+                    {room.notes.length === 0 && (
+                      <p className="px-1 text-[0.72rem]" style={{ color: softText }}>
+                        Notes appear here. Leave something warm.
+                      </p>
+                    )}
+
+                    {room.notes.map((note) => (
+                      <div key={note.id} className="rounded-xl px-3 py-2.5" style={{ background: note.color || '#fff5e6', border: '1.5px solid rgba(0,0,0,0.05)' }}>
+                        <p className="text-[0.78rem] leading-relaxed" style={{ color: strongText }}>{note.text}</p>
+                        <div className="mt-1.5 flex items-center justify-between">
+                          <span className="text-[0.65rem]" style={{ color: softText }}>
+                            {note.author} • {formatRelativeTime(note.createdAt)}
+                          </span>
+                          <button
+                            onClick={() => persist(removeNote(stateRef.current, note.id), 'cleared a note')}
+                            className="p-1 opacity-40 hover:opacity-100"
+                          >
+                            <X size={11} color={softText} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeModal === 'gift' && (
+                  <div className="space-y-3">
+                    {/* Unopened gifts */}
+                    {unopenedGifts.map((gift) => (
+                      <div
+                        key={gift.id}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                        style={{ background: 'rgba(16,185,129,0.08)', border: '1.5px solid rgba(16,185,129,0.15)' }}
+                      >
+                        <span className="text-xl">{gift.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[0.78rem] font-bold" style={{ color: strongText }}>From {gift.from}</p>
+                          <p className="truncate text-[0.7rem]" style={{ color: softText }}>{gift.message}</p>
+                        </div>
+                        <button
+                          onClick={() => handleOpenGift(gift.id)}
+                          className="shrink-0 rounded-full bg-emerald-500 px-3 py-1 text-[0.68rem] font-bold text-white"
+                        >
+                          Open
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Emoji picker row */}
+                    <div data-lenis-prevent className="lenis-inner flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                      {GIFT_EMOJIS.map((emoji) => {
+                        const active = giftEmoji === emoji;
+                        return (
+                          <button
+                            key={emoji}
+                            onClick={() => setGiftEmoji(emoji)}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg transition-transform"
+                            style={{
+                              background: active ? (giftOptionMeta[emoji]?.tint || '#f9a8d4') : 'rgba(0,0,0,0.04)',
+                              border: active ? '2px solid rgba(0,0,0,0.08)' : '2px solid transparent',
+                              transform: active ? 'scale(1.15)' : 'scale(1)',
+                            }}
+                          >
+                            {emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Message + send */}
+                    <div className="flex gap-2">
+                      <textarea
+                        value={giftMsg}
+                        onChange={(event) => setGiftMsg(event.target.value)}
+                        placeholder={`Message for ${profile.partnerName}...`}
+                        maxLength={200}
+                        rows={2}
+                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[0.82rem] outline-none"
+                        style={{ color: strongText, border: '1.5px solid rgba(0,0,0,0.08)' }}
+                      />
+                      <motion.button
+                        whileTap={{ scale: 0.92 }}
+                        onClick={handleSendGift}
+                        disabled={!giftMsg.trim()}
+                        className="self-end rounded-xl p-2.5"
+                        style={{ background: giftMsg.trim() ? '#4cc98b' : '#e0d8d0', color: '#fff' }}
+                      >
+                        <Gift size={14} />
+                      </motion.button>
+                    </div>
+                  </div>
+                )}
+
+                {activeModal === 'style' && (
+                  <div className="space-y-4">
+                    {/* Walls */}
+                    <div>
+                      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-wider" style={{ color: softText }}>Walls</p>
+                      <div data-lenis-prevent className="lenis-inner flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                        {WALLPAPER_OPTIONS.map((opt) => {
+                          const active = room.wallpaper === opt.value;
+                          return (
+                            <button key={opt.value} onClick={() => applyTheme('wallpaper', opt.value)} className="shrink-0">
+                              <div
+                                className="h-14 w-14 rounded-xl transition-transform"
+                                style={{
+                                  background: opt.swatch,
+                                  border: active ? '3px solid #ef5da8' : '2px solid rgba(0,0,0,0.06)',
+                                  transform: active ? 'scale(1.12)' : 'scale(1)',
+                                }}
+                              />
+                              <p className="mt-1 text-center text-[0.58rem] font-semibold" style={{ color: active ? strongText : softText }}>
+                                {opt.label}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Floor */}
+                    <div>
+                      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-wider" style={{ color: softText }}>Floor</p>
+                      <div data-lenis-prevent className="lenis-inner flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                        {FLOOR_OPTIONS.map((opt) => {
+                          const active = room.floor === opt.value;
+                          return (
+                            <button key={opt.value} onClick={() => applyTheme('floor', opt.value)} className="shrink-0">
+                              <div
+                                className="h-14 w-14 rounded-xl transition-transform"
+                                style={{
+                                  background: opt.swatch,
+                                  border: active ? '3px solid #3b82f6' : '2px solid rgba(0,0,0,0.06)',
+                                  transform: active ? 'scale(1.12)' : 'scale(1)',
+                                }}
+                              />
+                              <p className="mt-1 text-center text-[0.58rem] font-semibold" style={{ color: active ? strongText : softText }}>
+                                {opt.label}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Lighting */}
+                    <div>
+                      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-wider" style={{ color: softText }}>Lighting</p>
+                      <div data-lenis-prevent className="lenis-inner flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                        {AMBIENT_OPTIONS.map((opt) => {
+                          const active = room.ambient === opt.value;
+                          return (
+                            <button key={opt.value} onClick={() => applyTheme('ambient', opt.value)} className="shrink-0">
+                              <div
+                                className="h-14 w-14 rounded-full transition-transform"
+                                style={{
+                                  background: opt.color,
+                                  border: active ? `3px solid ${opt.color}` : '2px solid rgba(0,0,0,0.06)',
+                                  boxShadow: active ? `0 0 16px ${opt.color}55` : 'none',
+                                  transform: active ? 'scale(1.12)' : 'scale(1)',
+                                }}
+                              />
+                              <p className="mt-1 text-center text-[0.58rem] font-semibold" style={{ color: active ? strongText : softText }}>
+                                {opt.label}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Pixel Action Toolbar ─── */}
+      <div
+        className="fixed inset-x-0 z-[55] flex justify-center pointer-events-none"
+        style={{ bottom: `calc(${NAV_CLEARANCE}px + env(safe-area-inset-bottom, 0px))` }}
+      >
+        <div
+          className="pointer-events-auto flex items-stretch"
+          style={{
+            background: 'linear-gradient(180deg, #f2d4a0 0%, #dbb580 60%, #c9a06a 100%)',
+            border: PIXEL_BORDER,
+            boxShadow: PIXEL_SHADOW,
+            borderRadius: 0,
+            imageRendering: 'pixelated',
+          }}
+        >
+          {actions.map((action, i) => {
+            const isActive = action.modal ? activeModal === action.modal : false;
+            return (
+              <motion.button
+                key={action.id}
+                whileTap={{ scale: 0.92 }}
+                onClick={() => {
+                  if (action.modal) {
+                    setActiveModal(activeModal === action.modal ? null : action.modal);
+                  } else {
+                    action.onClick?.();
+                  }
+                }}
+                className="relative flex flex-col items-center justify-center gap-0.5 outline-none touch-manipulation select-none"
+                style={{
+                  width: 56,
+                  height: 52,
+                  background: isActive
+                    ? 'linear-gradient(180deg, #ffe8c2 0%, #f5d09a 100%)'
+                    : 'transparent',
+                  borderRight: i < actions.length - 1 ? '2px solid #5c3d2e' : 'none',
+                  boxShadow: isActive ? 'inset 0 -3px 0 #b8883e' : 'inset 0 -2px 0 #c9a06a',
+                }}
+              >
+                <div style={{ color: isActive ? action.accent : '#5c3d2e' }}>
+                  {React.cloneElement(action.icon, { size: 18, strokeWidth: 2.5 })}
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.55rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase' as const,
+                    color: isActive ? action.accent : '#5c3d2e',
+                    lineHeight: 1,
+                  }}
+                >
+                  {action.label}
+                </span>
+                {isActive && (
+                  <div
+                    className="absolute -top-1 left-1/2 -translate-x-1/2"
+                    style={{
+                      width: 6, height: 6,
+                      background: action.accent,
+                      border: '1px solid #5c3d2e',
+                    }}
+                  />
+                )}
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
+      {/* ─── Toast ─── */}
       <AnimatePresence>
         {toast && (
           <motion.div
             initial={{ opacity: 0, y: -14 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -14 }}
-            className="fixed left-1/2 top-20 z-[90] -translate-x-1/2 rounded-full px-4 py-2.5 text-[0.78rem] font-semibold"
-            style={panelStyle}
+            className="absolute left-1/2 z-[90] -translate-x-1/2 px-4 py-2"
+            style={{
+              top: 'calc(max(12px, env(safe-area-inset-top)) + 48px)',
+              background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
+              border: PIXEL_BORDER,
+              boxShadow: '2px 2px 0 #3a2518',
+            }}
           >
-            {toast}
+            <span className="text-[0.72rem] font-extrabold" style={{ color: '#5c3d2e' }}>{toast}</span>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {activeModal && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setActiveModal(null)}
-              className="fixed inset-0 z-40"
-              style={{ background: 'rgba(32,18,27,0.18)', backdropFilter: 'blur(5px)' }}
-            />
-
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 280, damping: 30 }}
-              className="fixed inset-x-0 bottom-[5.75rem] z-50 mx-auto w-full max-w-md px-4"
-            >
-              <div className="overflow-hidden rounded-[2rem]" style={{ ...panelStyle, background: 'rgba(255,255,255,0.92)' }}>
-                <div className="flex items-center justify-between px-5 pb-3 pt-5">
-                  <div>
-                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-                      {activeModal === 'decorate'
-                        ? 'Decorate'
-                        : activeModal === 'note'
-                          ? 'Notes'
-                          : activeModal === 'gift'
-                            ? 'Gifts'
-                            : 'Style'}
-                    </p>
-                    <h3 className="mt-1 text-[1rem] font-semibold" style={{ color: strongText }}>
-                      {activeModal === 'decorate'
-                        ? 'Build your room together'
-                        : activeModal === 'note'
-                          ? 'Leave a soft little message'
-                          : activeModal === 'gift'
-                            ? 'Place something sweet for your partner'
-                            : 'Choose the mood of the room'}
-                    </h3>
-                  </div>
-                  <motion.button whileTap={{ scale: 0.94 }} onClick={() => setActiveModal(null)} className="rounded-full p-2" style={{ background: 'rgba(0,0,0,0.05)' }}>
-                    <X size={16} style={{ color: softText }} />
-                  </motion.button>
-                </div>
-
-                <div data-lenis-prevent className="lenis-inner max-h-[65vh] overflow-y-auto px-5 pb-5" style={{ scrollbarWidth: 'none' }}>
-                  {activeModal === 'decorate' && (
-                    <div className="space-y-4">
-                      <div className="rounded-[1.35rem] p-4" style={{ background: 'rgba(255,247,250,0.9)', border: '1px solid rgba(236,72,153,0.10)' }}>
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-[0.8rem] font-semibold" style={{ color: strongText }}>
-                              {canPlaceItem(room) ? 'Choose a piece for the room' : 'The room is full for now'}
-                            </p>
-                            <p className="mt-1 text-[0.72rem]" style={{ color: softText }}>
-                              {room.placedItems.length}/{MAX_PLACED_ITEMS} pieces placed
-                            </p>
-                          </div>
-                          <div className="rounded-full px-3 py-1.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(139,92,246,0.10)', color: '#7c3aed' }}>
-                            Long-term space
-                          </div>
-                        </div>
-                      </div>
-
-                      <div data-lenis-prevent className="lenis-inner flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                        {(Object.keys(CATEGORY_LABELS) as RoomCategory[]).map((cat) => (
-                          <button
-                            key={cat}
-                            onClick={() => setCategory(cat)}
-                            className="shrink-0 rounded-full px-3.5 py-2 text-[0.74rem] font-semibold"
-                            style={{
-                              background: category === cat ? `${categoryAccent[cat]}16` : 'rgba(0,0,0,0.04)',
-                              border: category === cat ? `1px solid ${categoryAccent[cat]}35` : '1px solid transparent',
-                              color: category === cat ? categoryAccent[cat] : strongText,
-                            }}
-                          >
-                            {CATEGORY_LABELS[cat]}
-                          </button>
-                        ))}
-                      </div>
-
-                      {upcomingMilestones[0] && (
-                        <div className="rounded-[1.35rem] p-4" style={{ background: 'rgba(243,244,255,0.92)', border: '1px solid rgba(99,102,241,0.12)' }}>
-                          <p className="text-[0.76rem] font-semibold" style={{ color: strongText }}>
-                            Coming next: {ROOM_SHOP_BY_ID[upcomingMilestones[0].itemId]?.name || upcomingMilestones[0].title}
-                          </p>
-                          <p className="mt-1 text-[0.7rem]" style={{ color: softText }}>
-                            {getMilestoneSubtitle(upcomingMilestones[0], room, profile)}
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-3">
-                        {shopItems.map(({ item, locked, lockReason }) => (
-                          <motion.button
-                            key={item.id}
-                            whileTap={{ scale: locked ? 1 : 0.98 }}
-                            onClick={() => !locked && handlePlace(item.id)}
-                            disabled={locked || !canPlaceItem(room)}
-                            className="relative rounded-[1.5rem] p-3 text-left"
-                            style={{
-                              background: locked ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.94)',
-                              border: locked ? '1px solid rgba(0,0,0,0.05)' : `1px solid ${item.color}22`,
-                              boxShadow: locked ? 'none' : '0 10px 24px rgba(72,50,67,0.06)',
-                              opacity: locked ? 0.68 : 1,
-                            }}
-                          >
-                            <div className="h-20 rounded-[1.2rem] p-2" style={{ background: `linear-gradient(180deg, ${item.color}16 0%, rgba(255,255,255,0.9) 100%)` }}>
-                              <CatalogArtwork item={item} />
-                            </div>
-                            <p className="mt-3 text-[0.8rem] font-semibold leading-tight" style={{ color: strongText }}>
-                              {item.name}
-                            </p>
-                            <p className="mt-1 text-[0.66rem] leading-relaxed" style={{ color: softText }}>
-                              {locked ? lockReason : 'Tap to place'}
-                            </p>
-                            {locked && (
-                              <div className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[0.62rem] font-semibold" style={{ background: 'rgba(255,255,255,0.82)', color: softText }}>
-                                <Lock size={10} /> Locked for now
-                              </div>
-                            )}
-                          </motion.button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeModal === 'note' && (
-                    <div className="space-y-4">
-                      <div className="rounded-[1.35rem] p-4" style={{ background: 'rgba(255,246,250,0.9)', border: '1px solid rgba(236,72,153,0.10)' }}>
-                        <textarea
-                          value={noteText}
-                          onChange={(event) => setNoteText(event.target.value)}
-                          placeholder={`Leave something warm for ${profile.partnerName}...`}
-                          maxLength={200}
-                          rows={4}
-                          className="w-full resize-none bg-transparent text-[0.86rem] leading-relaxed outline-none"
-                          style={{ color: strongText }}
-                        />
-                        <div className="mt-3 flex items-center justify-between">
-                          <span className="text-[0.68rem]" style={{ color: softText }}>
-                            {noteText.length}/200
-                          </span>
-                          <motion.button
-                            whileTap={{ scale: 0.96 }}
-                            onClick={handleAddNote}
-                            disabled={!noteText.trim()}
-                            className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[0.74rem] font-semibold text-white"
-                            style={{
-                              background: noteText.trim() ? 'linear-gradient(135deg, #ef5da8, #d946ef)' : '#d1d5db',
-                              boxShadow: noteText.trim() ? '0 10px 20px rgba(239,93,168,0.22)' : 'none',
-                            }}
-                          >
-                            <Send size={13} /> Leave note
-                          </motion.button>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        {room.notes.length === 0 && (
-                          <div className="rounded-[1.35rem] p-4 text-[0.76rem]" style={{ background: 'rgba(0,0,0,0.03)', color: softText }}>
-                            No notes yet. This is a lovely place to start.
-                          </div>
-                        )}
-
-                        {room.notes.map((note) => (
-                          <div key={note.id} className="rounded-[1.35rem] px-4 py-3" style={{ background: note.color, border: '1px solid rgba(255,255,255,0.92)' }}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-[0.82rem] leading-relaxed" style={{ color: strongText }}>
-                                  {note.text}
-                                </p>
-                                <p className="mt-2 text-[0.66rem]" style={{ color: softText }}>
-                                  {note.author} - {formatRelativeTime(note.createdAt)}
-                                </p>
-                              </div>
-                              <button onClick={() => persist(removeNote(room, note.id), 'cleared a note')} className="shrink-0 rounded-full p-1.5" style={{ background: 'rgba(255,255,255,0.55)' }}>
-                                <X size={12} style={{ color: softText }} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeModal === 'gift' && (
-                    <div className="space-y-4">
-                      {unopenedGifts.length > 0 && (
-                        <div className="space-y-2">
-                          {unopenedGifts.map((gift) => (
-                            <div key={gift.id} className="rounded-[1.35rem] p-4" style={{ background: 'rgba(255,250,240,0.96)', border: '1px solid rgba(245,158,11,0.12)' }}>
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-[0.8rem] font-semibold" style={{ color: strongText }}>
-                                    From {gift.from}
-                                  </p>
-                                  <p className="mt-1 text-[0.76rem] leading-relaxed" style={{ color: softText }}>
-                                    {gift.message}
-                                  </p>
-                                </div>
-                                <button
-                                  onClick={() => handleOpenGift(gift.id)}
-                                  className="rounded-full px-3 py-1.5 text-[0.68rem] font-semibold"
-                                  style={{ background: 'rgba(245,158,11,0.12)', color: '#d97706' }}
-                                >
-                                  Open
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <div>
-                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-                          Pick a little gift
-                        </p>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          {GIFT_EMOJIS.map((emoji) => {
-                            const option = giftOptionMeta[emoji];
-                            const active = giftEmoji === emoji;
-                            return (
-                              <button
-                                key={emoji}
-                                onClick={() => setGiftEmoji(emoji)}
-                                className="rounded-[1.25rem] px-3 py-3 text-left"
-                                style={{
-                                  background: active ? `${option.tint}16` : 'rgba(0,0,0,0.03)',
-                                  border: active ? `1px solid ${option.tint}44` : '1px solid transparent',
-                                }}
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <div>
-                                    <p className="text-[0.8rem] font-semibold" style={{ color: strongText }}>
-                                      {option.label}
-                                    </p>
-                                    <p className="mt-1 text-[0.66rem]" style={{ color: softText }}>
-                                      Something small and thoughtful
-                                    </p>
-                                  </div>
-                                  <div className="h-10 w-10 rounded-full flex items-center justify-center text-xl" style={{ background: `${option.tint}20` }}>
-                                    {emoji}
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="rounded-[1.35rem] p-4" style={{ background: 'rgba(255,251,240,0.92)', border: '1px solid rgba(245,158,11,0.10)' }}>
-                        <textarea
-                          value={giftMsg}
-                          onChange={(event) => setGiftMsg(event.target.value)}
-                          placeholder={`Add a message for ${profile.partnerName}...`}
-                          maxLength={200}
-                          rows={4}
-                          className="w-full resize-none bg-transparent text-[0.86rem] leading-relaxed outline-none"
-                          style={{ color: strongText }}
-                        />
-                        <div className="mt-3 flex items-center justify-between">
-                          <span className="text-[0.68rem]" style={{ color: softText }}>
-                            {giftMsg.length}/200
-                          </span>
-                          <motion.button
-                            whileTap={{ scale: 0.96 }}
-                            onClick={handleSendGift}
-                            disabled={!giftMsg.trim()}
-                            className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[0.74rem] font-semibold text-white"
-                            style={{
-                              background: giftMsg.trim() ? 'linear-gradient(135deg, #f59e0b, #fb7185)' : '#d1d5db',
-                              boxShadow: giftMsg.trim() ? '0 10px 20px rgba(245,158,11,0.24)' : 'none',
-                            }}
-                          >
-                            <Gift size={13} /> Leave gift
-                          </motion.button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeModal === 'style' && (
-                    <div className="space-y-5">
-                      <div>
-                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-                          Walls
-                        </p>
-                        <div className="mt-3 grid grid-cols-2 gap-3">
-                          {WALLPAPER_OPTIONS.map((option) => {
-                            const active = room.wallpaper === option.value;
-                            return (
-                              <button
-                                key={option.value}
-                                onClick={() => applyTheme('wallpaper', option.value)}
-                                className="rounded-[1.35rem] p-3 text-left"
-                                style={{
-                                  background: active ? 'rgba(239,93,168,0.10)' : 'rgba(0,0,0,0.03)',
-                                  border: active ? '1px solid rgba(239,93,168,0.24)' : '1px solid transparent',
-                                }}
-                              >
-                                <div className="h-14 rounded-[1rem]" style={{ background: option.swatch }} />
-                                <div className="mt-2 flex items-center justify-between gap-2">
-                                  <span className="text-[0.76rem] font-semibold" style={{ color: strongText }}>
-                                    {option.label}
-                                  </span>
-                                  {active && <Check size={14} color="#db2777" />}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-                          Floor
-                        </p>
-                        <div className="mt-3 grid grid-cols-2 gap-3">
-                          {FLOOR_OPTIONS.map((option) => {
-                            const active = room.floor === option.value;
-                            return (
-                              <button
-                                key={option.value}
-                                onClick={() => applyTheme('floor', option.value)}
-                                className="rounded-[1.35rem] p-3 text-left"
-                                style={{
-                                  background: active ? 'rgba(59,130,246,0.10)' : 'rgba(0,0,0,0.03)',
-                                  border: active ? '1px solid rgba(59,130,246,0.24)' : '1px solid transparent',
-                                }}
-                              >
-                                <div className="h-14 rounded-[1rem]" style={{ background: option.swatch }} />
-                                <div className="mt-2 flex items-center justify-between gap-2">
-                                  <span className="text-[0.76rem] font-semibold" style={{ color: strongText }}>
-                                    {option.label}
-                                  </span>
-                                  {active && <Check size={14} color="#2563eb" />}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em]" style={{ color: softText }}>
-                          Lighting
-                        </p>
-                        <div className="mt-3 grid grid-cols-3 gap-3">
-                          {AMBIENT_OPTIONS.map((option) => {
-                            const active = room.ambient === option.value;
-                            return (
-                              <button
-                                key={option.value}
-                                onClick={() => applyTheme('ambient', option.value)}
-                                className="rounded-[1.35rem] p-3 text-center"
-                                style={{
-                                  background: active ? `${option.color}16` : 'rgba(0,0,0,0.03)',
-                                  border: active ? `1px solid ${option.color}36` : '1px solid transparent',
-                                }}
-                              >
-                                <div className="mx-auto h-11 w-11 rounded-full" style={{ background: option.color, boxShadow: `0 8px 18px ${option.color}33` }} />
-                                <div className="mt-2 flex items-center justify-center gap-1.5">
-                                  <span className="text-[0.76rem] font-semibold" style={{ color: strongText }}>
-                                    {option.label}
-                                  </span>
-                                  {active && <Check size={14} color={option.color} />}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </>
         )}
       </AnimatePresence>
     </div>

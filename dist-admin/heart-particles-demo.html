@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parametric Particle Heart</title>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 50% 45%, rgba(76, 0, 110, 0.18), rgba(10, 4, 18, 0.28) 26%, rgba(2, 1, 6, 0.96) 62%),
+                #010103;
+            font-family: "Segoe UI", Inter, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        .hud {
+            position: fixed;
+            inset: 0 auto auto 0;
+            padding: 22px 24px;
+            pointer-events: none;
+            color: rgba(255, 221, 245, 0.88);
+            text-shadow: 0 0 24px rgba(255, 64, 192, 0.14);
+        }
+
+        .hud h1 {
+            margin: 0;
+            font-size: clamp(24px, 2vw, 34px);
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .hud p {
+            margin: 8px 0 0;
+            font-size: 13px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: rgba(255, 196, 232, 0.58);
+        }
+
+        body.embedded .hud {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="stage" aria-label="Interactive glowing particle heart"></canvas>
+    <div class="hud">
+        <h1>Pulse Heart</h1>
+        <p>Move to disturb • Drag to orbit</p>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
+        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/controls/OrbitControls.js';
+        import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+        const canvas = document.getElementById('stage');
+        const searchParams = new URLSearchParams(window.location.search);
+        const embedded = searchParams.get('embedded') === '1';
+        const instanceId = searchParams.get('instance') || '';
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const particleCount = prefersReducedMotion ? 36000 : embedded ? 52000 : 65000;
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, prefersReducedMotion ? 1 : embedded ? 1.1 : 1.25);
+        const interactionRadius = 1.65;
+        const cellSize = 0.62;
+        const queryRange = Math.ceil(interactionRadius / cellSize);
+        const springStrength = 0.084;
+        const damping = 0.895;
+
+        if (embedded) {
+            document.body.classList.add('embedded');
+        }
+
+        const renderer = new THREE.WebGLRenderer({
+            canvas,
+            antialias: false,
+            alpha: false,
+            powerPreference: 'high-performance',
+        });
+        renderer.setPixelRatio(pixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.08;
+        renderer.setClearColor(0x010103, 1);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 120);
+        camera.position.set(0, 0.55, 18);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enablePan = false;
+        controls.enableZoom = false;
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.rotateSpeed = 0.5;
+        controls.autoRotate = !prefersReducedMotion;
+        controls.autoRotateSpeed = 0.42;
+        controls.target.set(0, 0.15, 0);
+
+        const composer = new EffectComposer(renderer);
+        composer.setPixelRatio(pixelRatio);
+        composer.addPass(new RenderPass(scene, camera));
+
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            prefersReducedMotion ? 0.85 : embedded ? 0.96 : 1.08,
+            0.9,
+            0.05,
+        );
+        bloomPass.threshold = 0.04;
+        bloomPass.strength = prefersReducedMotion ? 0.75 : embedded ? 0.9 : 1.02;
+        bloomPass.radius = prefersReducedMotion ? 0.72 : embedded ? 0.82 : 0.9;
+        composer.addPass(bloomPass);
+
+        const heartGroup = new THREE.Group();
+        heartGroup.rotation.x = -0.16;
+        scene.add(heartGroup);
+
+        const basePositions = new Float32Array(particleCount * 3);
+        const offsets = new Float32Array(particleCount * 3);
+        const velocities = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        const phases = new Float32Array(particleCount);
+        const activeFlags = new Uint8Array(particleCount);
+        const activeList = [];
+        const grid = new Map();
+        const deepPurple = new THREE.Color('#4d0cff');
+        const neonPink = new THREE.Color('#ff48d2');
+        const softLilac = new THREE.Color('#d18cff');
+        const scratchColor = new THREE.Color();
+
+        const pointer = new THREE.Vector2(2, 2);
+        const raycaster = new THREE.Raycaster();
+        const plane = new THREE.Plane();
+        const planeNormal = new THREE.Vector3();
+        const planePoint = new THREE.Vector3();
+        const interactionPoint = new THREE.Vector3();
+        const localInteractionPoint = new THREE.Vector3();
+        const lastWorldPoint = new THREE.Vector3();
+        const pointerDelta = new THREE.Vector3();
+        const pendingPointer = new THREE.Vector2();
+        let hasPointer = false;
+        let pointerDirty = false;
+        let animationFrameId = 0;
+        let completeTimerId = 0;
+        let disposed = false;
+
+        function cellKey(x, y, z) {
+            return `${x}|${y}|${z}`;
+        }
+
+        function heartProfile(t) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+            return { x, y };
+        }
+
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        for (let index = 0; index < particleCount; index += 1) {
+            const i3 = index * 3;
+            const t = Math.pow(Math.random(), 0.92) * Math.PI;
+            const phi = Math.random() * Math.PI * 2;
+            const { x: profileX, y: profileY } = heartProfile(t);
+            const shellMix = Math.random() < 0.78
+                ? 0.7 + Math.pow(Math.random(), 0.38) * 0.3
+                : Math.pow(Math.random(), 1.7) * 0.7;
+            const radius = profileX * shellMix * 0.22;
+            const depthCompression = 0.55 + Math.pow(Math.sin(t), 1.25) * 0.45;
+            const jitter = (Math.random() - 0.5) * 0.12 * (1 - shellMix);
+
+            basePositions[i3] = radius * Math.cos(phi);
+            basePositions[i3 + 1] = profileY * 0.22 + jitter;
+            basePositions[i3 + 2] = radius * Math.sin(phi) * depthCompression;
+
+            minY = Math.min(minY, basePositions[i3 + 1]);
+            maxY = Math.max(maxY, basePositions[i3 + 1]);
+
+            const heightMix = THREE.MathUtils.clamp((profileY + 17) / 22, 0, 1);
+            const colorMix = THREE.MathUtils.clamp(heightMix * 0.72 + Math.random() * 0.22, 0, 1);
+            scratchColor.copy(deepPurple).lerp(neonPink, colorMix);
+            if (shellMix < 0.52) {
+                scratchColor.lerp(softLilac, 0.25);
+            }
+
+            colors[i3] = scratchColor.r;
+            colors[i3 + 1] = scratchColor.g;
+            colors[i3 + 2] = scratchColor.b;
+            sizes[index] = 0.8 + Math.random() * 1.65 + shellMix * 0.28;
+            phases[index] = Math.random() * Math.PI * 2;
+        }
+
+        const yOffset = (minY + maxY) * 0.48;
+        for (let index = 0; index < particleCount; index += 1) {
+            const i3 = index * 3;
+            basePositions[i3 + 1] -= yOffset;
+
+            const cellX = Math.floor(basePositions[i3] / cellSize);
+            const cellY = Math.floor(basePositions[i3 + 1] / cellSize);
+            const cellZ = Math.floor(basePositions[i3 + 2] / cellSize);
+            const key = cellKey(cellX, cellY, cellZ);
+
+            if (!grid.has(key)) {
+                grid.set(key, []);
+            }
+            grid.get(key).push(index);
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(basePositions, 3));
+        geometry.setAttribute('aOffset', new THREE.BufferAttribute(offsets, 3).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.computeBoundingSphere();
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPulse: { value: 1 },
+                uBrightness: { value: 1 },
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uPulse;
+                uniform float uBrightness;
+
+                attribute vec3 aOffset;
+                attribute float aSize;
+                attribute float aPhase;
+
+                varying vec3 vColor;
+                varying float vEnergy;
+
+                void main() {
+                    vec3 normalDir = normalize(position + vec3(0.0001));
+                    float shimmer = sin(uTime * 1.15 + aPhase) * 0.025;
+                    float offsetEnergy = clamp(length(aOffset) * 0.45, 0.0, 1.0);
+                    vec3 transformed = position * uPulse;
+                    transformed += normalDir * shimmer;
+                    transformed += aOffset;
+
+                    vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+                    float size = aSize * (122.0 / max(1.0, -mvPosition.z));
+                    size *= 0.92 + uPulse * 0.28 + offsetEnergy * 0.3;
+                    gl_PointSize = clamp(size, 1.0, 12.0);
+                    gl_Position = projectionMatrix * mvPosition;
+
+                    vColor = color * (0.9 + uBrightness * 0.22);
+                    vEnergy = offsetEnergy;
+                }
+            `,
+            fragmentShader: `
+                uniform float uBrightness;
+
+                varying vec3 vColor;
+                varying float vEnergy;
+
+                void main() {
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float dist = length(uv);
+
+                    float core = smoothstep(0.18, 0.0, dist);
+                    float glow = smoothstep(0.5, 0.0, dist);
+                    float mist = pow(glow, 2.6);
+                    float alpha = core * 0.95 + mist * (0.42 + vEnergy * 0.3);
+
+                    vec3 colorOut = vColor * (core * 1.85 + mist * (0.8 + uBrightness * 0.45));
+                    gl_FragColor = vec4(colorOut, alpha);
+                }
+            `,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false,
+            depthTest: true,
+        });
+
+        const points = new THREE.Points(geometry, material);
+        points.frustumCulled = false;
+        heartGroup.add(points);
+
+        const offsetAttribute = geometry.getAttribute('aOffset');
+
+        function activateParticle(index) {
+            if (activeFlags[index] === 1) {
+                return;
+            }
+            activeFlags[index] = 1;
+            activeList.push(index);
+        }
+
+        function applyRepulsion(point, delta) {
+            const cellX = Math.floor(point.x / cellSize);
+            const cellY = Math.floor(point.y / cellSize);
+            const cellZ = Math.floor(point.z / cellSize);
+            const radiusSq = interactionRadius * interactionRadius;
+            const flowScale = prefersReducedMotion ? 0.016 : 0.028;
+            const flowX = delta.x * flowScale;
+            const flowY = delta.y * flowScale;
+            const flowZ = delta.z * flowScale;
+
+            for (let gx = cellX - queryRange; gx <= cellX + queryRange; gx += 1) {
+                for (let gy = cellY - queryRange; gy <= cellY + queryRange; gy += 1) {
+                    for (let gz = cellZ - queryRange; gz <= cellZ + queryRange; gz += 1) {
+                        const bucket = grid.get(cellKey(gx, gy, gz));
+                        if (!bucket) {
+                            continue;
+                        }
+
+                        for (let bucketIndex = 0; bucketIndex < bucket.length; bucketIndex += 1) {
+                            const particleIndex = bucket[bucketIndex];
+                            const i3 = particleIndex * 3;
+                            const dx = basePositions[i3] - point.x;
+                            const dy = basePositions[i3 + 1] - point.y;
+                            const dz = basePositions[i3 + 2] - point.z;
+                            const distanceSq = dx * dx + dy * dy + dz * dz;
+
+                            if (distanceSq > radiusSq) {
+                                continue;
+                            }
+
+                            const distance = Math.sqrt(distanceSq) + 0.0001;
+                            const influence = 1 - distance / interactionRadius;
+                            const force = influence * influence * 0.38;
+                            const invDistance = 1 / distance;
+
+                            velocities[i3] += dx * invDistance * force + flowX * influence;
+                            velocities[i3 + 1] += dy * invDistance * force + flowY * influence;
+                            velocities[i3 + 2] += dz * invDistance * force + flowZ * influence;
+                            activateParticle(particleIndex);
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateActiveParticles() {
+            if (activeList.length === 0) {
+                return;
+            }
+
+            let writeIndex = 0;
+            for (let activeIndex = 0; activeIndex < activeList.length; activeIndex += 1) {
+                const particleIndex = activeList[activeIndex];
+                const i3 = particleIndex * 3;
+
+                velocities[i3] += -offsets[i3] * springStrength;
+                velocities[i3 + 1] += -offsets[i3 + 1] * springStrength;
+                velocities[i3 + 2] += -offsets[i3 + 2] * springStrength;
+
+                velocities[i3] *= damping;
+                velocities[i3 + 1] *= damping;
+                velocities[i3 + 2] *= damping;
+
+                offsets[i3] += velocities[i3];
+                offsets[i3 + 1] += velocities[i3 + 1];
+                offsets[i3 + 2] += velocities[i3 + 2];
+
+                const energy =
+                    Math.abs(offsets[i3]) +
+                    Math.abs(offsets[i3 + 1]) +
+                    Math.abs(offsets[i3 + 2]) +
+                    Math.abs(velocities[i3]) +
+                    Math.abs(velocities[i3 + 1]) +
+                    Math.abs(velocities[i3 + 2]);
+
+                if (energy > 0.00022) {
+                    activeList[writeIndex] = particleIndex;
+                    writeIndex += 1;
+                } else {
+                    activeFlags[particleIndex] = 0;
+                    offsets[i3] = 0;
+                    offsets[i3 + 1] = 0;
+                    offsets[i3 + 2] = 0;
+                    velocities[i3] = 0;
+                    velocities[i3 + 1] = 0;
+                    velocities[i3 + 2] = 0;
+                }
+            }
+
+            activeList.length = writeIndex;
+            offsetAttribute.needsUpdate = true;
+        }
+
+        function heartbeat(time) {
+            const cadence = time * 7.2;
+            const thump = Math.pow(Math.max(0, Math.sin(cadence)), 18);
+            const echo = Math.pow(Math.max(0, Math.sin(cadence - 0.68)), 28) * 0.42;
+            const breath = 0.5 + 0.5 * Math.sin(time * 0.72 - 0.8);
+            return {
+                scale: 1 + (thump + echo) * 0.095 + breath * 0.012,
+                brightness: 0.82 + (thump + echo) * 2.0 + breath * 0.18,
+            };
+        }
+
+        function updatePointer(clientX, clientY) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+            planeNormal.copy(camera.getWorldDirection(planeNormal));
+            plane.setFromNormalAndCoplanarPoint(planeNormal, heartGroup.getWorldPosition(planePoint.set(0, 0, 0)));
+
+            raycaster.setFromCamera(pointer, camera);
+            if (raycaster.ray.intersectPlane(plane, interactionPoint)) {
+                if (hasPointer) {
+                    pointerDelta.copy(interactionPoint).sub(lastWorldPoint);
+                } else {
+                    pointerDelta.set(0, 0, 0);
+                }
+
+                lastWorldPoint.copy(interactionPoint);
+                localInteractionPoint.copy(interactionPoint);
+                heartGroup.worldToLocal(localInteractionPoint);
+                applyRepulsion(localInteractionPoint, pointerDelta);
+                hasPointer = true;
+            }
+        }
+
+        function handlePointerMove(event) {
+            pendingPointer.set(event.clientX, event.clientY);
+            pointerDirty = true;
+        }
+
+        function handlePointerLeave() {
+            hasPointer = false;
+            pointer.set(2, 2);
+        }
+
+        renderer.domElement.addEventListener('pointermove', handlePointerMove);
+        renderer.domElement.addEventListener('pointerleave', handlePointerLeave);
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            if (disposed) {
+                return;
+            }
+
+            const time = clock.getElapsedTime();
+            const beat = heartbeat(time);
+
+            if (pointerDirty) {
+                updatePointer(pendingPointer.x, pendingPointer.y);
+                pointerDirty = false;
+            }
+
+            material.uniforms.uTime.value = time;
+            material.uniforms.uPulse.value = beat.scale;
+            material.uniforms.uBrightness.value = beat.brightness;
+
+            updateActiveParticles();
+
+            heartGroup.position.y = Math.sin(time * 0.55) * 0.12;
+            heartGroup.rotation.z = Math.sin(time * 0.38) * 0.05;
+            controls.autoRotateSpeed = 0.38 + Math.sin(time * 0.4) * 0.03;
+            controls.update();
+            composer.render();
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        function onResize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const nextPixelRatio = Math.min(window.devicePixelRatio || 1, prefersReducedMotion ? 1 : 1.25);
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setPixelRatio(nextPixelRatio);
+            renderer.setSize(width, height);
+            composer.setPixelRatio(nextPixelRatio);
+            composer.setSize(width, height);
+        }
+
+        function cleanup() {
+            if (disposed) {
+                return;
+            }
+
+            disposed = true;
+            cancelAnimationFrame(animationFrameId);
+            clearTimeout(completeTimerId);
+            window.removeEventListener('resize', onResize);
+            window.removeEventListener('pagehide', cleanup);
+            window.removeEventListener('beforeunload', cleanup);
+            renderer.domElement.removeEventListener('pointermove', handlePointerMove);
+            renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
+            controls.dispose();
+            geometry.dispose();
+            material.dispose();
+            renderer.dispose();
+            scene.clear();
+        }
+
+        window.addEventListener('resize', onResize);
+        window.addEventListener('pagehide', cleanup);
+        window.addEventListener('beforeunload', cleanup);
+
+        if (embedded) {
+            completeTimerId = window.setTimeout(() => {
+                window.parent?.postMessage({ type: 'particle-heart-complete', instance: instanceId }, window.location.origin);
+            }, 6800);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

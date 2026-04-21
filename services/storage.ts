@@ -39,6 +39,9 @@ const remapLegacyKey = (key: unknown): unknown => {
     return key;
 };
 
+const hasOwn = <T extends object>(value: T, key: PropertyKey): boolean =>
+    Object.prototype.hasOwnProperty.call(value, key);
+
 const migrateLegacyLocalStorage = () => {
     if (localStorage.getItem(LEGACY_MIGRATION_FLAG) === 'done') return;
     try {
@@ -238,6 +241,8 @@ const CACHE_KEYS = {
     COMMENTS: 'lior_comments',
     SHARED_PROFILE: 'lior_shared_profile',
     IDENTITY: 'lior_identity',
+    SEEN_RELEASE_VERSION: 'lior_seen_version',
+    COACHMARKS_SEEN: 'lior_coachmarks_seen',
     USER_STATUS: 'lior_status',
     PARTNER_STATUS: 'lior_partner_status',
     PET_STATS: 'lior_pet_stats',
@@ -254,6 +259,53 @@ const CACHE_KEYS = {
     VOICE_NOTES: 'lior_voice_notes',
     PENDING_UPLOADS: 'lior_pending_uploads',
 };
+
+const ACCOUNT_LOCAL_KEYS = {
+    ONBOARDING_COMPLETE: 'lior_onboarded',
+    MANUAL_OVERRIDE: 'lior_manual_override',
+} as const;
+
+const buildAccountScopedStorageKey = (baseKey: string, userId: string | null = SupabaseService.getCachedUserId()) => {
+    const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
+    return normalizedUserId ? `${baseKey}::${normalizedUserId}` : baseKey;
+};
+
+const getAccountScopedLocalStorageValue = (baseKey: string): string | null => {
+    const scopedKey = buildAccountScopedStorageKey(baseKey);
+    const scopedValue = localStorage.getItem(scopedKey);
+    if (scopedValue !== null) {
+        return scopedValue;
+    }
+
+    const legacyValue = localStorage.getItem(baseKey);
+    if (legacyValue !== null && scopedKey !== baseKey) {
+        localStorage.setItem(scopedKey, legacyValue);
+        localStorage.removeItem(baseKey);
+        return legacyValue;
+    }
+
+    return legacyValue;
+};
+
+const setAccountScopedLocalStorageValue = (baseKey: string, value: string) => {
+    const scopedKey = buildAccountScopedStorageKey(baseKey);
+    localStorage.setItem(scopedKey, value);
+    if (scopedKey !== baseKey) {
+        localStorage.removeItem(baseKey);
+    }
+};
+
+const clearAccountScopedLocalStorageValue = (baseKey: string) => {
+    const scopedKey = buildAccountScopedStorageKey(baseKey);
+    localStorage.removeItem(scopedKey);
+    if (scopedKey !== baseKey) {
+        localStorage.removeItem(baseKey);
+    }
+};
+
+const serializeLocalBackupValue = (value: unknown) => (
+    typeof value === 'string' ? value : JSON.stringify(value)
+);
 
 /* ─── Pending upload retry queue ─── */
 // When R2 upload fails (network down, misconfigured worker, etc.), the item's
@@ -684,12 +736,15 @@ export const StorageService = {
             const restoreLocalBackup = async (key: string) => {
                 const backup = await readRaw(STORES.DATA, key);
                 if (backup && !localStorage.getItem(key)) {
-                    localStorage.setItem(key, JSON.stringify(backup));
+                    localStorage.setItem(key, serializeLocalBackupValue(backup));
                 }
             };
 
             await Promise.all([
+                restoreLocalBackup(CACHE_KEYS.IDENTITY),
                 restoreLocalBackup(CACHE_KEYS.SHARED_PROFILE),
+                restoreLocalBackup(CACHE_KEYS.SEEN_RELEASE_VERSION),
+                restoreLocalBackup(CACHE_KEYS.COACHMARKS_SEEN),
                 restoreLocalBackup(CACHE_KEYS.PET_STATS),
                 restoreLocalBackup(CACHE_KEYS.USER_STATUS),
                 restoreLocalBackup(CACHE_KEYS.PARTNER_STATUS),
@@ -748,13 +803,26 @@ export const StorageService = {
         return id;
     },
 
+    getMediaReferenceCandidates(storagePath?: string, cloudPayload?: string): string[] {
+        const candidates: string[] = [];
+        const pushCandidate = (value?: string) => {
+            if (!value || value.startsWith('data:')) return;
+            if (!MediaStorageService.isMediaReference(value)) return;
+            if (!candidates.includes(value)) candidates.push(value);
+        };
+
+        pushCandidate(storagePath);
+        pushCandidate(cloudPayload);
+        return candidates;
+    },
+
     async getImage(mediaId: string, cloudPayload?: string, storagePath?: string): Promise<string | null> {
-        const legacyPayloadPath = !storagePath && MediaStorageService.isMediaReference(cloudPayload) ? cloudPayload : undefined;
-        const resolvedStoragePath = storagePath || legacyPayloadPath;
-        if (!mediaId && !resolvedStoragePath) return cloudPayload || null;
+        const referenceCandidates = this.getMediaReferenceCandidates(storagePath, cloudPayload);
+        const primaryReference = referenceCandidates[0];
+        if (!mediaId && !primaryReference) return cloudPayload || null;
 
         // 1. RAM cache
-        const cacheKey = mediaId || resolvedStoragePath || '';
+        const cacheKey = mediaId || primaryReference || '';
         if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
 
         // 2. IndexedDB local cache — checked FIRST before cloud URL.
@@ -772,16 +840,16 @@ export const StorageService = {
         //    (e.g. partner's item synced from cloud, or IDB was evicted by browser).
         //    If the path is still pointing at legacy Supabase storage, recover that
         //    payload instead of returning a dead R2 URL.
-        if (resolvedStoragePath) {
-            const url = await MediaStorageService.getAccessibleUrl(resolvedStoragePath);
+        for (const candidate of referenceCandidates) {
+            const url = await MediaStorageService.getAccessibleUrl(candidate);
             if (url) {
                 // Background: download and cache in IDB so future loads are instant
-                // and offline-resilient.  Fire-and-forget — never blocks the caller.
+                // and offline-resilient. Fire-and-forget — never blocks the caller.
                 this._cacheR2Image(cacheKey, url).catch(() => {});
                 return url;
             }
 
-            const recovered = await MediaStorageService.downloadMedia(resolvedStoragePath);
+            const recovered = await MediaStorageService.downloadMedia(candidate);
             if (recovered) {
                 if (mediaId) await writeRaw(STORES.IMAGES, mediaId, recovered);
                 if (recovered.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, recovered);
@@ -814,9 +882,9 @@ export const StorageService = {
      * Never returns an http URL — only base64 or null.
      */
     async getImageLocalOnly(mediaId: string, cloudPayload?: string, storagePath?: string): Promise<string | null> {
-        const legacyPayloadPath = !storagePath && MediaStorageService.isMediaReference(cloudPayload) ? cloudPayload : undefined;
-        const resolvedStoragePath = storagePath || legacyPayloadPath;
-        if (!mediaId && !cloudPayload && !resolvedStoragePath) return null;
+        const referenceCandidates = this.getMediaReferenceCandidates(storagePath, cloudPayload);
+        const primaryReference = referenceCandidates[0];
+        if (!mediaId && !cloudPayload && !primaryReference) return null;
 
         if (mediaId) {
             const cacheKey = mediaId;
@@ -842,11 +910,11 @@ export const StorageService = {
             return cloudPayload;
         }
 
-        if (resolvedStoragePath) {
-            const cacheKey = mediaId || resolvedStoragePath;
+        for (const candidate of referenceCandidates) {
+            const cacheKey = mediaId || candidate;
             if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
 
-            const recovered = await MediaStorageService.downloadMedia(resolvedStoragePath);
+            const recovered = await MediaStorageService.downloadMedia(candidate);
             if (recovered) {
                 if (mediaId) await writeRaw(STORES.IMAGES, mediaId, recovered);
                 if (recovered.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, recovered);
@@ -878,6 +946,8 @@ export const StorageService = {
         const videoToStore = isInlineMediaPayload(rawVideo) ? rawVideo : undefined;
         const imageRef = !imageToStore && MediaStorageService.isMediaReference(rawImage) ? rawImage : undefined;
         const videoRef = !videoToStore && MediaStorageService.isMediaReference(rawVideo) ? rawVideo : undefined;
+        const preserveLegacyImageRef = source === 'sync' && !!imageRef && imageRef !== toSaveMetadata.storagePath;
+        const preserveLegacyVideoRef = source === 'sync' && !!videoRef && videoRef !== toSaveMetadata.videoStoragePath;
         const managedFeature = table ? TABLE_TO_MEDIA_FEATURE[table] as ManagedStorageFeature | undefined : undefined;
         const imageMeta = extractInlineMediaMeta(imageToStore);
         const videoMeta = extractInlineMediaMeta(videoToStore);
@@ -906,7 +976,11 @@ export const StorageService = {
             toSaveMetadata.imageBytes = existingItem.imageBytes;
             toSaveMetadata.imageMimeType = existingItem.imageMimeType;
         }
-        delete toSaveMetadata.image;
+        if (preserveLegacyImageRef) {
+            toSaveMetadata.image = imageRef;
+        } else {
+            delete toSaveMetadata.image;
+        }
 
         if (videoToStore && prefix) {
             const videoId = normalizedItem.videoId || existingItem?.videoId || `${prefix}_vid_${normalizedItem.id}`;
@@ -920,7 +994,11 @@ export const StorageService = {
             toSaveMetadata.videoBytes = existingItem.videoBytes;
             toSaveMetadata.videoMimeType = existingItem.videoMimeType;
         }
-        delete toSaveMetadata.video;
+        if (preserveLegacyVideoRef) {
+            toSaveMetadata.video = videoRef;
+        } else {
+            delete toSaveMetadata.video;
+        }
 
         if (idx >= 0) {
             if (!toSaveMetadata.imageId && list[idx].imageId) toSaveMetadata.imageId = list[idx].imageId;
@@ -971,7 +1049,14 @@ export const StorageService = {
                 const payload = rawImage || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
                 if (payload) {
                     const path = await MediaStorageService.buildPath(prefix, metadata.id, 'image', pathOptions);
-                    const result = await MediaStorageService.uploadMedia(payload, path);
+                    const result = await MediaStorageService.uploadMedia(payload, path, {
+                        sourceTable: table,
+                        logicalRowId: metadata.id,
+                        itemId: metadata.id,
+                        ownerUserId: metadata.ownerUserId,
+                        expiresAt: metadata.expiresAt ?? null,
+                        metadata: { mediaField: 'image' },
+                    });
                     const verified = result ? await MediaStorageService.probeR2Path(result) : false;
                     if (result && verified === true) {
                         metadata.storagePath = result;
@@ -986,7 +1071,14 @@ export const StorageService = {
                 const payload = rawVideo || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
                 if (payload) {
                     const path = await MediaStorageService.buildPath(prefix, metadata.id, 'video', pathOptions);
-                    const result = await MediaStorageService.uploadMedia(payload, path);
+                    const result = await MediaStorageService.uploadMedia(payload, path, {
+                        sourceTable: table,
+                        logicalRowId: metadata.id,
+                        itemId: metadata.id,
+                        ownerUserId: metadata.ownerUserId,
+                        expiresAt: metadata.expiresAt ?? null,
+                        metadata: { mediaField: 'video' },
+                    });
                     const verified = result ? await MediaStorageService.probeR2Path(result) : false;
                     if (result && verified === true) {
                         metadata.videoStoragePath = result;
@@ -1069,6 +1161,14 @@ export const StorageService = {
 
                 let updated = false;
                 const cleanupPaths: string[] = [];
+                const tableForCache: Record<string, string> = {
+                    memories: 'memories',
+                    dailyPhotos: 'daily_photos',
+                    keepsakes: 'keepsakes',
+                    timeCapsules: 'time_capsules',
+                    surprises: 'surprises',
+                };
+                const tbl = tableForCache[entry.listKey];
                 const pathOptions = {
                     ownerUserId: item.ownerUserId,
                     timestamp: getMediaTimestamp(item),
@@ -1083,7 +1183,14 @@ export const StorageService = {
                     const payload = imgData || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
                     if (payload) {
                         const path = await MediaStorageService.buildPath(entry.prefix, item.id, 'image', pathOptions);
-                        const result = await MediaStorageService.uploadMedia(payload, path);
+                        const result = await MediaStorageService.uploadMedia(payload, path, {
+                            sourceTable: tbl,
+                            logicalRowId: item.id,
+                            itemId: item.id,
+                            ownerUserId: item.ownerUserId,
+                            expiresAt: item.expiresAt ?? null,
+                            metadata: { mediaField: 'image' },
+                        });
                         const verified = result ? await MediaStorageService.probeR2Path(result) : false;
                         if (result && verified === true) {
                             item.storagePath = result;
@@ -1102,7 +1209,14 @@ export const StorageService = {
                     const payload = vidData || (previousPath ? await MediaStorageService.downloadMedia(previousPath) : null);
                     if (payload) {
                         const path = await MediaStorageService.buildPath(entry.prefix, item.id, 'video', pathOptions);
-                        const result = await MediaStorageService.uploadMedia(payload, path);
+                        const result = await MediaStorageService.uploadMedia(payload, path, {
+                            sourceTable: tbl,
+                            logicalRowId: item.id,
+                            itemId: item.id,
+                            ownerUserId: item.ownerUserId,
+                            expiresAt: item.expiresAt ?? null,
+                            metadata: { mediaField: 'video' },
+                        });
                         const verified = result ? await MediaStorageService.probeR2Path(result) : false;
                         if (result && verified === true) {
                             item.videoStoragePath = result;
@@ -1123,11 +1237,6 @@ export const StorageService = {
                         };
                         await writeRaw(STORES.DATA, entry.storageKey, cacheList);
                         // Push storagePath to Supabase and refresh UI
-                        const tableForCache: Record<string, string> = {
-                            memories: 'memories', dailyPhotos: 'daily_photos',
-                            keepsakes: 'keepsakes', timeCapsules: 'time_capsules', surprises: 'surprises',
-                        };
-                        const tbl = tableForCache[entry.listKey];
                         if (tbl) notifyUpdate({ source: 'user', action: 'save', table: tbl, id: item.id, item: (cacheList as any[])[idx] });
                     }
                     for (const cleanupPath of cleanupPaths) {
@@ -1206,7 +1315,7 @@ export const StorageService = {
         const now = new Date();
 
         // Find expired photos
-        const expired = DATA_CACHE.dailyPhotos.filter(p => new Date(p.expiresAt) <= now);
+        const expired = DATA_CACHE.dailyPhotos.filter(p => isDailyMomentExpired(p, now.getTime()));
 
         if (expired.length > 0) {
             for (const item of expired) {
@@ -1390,6 +1499,7 @@ export const StorageService = {
     },
 
     async handleCloudDelete(table: string, id: string) {
+        addPendingDelete(table, id);
         const tableToStorage: Record<string, { cache: keyof typeof DATA_CACHE, key: string }> = {
             memories: { cache: 'memories', key: CACHE_KEYS.MEMORIES },
             daily_photos: { cache: 'dailyPhotos', key: CACHE_KEYS.DAILY_PHOTOS },
@@ -1463,7 +1573,13 @@ export const StorageService = {
                             ownerUserId,
                             timestamp: meta.date,
                         });
-                        const uploaded = await MediaStorageService.uploadMedia(base64, path);
+                        const uploaded = await MediaStorageService.uploadMedia(base64, path, {
+                            sourceTable: 'together_music',
+                            logicalRowId: 'singleton',
+                            itemId: 'singleton',
+                            ownerUserId,
+                            metadata: { name: file.name },
+                        });
                         const verified = uploaded ? await MediaStorageService.probeR2Path(uploaded) : false;
                         if (uploaded && verified === true) {
                             storedSource = uploaded;
@@ -1532,9 +1648,75 @@ export const StorageService = {
         return { ...id, ...shared };
     },
 
+    hasCompletedOnboarding: (): boolean => {
+        const onboardingFlag = getAccountScopedLocalStorageValue(ACCOUNT_LOCAL_KEYS.ONBOARDING_COMPLETE);
+        if (onboardingFlag === 'true') {
+            return true;
+        }
+
+        // Only derive completion from profile data for unauthenticated/offline mode.
+        // Authenticated accounts should rely on their own scoped flag so one account
+        // does not inherit another account's onboarding state on a shared device.
+        if (SupabaseService.getCachedUserId()) {
+            return false;
+        }
+
+        const profile = StorageService.getCoupleProfile();
+        const hasProfileIdentity = typeof profile.myName === 'string' && profile.myName.trim().length > 0;
+        const hasAnniversary = typeof profile.anniversaryDate === 'string' && profile.anniversaryDate.trim().length > 0;
+        const derivedCompletion = hasProfileIdentity && hasAnniversary;
+
+        if (derivedCompletion) {
+            StorageService.markOnboardingComplete();
+        }
+
+        return derivedCompletion;
+    },
+
+    markOnboardingComplete: () => {
+        setAccountScopedLocalStorageValue(ACCOUNT_LOCAL_KEYS.ONBOARDING_COMPLETE, 'true');
+    },
+
+    clearOnboardingCompletion: () => {
+        clearAccountScopedLocalStorageValue(ACCOUNT_LOCAL_KEYS.ONBOARDING_COMPLETE);
+        clearAccountScopedLocalStorageValue(ACCOUNT_LOCAL_KEYS.MANUAL_OVERRIDE);
+    },
+
+    getSeenReleaseVersion: (): string | null => getAccountScopedLocalStorageValue(CACHE_KEYS.SEEN_RELEASE_VERSION),
+
+    setSeenReleaseVersion: (value: string) => {
+        setAccountScopedLocalStorageValue(CACHE_KEYS.SEEN_RELEASE_VERSION, value);
+        writeRaw(STORES.DATA, CACHE_KEYS.SEEN_RELEASE_VERSION, value);
+    },
+
+    clearSeenReleaseVersion: () => {
+        clearAccountScopedLocalStorageValue(CACHE_KEYS.SEEN_RELEASE_VERSION);
+        deleteRaw(STORES.DATA, CACHE_KEYS.SEEN_RELEASE_VERSION);
+    },
+
+    getSeenCoachmarks: (): string[] => {
+        try {
+            return JSON.parse(getAccountScopedLocalStorageValue(CACHE_KEYS.COACHMARKS_SEEN) || '[]');
+        } catch {
+            return [];
+        }
+    },
+
+    setSeenCoachmarks: (seen: string[]) => {
+        setAccountScopedLocalStorageValue(CACHE_KEYS.COACHMARKS_SEEN, JSON.stringify(seen));
+        writeRaw(STORES.DATA, CACHE_KEYS.COACHMARKS_SEEN, seen);
+    },
+
+    clearSeenCoachmarks: () => {
+        clearAccountScopedLocalStorageValue(CACHE_KEYS.COACHMARKS_SEEN);
+        deleteRaw(STORES.DATA, CACHE_KEYS.COACHMARKS_SEEN);
+    },
+
     saveCoupleProfile: (p: CoupleProfile, source: 'user' | 'sync' = 'user') => {
         const sanitizedProfile = normalizeIdentityPair(sanitizeUserContent(p));
-        localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: sanitizedProfile.myName, partnerName: sanitizedProfile.partnerName }));
+        const identityProfile = { myName: sanitizedProfile.myName, partnerName: sanitizedProfile.partnerName };
+        localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify(identityProfile));
+        writeRaw(STORES.DATA, CACHE_KEYS.IDENTITY, identityProfile);
         const sharedProfile = { ...sanitizedProfile };
         delete (sharedProfile as any).myName;
         delete (sharedProfile as any).partnerName;
@@ -2107,7 +2289,13 @@ export const StorageService = {
             ownerUserId: options?.ownerUserId,
             timestamp: options?.createdAt,
         });
-        const uploaded = await MediaStorageService.uploadMedia(audioDataUri, path);
+        const uploaded = await MediaStorageService.uploadMedia(audioDataUri, path, {
+            sourceTable: 'voice_notes',
+            logicalRowId: id,
+            itemId: id,
+            ownerUserId: options?.ownerUserId ?? null,
+            metadata: { mediaField: 'audio' },
+        });
         const verified = uploaded ? await MediaStorageService.probeR2Path(uploaded) : false;
         return {
             storagePath: uploaded && verified === true ? uploaded : null,
@@ -2262,8 +2450,10 @@ export const StorageService = {
 
                     const imageId = item.imageId || `${prefix}_${item.id}`;
                     const videoId = item.videoId || `${prefix}_vid_${item.id}`;
-                    const imagePath = item.storagePath || (MediaStorageService.isMediaReference(item.image) ? item.image : null);
-                    const videoPath = item.videoStoragePath || (MediaStorageService.isMediaReference(item.video) ? item.video : null);
+                    const imageCandidates = this.getMediaReferenceCandidates(item.storagePath, item.image);
+                    const videoCandidates = this.getMediaReferenceCandidates(item.videoStoragePath, item.video);
+                    const imagePath = imageCandidates[0] || null;
+                    const videoPath = videoCandidates[0] || null;
 
                     // Recover image if cloud has base64 and local IDB doesn't
                     if (item.image?.startsWith('data:')) {
@@ -2273,14 +2463,17 @@ export const StorageService = {
                             if (item.image.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, item.image);
                             recovered++;
                         }
-                    } else if (imagePath) {
+                    } else if (imageCandidates.length > 0) {
                         const existing = await readRaw(STORES.IMAGES, imageId);
                         if (!existing) {
-                            const restored = await MediaStorageService.downloadMedia(imagePath);
-                            if (restored) {
-                                await writeRaw(STORES.IMAGES, imageId, restored);
-                                if (restored.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, restored);
-                                recovered++;
+                            for (const candidate of imageCandidates) {
+                                const restored = await MediaStorageService.downloadMedia(candidate);
+                                if (restored) {
+                                    await writeRaw(STORES.IMAGES, imageId, restored);
+                                    if (restored.length < 2_000_000) MEDIA_MEMORY_CACHE.set(imageId, restored);
+                                    recovered++;
+                                    break;
+                                }
                             }
                         }
                     }
@@ -2325,13 +2518,16 @@ export const StorageService = {
                             await writeRaw(STORES.IMAGES, videoId, item.video);
                             recovered++;
                         }
-                    } else if (videoPath) {
+                    } else if (videoCandidates.length > 0) {
                         const existing = await readRaw(STORES.IMAGES, videoId);
                         if (!existing) {
-                            const restored = await MediaStorageService.downloadMedia(videoPath);
-                            if (restored) {
-                                await writeRaw(STORES.IMAGES, videoId, restored);
-                                recovered++;
+                            for (const candidate of videoCandidates) {
+                                const restored = await MediaStorageService.downloadMedia(candidate);
+                                if (restored) {
+                                    await writeRaw(STORES.IMAGES, videoId, restored);
+                                    recovered++;
+                                    break;
+                                }
                             }
                         }
                     }

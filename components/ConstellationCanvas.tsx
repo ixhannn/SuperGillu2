@@ -230,7 +230,7 @@ export const ConstellationCanvas: React.FC = () => {
         cp2y = lerp(stars[0].y, stars[1].y, 0.66) + Math.cos(swayT * 1.5 + 2) * 18;
 
         // ── Draw connection lines (skip on low tier) ─────────────
-        if (tier !== 'low' && tier !== 'css-only') {
+        if (tier !== 'low' && tier !== 'css-only' && tier !== 'medium') {
           // Batch ALL lines into a single path — one stroke() call instead of N
           const distThresh2 = CONNECTION_DIST * CONNECTION_DIST;
           ctx.beginPath();

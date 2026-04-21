@@ -13,7 +13,14 @@
       "Read(//c/Users/Sameer/Downloads/tulika/.git/**)",
       "Read(//c/Users/Sameer/Downloads/tulika/.git/worktrees/focused-khayyam/**)",
       "Bash(npx vite:*)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(powershell -Command \"\\(Get-Content 'C:\\\\Users\\\\Sameer\\\\Downloads\\\\Lior\\\\views\\\\Profile.tsx' -Raw\\) -replace 'opacity: 0\\\\.45 \\\\}', 'opacity: 0.85 }' | Set-Content 'C:\\\\Users\\\\Sameer\\\\Downloads\\\\Lior\\\\views\\\\Profile.tsx' -NoNewline\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ping -n 4 127.0.0.1)",
+      "Bash(findstr \":300\")",
+      "Bash(findstr LISTENING)",
+      "Bash(ping -n 5 127.0.0.1)",
+      "Bash(ping -n 3 127.0.0.1)"
     ]
   },
   "hooks": {

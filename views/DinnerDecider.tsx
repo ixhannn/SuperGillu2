@@ -15,19 +15,62 @@ const staggerContainer: Variants = {
 
 const staggerItem: Variants = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] as const } }
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } }
 };
 
 interface DinnerDeciderProps {
   setView: (view: ViewState) => void;
 }
 
+interface SpinSignalPayload {
+  spinId: string;
+  finalRotation: number;
+  winnerId: string;
+  winnerText: string;
+  optionsSnapshot: DinnerOption[];
+}
+
 export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
+  const SPIN_DURATION_MS = 3000;
   const [options, setOptions] = useState<DinnerOption[]>([]);
   const [newOption, setNewOption] = useState('');
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [winner, setWinner] = useState<string | null>(null);
+  const [activeSpinOptions, setActiveSpinOptions] = useState<DinnerOption[] | null>(null);
+  const spinTimeoutRef = useRef<number | null>(null);
+  const isSpinningRef = useRef(false);
+  const lastSpinIdRef = useRef('');
+  const queuedSpinRef = useRef<SpinSignalPayload | null>(null);
+
+  const isDinnerOption = (value: unknown): value is DinnerOption => {
+    if (!value || typeof value !== 'object') return false;
+
+    const candidate = value as Partial<DinnerOption>;
+    return typeof candidate.id === 'string' && typeof candidate.text === 'string';
+  };
+
+  const isSpinSignalPayload = (payload: unknown): payload is SpinSignalPayload => {
+    if (!payload || typeof payload !== 'object') return false;
+
+    const candidate = payload as Partial<SpinSignalPayload>;
+    const optionsSnapshot = candidate.optionsSnapshot;
+    return (
+      typeof candidate.spinId === 'string' &&
+      typeof candidate.finalRotation === 'number' &&
+      Number.isFinite(candidate.finalRotation) &&
+      typeof candidate.winnerId === 'string' &&
+      typeof candidate.winnerText === 'string' &&
+      Array.isArray(optionsSnapshot) &&
+      optionsSnapshot.length > 0 &&
+      optionsSnapshot.every(isDinnerOption) &&
+      optionsSnapshot.some(option => option.id === candidate.winnerId && option.text === candidate.winnerText)
+    );
+  };
+
+  useEffect(() => {
+    isSpinningRef.current = isSpinning;
+  }, [isSpinning]);
 
   useEffect(() => {
     const load = () => setOptions(StorageService.getDinnerOptions());
@@ -39,13 +82,25 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
     // Listen for Sync signals (e.g., Partner spun the wheel)
     const handleSignal = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail.signalType === 'SPIN') {
-        performSpin(detail.payload.finalRotation);
+      if (!detail || typeof detail !== 'object') return;
+
+      const candidate = detail as { signalType?: unknown; payload?: unknown };
+      if (candidate.signalType !== 'SPIN' || !isSpinSignalPayload(candidate.payload)) return;
+      if (candidate.payload.spinId === lastSpinIdRef.current) return;
+
+      if (isSpinningRef.current) {
+        queuedSpinRef.current = candidate.payload;
+        return;
       }
+
+      performSpin(candidate.payload);
     };
     syncEventTarget.addEventListener('signal-received', handleSignal);
 
     return () => {
+      if (spinTimeoutRef.current !== null) {
+        window.clearTimeout(spinTimeoutRef.current);
+      }
       storageEventTarget.removeEventListener('storage-update', handleUpdate);
       syncEventTarget.removeEventListener('signal-received', handleSignal);
     };
@@ -70,53 +125,63 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
     if (isSpinning || options.length < 2) return;
     feedback.interact();
 
-    // Calculate a new random rotation
-    // Ensure at least 5 full spins (360 * 5) + random segment
-    const segmentSize = 360 / options.length;
-    const randomSegment = Math.floor(Math.random() * options.length);
-    const extraRotation = 360 * 5 + (randomSegment * segmentSize);
-    const finalRotation = rotation + extraRotation;
+    const optionsSnapshot = options.map(option => ({ ...option }));
+    const segmentSize = 360 / optionsSnapshot.length;
+    const winningIndex = Math.floor(Math.random() * optionsSnapshot.length);
+    const winningOption = optionsSnapshot[winningIndex];
+    const currentRotation = ((rotation % 360) + 360) % 360;
+    const targetRotation = (360 - (winningIndex * segmentSize + segmentSize / 2)) % 360;
+    const deltaRotation = (targetRotation - currentRotation + 360) % 360;
+    const finalRotation = rotation + 360 * 5 + deltaRotation;
+    const payload: SpinSignalPayload = {
+      spinId: generateId(),
+      finalRotation,
+      winnerId: winningOption.id,
+      winnerText: winningOption.text,
+      optionsSnapshot,
+    };
+
+    lastSpinIdRef.current = payload.spinId;
 
     // Send signal to partner
-    SyncService.sendSignal('SPIN', { finalRotation });
+    SyncService.sendSignal('SPIN', payload);
 
     // Perform local spin
-    performSpin(finalRotation);
+    performSpin(payload);
   };
 
-  const performSpin = (finalRot: number) => {
+  const performSpin = ({ spinId, finalRotation, winnerId, winnerText, optionsSnapshot }: SpinSignalPayload) => {
+    const winningOption = optionsSnapshot.find(option => option.id === winnerId);
+
+    lastSpinIdRef.current = spinId;
     setIsSpinning(true);
     setWinner(null);
-    setRotation(finalRot);
+    setActiveSpinOptions(optionsSnapshot);
+    setRotation(finalRotation);
 
-    // Wait for animation to finish (3s matches CSS)
-    setTimeout(() => {
-      setIsSpinning(false);
-      calculateWinner(finalRot);
-    }, 3000);
-  };
-
-  const calculateWinner = (rot: number) => {
-    // Determine which segment is at the top (Pointer is usually at top 0deg)
-    // The wheel rotates clockwise, so the index is determined by (360 - (rot % 360))
-    const normalizedRot = rot % 360;
-    const segmentSize = 360 / options.length;
-    // Offset for pointer position (if pointer is at top)
-    // We need to account that 0 rotation puts item 0 at 3 o'clock in SVG usually, 
-    // but let's assume standard math where we rotated the group.
-
-    // Simple logic:
-    // index = Math.floor(((360 - normalizedRot) % 360) / segmentSize)
-    const index = Math.floor(((360 - normalizedRot) % 360) / segmentSize);
-
-    if (options[index]) {
-      setWinner(options[index].text);
-      feedback.celebrate();
+    if (spinTimeoutRef.current !== null) {
+      window.clearTimeout(spinTimeoutRef.current);
     }
+
+    spinTimeoutRef.current = window.setTimeout(() => {
+      setIsSpinning(false);
+      setWinner(winningOption?.text ?? winnerText);
+      feedback.celebrate();
+      spinTimeoutRef.current = null;
+
+      const queuedSpin = queuedSpinRef.current;
+      queuedSpinRef.current = null;
+
+      if (queuedSpin && queuedSpin.spinId !== spinId) {
+        performSpin(queuedSpin);
+        return;
+      }
+    }, SPIN_DURATION_MS);
   };
 
   // Colors for wheel segments
   const COLORS = ['#f9a8d4', '#fbcfe8', '#fce7f3', '#ec4899', '#fda4af', '#fff1f2'];
+  const displayedOptions = activeSpinOptions ?? options;
 
   const getCoordinatesForPercent = (percent: number) => {
     const x = Math.cos(2 * Math.PI * percent);
@@ -125,13 +190,13 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-screen">
+    <div className="min-h-screen px-6 pt-8 pb-32">
       <ViewHeader title="Dinner Decider" onBack={() => setView('home')} variant="simple" />
 
-      <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto p-6 pb-32 flex flex-col items-center">
+      <div className="flex flex-col items-center pt-4">
 
         {/* The Wheel */}
-        <div className="relative w-72 h-72 mb-8 mt-4">
+        <div className="relative w-full max-w-[18rem] aspect-square mb-8">
           {/* Pointer */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 -mt-4 z-20">
             <div className="w-0 h-0 border-l-[15px] border-l-transparent border-r-[15px] border-r-transparent border-t-[30px] border-t-lior-600 filter drop-shadow-md"></div>
@@ -143,15 +208,15 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
             style={{ transform: `rotate(${rotation}deg) translateZ(0)`, willChange: 'transform', borderColor: 'rgba(var(--theme-particle-2-rgb),0.20)' }}
           >
             <svg viewBox="-1 -1 2 2" className="w-full h-full transform -rotate-90">
-              {options.map((opt, i) => {
+              {displayedOptions.map((opt, i) => {
                 // Draw slice
-                const startAngle = i / options.length;
-                const endAngle = (i + 1) / options.length;
+                const startAngle = i / displayedOptions.length;
+                const endAngle = (i + 1) / displayedOptions.length;
                 const [startX, startY] = getCoordinatesForPercent(startAngle);
                 const [endX, endY] = getCoordinatesForPercent(endAngle);
 
                 // Construct Path
-                const pathData = options.length === 1
+                const pathData = displayedOptions.length === 1
                   ? `M 0 0 L 1 0 A 1 1 0 1 1 1 -0.0001 Z`
                   : `M 0 0 L ${startX} ${startY} A 1 1 0 0 1 ${endX} ${endY} Z`;
 
@@ -179,7 +244,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                       transform={`rotate(${textRotation}, ${labelX * 0.6}, ${labelY * 0.6})`}
                       style={{ textShadow: '0 0.005em 0.01em rgba(0,0,0,0.4)', pointerEvents: 'none' }}
                     >
-                      {opt.text.length > 12 ? opt.text.slice(0, 12) + 'â€¦' : opt.text}
+                      {opt.text.length > 12 ? `${opt.text.slice(0, 12)}...` : opt.text}
                     </text>
                   </g>
                 );
@@ -192,7 +257,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
         {winner && (
           <div className="mb-6 bg-lior-500 text-white px-6 py-4 rounded-2xl animate-elastic-pop text-center shadow-lg shadow-lior-500/30 ring-1 ring-lior-200">
             <p className="text-xs uppercase font-bold opacity-90 mb-1 tracking-wider">We are eating</p>
-            <p className="text-2xl font-serif font-bold">{winner}! ðŸ½ï¸</p>
+            <p className="text-2xl font-serif font-bold">{winner}</p>
           </div>
         )}
 

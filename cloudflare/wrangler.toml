@@ -9,8 +9,10 @@ crons = ["*/10 * * * *"]
 binding = "LIOR_BUCKET"
 bucket_name = "lior-media"
 
-# Set the upload secret with:
-#   wrangler secret put UPLOAD_KEY
+# Set the worker secrets with:
 #   wrangler secret put CLEANUP_INTERNAL_TOKEN
+#   wrangler secret put ADMIN_DASHBOARD_TOKEN
 #   wrangler secret put SUPABASE_URL
 #   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# Managed media writes are authorized with the caller's Supabase session,
+# not a shared client-side upload secret.

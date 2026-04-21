@@ -4,6 +4,7 @@ import { MediaStorageService } from './mediaStorage';
 import { MediaMigrationService } from './mediaMigration';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { isDailyMomentExpired } from '../shared/mediaRetention.js';
+import { createDeletionLookup, filterUploadableItems, getRemoteDeletedIdsToPurge, hasRecordedDeletion } from './syncDeletionLedger.js';
 
 export const syncEventTarget = new EventTarget();
 
@@ -75,16 +76,23 @@ class SyncServiceClass {
         this.channel = null;
     }
 
+    public reset() {
+        this.cleanupRealtimeState();
+        this.isConnected = false;
+        this.status = 'Offline';
+        syncEventTarget.dispatchEvent(new CustomEvent('sync-update'));
+    }
+
     public async init() {
         if (!SupabaseService.init()) {
+            this.reset();
             this.updateStatus('Offline (Not Configured)');
             return;
         }
 
         const userId = await SupabaseService.getCurrentUserId();
         if (!userId) {
-            this.cleanupRealtimeState();
-            this.isConnected = false;
+            this.reset();
             this.updateStatus('Offline (Login Required)');
             return;
         }
@@ -93,8 +101,7 @@ class SyncServiceClass {
         // before claimLegacyRows tries to look up the couple_id
         const coupleId = await SupabaseService.getCurrentCoupleId();
         if (!coupleId) {
-            this.cleanupRealtimeState();
-            this.isConnected = false;
+            this.reset();
             this.updateStatus('Offline (Couple Setup Failed)');
             return;
         }
@@ -212,6 +219,7 @@ class SyncServiceClass {
         this.reconcileInFlight = (async () => {
         try {
             await StorageService.cleanupDailyPhotos();
+            const deletionLookup = createDeletionLookup(await SupabaseService.fetchDeletionLedger() ?? []);
 
             // Re-send any deletions that may have failed previously (offline, crash, etc.)
             // Tombstones are NEVER removed — they permanently block resurrection from partner's cache
@@ -227,9 +235,36 @@ class SyncServiceClass {
 
             const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes'];
             const rowEnvelopeTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes', 'together_music']);
+            const localCollectionAccessors: Record<string, () => any[]> = {
+                memories: () => StorageService.getMemories(),
+                notes: () => StorageService.getNotes(),
+                dates: () => StorageService.getSpecialDates(),
+                envelopes: () => StorageService.getEnvelopes(),
+                daily_photos: () => StorageService.getDailyPhotos(),
+                keepsakes: () => StorageService.getKeepsakes(),
+                dinner_options: () => StorageService.getDinnerOptions(),
+                comments: () => StorageService.getComments(),
+                mood_entries: () => StorageService.getMoodEntries(),
+                us_bucket_items: () => StorageService.getUsBucketItems(),
+                us_wishlist_items: () => StorageService.getUsWishlistItems(),
+                us_milestones: () => StorageService.getUsMilestones(),
+                time_capsules: () => StorageService.getTimeCapsules(),
+                surprises: () => StorageService.getSurprises(),
+                voice_notes: () => StorageService.getVoiceNotes(),
+            };
+            const mediaPrefixes: Record<string, string> = {
+                memories: 'mem', daily_photos: 'daily', keepsakes: 'keep',
+                time_capsules: 'cap', surprises: 'surp',
+            };
 
             for (const table of tables) {
                 try {
+                    const getLocalItems = localCollectionAccessors[table];
+                    const localItems = getLocalItems ? getLocalItems() : [];
+                    for (const deletedId of getRemoteDeletedIdsToPurge(localItems, table, deletionLookup)) {
+                        await StorageService.handleCloudDelete(table, deletedId);
+                    }
+
                     const cloudItems = rowEnvelopeTables.has(table)
                         ? await SupabaseService.fetchAllRows(table)
                         : await SupabaseService.fetchAll(table);
@@ -279,29 +314,8 @@ class SyncServiceClass {
                             const profile = StorageService.getCoupleProfile();
                             await SupabaseService.upsertItem(table, { id: profile.myName, ...local });
                         } else {
-                            const listKeyMap: Record<string, any[]> = {
-                                memories: StorageService.getMemories(),
-                                notes: StorageService.getNotes(),
-                                dates: StorageService.getSpecialDates(),
-                                envelopes: StorageService.getEnvelopes(),
-                                daily_photos: StorageService.getDailyPhotos(),
-                                keepsakes: StorageService.getKeepsakes(),
-                                dinner_options: StorageService.getDinnerOptions(),
-                                comments: StorageService.getComments(),
-                                mood_entries: StorageService.getMoodEntries(),
-                                us_bucket_items: StorageService.getUsBucketItems(),
-                                us_wishlist_items: StorageService.getUsWishlistItems(),
-                                us_milestones: StorageService.getUsMilestones(),
-                                time_capsules: StorageService.getTimeCapsules(),
-                                surprises: StorageService.getSurprises(),
-                                voice_notes: StorageService.getVoiceNotes(),
-                            };
-                            const mediaPrefixes: Record<string, string> = {
-                                memories: 'mem', daily_photos: 'daily', keepsakes: 'keep',
-                                time_capsules: 'cap', surprises: 'surp',
-                            };
-                            const localItems = (listKeyMap[table] || []).filter((it: any) => !isDeletedLocally(table, it.id));
-                            for (const it of localItems) {
+                            const uploadableItems = filterUploadableItems(localItems, table, deletionLookup, isDeletedLocally);
+                            for (const it of uploadableItems) {
                                 const toUpload = mediaPrefixes[table]
                                     ? await StorageService._getItemWithImages(it, mediaPrefixes[table])
                                     : it;
@@ -312,6 +326,11 @@ class SyncServiceClass {
                         // CLOUD HAS DATA: Pull it down, skipping locally-deleted items
                         for (const item of cloudItems) {
                             const logicalId = item?.data?.id || item?.id;
+                            if (logicalId && hasRecordedDeletion(deletionLookup, table, logicalId)) {
+                                await StorageService.handleCloudDelete(table, logicalId);
+                                await SupabaseService.deleteItem(table, logicalId);
+                                continue;
+                            }
                             if (logicalId && isDeletedLocally(table, logicalId)) {
                                 // Re-send delete to cloud in case it didn't go through
                                 await SupabaseService.deleteItem(table, logicalId);
@@ -342,6 +361,10 @@ class SyncServiceClass {
             // Retry any R2 uploads that failed in a previous session
             // (e.g. user was offline when they saved a memory)
             await StorageService.retryPendingUploads();
+
+            // Rebuild any missing local media cache from the latest cloud metadata
+            // so blank cards heal during normal sync, not only on specific screens.
+            await StorageService.recoverImagesFromCloud();
         } catch (e) {
             console.warn("Reconciliation failed", e);
         } finally {
@@ -454,6 +477,18 @@ class SyncServiceClass {
                 .subscribe();
             if (tableChannel) this.realtimeChannels.push(tableChannel);
         });
+
+        const deletionChannel = SupabaseService.client?.channel('public:sync_deletions')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_deletions' }, (payload) => {
+                if (payload.eventType !== 'INSERT' && payload.eventType !== 'UPDATE') return;
+                const table = payload.new?.table_name;
+                const logicalId = payload.new?.logical_id;
+                if (table && logicalId) {
+                    StorageService.handleCloudDelete(table, logicalId);
+                }
+            })
+            .subscribe();
+        if (deletionChannel) this.realtimeChannels.push(deletionChannel);
     }
 
     private handlePresenceUpdate(state: any, profile: any) {

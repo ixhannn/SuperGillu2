@@ -72,41 +72,90 @@ const pageTextStyle: React.CSSProperties = {
     fontFamily: '"Nunito Sans", sans-serif',
 };
 
+const authPalette = {
+    textPrimary: '#2d1a22',
+    textSecondary: '#6d545e',
+    textMuted: '#8b717b',
+    footer: '#775d67',
+    accent: '#b7607d',
+    accentDeep: '#7c334d',
+    surfaceBorder: 'rgba(255,255,255,0.46)',
+    surfaceEdge: 'rgba(104,72,86,0.12)',
+    fieldBorder: 'rgba(97,68,82,0.14)',
+    fieldBorderStrong: 'rgba(183,97,126,0.28)',
+} as const;
+
 const surfaceStyle: React.CSSProperties = {
-    background: 'linear-gradient(180deg, rgba(255,250,248,0.54) 0%, rgba(247,241,243,0.82) 100%)',
-    border: '1px solid rgba(255,255,255,0.24)',
-    boxShadow: '0 14px 30px rgba(39,16,31,0.10), inset 0 1px 0 rgba(255,255,255,0.7)',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
+    background: 'linear-gradient(180deg, rgba(255,252,250,0.84) 0%, rgba(247,239,243,0.94) 100%)',
+    border: `1px solid ${authPalette.surfaceBorder}`,
+    boxShadow: '0 24px 64px rgba(28,11,20,0.24), 0 12px 28px rgba(28,11,20,0.12), inset 0 1px 0 rgba(255,255,255,0.76)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+};
+
+const surfaceInnerGlowStyle: React.CSSProperties = {
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.08) 36%, rgba(255,238,243,0.14) 100%)',
+    border: `1px solid ${authPalette.surfaceEdge}`,
 };
 
 const fieldStyle: React.CSSProperties = {
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.58) 0%, rgba(255,248,250,0.44) 100%)',
-    border: '1px solid rgba(111,76,95,0.08)',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 6px 14px rgba(58,24,44,0.04)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(252,245,248,0.96) 100%)',
+    border: `1px solid ${authPalette.fieldBorder}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.92), 0 10px 20px rgba(56,24,40,0.06)',
 };
 
 const invalidFieldStyle: React.CSSProperties = {
-    border: '1px solid rgba(191,104,127,0.20)',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.68), 0 0 0 2px rgba(191,104,127,0.06)',
+    border: `1px solid ${authPalette.fieldBorderStrong}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.88), 0 0 0 3px rgba(183,97,126,0.09), 0 10px 20px rgba(56,24,40,0.06)',
 };
 
 const toggleTrackStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.16)',
-    border: '1px solid rgba(255,255,255,0.18)',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)',
+    background: 'linear-gradient(180deg, rgba(148,106,124,0.10) 0%, rgba(255,255,255,0.44) 100%)',
+    border: '1px solid rgba(105,74,89,0.10)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.56), inset 0 -1px 0 rgba(255,255,255,0.22)',
+};
+
+const activeToggleStyle: React.CSSProperties = {
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,246,249,0.88) 100%)',
+    border: '1px solid rgba(133,95,111,0.16)',
+    boxShadow: '0 10px 18px rgba(69,28,46,0.10), inset 0 1px 0 rgba(255,255,255,0.96)',
 };
 
 const buttonStyle: React.CSSProperties = {
-    background: 'linear-gradient(135deg, #bf5f79 0%, #a45169 58%, #823e4f 100%)',
-    boxShadow: '0 10px 20px rgba(130,62,79,0.14), inset 0 1px 0 rgba(255,255,255,0.16)',
+    background: 'linear-gradient(135deg, #c26886 0%, #a24869 56%, #7c334d 100%)',
+    border: '1px solid rgba(112,41,67,0.24)',
+    boxShadow: '0 18px 32px rgba(124,51,77,0.24), 0 8px 18px rgba(39,15,25,0.14), inset 0 1px 0 rgba(255,255,255,0.24)',
 };
 
 const StatusBanner = ({ tone, message }: { tone: 'error' | 'success' | 'warning'; message: React.ReactNode }) => {
     const tones = {
-        error: { cls: 'border-red-100/60 bg-white/62 text-red-700', icon: <AlertCircle size={15} className="mt-0.5 shrink-0" /> },
-        success: { cls: 'border-emerald-100/60 bg-white/62 text-emerald-700', icon: <Sparkles size={15} className="mt-0.5 shrink-0" /> },
-        warning: { cls: 'border-orange-100/60 bg-white/62 text-orange-700', icon: <Lock size={15} className="mt-0.5 shrink-0" /> },
+        error: {
+            style: {
+                borderColor: 'rgba(191,95,122,0.18)',
+                background: 'rgba(255,250,251,0.92)',
+                color: '#8d3952',
+                boxShadow: '0 8px 18px rgba(77,28,46,0.05)',
+            },
+            icon: <AlertCircle size={15} className="mt-0.5 shrink-0" />,
+        },
+        success: {
+            style: {
+                borderColor: 'rgba(80,141,116,0.18)',
+                background: 'rgba(250,255,252,0.92)',
+                color: '#2f6c56',
+                boxShadow: '0 8px 18px rgba(34,76,59,0.05)',
+            },
+            icon: <Sparkles size={15} className="mt-0.5 shrink-0" />,
+        },
+        warning: {
+            style: {
+                borderColor: 'rgba(194,139,87,0.18)',
+                background: 'rgba(255,251,246,0.92)',
+                color: '#8b5a2d',
+                boxShadow: '0 8px 18px rgba(87,56,27,0.05)',
+            },
+            icon: <Lock size={15} className="mt-0.5 shrink-0" />,
+        },
     } as const;
     const current = tones[tone];
 
@@ -119,7 +168,7 @@ const StatusBanner = ({ tone, message }: { tone: 'error' | 'success' | 'warning'
             className="overflow-hidden"
             style={pageTextStyle}
         >
-            <div className={`rounded-[0.95rem] border px-3.5 py-2.5 text-[11.5px] ${current.cls}`}>
+            <div className="rounded-[1rem] border px-3.5 py-3 text-[12px] font-medium" style={current.style}>
                 <div className="flex items-start gap-2.5">
                     {current.icon}
                     <div className="leading-[1.55]">{message}</div>
@@ -137,21 +186,22 @@ type AuthFieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
 
 const AuthField = ({ label, invalid, supportText, ...props }: AuthFieldProps) => (
     <label className="block" style={pageTextStyle}>
-        <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="mb-2 block text-[10.5px] font-bold uppercase tracking-[0.16em]" style={{ color: authPalette.textSecondary }}>
             {label}
         </span>
         <div
-            className="rounded-[0.96rem] transition-all duration-300 focus-within:-translate-y-0.5 focus-within:ring-1 focus-within:ring-lior-500/12"
+            className="rounded-[1rem] transition-all duration-300 focus-within:-translate-y-px focus-within:ring-1 focus-within:ring-[rgba(198,120,148,0.32)] focus-within:shadow-[0_0_0_4px_rgba(190,110,136,0.10),0_12px_24px_rgba(66,24,43,0.08)]"
             style={invalid ? { ...fieldStyle, ...invalidFieldStyle } : fieldStyle}
         >
             <input
                 {...props}
                 aria-invalid={invalid || undefined}
-                className="w-full bg-transparent px-4 py-[0.92rem] text-[15px] outline-none placeholder:opacity-34"
+                className="w-full bg-transparent px-[1.05rem] py-[0.98rem] text-[16px] font-medium tracking-[0.01em] outline-none placeholder:text-[#92737d] placeholder:opacity-100"
+                style={{ color: authPalette.textPrimary, caretColor: authPalette.accent }}
             />
         </div>
         {supportText && (
-            <span className="mt-1.5 block text-[10.5px] leading-5" style={{ color: invalid ? '#b7657e' : 'var(--color-text-secondary)' }}>
+            <span className="mt-1.5 block text-[10.5px] leading-5" style={{ color: invalid ? '#a95270' : authPalette.textMuted }}>
                 {supportText}
             </span>
         )}
@@ -290,85 +340,86 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                 : 'Enter Lior';
 
     return (
-        <div className="relative min-h-screen overflow-x-hidden overflow-y-auto" style={{ ...pageTextStyle, color: 'var(--color-text-primary)' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, #1c1219 0%, #3e333e 46%, #86707a 79%, #efe5dc 100%)' }} />
+        <div className="relative min-h-screen overflow-x-hidden overflow-y-auto" style={{ ...pageTextStyle, color: authPalette.textPrimary }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, #1d1319 0%, #4a333f 43%, #9d7f8a 78%, #f4ebe6 100%)' }} />
             <motion.div
                 className="absolute left-1/2 top-[-7rem] h-[24rem] w-[24rem] -translate-x-1/2 rounded-full"
-                style={{ background: 'radial-gradient(circle, rgba(255,242,234,0.22) 0%, rgba(246,201,216,0.08) 34%, transparent 66%)', filter: 'blur(74px)' }}
+                style={{ background: 'radial-gradient(circle, rgba(255,243,236,0.24) 0%, rgba(246,201,216,0.10) 34%, transparent 66%)', filter: 'blur(68px)' }}
                 animate={reducedMotion ? undefined : { scale: [1, 1.025, 1], opacity: [0.54, 0.72, 0.54] }}
                 transition={reducedMotion ? undefined : { duration: 12, repeat: Infinity, ease: 'easeInOut' }}
             />
-            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 108%, rgba(126,84,105,0.09) 0%, transparent 28%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 108%, rgba(126,84,105,0.12) 0%, transparent 28%)' }} />
 
-            <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[390px] flex-col px-5 md:max-w-[408px] md:py-5">
+            <div
+                className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[390px] flex-col px-5 md:max-w-[408px] md:py-5"
+                style={{
+                    paddingTop: 'max(env(safe-area-inset-top), clamp(1.35rem, 3.2vh, 1.8rem))',
+                    paddingBottom: 'max(env(safe-area-inset-bottom), clamp(1rem, 2.6vh, 1.3rem))',
+                }}
+            >
+                <div className="flex-shrink-0 pt-1 text-center">
+                    <span className="text-[11px] font-semibold tracking-[0.38em] text-white/84">LIOR</span>
+                </div>
+
                 <div
-                    className="flex min-h-[100dvh] flex-col md:min-h-0"
+                    className="pointer-events-none relative flex flex-1 items-start justify-center"
+                    style={{ minHeight: 'clamp(6.4rem, 15vh, 9rem)', maxHeight: 'clamp(8rem, 18vh, 10rem)' }}
+                >
+                    <div
+                        className="absolute top-[8%] h-[11.75rem] w-[11.75rem] rounded-full"
+                        style={{ background: 'radial-gradient(circle, rgba(255,243,236,0.24) 0%, rgba(247,208,220,0.07) 40%, transparent 72%)', filter: 'blur(18px)' }}
+                    />
+                </div>
+
+                <motion.div
+                    initial={reducedMotion ? undefined : { opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.44, ease: [0.22, 1, 0.36, 1] }}
+                    className="relative flex-shrink-0 overflow-hidden rounded-[1.72rem]"
                     style={{
-                        paddingTop: 'max(env(safe-area-inset-top), clamp(1.35rem, 3.2vh, 1.8rem))',
-                        paddingBottom: 'max(env(safe-area-inset-bottom), clamp(1rem, 2.6vh, 1.3rem))',
+                        ...surfaceStyle,
+                        paddingTop: 'clamp(1.2rem, 2.2vh, 1.38rem)',
+                        paddingBottom: 'clamp(1.2rem, 2.2vh, 1.38rem)',
+                        paddingLeft: 'clamp(1.16rem, 4vw, 1.34rem)',
+                        paddingRight: 'clamp(1.16rem, 4vw, 1.34rem)',
                     }}
                 >
-                    <div className="flex-shrink-0 pt-1 text-center">
-                        <span className="text-[11px] font-semibold tracking-[0.38em] text-white/84">LIOR</span>
-                    </div>
+                        <div className="pointer-events-none absolute inset-[1px] rounded-[1.6rem]" style={surfaceInnerGlowStyle} />
 
-                    <div
-                        className="pointer-events-none relative flex flex-1 items-start justify-center"
-                        style={{ minHeight: 'clamp(6.4rem, 15vh, 9rem)', maxHeight: 'clamp(8rem, 18vh, 10rem)' }}
-                    >
-                        <div
-                            className="absolute top-[8%] h-[11.75rem] w-[11.75rem] rounded-full"
-                            style={{ background: 'radial-gradient(circle, rgba(255,243,236,0.22) 0%, rgba(247,208,220,0.05) 40%, transparent 72%)', filter: 'blur(20px)' }}
-                        />
-                    </div>
-
-                    <motion.div
-                        initial={reducedMotion ? undefined : { opacity: 0, y: 14 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.44, ease: [0.22, 1, 0.36, 1] }}
-                        className="relative mt-auto flex-shrink-0 rounded-[1.72rem]"
-                        style={{
-                            ...surfaceStyle,
-                            paddingTop: 'clamp(1.05rem, 2vh, 1.2rem)',
-                            paddingBottom: 'clamp(1.05rem, 2vh, 1.2rem)',
-                            paddingLeft: 'clamp(1.05rem, 3.8vw, 1.2rem)',
-                            paddingRight: 'clamp(1.05rem, 3.8vw, 1.2rem)',
-                        }}
-                    >
-                        <div className="mb-5">
+                        <div className="relative z-10 mb-[1.15rem]">
                             {isForgotPassword && (
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>
+                                <p className="text-[10.5px] font-bold uppercase tracking-[0.18em]" style={{ color: authPalette.textSecondary }}>
                                     Recovery
                                 </p>
                             )}
                             <h1
-                                className={`${isForgotPassword ? 'mt-2' : ''} text-[1.82rem] font-bold leading-[1.04] tracking-[-0.03em]`}
-                                style={{ color: 'var(--color-text-primary)' }}
+                                className={`${isForgotPassword ? 'mt-2.5' : ''} text-[2.02rem] font-semibold leading-[0.98] tracking-[-0.038em]`}
+                                style={{ color: authPalette.textPrimary, fontFamily: '"Lora", serif' }}
                             >
                                 {headline}
                             </h1>
-                            <p className="mt-2 max-w-[14rem] text-[12.5px] leading-[1.62]" style={{ color: 'var(--color-text-secondary)' }}>
+                            <p className="mt-3 max-w-[15.25rem] text-[13.25px] leading-[1.58]" style={{ color: authPalette.textSecondary }}>
                                 {subtitle}
                             </p>
                         </div>
 
                         {!isForgotPassword && (
-                            <div className="mb-4 rounded-[0.98rem] p-1" style={toggleTrackStyle}>
-                                <div className="grid grid-cols-2 gap-1">
+                            <div className="relative z-10 mb-4 rounded-[1rem] p-[0.24rem]" style={toggleTrackStyle}>
+                                <div className="grid grid-cols-2 gap-[0.22rem]">
                                     {(['login', 'signup'] as const).map((tab) => {
                                         const active = tab === (isSignUp ? 'signup' : 'login');
                                         return (
                                             <button
                                                 key={tab}
                                                 onClick={() => switchMode(tab)}
-                                                className="relative rounded-[0.86rem] py-2.5 text-[11px] font-semibold"
-                                                style={{ color: active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
+                                                className="relative rounded-[0.9rem] px-3 py-2.5 text-[11.5px] font-semibold tracking-[0.01em] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.18)]"
+                                                style={{ color: active ? authPalette.textPrimary : authPalette.textMuted }}
                                             >
                                                 {active && (
                                                     <motion.div
                                                         layoutId="auth-tab"
-                                                        className="absolute inset-0 rounded-[0.86rem]"
-                                                        style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(255,246,248,0.68) 100%)', border: '1px solid rgba(255,255,255,0.52)', boxShadow: '0 6px 14px rgba(74,31,54,0.05)' }}
+                                                        className="absolute inset-0 rounded-[0.9rem]"
+                                                        style={activeToggleStyle}
                                                         transition={{ type: 'spring', stiffness: 360, damping: 30 }}
                                                     />
                                                 )}
@@ -380,7 +431,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             </div>
                         )}
 
-                        <div className="mb-4 space-y-2.5">
+                        <div className="relative z-10 mb-4 space-y-2.5">
                             <AnimatePresence mode="wait">
                                 {!isConfigured && (
                                     <StatusBanner
@@ -394,7 +445,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             </AnimatePresence>
                         </div>
 
-                        <div className="space-y-3.5">
+                        <div className="relative z-10 space-y-3.5">
                             <AuthField
                                 label="Email"
                                 type="email"
@@ -423,7 +474,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             )}
                         </div>
 
-                        <div className="mt-4 flex items-center justify-end">
+                        <div className="relative z-10 mt-4 flex items-center justify-end">
                             {!isForgotPassword ? (
                                 !isSignUp && (
                                     <button
@@ -433,8 +484,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                             setSubmitAttempted(false);
                                             clearFeedback();
                                         }}
-                                        className="text-[11px] font-medium transition-opacity hover:opacity-80"
-                                        style={{ color: 'var(--color-nav-active)' }}
+                                        className="text-[11.5px] font-semibold tracking-[0.01em] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.16)]"
+                                        style={{ color: authPalette.accentDeep }}
                                     >
                                         Forgot password?
                                     </button>
@@ -447,8 +498,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                         setSubmitAttempted(false);
                                         clearFeedback();
                                     }}
-                                    className="text-[11px] font-medium transition-opacity hover:opacity-80"
-                                    style={{ color: 'var(--color-nav-active)' }}
+                                    className="text-[11.5px] font-semibold tracking-[0.01em] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.16)]"
+                                    style={{ color: authPalette.accentDeep }}
                                 >
                                     Back to sign in
                                 </button>
@@ -459,28 +510,39 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             whileTap={{ scale: 0.988 }}
                             onClick={isForgotPassword ? handleForgotPassword : handleAuth}
                             disabled={loading || rateLimitSecs > 0}
-                            className="relative mt-5 flex w-full items-center justify-center overflow-hidden rounded-[1.02rem] py-3.5 text-[13.5px] font-semibold text-white disabled:opacity-40"
+                            className="relative z-10 mt-5 flex w-full items-center justify-center overflow-hidden rounded-[1.06rem] py-[0.98rem] text-[14px] font-semibold tracking-[0.01em] text-white disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(191,106,135,0.20)]"
                             style={buttonStyle}
                         >
-                            <div className="absolute inset-0 opacity-30" style={{ background: 'linear-gradient(120deg, rgba(255,255,255,0.12) 0%, transparent 44%, transparent 80%, rgba(255,224,205,0.08) 100%)' }} />
+                            <div className="absolute inset-0 opacity-40" style={{ background: 'linear-gradient(120deg, rgba(255,255,255,0.18) 0%, transparent 44%, transparent 80%, rgba(255,224,205,0.10) 100%)' }} />
                             <span className="relative z-10 flex items-center gap-2">
                                 {loading && <Loader2 size={16} className="animate-spin" />}
                                 <span>{buttonLabel}</span>
                             </span>
                         </motion.button>
 
-                        <div className="mt-4 flex items-center justify-center gap-2 text-[10.5px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                            <ShieldCheck size={13} />
-                            Encrypted and private
-                        </div>
+                        <div className="relative z-10 mt-4 border-t pt-4" style={{ borderColor: 'rgba(111,78,94,0.14)' }}>
+                            <div className="flex items-center justify-center gap-2 text-[11px] font-semibold tracking-[0.01em]" style={{ color: authPalette.footer }}>
+                                <ShieldCheck size={13} />
+                                Encrypted and private
+                            </div>
 
-                        <div className="mt-4 flex items-center justify-center gap-4 text-[10.5px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                            <button onClick={() => { feedback.tap(); onPrivacyPolicy?.(); }} className="transition-opacity hover:opacity-80">Privacy</button>
-                            <span className="h-1 w-1 rounded-full bg-current opacity-20" />
-                            <button onClick={() => { feedback.tap(); onTerms?.(); }} className="transition-opacity hover:opacity-80">Terms</button>
+                            <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-medium" style={{ color: authPalette.textSecondary }}>
+                                <button
+                                    onClick={() => { feedback.tap(); onPrivacyPolicy?.(); }}
+                                    className="transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.14)]"
+                                >
+                                    Privacy
+                                </button>
+                                <span className="h-1 w-1 rounded-full bg-current opacity-30" />
+                                <button
+                                    onClick={() => { feedback.tap(); onTerms?.(); }}
+                                    className="transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.14)]"
+                                >
+                                    Terms
+                                </button>
+                            </div>
                         </div>
-                    </motion.div>
-                </div>
+                </motion.div>
             </div>
         </div>
     );

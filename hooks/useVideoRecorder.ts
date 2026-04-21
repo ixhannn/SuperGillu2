@@ -19,7 +19,7 @@ interface UseVideoRecorderReturn {
   isFrontCamera: boolean;
 }
 
-const MAX_DURATION = 10000; // 10 seconds
+const MAX_DURATION = 5000; // 5 seconds (10 Seconds Daily cycle — 5s per partner)
 
 export function useVideoRecorder(): UseVideoRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
@@ -171,7 +171,7 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
       setRecordingTime(Math.min(elapsed, MAX_DURATION));
     }, 100);
 
-    // Auto-stop at 10 seconds
+    // Auto-stop at MAX_DURATION (5s)
     autoStopRef.current = setTimeout(() => {
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();

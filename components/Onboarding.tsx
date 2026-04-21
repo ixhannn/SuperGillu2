@@ -352,7 +352,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 ? new Date(anniversary).toISOString()
                 : profile.anniversaryDate,
         });
-        localStorage.setItem('lior_onboarded', 'true');
+        StorageService.markOnboardingComplete();
         setTimeout(() => onComplete(myName.trim(), ''), 600);
     };
 

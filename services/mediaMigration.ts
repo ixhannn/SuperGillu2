@@ -370,9 +370,151 @@ async function migrateTogetherMusic(result: MigrationResult, onProgress?: (msg: 
     }
 }
 
+// ── Daily Video Moments migration ────────────────────────────────────
+//
+// The new videoMoments.ts stores clip/film video + thumbnail payloads as
+// **Blob** in IndexedDB, and drops the legacy MonthlyVideoCompilation model
+// in favour of BiweeklyFilm. Older installs may still have:
+//   (a) DailyVideoClip rows whose IDB entries are base64 data URLs
+//   (b) `lior_monthly_video_compilations` cache from pre-rewrite builds
+//
+// This migration runs once, converts (a) to Blob, deletes (b).
+
+const DAILY_VIDEO_MIGRATION_KEY = 'lior_daily_video_blob_migrated_v1';
+const LEGACY_MONTHLY_KEY = 'lior_monthly_video_compilations';
+const LEGACY_DAILY_VIDEO_V1_KEY = 'lior_daily_video_clips'; // kept; schema-compatible
+const DB_NAME = 'LiorVault_v11';
+const DB_VERSION = 1;
+const IMAGES_STORE = 'image_vault';
+const DATA_STORE = 'metadata_store';
+
+function openDailyVideoDb(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+            const db = (e.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(IMAGES_STORE)) db.createObjectStore(IMAGES_STORE);
+            if (!db.objectStoreNames.contains(DATA_STORE)) db.createObjectStore(DATA_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function idbGet<T>(store: string, key: string): Promise<T | null> {
+    const db = await openDailyVideoDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readonly');
+        const req = tx.objectStore(store).get(key);
+        req.onsuccess = () => { db.close(); resolve((req.result as T) ?? null); };
+        req.onerror = () => { db.close(); reject(req.error); };
+    });
+}
+
+async function idbPut(store: string, key: string, value: unknown): Promise<void> {
+    const db = await openDailyVideoDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value, key);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+}
+
+async function idbDelete(store: string, key: string): Promise<void> {
+    const db = await openDailyVideoDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+}
+
+async function base64ToBlob(dataUri: string): Promise<Blob | null> {
+    try {
+        const resp = await fetch(dataUri);
+        return await resp.blob();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Convert any base64-shaped daily-video payloads in the image vault to Blob.
+ * Preserves metadata rows — only upgrades the binary payload format.
+ */
+async function migrateDailyVideoBlobs(onProgress?: (msg: string) => void): Promise<MigrationResult> {
+    const result: MigrationResult = { migrated: 0, skipped: 0, failed: 0 };
+    const clips = (await idbGet<any[]>(DATA_STORE, LEGACY_DAILY_VIDEO_V1_KEY)) ?? [];
+
+    for (const clip of clips) {
+        const payloadKeys: string[] = [clip.videoId, clip.thumbnailId].filter(Boolean);
+        for (const key of payloadKeys) {
+            try {
+                const existing = await idbGet<unknown>(IMAGES_STORE, key);
+                if (!existing) { result.skipped += 1; continue; }
+                if (existing instanceof Blob) { result.skipped += 1; continue; }
+                if (typeof existing === 'string' && existing.startsWith('data:')) {
+                    const blob = await base64ToBlob(existing);
+                    if (blob) {
+                        await idbPut(IMAGES_STORE, key, blob);
+                        result.migrated += 1;
+                        onProgress?.(`Converted ${key.slice(0, 28)}… to Blob`);
+                    } else {
+                        result.failed += 1;
+                    }
+                } else {
+                    result.skipped += 1;
+                }
+            } catch {
+                result.failed += 1;
+            }
+        }
+    }
+    return result;
+}
+
+/**
+ * Remove the pre-rewrite `MonthlyVideoCompilation` cache + any associated
+ * payload keys. We don't have schema info to recover them — safe to drop.
+ */
+async function dropLegacyMonthlyCompilations(onProgress?: (msg: string) => void): Promise<void> {
+    try {
+        const legacy = (await idbGet<any[]>(DATA_STORE, LEGACY_MONTHLY_KEY)) ?? [];
+        for (const comp of legacy) {
+            if (comp?.videoId) { try { await idbDelete(IMAGES_STORE, comp.videoId); } catch {} }
+            if (comp?.thumbnailId) { try { await idbDelete(IMAGES_STORE, comp.thumbnailId); } catch {} }
+        }
+        await idbDelete(DATA_STORE, LEGACY_MONTHLY_KEY);
+        if (legacy.length > 0) onProgress?.(`Removed ${legacy.length} legacy monthly compilation(s)`);
+    } catch {
+        // ignore — legacy cleanup is best-effort
+    }
+}
+
 export const MediaMigrationService = {
     isMigrated(): boolean {
         return !!localStorage.getItem(MIGRATION_KEY);
+    },
+
+    /** Daily-video specific: base64 → Blob + prune legacy monthly compilations. */
+    isDailyVideoMigrated(): boolean {
+        return !!localStorage.getItem(DAILY_VIDEO_MIGRATION_KEY);
+    },
+
+    async migrateDailyVideo(onProgress?: (msg: string) => void): Promise<MigrationResult> {
+        if (this.isDailyVideoMigrated()) {
+            return { migrated: 0, skipped: 0, failed: 0 };
+        }
+        onProgress?.('Upgrading daily-video storage…');
+        const result = await migrateDailyVideoBlobs(onProgress);
+        await dropLegacyMonthlyCompilations(onProgress);
+        if (result.failed === 0) {
+            localStorage.setItem(DAILY_VIDEO_MIGRATION_KEY, new Date().toISOString());
+        }
+        onProgress?.(`Daily-video migration: ${result.migrated} converted, ${result.skipped} skipped, ${result.failed} failed.`);
+        return result;
     },
 
     async hasUnmigratedMedia(): Promise<boolean> {
@@ -417,6 +559,16 @@ export const MediaMigrationService = {
 
         await migrateVoiceNotes(result, onProgress);
         await migrateTogetherMusic(result, onProgress);
+
+        // Daily-video: base64 → Blob + prune legacy monthly compilations
+        try {
+            const dvResult = await this.migrateDailyVideo(onProgress);
+            result.migrated += dvResult.migrated;
+            result.skipped += dvResult.skipped;
+            result.failed += dvResult.failed;
+        } catch (err) {
+            onProgress?.(`Daily-video migration error: ${err instanceof Error ? err.message : 'unknown'}`);
+        }
 
         if (result.failed === 0) {
             localStorage.setItem(MIGRATION_KEY, new Date().toISOString());

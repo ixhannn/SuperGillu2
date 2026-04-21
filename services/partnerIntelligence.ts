@@ -1,5 +1,4 @@
-import { PartnerInsight, InsightCategory, InsightAggregates, MoodEntry } from '../types';
-import { SupabaseService } from './supabase';
+import { PartnerInsight, InsightCategory, InsightAggregates, MoodEntry, Note, Memory, VoiceNote } from '../types';
 import { generateId } from '../utils/ids';
 import { format, subDays, differenceInDays } from 'date-fns';
 
@@ -98,6 +97,25 @@ const getMoodEntries = (): MoodEntry[] => {
   } catch {
     return [];
   }
+};
+
+const getLocalCollection = <T>(key: string): T[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const getDaysSinceLatest = (timestamps: Array<string | undefined>, now: Date): number => {
+  const latest = timestamps
+    .map((timestamp) => (typeof timestamp === 'string' ? new Date(timestamp) : null))
+    .filter((date): date is Date => !!date && !Number.isNaN(date.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime())[0];
+
+  if (!latest) return 0;
+  return Math.max(0, differenceInDays(now, latest));
 };
 
 // Insight category icons
@@ -352,7 +370,258 @@ export const PartnerIntelligenceService = {
     return moodEntries.length >= 7;
   },
 
-  // Generate insights (called periodically)
+  // ── Love Language Tracker data methods ──────────────────────────────
+
+  /** Pulse tab: partner's emotional temperature + mood pattern cards */
+  getPulseData(): {
+    partnerName: string;
+    temperature: number;       // 0-100 warmth score
+    temperatureTrend: 'rising' | 'falling' | 'stable';
+    moodPatterns: Array<{ text: string; emoji: string; type: 'positive' | 'neutral' | 'concern' }>;
+    activity: { lastMemory: string | null; lastNote: string | null; currentStreak: number };
+  } {
+    const partnerName = getPartnerName();
+    const now = new Date();
+    const moodEntries = getMoodEntries();
+    const deviceId = getDeviceId();
+    const partnerMoods = moodEntries.filter(m => m.userId !== deviceId);
+
+    const last7d = partnerMoods.filter(m => new Date(m.timestamp) > subDays(now, 7));
+    const prev7d = partnerMoods.filter(m => {
+      const t = new Date(m.timestamp);
+      return t > subDays(now, 14) && t <= subDays(now, 7);
+    });
+
+    const moodScore = (mood: string): number => {
+      const map: Record<string, number> = {
+        loved: 5, romantic: 5, grateful: 5, joyful: 5,
+        happy: 4, excited: 4, playful: 4, peaceful: 4,
+        calm: 3, content: 3, thoughtful: 3, reflective: 3, tender: 3,
+        tired: 2, quiet: 2, meh: 2, stressed: 2,
+        sad: 1, anxious: 1, frustrated: 1, lonely: 1, angry: 1,
+      };
+      return map[mood.toLowerCase()] ?? 3;
+    };
+
+    const avg7d = last7d.length > 0 ? last7d.map(m => moodScore(m.mood)).reduce((a,b) => a+b, 0) / last7d.length : 3;
+    const avgPrev = prev7d.length > 0 ? prev7d.map(m => moodScore(m.mood)).reduce((a,b) => a+b, 0) / prev7d.length : 3;
+    const temperature = Math.round(Math.min(100, Math.max(0, (avg7d / 5) * 100)));
+    const temperatureTrend: 'rising' | 'falling' | 'stable' =
+      avg7d - avgPrev > 0.3 ? 'rising' : avg7d - avgPrev < -0.3 ? 'falling' : 'stable';
+
+    // Build mood pattern cards (max 3)
+    const patterns: Array<{ text: string; emoji: string; type: 'positive' | 'neutral' | 'concern' }> = [];
+
+    if (avg7d >= 4) {
+      patterns.push({ text: `${partnerName} has been feeling great this week — your best stretch in a while 💕`, emoji: '🥰', type: 'positive' });
+    } else if (avg7d <= 2) {
+      patterns.push({ text: `${partnerName}'s mood has been lower than usual — a check-in could mean a lot`, emoji: '💙', type: 'concern' });
+    }
+
+    // Day-of-week pattern
+    const dayBuckets: Record<number, number[]> = {};
+    partnerMoods.forEach(m => {
+      const day = new Date(m.timestamp).getDay();
+      if (!dayBuckets[day]) dayBuckets[day] = [];
+      dayBuckets[day].push(moodScore(m.mood));
+    });
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let worstDay = -1, worstAvg = 6;
+    Object.entries(dayBuckets).forEach(([d, scores]) => {
+      const avg = scores.reduce((a,b) => a+b, 0) / scores.length;
+      if (avg < worstAvg && scores.length >= 2) { worstAvg = avg; worstDay = parseInt(d); }
+    });
+    if (worstDay >= 0 && worstAvg < 3) {
+      patterns.push({ text: `${partnerName}'s mood tends to dip on ${dayNames[worstDay]}s — a morning note could go a long way`, emoji: '📝', type: 'neutral' });
+    }
+
+    // Gap detection
+    if (last7d.length === 0 && partnerMoods.length > 0) {
+      patterns.push({ text: `${partnerName} hasn't logged a mood in a while — they might need a check-in`, emoji: '💭', type: 'concern' });
+    }
+
+    // Activity snapshot
+    const memories = getLocalCollection<Memory>('lior_memories');
+    const notes = getLocalCollection<Note>('lior_notes');
+    const lastMemory = memories.length > 0 ? memories.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : null;
+    const lastNote = notes.length > 0 ? notes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0].createdAt : null;
+
+    let streak = 0;
+    try {
+      const settings = JSON.parse(localStorage.getItem('lior_voice_moment_settings') || '{}');
+      streak = settings.streakCount || 0;
+    } catch { /* ignore */ }
+
+    return {
+      partnerName,
+      temperature,
+      temperatureTrend,
+      moodPatterns: patterns.slice(0, 3),
+      activity: { lastMemory, lastNote, currentStreak: streak },
+    };
+  },
+
+  /** Nudges tab: actionable suggestions with navigation targets */
+  getNudges(): Array<{
+    id: string;
+    text: string;
+    emoji: string;
+    cta: string;
+    target: string; // ViewState to navigate to
+  }> {
+    const partnerName = getPartnerName();
+    const now = new Date();
+    const memories = getLocalCollection<Memory>('lior_memories');
+    const notes = getLocalCollection<Note>('lior_notes');
+    const voiceNotes = getLocalCollection<VoiceNote>('lior_voice_notes');
+
+    const daysSinceMemory = getDaysSinceLatest(memories.map(m => m.date), now);
+    const daysSinceNote = getDaysSinceLatest(notes.map(n => n.createdAt), now);
+    const daysSinceVoice = getDaysSinceLatest(voiceNotes.map(v => v.createdAt), now);
+
+    const nudges: Array<{ id: string; text: string; emoji: string; cta: string; target: string }> = [];
+
+    if (daysSinceNote > 3) {
+      nudges.push({ id: 'write-note', text: `Write ${partnerName} a surprise note`, emoji: '💌', cta: 'Write Note', target: 'notes' });
+    }
+    if (daysSinceMemory > 5) {
+      nudges.push({ id: 'add-memory', text: `Create a memory together`, emoji: '📸', cta: 'Add Memory', target: 'add-memory' });
+    }
+    if (daysSinceVoice > 5) {
+      nudges.push({ id: 'voice-note', text: `Send ${partnerName} a voice note`, emoji: '🎙️', cta: 'Record', target: 'add-memory' });
+    }
+    nudges.push({ id: 'surprise', text: `Plan something special for this weekend`, emoji: '🎁', cta: 'Plan Surprise', target: 'surprises' });
+
+    return nudges.slice(0, 3);
+  },
+
+  /** Nudges tab: communication tips based on activity patterns */
+  getCommunicationTips(): string[] {
+    const partnerName = getPartnerName();
+    const voiceNotes = getLocalCollection<VoiceNote>('lior_voice_notes');
+    const memories = getLocalCollection<Memory>('lior_memories');
+    const notes = getLocalCollection<Note>('lior_notes');
+
+    const tips: string[] = [];
+    if (voiceNotes.length > notes.length) {
+      tips.push(`${partnerName} responds most to voice notes and photos`);
+    } else if (notes.length > voiceNotes.length) {
+      tips.push(`${partnerName} seems to love written notes — keep them coming`);
+    }
+    if (memories.filter(m => !!(m as any).audioId).length > 0) {
+      tips.push('Your voice memories get the warmest mood responses');
+    }
+    if (tips.length === 0) {
+      tips.push('Keep showing up — consistency matters more than grand gestures');
+    }
+    return tips.slice(0, 2);
+  },
+
+  /** Gift & Date Ideas tab: personalized from mood/memory patterns */
+  getGiftDateIdeas(): {
+    gifts: Array<{ text: string; emoji: string; reason: string }>;
+    dates: Array<{ text: string; emoji: string; reason: string }>;
+    upcoming: Array<{ title: string; daysUntil: number; emoji: string }>;
+  } {
+    const partnerName = getPartnerName();
+    const moodEntries = getMoodEntries();
+    const deviceId = getDeviceId();
+    const partnerMoods = moodEntries.filter(m => m.userId !== deviceId);
+    const now = new Date();
+    const recent = partnerMoods.filter(m => new Date(m.timestamp) > subDays(now, 14));
+
+    const moodScore = (mood: string): number => {
+      const map: Record<string, number> = {
+        loved: 5, romantic: 5, grateful: 5, joyful: 5,
+        happy: 4, excited: 4, playful: 4, peaceful: 4,
+        calm: 3, content: 3, thoughtful: 3, reflective: 3, tender: 3,
+        tired: 2, quiet: 2, meh: 2, stressed: 2,
+        sad: 1, anxious: 1, frustrated: 1, lonely: 1, angry: 1,
+      };
+      return map[mood.toLowerCase()] ?? 3;
+    };
+
+    const avgRecent = recent.length > 0 ? recent.map(m => moodScore(m.mood)).reduce((a,b) => a+b, 0) / recent.length : 3;
+
+    const gifts: Array<{ text: string; emoji: string; reason: string }> = [];
+    const dates: Array<{ text: string; emoji: string; reason: string }> = [];
+
+    // Mood-based suggestions
+    if (avgRecent >= 4) {
+      gifts.push({ text: 'A photo book of your best memories together', emoji: '📖', reason: `${partnerName} is on a high — celebrate it` });
+      dates.push({ text: 'Try something adventurous you\'ve both been wanting to do', emoji: '🏔️', reason: 'Energy is high — go for it' });
+    } else if (avgRecent <= 2.5) {
+      gifts.push({ text: 'Their favorite comfort food, delivered', emoji: '🍕', reason: `${partnerName} could use some comfort` });
+      dates.push({ text: 'A quiet evening in — cook together, no screens', emoji: '🕯️', reason: 'Low-pressure quality time' });
+    } else {
+      gifts.push({ text: 'A handwritten letter about what you love about them', emoji: '✉️', reason: 'Simple gestures land hardest' });
+      dates.push({ text: 'A walk somewhere new with no agenda', emoji: '🚶', reason: 'Fresh context sparks fresh conversation' });
+    }
+
+    gifts.push({ text: 'A playlist of songs that remind you of them', emoji: '🎵', reason: 'Personal + zero cost' });
+    dates.push({ text: 'Recreate your first date', emoji: '💫', reason: 'Nostalgia is powerful' });
+
+    // Upcoming milestones
+    const daysTogether = getDaysTogether();
+    const milestones = [
+      { days: 100, label: '100 days together', emoji: '💯' },
+      { days: 200, label: '200 days together', emoji: '✨' },
+      { days: 365, label: '1 year together', emoji: '🎂' },
+      { days: 500, label: '500 days together', emoji: '🌟' },
+      { days: 730, label: '2 years together', emoji: '💎' },
+      { days: 1000, label: '1,000 days together', emoji: '🏆' },
+    ];
+    const upcoming = milestones
+      .map(m => ({ title: m.label, daysUntil: m.days - daysTogether, emoji: m.emoji }))
+      .filter(m => m.daysUntil > 0 && m.daysUntil <= 30);
+
+    return { gifts, dates, upcoming };
+  },
+
+  /** Milestones tab: achievements, badges, timeline */
+  getMilestones(): {
+    achieved: Array<{ title: string; emoji: string; date?: string }>;
+    badges: Array<{ title: string; emoji: string; unlocked: boolean }>;
+    daysTogether: number;
+  } {
+    const daysTogether = getDaysTogether();
+    const memories = getLocalCollection<Memory>('lior_memories');
+    const voiceNotes = getLocalCollection<VoiceNote>('lior_voice_notes');
+    const notes = getLocalCollection<Note>('lior_notes');
+
+    const achieved: Array<{ title: string; emoji: string; date?: string }> = [];
+    const milestoneMarks = [7, 30, 50, 100, 200, 365, 500, 730, 1000];
+    milestoneMarks.forEach(m => {
+      if (daysTogether >= m) {
+        achieved.push({ title: `${m} days together`, emoji: m >= 365 ? '💎' : m >= 100 ? '🌟' : '✨' });
+      }
+    });
+
+    if (memories.length >= 10) achieved.push({ title: '10th memory!', emoji: '📸' });
+    if (memories.length >= 50) achieved.push({ title: '50th memory!', emoji: '🎞️' });
+    if (memories.length >= 100) achieved.push({ title: '100th memory!', emoji: '🏆' });
+    if (notes.length >= 10) achieved.push({ title: '10th note!', emoji: '💌' });
+    if (voiceNotes.length >= 1) achieved.push({ title: 'First voice note!', emoji: '🎙️' });
+
+    const badges: Array<{ title: string; emoji: string; unlocked: boolean }> = [
+      { title: '7-day streak 🔥', emoji: '🔥', unlocked: false },
+      { title: 'First voice memory', emoji: '🎙️', unlocked: voiceNotes.length > 0 },
+      { title: 'Memory maker (10+)', emoji: '📸', unlocked: memories.length >= 10 },
+      { title: 'Love letter writer', emoji: '💌', unlocked: notes.length >= 5 },
+      { title: 'Century club (100 days)', emoji: '💯', unlocked: daysTogether >= 100 },
+      { title: 'Anniversary', emoji: '🎂', unlocked: daysTogether >= 365 },
+    ];
+
+    // Check streak badge
+    try {
+      const settings = JSON.parse(localStorage.getItem('lior_voice_moment_settings') || '{}');
+      if ((settings.streakCount || 0) >= 7) {
+        badges[0].unlocked = true;
+      }
+    } catch { /* ignore */ }
+
+    return { achieved: achieved.reverse(), badges, daysTogether };
+  },
   async generateInsights(): Promise<PartnerInsight | null> {
     const deviceId = getDeviceId();
     const coupleId = getCoupleId();
@@ -405,24 +674,18 @@ export const PartnerIntelligenceService = {
       : 3;
 
     // Get notes count
-    let notesSent30d = 0;
-    try {
-      const notes = JSON.parse(localStorage.getItem('lior_notes') || '[]');
-      const thirtyDaysAgo = subDays(now, 30);
-      notesSent30d = notes.filter((n: { createdAt: string }) =>
-        new Date(n.createdAt) > thirtyDaysAgo
-      ).length;
-    } catch { /* ignore */ }
+    const notes = getLocalCollection<Note>('lior_notes');
+    const thirtyDaysAgo = subDays(now, 30);
+    const notesSent30d = notes.filter((n) => new Date(n.createdAt) > thirtyDaysAgo).length;
+    const daysSinceLastNote = getDaysSinceLatest(notes.map((n) => n.createdAt), now);
 
     // Get memories count
-    let memoriesAdded30d = 0;
-    try {
-      const memories = JSON.parse(localStorage.getItem('lior_memories') || '[]');
-      const thirtyDaysAgo = subDays(now, 30);
-      memoriesAdded30d = memories.filter((m: { date: string }) =>
-        new Date(m.date) > thirtyDaysAgo
-      ).length;
-    } catch { /* ignore */ }
+    const memories = getLocalCollection<Memory>('lior_memories');
+    const memoriesAdded30d = memories.filter((m) => new Date(m.date) > thirtyDaysAgo).length;
+
+    // Get voice notes timing
+    const voiceNotes = getLocalCollection<VoiceNote>('lior_voice_notes');
+    const daysSinceLastVoiceNote = getDaysSinceLatest(voiceNotes.map((note) => note.createdAt), now);
 
     // Get voice moment streak
     let voiceMomentStreak = 0;
@@ -437,8 +700,8 @@ export const PartnerIntelligenceService = {
       moodTrend7d: calculateMoodTrend(last7dMoods),
       moodAvg7d,
       moodAvg30d,
-      daysSinceLastNote: 3, // TODO: Calculate
-      daysSinceLastVoiceNote: 5, // TODO: Calculate
+      daysSinceLastNote,
+      daysSinceLastVoiceNote,
       voiceMomentStreak,
       notesSent30d,
       memoriesAdded30d,

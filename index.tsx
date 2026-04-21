@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import './styles/root-fixes.css';
+import './styles/premium-features.css';
 import { Haptics } from './services/haptics';
 import { initGlobalGestures } from './utils/gesture';
 // Boot CSS Animation Bus — registers before any component mounts

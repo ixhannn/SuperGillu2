@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, Square, Play, Pause, Trash2, MicOff } from 'lucide-react';
+import { Mic, Square, Play, Pause, Trash2, MicOff, Send, X } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
 import { ViewHeader } from '../components/ViewHeader';
 import { PremiumModal } from '../components/PremiumModal';
@@ -15,6 +15,7 @@ interface VoiceNotesViewProps {
 }
 
 const FREE_VOICE_NOTE_LIMIT = 5;
+const WAVEFORM_BARS = 40;
 
 function formatDuration(seconds: number): string {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -22,11 +23,31 @@ function formatDuration(seconds: number): string {
     return `${m}:${s}`;
 }
 
-const VoiceNoteCard: React.FC<{ note: VoiceNote; onDelete: (id: string) => void }> = ({ note, onDelete }) => {
+function timeAgo(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ── Playback card ──────────────────────────────────────────────────────────
+
+const VoiceNoteCard: React.FC<{
+    note: VoiceNote;
+    onDelete: (id: string) => void;
+    index: number;
+}> = ({ note, onDelete, index }) => {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [showDelete, setShowDelete] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -42,11 +63,14 @@ const VoiceNoteCard: React.FC<{ note: VoiceNote; onDelete: (id: string) => void 
             audioRef.current = new Audio(audioUrl);
             audioRef.current.ontimeupdate = () => {
                 if (!audioRef.current) return;
-                setProgress(audioRef.current.currentTime / (audioRef.current.duration || 1));
+                const p = audioRef.current.currentTime / (audioRef.current.duration || 1);
+                setProgress(p);
+                setCurrentTime(audioRef.current.currentTime);
             };
             audioRef.current.onended = () => {
                 setIsPlaying(false);
                 setProgress(0);
+                setCurrentTime(0);
             };
         }
         if (isPlaying) {
@@ -66,52 +90,109 @@ const VoiceNoteCard: React.FC<{ note: VoiceNote; onDelete: (id: string) => void 
     return (
         <motion.div
             layout
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            className="rounded-3xl p-5"
-            style={{ background: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.75)' }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, x: -80, transition: { duration: 0.2 } }}
+            transition={{ delay: index * 0.04, type: 'spring', stiffness: 500, damping: 32 }}
+            onTap={() => setShowDelete(false)}
+            className="group relative"
         >
-            <div className="flex items-center gap-4">
-                <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    onClick={togglePlay}
-                    disabled={!audioUrl}
-                    className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm disabled:opacity-40"
-                    style={{ background: 'var(--theme-nav-center-bg-active)' }}
-                >
-                    {isPlaying
-                        ? <Pause size={18} className="text-white" fill="white" />
-                        : <Play size={18} className="text-white" fill="white" style={{ marginLeft: 2 }} />
-                    }
-                </motion.button>
-                <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {note.title || 'Voice Note'}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                        {/* Progress bar */}
-                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>
-                            <motion.div
-                                className="h-full rounded-full"
-                                style={{ width: `${progress * 100}%`, background: 'var(--theme-nav-center-bg-active)' }}
-                            />
+            <motion.div
+                className="rounded-[20px] p-4 relative overflow-hidden"
+                style={{
+                    background: isPlaying
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.75), rgba(251,207,232,0.35))'
+                        : 'rgba(255,255,255,0.55)',
+                    border: isPlaying
+                        ? '1.5px solid rgba(244,114,182,0.3)'
+                        : '1px solid rgba(255,255,255,0.7)',
+                    boxShadow: isPlaying
+                        ? '0 8px 32px rgba(244,114,182,0.12), 0 2px 8px rgba(0,0,0,0.04)'
+                        : '0 2px 8px rgba(0,0,0,0.03)',
+                    transition: 'all 0.3s ease',
+                }}
+            >
+                {/* Playing glow accent */}
+                {isPlaying && (
+                    <motion.div
+                        className="absolute inset-0 pointer-events-none"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                        style={{ background: 'radial-gradient(ellipse at 20% 50%, rgba(244,114,182,0.08), transparent 60%)' }}
+                    />
+                )}
+
+                <div className="flex items-center gap-3.5 relative z-[1]">
+                    {/* Play button */}
+                    <motion.button
+                        whileTap={{ scale: 0.85 }}
+                        onClick={togglePlay}
+                        disabled={!audioUrl}
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+                        style={{
+                            background: isPlaying
+                                ? 'var(--theme-nav-center-bg-active)'
+                                : 'linear-gradient(135deg, rgba(244,114,182,0.15), rgba(251,207,232,0.25))',
+                            boxShadow: isPlaying
+                                ? '0 4px 16px rgba(244,114,182,0.35)'
+                                : 'none',
+                            transition: 'all 0.3s ease',
+                        }}
+                    >
+                        {isPlaying
+                            ? <Pause size={16} fill="white" style={{ color: '#fff' }} />
+                            : <Play size={16} fill="var(--color-nav-active)" style={{ color: 'var(--color-nav-active)', marginLeft: 1 }} />
+                        }
+                    </motion.button>
+
+                    {/* Info + progress */}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                                {note.title || 'Voice Note'}
+                            </p>
+                            <span className="text-[10px] flex-shrink-0 opacity-40 tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+                                {timeAgo(note.createdAt)}
+                            </span>
                         </div>
-                        <span className="text-[11px] tabular-nums flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
-                            {formatDuration(note.duration)}
-                        </span>
+
+                        {/* Scrubber bar */}
+                        <div className="flex items-center gap-2.5 mt-2">
+                            <div className="flex-1 h-[5px] rounded-full overflow-hidden" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.1)' }}>
+                                <motion.div
+                                    className="h-full rounded-full"
+                                    style={{
+                                        width: `${progress * 100}%`,
+                                        background: isPlaying
+                                            ? 'var(--theme-nav-center-bg-active)'
+                                            : 'rgba(var(--theme-particle-1-rgb),0.3)',
+                                        transition: 'background 0.3s',
+                                    }}
+                                />
+                            </div>
+                            <span className="text-[10px] tabular-nums flex-shrink-0 font-medium" style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}>
+                                {isPlaying ? formatDuration(currentTime) : formatDuration(note.duration)}
+                            </span>
+                        </div>
                     </div>
-                    <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
-                        {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </p>
+
+                    {/* Delete (long-press reveal or always visible) */}
+                    <motion.button
+                        whileTap={{ scale: 0.8 }}
+                        onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 opacity-0 group-active:opacity-100 transition-opacity"
+                        style={{ background: 'rgba(239,68,68,0.08)' }}
+                    >
+                        <Trash2 size={13} style={{ color: '#ef4444' }} />
+                    </motion.button>
                 </div>
-                <button onClick={() => onDelete(note.id)} className="opacity-30 p-1 flex-shrink-0 transition-opacity active:scale-90">
-                    <Trash2 size={14} style={{ color: 'var(--color-text-primary)' }} />
-                </button>
-            </div>
+            </motion.div>
         </motion.div>
     );
 };
+
+// ── Main View ──────────────────────────────────────────────────────────────
 
 export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     const [notes, setNotes] = useState<VoiceNote[]>([]);
@@ -122,7 +203,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     const [title, setTitle] = useState('');
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [waveformData, setWaveformData] = useState<number[]>(new Array(30).fill(0));
+    const [waveformData, setWaveformData] = useState<number[]>(new Array(WAVEFORM_BARS).fill(0));
     const [hasPermission, setHasPermission] = useState(true);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -131,7 +212,6 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     const analyserRef = useRef<AnalyserNode | null>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
     const animFrameRef = useRef<number | null>(null);
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     useEffect(() => {
         setNotes(StorageService.getVoiceNotes());
@@ -146,12 +226,9 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
         const bufferLength = analyserRef.current.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
         analyserRef.current.getByteFrequencyData(dataArray);
-
-        // Sample 30 bars evenly
-        const step = Math.floor(bufferLength / 30);
-        const bars = Array.from({ length: 30 }, (_, i) => dataArray[i * step] / 255);
+        const step = Math.floor(bufferLength / WAVEFORM_BARS);
+        const bars = Array.from({ length: WAVEFORM_BARS }, (_, i) => dataArray[i * step] / 255);
         setWaveformData(bars);
-
         animFrameRef.current = requestAnimationFrame(drawWaveform);
     }, []);
 
@@ -166,7 +243,6 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             setHasPermission(true);
 
-            // Set up AudioContext for waveform
             audioCtxRef.current = new AudioContext();
             const source = audioCtxRef.current.createMediaStreamSource(stream);
             analyserRef.current = audioCtxRef.current.createAnalyser();
@@ -187,7 +263,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                 stream.getTracks().forEach(t => t.stop());
                 if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
                 audioCtxRef.current?.close();
-                setWaveformData(new Array(30).fill(0));
+                setWaveformData(new Array(WAVEFORM_BARS).fill(0));
             };
             mr.start();
             mediaRecorderRef.current = mr;
@@ -229,7 +305,6 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
             senderId: StorageService.getDeviceId(),
         };
 
-        // Save audio to IDB first, then attempt R2 upload
         try {
             const audioResult = await StorageService.saveVoiceNoteAudio(id, pendingAudio.dataUri, { createdAt: newNote.createdAt });
             newNote.audioBytes = audioResult.byteSize;
@@ -258,10 +333,12 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     const handleDelete = async (id: string) => {
         await StorageService.deleteVoiceNote(id);
         setNotes(prev => prev.filter(n => n.id !== id));
+        feedback.tap();
     };
 
     const profile = StorageService.getCoupleProfile();
     const canRecord = profile.isPremium || notes.length < FREE_VOICE_NOTE_LIMIT;
+    const isOverlayOpen = isRecording || !!pendingAudio;
 
     return (
         <motion.div
@@ -273,139 +350,285 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
         >
             <ViewHeader title="Voice Notes" onBack={() => setView('home')} variant="centered" />
 
-            <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto p-4 pb-8 space-y-4">
+            {/* ── Notes list ── */}
+            <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto px-4 pt-2 pb-48 space-y-3">
+                {/* Inline record FAB — always at top of list */}
+                {!isOverlayOpen && (
+                    <motion.button
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => { if (canRecord) startRecording(); else setShowPremiumModal(true); }}
+                        className="w-full flex items-center gap-4 p-4 rounded-[20px]"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(244,114,182,0.06), rgba(251,207,232,0.12))',
+                            border: '1.5px dashed rgba(244,114,182,0.25)',
+                        }}
+                    >
+                        <div
+                            className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                            style={{ background: 'var(--theme-nav-center-bg-active)', boxShadow: '0 4px 16px rgba(244,114,182,0.3)' }}
+                        >
+                            <Mic size={18} className="text-white" strokeWidth={2} />
+                        </div>
+                        <div className="text-left flex-1">
+                            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                                Record a voice note
+                            </p>
+                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
+                                {!hasPermission ? 'Microphone access needed' : 'Tap to start recording'}
+                            </p>
+                        </div>
+                        {!profile.isPremium && (
+                            <span className="text-[10px] font-medium px-2 py-1 rounded-full flex-shrink-0" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.1)', color: 'var(--color-text-secondary)' }}>
+                                {notes.length}/{FREE_VOICE_NOTE_LIMIT}
+                            </span>
+                        )}
+                    </motion.button>
+                )}
+
+                {!hasPermission && !isOverlayOpen && (
+                    <div className="flex items-center justify-center gap-2 py-2">
+                        <MicOff size={13} style={{ color: '#ef4444' }} />
+                        <span className="text-[11px] font-medium" style={{ color: '#ef4444' }}>Grant microphone access in settings</span>
+                    </div>
+                )}
+
                 <AnimatePresence mode="popLayout">
-                    {notes.map(note => (
-                        <VoiceNoteCard key={note.id} note={note} onDelete={handleDelete} />
+                    {notes.map((note, i) => (
+                        <VoiceNoteCard key={note.id} note={note} onDelete={handleDelete} index={i} />
                     ))}
                 </AnimatePresence>
-                {notes.length === 0 && !isRecording && !pendingAudio && (
-                    <EmptyState variant="voiceNotes" />
+                {notes.length === 0 && !isOverlayOpen && (
+                    <div className="pt-4">
+                        <EmptyState variant="voiceNotes" />
+                    </div>
                 )}
             </div>
 
-            {/* Bottom recording area */}
-            <div className="p-4 pb-8 space-y-4" style={{ borderTop: '1px solid rgba(255,255,255,0.3)', background: 'var(--theme-bg-main)' }}>
-                <AnimatePresence mode="wait">
-                    {pendingAudio ? (
-                        /* Save flow */
+            {/* ══════════════════════════════════════════════════════════════
+                 FULL-SCREEN RECORDING / SAVE OVERLAY
+                 Renders as a portal-like fixed overlay ABOVE the nav bar (z-[60]).
+                 This guarantees the stop button is never occluded.
+               ══════════════════════════════════════════════════════════════ */}
+            <AnimatePresence>
+                {isRecording && (
+                    <motion.div
+                        key="recording-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0, transition: { duration: 0.2 } }}
+                        className="fixed inset-0 z-[60] flex flex-col items-center justify-center"
+                        style={{
+                            background: 'linear-gradient(180deg, rgba(15,5,10,0.85) 0%, rgba(40,10,25,0.95) 100%)',
+                            backdropFilter: 'blur(40px) saturate(1.3)',
+                            WebkitBackdropFilter: 'blur(40px) saturate(1.3)',
+                        }}
+                    >
+                        {/* Ambient pulse rings */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                            {[0, 1, 2].map(ring => (
+                                <motion.div
+                                    key={ring}
+                                    className="absolute rounded-full"
+                                    style={{
+                                        width: 200 + ring * 100,
+                                        height: 200 + ring * 100,
+                                        border: `1px solid rgba(244,114,182,${0.12 - ring * 0.03})`,
+                                    }}
+                                    animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.15, 0.4] }}
+                                    transition={{ duration: 3 + ring * 0.5, repeat: Infinity, delay: ring * 0.6, ease: 'easeInOut' }}
+                                />
+                            ))}
+                        </div>
+
+                        {/* Timer */}
                         <motion.div
-                            key="save"
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            className="space-y-3"
+                            transition={{ delay: 0.1 }}
+                            className="relative z-[1] flex flex-col items-center"
                         >
-                            <div className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.08)' }}>
-                                <Mic size={16} style={{ color: 'var(--color-text-secondary)' }} />
-                                <span className="text-[14px]" style={{ color: 'var(--color-text-primary)' }}>
-                                    Recorded {formatDuration(pendingAudio.duration)}
+                            <div className="flex items-center gap-2 mb-2">
+                                <motion.div
+                                    animate={{ scale: [1, 1.4, 1] }}
+                                    transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
+                                    className="w-2 h-2 rounded-full"
+                                    style={{ background: '#f43f5e', boxShadow: '0 0 12px rgba(244,63,94,0.6)' }}
+                                />
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'rgba(244,114,182,0.7)' }}>
+                                    Recording
                                 </span>
                             </div>
+
+                            <span
+                                className="text-[56px] font-extralight tabular-nums leading-none"
+                                style={{ color: 'rgba(255,255,255,0.95)', letterSpacing: '0.04em' }}
+                            >
+                                {formatDuration(recordingDuration)}
+                            </span>
+                        </motion.div>
+
+                        {/* Live waveform */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.2 }}
+                            className="relative z-[1] flex items-end justify-center gap-[3px] h-16 w-[85%] max-w-xs mt-10 mb-12"
+                        >
+                            {waveformData.map((v, i) => (
+                                <motion.div
+                                    key={i}
+                                    className="flex-1 rounded-full"
+                                    animate={{ height: `${Math.max(6, v * 100)}%` }}
+                                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                                    style={{
+                                        background: `linear-gradient(to top, rgba(244,114,182,${0.3 + v * 0.7}), rgba(251,113,133,${0.2 + v * 0.6}))`,
+                                        boxShadow: v > 0.5 ? `0 0 8px rgba(244,114,182,${v * 0.3})` : 'none',
+                                    }}
+                                />
+                            ))}
+                        </motion.div>
+
+                        {/* Stop button — big, centered, unmissable */}
+                        <motion.button
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            exit={{ scale: 0 }}
+                            whileTap={{ scale: 0.85 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 22, delay: 0.15 }}
+                            onClick={stopRecording}
+                            className="relative z-[1] w-20 h-20 rounded-full flex items-center justify-center"
+                            style={{
+                                background: 'linear-gradient(135deg, #f43f5e, #e11d48)',
+                                boxShadow: '0 8px 40px rgba(244,63,94,0.45), 0 0 0 6px rgba(244,63,94,0.15), inset 0 1px 0 rgba(255,255,255,0.15)',
+                            }}
+                        >
+                            <Square size={24} fill="white" style={{ color: '#fff' }} />
+                        </motion.button>
+
+                        <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.3 }}
+                            className="relative z-[1] text-[12px] font-medium mt-4"
+                            style={{ color: 'rgba(255,255,255,0.35)' }}
+                        >
+                            Tap to stop
+                        </motion.p>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ── Save / discard overlay ── */}
+            <AnimatePresence>
+                {pendingAudio && !isRecording && (
+                    <motion.div
+                        key="save-overlay"
+                        initial={{ opacity: 0, y: '100%' }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: '100%' }}
+                        transition={{ type: 'spring', stiffness: 350, damping: 32 }}
+                        className="fixed inset-x-0 bottom-0 z-[60] flex flex-col"
+                        style={{
+                            background: 'linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,245,248,0.98) 100%)',
+                            backdropFilter: 'blur(50px)',
+                            WebkitBackdropFilter: 'blur(50px)',
+                            borderRadius: '28px 28px 0 0',
+                            boxShadow: '0 -8px 40px rgba(0,0,0,0.08), 0 -2px 12px rgba(244,114,182,0.06)',
+                            maxHeight: '70vh',
+                            paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)',
+                        }}
+                    >
+                        {/* Drag handle */}
+                        <div className="flex justify-center pt-3 pb-1">
+                            <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.2)' }} />
+                        </div>
+
+                        <div className="px-5 pb-4 space-y-4">
+                            {/* Recorded badge */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2.5">
+                                    <div
+                                        className="w-9 h-9 rounded-xl flex items-center justify-center"
+                                        style={{ background: 'linear-gradient(135deg, rgba(244,114,182,0.15), rgba(251,207,232,0.25))' }}
+                                    >
+                                        <Mic size={15} style={{ color: 'var(--color-nav-active)' }} />
+                                    </div>
+                                    <div>
+                                        <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                                            Voice recorded
+                                        </p>
+                                        <p className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}>
+                                            {formatDuration(pendingAudio.duration)} long
+                                        </p>
+                                    </div>
+                                </div>
+                                <motion.button
+                                    whileTap={{ scale: 0.85 }}
+                                    onClick={handleDiscard}
+                                    className="w-8 h-8 rounded-xl flex items-center justify-center"
+                                    style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)' }}
+                                >
+                                    <X size={15} style={{ color: 'var(--color-text-secondary)' }} />
+                                </motion.button>
+                            </div>
+
+                            {/* Title input */}
                             <input
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
-                                placeholder="Add a title... (optional)"
+                                placeholder="Name this note... (optional)"
                                 autoFocus
-                                className="w-full px-4 py-3.5 rounded-2xl text-[15px] outline-none"
-                                style={{ background: 'rgba(255,255,255,0.6)', border: '1.5px solid rgba(var(--theme-particle-2-rgb),0.12)', color: 'var(--color-text-primary)' }}
+                                className="w-full px-4 py-3.5 rounded-2xl text-[14px] outline-none"
+                                style={{
+                                    background: 'rgba(255,255,255,0.7)',
+                                    border: '1.5px solid rgba(var(--theme-particle-2-rgb),0.12)',
+                                    color: 'var(--color-text-primary)',
+                                }}
                             />
+
+                            {/* Action buttons */}
                             <div className="flex gap-3">
                                 <motion.button
-                                    whileTap={{ scale: 0.96 }}
+                                    whileTap={{ scale: 0.94 }}
                                     onClick={handleDiscard}
-                                    className="flex-1 py-3.5 rounded-2xl font-semibold text-[14px] opacity-50"
-                                    style={{ background: 'rgba(var(--theme-particle-2-rgb),0.1)' }}
+                                    className="flex-1 py-3.5 rounded-2xl font-semibold text-[13px]"
+                                    style={{
+                                        background: 'rgba(var(--theme-particle-2-rgb),0.08)',
+                                        color: 'var(--color-text-secondary)',
+                                    }}
                                 >
                                     Discard
                                 </motion.button>
                                 <motion.button
-                                    whileTap={{ scale: 0.96 }}
+                                    whileTap={{ scale: 0.94 }}
                                     onClick={handleSave}
                                     disabled={isSaving}
-                                    className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] text-white disabled:opacity-50"
-                                    style={{ background: 'var(--theme-nav-center-bg-active)' }}
+                                    className="flex-[2] py-3.5 rounded-2xl font-bold text-[13px] text-white flex items-center justify-center gap-2 disabled:opacity-50"
+                                    style={{
+                                        background: 'var(--theme-nav-center-bg-active)',
+                                        boxShadow: '0 4px 20px rgba(244,114,182,0.3)',
+                                    }}
                                 >
-                                    {isSaving ? 'Saving...' : 'Save Note'}
+                                    {isSaving ? (
+                                        <motion.div
+                                            animate={{ rotate: 360 }}
+                                            transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                                            className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                                        />
+                                    ) : (
+                                        <>
+                                            <Send size={14} />
+                                            Save Note
+                                        </>
+                                    )}
                                 </motion.button>
                             </div>
-                        </motion.div>
-                    ) : isRecording ? (
-                        /* Recording flow */
-                        <motion.div
-                            key="recording"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="flex flex-col items-center gap-4"
-                        >
-                            {/* Waveform */}
-                            <div className="flex items-center gap-0.5 h-12 w-full px-2">
-                                {waveformData.map((v, i) => (
-                                    <motion.div
-                                        key={i}
-                                        className="flex-1 rounded-full"
-                                        style={{
-                                            height: `${Math.max(8, v * 100)}%`,
-                                            background: `rgba(var(--theme-particle-1-rgb), ${0.5 + v * 0.5})`,
-                                        }}
-                                        animate={{ height: `${Math.max(8, v * 100)}%` }}
-                                        transition={{ duration: 0.05 }}
-                                    />
-                                ))}
-                            </div>
-
-                            <div className="flex items-center gap-6">
-                                <span className="text-[24px] font-mono tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                                    {formatDuration(recordingDuration)}
-                                </span>
-                                <motion.button
-                                    whileTap={{ scale: 0.9 }}
-                                    onClick={stopRecording}
-                                    className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
-                                    animate={{ scale: [1, 1.05, 1] }}
-                                    transition={{ duration: 1.5, repeat: Infinity }}
-                                    style={{ background: 'rgba(239,68,68,0.9)' }}
-                                >
-                                    <Square size={22} className="text-white" fill="white" />
-                                </motion.button>
-                            </div>
-                        </motion.div>
-                    ) : (
-                        /* Idle — record button */
-                        <motion.div
-                            key="idle"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="flex flex-col items-center gap-2"
-                        >
-                            {!hasPermission && (
-                                <div className="flex items-center gap-2 mb-2">
-                                    <MicOff size={14} style={{ color: '#ef4444' }} />
-                                    <span className="text-[12px]" style={{ color: '#ef4444' }}>Microphone access needed</span>
-                                </div>
-                            )}
-                            <motion.button
-                                whileTap={{ scale: 0.94 }}
-                                onClick={() => { if (canRecord) { startRecording(); } else { setShowPremiumModal(true); } }}
-                                className="w-20 h-20 rounded-full flex items-center justify-center shadow-xl"
-                                style={{ background: 'var(--theme-nav-center-bg-active)' }}
-                            >
-                                <Mic size={28} className="text-white" strokeWidth={1.8} />
-                            </motion.button>
-                            <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
-                                Tap to record
-                            </p>
-                            {!profile.isPremium && (
-                                <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)', opacity: 0.4 }}>
-                                    {notes.length}/{FREE_VOICE_NOTE_LIMIT} free notes used
-                                </p>
-                            )}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
         </motion.div>

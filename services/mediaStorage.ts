@@ -1,4 +1,4 @@
-import { SupabaseService } from './supabase';
+import { MediaAssetUploadInput, SupabaseService } from './supabase';
 import {
     estimateDataUriBytes,
     getMaxUploadBytesForManagedAsset,
@@ -11,9 +11,10 @@ import {
 
 const WORKER_URL = (import.meta.env.VITE_R2_WORKER_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-const UPLOAD_KEY = (import.meta.env.VITE_R2_UPLOAD_KEY as string | undefined) ?? '';
+const UPLOAD_KEY = (import.meta.env.VITE_R2_UPLOAD_KEY as string | undefined)?.trim() ?? '';
 const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'] as const;
 const R2_EXISTENCE_CACHE = new Map<string, boolean>();
+const MISSING_READ_REPORT_CACHE = new Map<string, number>();
 
 type LegacySupabaseRef = {
     bucket: string;
@@ -40,6 +41,15 @@ type BuildPathOptions = {
     assetRole?: ManagedAssetRole;
 };
 
+type UploadMediaOptions = {
+    sourceTable?: string;
+    logicalRowId?: string;
+    itemId?: string;
+    ownerUserId?: string | null;
+    expiresAt?: string | null;
+    metadata?: Record<string, unknown>;
+};
+
 const FEATURE_BY_PREFIX: Record<string, ManagedFeature> = {
     mem: 'memories',
     daily: 'daily-moments',
@@ -48,12 +58,45 @@ const FEATURE_BY_PREFIX: Record<string, ManagedFeature> = {
     surp: 'surprises',
     vn: 'voice-notes',
 };
+const SOURCE_TABLE_BY_FEATURE: Record<ManagedFeature, string> = {
+    memories: 'memories',
+    'daily-moments': 'daily_photos',
+    keepsakes: 'keepsakes',
+    'time-capsules': 'time_capsules',
+    surprises: 'surprises',
+    'voice-notes': 'voice_notes',
+    'together-music': 'together_music',
+};
 
 const MANAGED_KEY_PREFIX = 'v2/couples/';
 
-const authHeaders = () => ({
-    'X-Upload-Key': UPLOAD_KEY,
-});
+const authHeaders = async (): Promise<Record<string, string> | null> => {
+    if (!SupabaseService.init()) return null;
+
+    const accessToken = await SupabaseService.getAccessToken();
+    const { anonKey } = SupabaseService.getProjectConfig();
+    if (!accessToken || !anonKey) return null;
+
+    return {
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+    };
+};
+
+const managedWriteHeaders = async (): Promise<Record<string, string> | null> => {
+    const supabaseHeaders = await authHeaders();
+    if (supabaseHeaders) {
+        return supabaseHeaders;
+    }
+
+    if (UPLOAD_KEY) {
+        return {
+            'X-Upload-Key': UPLOAD_KEY,
+        };
+    }
+
+    return null;
+};
 
 /** Convert a base64 data URI to an ArrayBuffer + MIME type. */
 function base64ToBuffer(dataUri: string): { buffer: ArrayBuffer; mimeType: string } {
@@ -152,6 +195,37 @@ const blobToDataUri = (blob: Blob): Promise<string> => new Promise((resolve, rej
     reader.onerror = reject;
     reader.readAsDataURL(blob);
 });
+
+const bufferToHex = (buffer: ArrayBuffer): string =>
+    Array.from(new Uint8Array(buffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+
+const sha256Hex = async (buffer: ArrayBuffer): Promise<string> => {
+    const digest = await crypto.subtle.digest('SHA-256', buffer);
+    return bufferToHex(digest);
+};
+
+const shouldReportMissingRead = (key: string) => {
+    const now = Date.now();
+    const last = MISSING_READ_REPORT_CACHE.get(key) ?? 0;
+    if (now - last < 15 * 60 * 1000) return false;
+    MISSING_READ_REPORT_CACHE.set(key, now);
+    return true;
+};
+
+const reportMissingRead = async (storagePath: string, reason: string) => {
+    const key = extractCandidateR2Key(storagePath);
+    if (!key || !shouldReportMissingRead(key) || !SupabaseService.init()) return;
+    const parsedKey = parseManagedMediaKey(key);
+    await SupabaseService.recordStorageEvent({
+        eventType: 'media.read_missing',
+        severity: 'warning',
+        feature: parsedKey?.feature ?? null,
+        r2Key: key,
+        sourceTable: null,
+        logicalRowId: parsedKey?.itemId ?? null,
+        metadata: { storagePath, reason },
+    });
+};
 
 const downloadUrlAsDataUri = async (url: string) => {
     const res = await fetch(url);
@@ -331,6 +405,7 @@ export const MediaStorageService = {
             }
             if (res.status === 404) {
                 R2_EXISTENCE_CACHE.set(key, false);
+                reportMissingRead(storagePath, 'head-404').catch(() => {});
                 return false;
             }
             return null;
@@ -354,28 +429,24 @@ export const MediaStorageService = {
         return true;
     },
 
-    async uploadMedia(base64DataUri: string, storagePath: string): Promise<string | null> {
+    async uploadMedia(base64DataUri: string, storagePath: string, options: UploadMediaOptions = {}): Promise<string | null> {
         if (!base64DataUri) return null;
         if (!WORKER_URL) {
             console.warn('[R2] VITE_R2_WORKER_URL not configured - upload skipped.');
             return null;
         }
-        if (!UPLOAD_KEY) {
-            console.warn('[R2] VITE_R2_UPLOAD_KEY not configured - upload skipped.');
-            return null;
-        }
 
         try {
-            let body: BodyInit;
+            let bodyBuffer: ArrayBuffer;
             let contentType: string;
 
             if (base64DataUri.startsWith('data:')) {
                 const { buffer, mimeType } = base64ToBuffer(base64DataUri);
-                body = buffer;
+                bodyBuffer = buffer;
                 contentType = mimeType;
             } else {
                 const res = await fetch(base64DataUri);
-                body = await res.arrayBuffer();
+                bodyBuffer = await res.arrayBuffer();
                 contentType = res.headers.get('Content-Type') ?? 'application/octet-stream';
             }
 
@@ -394,24 +465,62 @@ export const MediaStorageService = {
                 console.warn(`[R2] Refusing upload for mismatched MIME ${normalizedContentType} on ${parsedKey.feature}/${parsedKey.assetRole}`);
                 return null;
             }
-            const byteSize = body instanceof ArrayBuffer ? body.byteLength : estimateDataUriBytes(base64DataUri);
+            const byteSize = bodyBuffer.byteLength || estimateDataUriBytes(base64DataUri);
             const sizeLimit = getMaxUploadBytesForManagedAsset(parsedKey.feature, parsedKey.assetRole);
             if (sizeLimit && byteSize > sizeLimit) {
                 console.warn(`[R2] Refusing upload over limit (${byteSize} > ${sizeLimit}) for ${parsedKey.feature}/${parsedKey.assetRole}`);
                 return null;
             }
+            const checksumSha256 = await sha256Hex(bodyBuffer);
+            if (SupabaseService.init()) {
+                try {
+                    const logicalRowId = options.logicalRowId || parsedKey.itemId;
+                    const assetRecord: MediaAssetUploadInput = {
+                        sourceTable: options.sourceTable || SOURCE_TABLE_BY_FEATURE[parsedKey.feature as ManagedFeature] || parsedKey.feature.replace(/-/g, '_'),
+                        logicalRowId,
+                        itemId: options.itemId || parsedKey.itemId,
+                        feature: parsedKey.feature,
+                        assetRole: parsedKey.assetRole,
+                        r2Key: key,
+                        byteSize,
+                        mimeType: normalizedContentType,
+                        checksumSha256,
+                        ownerUserId: options.ownerUserId ?? parsedKey.ownerUserId ?? null,
+                        expiresAt: options.expiresAt ?? null,
+                        metadata: options.metadata ?? {},
+                    };
+                    await SupabaseService.prepareMediaAssetUpload(assetRecord);
+                } catch (error) {
+                    console.warn('[R2] Media asset prepare failed - falling back to direct worker upload:', error);
+                }
+            }
+
             const url = joinWorkerUrl(key);
             if (!url) return null;
+            const workerAuthHeaders = await managedWriteHeaders();
+            if (!workerAuthHeaders) {
+                console.warn('[R2] Missing managed worker credentials - upload skipped.');
+                return null;
+            }
 
             const res = await fetch(url, {
                 method: 'PUT',
-                headers: { ...authHeaders(), 'Content-Type': normalizedContentType },
-                body,
+                headers: { ...workerAuthHeaders, 'Content-Type': normalizedContentType },
+                body: bodyBuffer,
             });
 
             if (!res.ok) {
                 console.warn(`[R2] Upload failed (${res.status}):`, await res.text());
                 return null;
+            }
+            const uploadedMeta = await res.json().catch(() => null);
+            if (uploadedMeta) {
+                const uploadedBytes = Number(uploadedMeta.bytes || 0);
+                const uploadedChecksum = String(uploadedMeta.checksumSha256 || '');
+                if (uploadedBytes !== byteSize || uploadedChecksum !== checksumSha256) {
+                    console.warn('[R2] Upload verification mismatch:', { key, expectedBytes: byteSize, uploadedBytes, expectedChecksum: checksumSha256, uploadedChecksum });
+                    return null;
+                }
             }
 
             R2_EXISTENCE_CACHE.set(key, true);
@@ -464,6 +573,7 @@ export const MediaStorageService = {
         const legacyUrl = await MediaStorageService.getLegacySupabaseUrl(storagePath);
         if (legacyUrl) return legacyUrl;
 
+        reportMissingRead(storagePath, 'no-accessible-url').catch(() => {});
         if (storagePath.startsWith('http')) return storagePath;
         return null;
     },
@@ -541,13 +651,19 @@ export const MediaStorageService = {
         if (!storagePath) return;
 
         const key = extractR2Key(storagePath);
-        if (key && WORKER_URL && UPLOAD_KEY) {
+        if (key && isManagedUploadKey(key)) {
+            if (!WORKER_URL) return;
             const url = joinWorkerUrl(key);
             if (url) {
                 try {
+                    const workerAuthHeaders = await managedWriteHeaders();
+                    if (!workerAuthHeaders) {
+                        console.warn('[R2] Missing managed worker credentials - delete skipped.');
+                        return;
+                    }
                     const res = await fetch(url, {
                         method: 'DELETE',
-                        headers: authHeaders(),
+                        headers: workerAuthHeaders,
                     });
                     if (!res.ok && res.status !== 404) {
                         console.warn(`[R2] Delete failed (${res.status}):`, await res.text());
@@ -557,9 +673,6 @@ export const MediaStorageService = {
                     console.warn('[R2] Delete exception:', e);
                 }
             }
-        }
-
-        if (key && isManagedUploadKey(key)) {
             return;
         }
 

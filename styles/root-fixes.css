@@ -1,0 +1,12 @@
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  background: var(--theme-bg-main, linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%));
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+}

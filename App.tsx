@@ -4,14 +4,14 @@ import { Heart } from 'lucide-react';
 import { Onboarding } from './components/Onboarding';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
-import { ViewState, TransitionDirection, ROOT_TABS } from './types';
+import { ViewState, TransitionDirection, ROOT_TABS, NavigationOptions } from './types';
 import { TransitionEngine } from './utils/TransitionEngine';
 import type { EngineDirection } from './utils/TransitionEngine';
 
 
 // Navigation context for back navigation
 export const NavigationContext = createContext<{
-  navigateTo: (view: ViewState) => void;
+  navigateTo: (view: ViewState, options?: NavigationOptions) => void;
   goBack: () => void;
   canGoBack: boolean;
   currentView: ViewState;
@@ -52,10 +52,10 @@ import { TermsOfService } from './views/TermsOfService';
 import { TimeCapsuleView } from './views/TimeCapsule';
 import { SurprisesView } from './views/Surprises';
 import { VoiceNotesView } from './views/VoiceNotes';
-import { YearInReviewView } from './views/YearInReview';
 import { PartnerIntelligenceView } from './views/PartnerIntelligenceView';
 import { DailyVideoView } from './views/DailyVideoView';
 import { WeeklyRecapView } from './views/WeeklyRecapView';
+import { StorageConsoleView } from './views/StorageConsole';
 import { SyncService, syncEventTarget } from './services/sync';
 import { StorageService, storageEventTarget } from './services/storage';
 import { ThemeService, THEMES, ThemeId } from './services/theme';
@@ -68,6 +68,9 @@ import { DevPanel } from './components/DevPanel';
 import { WhatsNew } from './components/WhatsNew';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
+import { InternalAdminService } from './services/internalAdmin';
+
+const hasCompletedOnboarding = () => StorageService.hasCompletedOnboarding();
 
 /** Inner component — must live inside CoachmarkProvider to access context */
 const CoachmarkTourScheduler: React.FC<{ shouldTrigger: boolean; onTriggered: () => void }> = ({ shouldTrigger, onTriggered }) => {
@@ -179,8 +182,13 @@ const App = () => {
   // Predictive prefetch: BottomNav fires this on pointerdown before finger lifts.
   useEffect(() => {
     const handler = (e: Event) => {
-      const view = (e as CustomEvent<{ view: string }>).detail?.view as ViewState | undefined;
-      if (view && view !== currentViewRef.current) setPrefetchView(view);
+      const detail = (e as CustomEvent<{ view?: string; views?: string[] }>).detail;
+      const hintedViews = (detail?.views?.length ? detail.views : detail?.view ? [detail.view] : [])
+        .filter((view): view is ViewState => Boolean(view) && view !== currentViewRef.current)
+        .filter((view, index, list) => list.indexOf(view) === index)
+        .slice(0, 3);
+
+      setPrefetchView(hintedViews);
     };
     window.addEventListener('te:prefetch', handler);
     return () => window.removeEventListener('te:prefetch', handler);
@@ -213,7 +221,7 @@ const App = () => {
     );
   }, [finalizeNavigation]);
 
-  const navigateTo = useCallback((view: ViewState) => {
+  const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
     if (prev === view || transitionLockRef.current) return;
 
@@ -233,6 +241,20 @@ const App = () => {
     }
     currentViewRef.current = view;
 
+    if (options.instant) {
+      pendingScrollRestore.current = {
+        view,
+        y: scrollPositions.current[view] ?? 0,
+      };
+      flushSync(() => {
+        setTransitionDir(dir);
+        setCurrentView(view);
+        setIsSwitchingView(false);
+      });
+      transitionLockRef.current = false;
+      return;
+    }
+
     // ── View Transitions API: captures old/new DOM snapshots around setState ──
     // flushSync makes React update the DOM synchronously inside the VT callback
     // so the browser captures the correct before/after states.
@@ -251,7 +273,7 @@ const App = () => {
 
   const canGoBack = historyStack.current.length > 0;
 
-  const [prefetchView, setPrefetchView] = useState<ViewState | null>(null);
+  const [prefetchView, setPrefetchView] = useState<ViewState[]>([]);
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -273,15 +295,28 @@ const App = () => {
   }, [isInitialized, launchReady]);
 
   useEffect(() => {
+    let disposed = false;
+    let authSubscription: { unsubscribe: () => void } | null = null;
+    let backHandlerPromise: Promise<{ remove: () => void }> | null = null;
+    let whatsNewTimer: number | null = null;
+
+    const initializeSync = async () => {
+      try {
+        await SyncService.init();
+      } catch (syncError) {
+        console.error("Sync Initialization failed:", syncError);
+      }
+    };
+
     const initializeApp = async () => {
+      let hasOnboardedAfterBootstrap = false;
       try {
         // 1. Initialize Storage and DB
         await StorageService.init();
+        if (disposed) return;
 
-        // 2. Check for Onboarding status
+        // 2. Read the local profile for theme/bootstrap defaults.
         const profile = StorageService.getCoupleProfile();
-        const hasOnboarded = localStorage.getItem('lior_onboarded') === 'true' || localStorage.getItem('lior_manual_override') === 'true';
-        setShowOnboarding(!hasOnboarded);
 
         // 3. Apply theme from URL override first, then fallback to stored profile theme.
         const params = new URLSearchParams(window.location.search);
@@ -300,47 +335,78 @@ const App = () => {
         // 4. Initialize Cloud Services (Supabase Auth)
         if (SupabaseService.init()) {
           try {
-            const { data: { session } } = await SupabaseService.client!.auth.getSession();
+            const session = await SupabaseService.getSession();
+            if (disposed) return;
+
             SupabaseService.setCachedUserId(session?.user?.id || null);
-            setIsAuthenticated(!!session);
+            setIsAuthenticated(Boolean(session));
 
             // Listen for realtime auth changes
-            SupabaseService.client!.auth.onAuthStateChange((event, session) => {
-              SupabaseService.setCachedUserId(session?.user?.id || null);
-              setIsAuthenticated(!!session);
-              if (session) {
-                SyncService.init().catch((syncError) => {
-                  console.error("Sync Initialization failed:", syncError);
-                });
-              }
+            const { data: { subscription } } = SupabaseService.client!.auth.onAuthStateChange((_event, session) => {
+              void (async () => {
+                if (disposed) return;
+                SupabaseService.setCachedUserId(session?.user?.id || null);
+                setIsAuthenticated(Boolean(session));
+
+                if (session) {
+                  await initializeSync();
+                  if (!disposed) {
+                    setShowOnboarding(!hasCompletedOnboarding());
+                  }
+                } else {
+                  if (!disposed) {
+                    setShowOnboarding(false);
+                  }
+                  SyncService.reset();
+                }
+              })();
             });
+            authSubscription = subscription;
+
+            if (session) {
+              await initializeSync();
+              hasOnboardedAfterBootstrap = hasCompletedOnboarding();
+              if (!disposed) {
+                setShowOnboarding(!hasOnboardedAfterBootstrap);
+              }
+            } else {
+              hasOnboardedAfterBootstrap = false;
+              if (!disposed) {
+                setShowOnboarding(false);
+              }
+              SyncService.reset();
+            }
           } catch (authError) {
             console.error("Supabase Auth failed:", authError);
             SupabaseService.setCachedUserId(null);
-            setIsAuthenticated(false);
+            if (!disposed) {
+              setIsAuthenticated(false);
+              setShowOnboarding(false);
+            }
+            SyncService.reset();
           }
-        }
-
-        // 5. Initialize Sync (Realtime Channels)
-        if (SupabaseService.isConfigured()) {
-          try {
-            await SyncService.init();
-          } catch (syncError) {
-            console.error("Sync Initialization failed:", syncError);
+        } else {
+          hasOnboardedAfterBootstrap = hasCompletedOnboarding();
+          if (!disposed) {
+            setShowOnboarding(!hasOnboardedAfterBootstrap);
           }
+          SyncService.reset();
         }
       } catch (err) {
         console.error("Initialization error:", err);
       } finally {
-        setIsInitialized(true);
+        if (!disposed) {
+          setIsInitialized(true);
+        }
         // Show What's New for returning users who haven't seen this version yet
-        const hasOnboarded = localStorage.getItem('lior_onboarded') === 'true';
-        if (hasOnboarded && !FeatureDiscovery.hasSeenCurrentVersion()) {
-          setTimeout(() => setShowWhatsNew(true), 1800);
+        if (!disposed && hasOnboardedAfterBootstrap && !FeatureDiscovery.hasSeenCurrentVersion()) {
+          whatsNewTimer = window.setTimeout(() => {
+            if (!disposed) setShowWhatsNew(true);
+          }, 1800);
         }
         // Hide native splash screen after content is ready, with a brief
         // delay so the first paint is composited before the splash fades.
-        if (Capacitor.isNativePlatform()) {
+        if (!disposed && Capacitor.isNativePlatform()) {
           requestAnimationFrame(() => {
             import('@capacitor/splash-screen').then(({ SplashScreen }) => {
               SplashScreen.hide({ fadeOutDuration: 200 });
@@ -356,7 +422,7 @@ const App = () => {
     // Intercept the native back gesture/button so it navigates within the app
     // instead of closing the WebView entirely (default Capacitor behavior).
     if (Capacitor.isNativePlatform()) {
-      const backHandler = CapacitorApp.addListener('backButton', ({ canGoBack: webCanGoBack }) => {
+      backHandlerPromise = CapacitorApp.addListener('backButton', ({ canGoBack: webCanGoBack }) => {
         // Dispatch to open modals first
         const event = new CustomEvent('lior:hardware-back', { cancelable: true });
         window.dispatchEvent(event);
@@ -387,9 +453,16 @@ const App = () => {
         Keyboard.setResizeMode({ mode: KeyboardResize.Body }).catch(() => {});
         Keyboard.setScroll({ isDisabled: false }).catch(() => {});
       }).catch(() => {});
-
-      return () => { backHandler.then(h => h.remove()); };
     }
+
+    return () => {
+      disposed = true;
+      authSubscription?.unsubscribe();
+      if (whatsNewTimer !== null) {
+        window.clearTimeout(whatsNewTimer);
+      }
+      backHandlerPromise?.then(h => h.remove()).catch(() => {});
+    };
   }, [getCurrentScroll, runNavigation]);
 
 
@@ -433,10 +506,10 @@ const App = () => {
       case 'time-capsule':  return <TimeCapsuleView setView={navigateTo} />;
       case 'surprises':     return <SurprisesView setView={navigateTo} />;
       case 'voice-notes':   return <VoiceNotesView setView={navigateTo} />;
-      case 'year-in-review': return <YearInReviewView setView={navigateTo} />;
       case 'partner-intelligence': return <PartnerIntelligenceView setView={navigateTo} />;
       case 'daily-video': return <DailyVideoView setView={navigateTo} />;
       case 'weekly-recap': return <WeeklyRecapView setView={navigateTo} />;
+      case 'storage-console': return <StorageConsoleView setView={navigateTo} />;
       default:              return <Home setView={navigateTo} />;
     }
   }, [currentView, navigateTo]);
@@ -448,6 +521,12 @@ const App = () => {
       case 'us':            return <Us setView={navigateTo} />;
       case 'timeline':      return <MemoryTimeline setView={navigateTo} />;
       case 'daily-moments': return <DailyMoments setView={navigateTo} />;
+      case 'add-memory':    return <AddMemory setView={navigateTo} />;
+      case 'countdowns':    return <Countdowns setView={navigateTo} />;
+      case 'open-when':     return <OpenWhen setView={navigateTo} />;
+      case 'bonsai-bloom':  return <BonsaiBloom setView={navigateTo} />;
+      case 'profile':       return <Profile setView={navigateTo} />;
+      case 'aura-signal':   return <AuraSignal setView={navigateTo} />;
       default: return null;
     }
   }, [navigateTo]);
@@ -494,7 +573,7 @@ const App = () => {
             </Layout>
             <AuraSignalReceiver />
             {/* Predictive prefetch ghost — hidden, zero layout impact */}
-            {prefetchView && prefetchView !== currentView && (
+            {prefetchView.length > 0 && (
               <div
                 aria-hidden="true"
                 style={{
@@ -502,7 +581,13 @@ const App = () => {
                   pointerEvents: 'none', width: 0, height: 0, overflow: 'hidden',
                 }}
               >
-                {getPrefetchContent(prefetchView)}
+                {prefetchView
+                  .filter((view) => view !== currentView)
+                  .map((view) => (
+                    <React.Fragment key={view}>
+                      {getPrefetchContent(view)}
+                    </React.Fragment>
+                  ))}
               </div>
             )}
             <AnimatePresence>
@@ -549,8 +634,7 @@ const App = () => {
         {
           label: '⚠ Clear onboarding flag',
           action: () => {
-            localStorage.removeItem('lior_onboarded');
-            localStorage.removeItem('lior_manual_override');
+            StorageService.clearOnboardingCompletion();
             window.location.reload();
           },
           danger: true,
@@ -587,6 +671,18 @@ const App = () => {
             } catch (e) {
               console.error('[MediaDebug] Recovery failed', e);
             }
+          },
+        },
+        {
+          label: 'Open storage console',
+          action: () => navigateTo('storage-console'),
+        },
+        {
+          label: InternalAdminService.isOverrideEnabled() ? 'Disable admin override' : 'Enable admin override',
+          action: () => {
+            const next = !InternalAdminService.isOverrideEnabled();
+            InternalAdminService.setOverride(next);
+            console.log(`[Admin] Internal admin override ${next ? 'enabled' : 'disabled'}`);
           },
         },
       ]} />
