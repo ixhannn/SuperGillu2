@@ -4,50 +4,86 @@ import { StorageService } from '../services/storage';
 import { Sparkles, TrendingUp, Heart, Share2, Cloud, Palette } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { motion } from 'framer-motion';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, parseISO } from 'date-fns';
 
 interface AuraRewindProps {
     setView: (view: ViewState) => void;
 }
 
 const moodWeights: Record<string, number> = {
-    'happy': 5,
-    'loved': 6,
-    'excited': 7,
-    'relaxed': 4,
-    'sad': 2,
-    'angry': 1,
-    'anxious': 2,
-    'default': 3
+    loved: 6, romantic: 6, grateful: 5, joyful: 6,
+    happy: 5, excited: 7, playful: 6, peaceful: 4,
+    calm: 4, content: 4, thoughtful: 3, reflective: 3, tender: 5,
+    tired: 2, quiet: 3, meh: 3, stressed: 2,
+    sad: 2, anxious: 2, frustrated: 1, lonely: 2, angry: 1,
+    relaxed: 4, great: 6, good: 5, okay: 4, bad: 2,
+    default: 3,
 };
 
 const moodThemes: Record<string, { color: string; gradient: string; emoji: string }> = {
-    'happy': { color: '#fbbf24', gradient: 'from-amber-400 to-yellow-300', emoji: '😊' },
-    'loved': { color: '#f472b6', gradient: 'from-pink-500 to-rose-400', emoji: '🥰' },
-    'excited': { color: '#fb923c', gradient: 'from-orange-500 to-amber-400', emoji: '🤩' },
-    'relaxed': { color: '#7dd3fc', gradient: 'from-sky-400 to-cyan-300', emoji: '😌' },
-    'sad': { color: '#818cf8', gradient: 'from-indigo-500 to-blue-400', emoji: '🥺' },
-    'angry': { color: '#ef4444', gradient: 'from-red-600 to-orange-500', emoji: '😤' },
-    'anxious': { color: '#a78bfa', gradient: 'from-violet-500 to-purple-400', emoji: '😰' },
-    'default': { color: '#d1d5db', gradient: 'from-slate-300 to-slate-200', emoji: '✨' }
+    loved: { color: '#f472b6', gradient: 'from-pink-500 to-rose-400', emoji: '🥰' },
+    romantic: { color: '#fb7185', gradient: 'from-rose-500 to-pink-400', emoji: '💕' },
+    grateful: { color: '#f59e0b', gradient: 'from-amber-500 to-orange-300', emoji: '🙏' },
+    joyful: { color: '#fbbf24', gradient: 'from-yellow-400 to-amber-300', emoji: '✨' },
+    happy: { color: '#fbbf24', gradient: 'from-amber-400 to-yellow-300', emoji: '😊' },
+    excited: { color: '#fb923c', gradient: 'from-orange-500 to-amber-400', emoji: '🤩' },
+    playful: { color: '#38bdf8', gradient: 'from-sky-400 to-cyan-300', emoji: '😝' },
+    peaceful: { color: '#7dd3fc', gradient: 'from-cyan-300 to-sky-300', emoji: '☮️' },
+    calm: { color: '#7dd3fc', gradient: 'from-sky-400 to-cyan-300', emoji: '😌' },
+    content: { color: '#86efac', gradient: 'from-emerald-300 to-teal-300', emoji: '😊' },
+    thoughtful: { color: '#a78bfa', gradient: 'from-violet-400 to-indigo-300', emoji: '🤔' },
+    reflective: { color: '#c4b5fd', gradient: 'from-purple-300 to-indigo-300', emoji: '💭' },
+    tender: { color: '#f9a8d4', gradient: 'from-pink-300 to-rose-300', emoji: '💗' },
+    tired: { color: '#94a3b8', gradient: 'from-slate-400 to-blue-300', emoji: '😴' },
+    quiet: { color: '#a5b4fc', gradient: 'from-indigo-300 to-slate-300', emoji: '🤫' },
+    meh: { color: '#cbd5e1', gradient: 'from-slate-300 to-slate-200', emoji: '😐' },
+    stressed: { color: '#f97316', gradient: 'from-orange-500 to-red-400', emoji: '😤' },
+    sad: { color: '#818cf8', gradient: 'from-indigo-500 to-blue-400', emoji: '🥺' },
+    anxious: { color: '#a78bfa', gradient: 'from-violet-500 to-purple-400', emoji: '😰' },
+    frustrated: { color: '#fb7185', gradient: 'from-rose-500 to-orange-400', emoji: '😣' },
+    lonely: { color: '#93c5fd', gradient: 'from-blue-400 to-indigo-400', emoji: '💔' },
+    angry: { color: '#ef4444', gradient: 'from-red-600 to-orange-500', emoji: '😠' },
+    relaxed: { color: '#7dd3fc', gradient: 'from-sky-400 to-cyan-300', emoji: '😌' },
+    default: { color: '#d1d5db', gradient: 'from-slate-300 to-slate-200', emoji: '✨' },
+};
+
+const normalizeMoodKey = (value?: string | null): string => {
+    const key = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (!key) return 'default';
+    if (key === 'great') return 'joyful';
+    if (key === 'good') return 'happy';
+    if (key === 'okay') return 'content';
+    if (key === 'bad') return 'sad';
+    return moodThemes[key] ? key : 'default';
+};
+
+const getMoodWeight = (value?: string | null): number => moodWeights[normalizeMoodKey(value)] ?? moodWeights.default;
+const getMoodEmoji = (value?: string | null): string => moodThemes[normalizeMoodKey(value)]?.emoji || moodThemes.default.emoji;
+
+const parseMoodDate = (value: unknown): Date | null => {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const date = parseISO(value);
+    return Number.isFinite(date.getTime()) ? date : null;
 };
 
 export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
     const moodEntries = useMemo(() => StorageService.getMoodEntries(), []);
     const profile = useMemo(() => StorageService.getCoupleProfile(), []);
     const currentMonth = new Date();
+    const myName = profile.myName?.trim() || 'You';
+    const partnerName = profile.partnerName?.trim() || 'Partner';
 
     const stats = useMemo(() => {
         const monthStart = startOfMonth(currentMonth);
         const monthEnd = endOfMonth(currentMonth);
         
         const currentMonthEntries = moodEntries.filter(e => {
-            const date = parseISO(e.timestamp);
-            return isSameMonth(date, currentMonth);
+            const date = parseMoodDate(e.timestamp);
+            return date ? isSameMonth(date, currentMonth) : false;
         });
 
-        const myEntries = currentMonthEntries.filter(e => e.userId === profile.myName);
-        const partnerEntries = currentMonthEntries.filter(e => e.userId === profile.partnerName);
+        const myEntries = currentMonthEntries.filter(e => e.userId === myName);
+        const partnerEntries = currentMonthEntries.filter(e => e.userId === partnerName);
 
         const moodDistribution = (entries: MoodEntry[]) => {
             const counts: Record<string, number> = {};
@@ -62,10 +98,10 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
         const generateWave = (userEntries: MoodEntry[]) => {
             return days.map(day => {
                 const dayEntry = userEntries.find(e => {
-                    const d = parseISO(e.timestamp);
-                    return d.getDate() === day.getDate();
+                    const d = parseMoodDate(e.timestamp);
+                    return d ? isSameDay(d, day) : false;
                 });
-                return dayEntry ? moodWeights[dayEntry.mood] || 3 : 3;
+                return dayEntry ? getMoodWeight(dayEntry.mood) : 3;
             });
         };
 
@@ -79,11 +115,17 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
         let bestDayDiff = Infinity;
 
         days.forEach((day, i) => {
-            const myDay = myEntries.find(e => parseISO(e.timestamp).getDate() === day.getDate());
-            const partnerDay = partnerEntries.find(e => parseISO(e.timestamp).getDate() === day.getDate());
+            const myDay = myEntries.find(e => {
+                const date = parseMoodDate(e.timestamp);
+                return date ? isSameDay(date, day) : false;
+            });
+            const partnerDay = partnerEntries.find(e => {
+                const date = parseMoodDate(e.timestamp);
+                return date ? isSameDay(date, day) : false;
+            });
             if (myDay && partnerDay) {
                 totalCompared++;
-                const diff = Math.abs((moodWeights[myDay.mood] || 3) - (moodWeights[partnerDay.mood] || 3));
+                const diff = Math.abs(getMoodWeight(myDay.mood) - getMoodWeight(partnerDay.mood));
                 if (diff <= 1) matchCount++;
                 if (diff < bestDayDiff) {
                     bestDayDiff = diff;
@@ -109,12 +151,12 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
             topMyMood,
             topPartnerMood
         };
-    }, [moodEntries, profile, currentMonth]);
+    }, [moodEntries, myName, partnerName, currentMonth]);
 
     const renderWavePath = (data: number[], color: string, partner: boolean) => {
         const width = 1000;
         const height = 150;
-        const step = width / (data.length - 1);
+                const step = data.length > 1 ? width / (data.length - 1) : width;
         const points = data.map((val, i) => `${i * step},${height - (val * 15 + 20)}`);
         const d = `M 0,${height} L ${points.join(' L ')} L ${width},${height} Z`;
         
@@ -192,11 +234,11 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         <div className="flex gap-4">
                             <div className="flex items-center gap-1.5">
                                 <div className="w-2 h-2 rounded-full bg-lior-400"></div>
-                                <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{profile.myName}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{myName}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <div className="w-2 h-2 rounded-full bg-pink-400"></div>
-                                <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{profile.partnerName}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{partnerName}</span>
                             </div>
                         </div>
                     </div>
@@ -219,12 +261,12 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
                         className="rounded-[2rem] p-6 shadow-lg glass-card" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}
                     >
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--color-text-secondary)' }}>{profile.myName}'s Vibe</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--color-text-secondary)' }}>{myName}'s Vibe</h3>
                         <div className="flex flex-col gap-3">
                             {stats.myMoods.slice(0, 3).map(([mood, count]) => (
                                 <div key={mood} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-lg">{moodThemes[mood]?.emoji || '✨'}</span>
+                                        <span className="text-lg">{getMoodEmoji(mood)}</span>
                                         <span className="text-xs font-bold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mood}</span>
                                     </div>
                                     <span className="text-[10px] font-black px-2 py-1 rounded-lg" style={{ color: 'var(--color-text-secondary)', background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>{count}</span>
@@ -237,12 +279,12 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
                         className="rounded-[2rem] p-6 shadow-lg glass-card" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}
                     >
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--color-text-secondary)' }}>{profile.partnerName}'s Vibe</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--color-text-secondary)' }}>{partnerName}'s Vibe</h3>
                         <div className="flex flex-col gap-3">
                             {stats.partnerMoods.slice(0, 3).map(([mood, count]) => (
                                 <div key={mood} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-lg">{moodThemes[mood]?.emoji || '✨'}</span>
+                                        <span className="text-lg">{getMoodEmoji(mood)}</span>
                                         <span className="text-xs font-bold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mood}</span>
                                     </div>
                                     <span className="text-[10px] font-black px-2 py-1 rounded-lg" style={{ color: 'var(--color-text-secondary)', background: 'rgba(var(--theme-particle-2-rgb),0.12)' }}>{count}</span>
@@ -275,7 +317,7 @@ export const AuraRewind: React.FC<AuraRewindProps> = ({ setView }) => {
                         <h4 className="font-serif text-xl font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>The Monthly Glow</h4>
                         <p className="text-sm leading-relaxed font-serif italic" style={{ color: 'var(--color-text-secondary)' }}>
                             {stats.totalEntries > 0
-                                ? `"This month, ${profile.myName} felt mostly ${stats.topMyMood} while ${profile.partnerName}  was ${stats.topPartnerMood}. ${stats.syncScore >= 70 ? 'Your auras were beautifully aligned!' : 'Keep checking in with each other — your bond grows stronger each day.'}"`
+                                ? `"This month, ${myName} felt mostly ${stats.topMyMood} while ${partnerName} was ${stats.topPartnerMood}. ${stats.syncScore >= 70 ? 'Your auras were beautifully aligned!' : 'Keep checking in with each other — your bond grows stronger each day.'}"`
                                 : '"Start logging your moods to see your monthly glow bloom here!"'
                             }
                         </p>

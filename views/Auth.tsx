@@ -73,35 +73,80 @@ const pageTextStyle: React.CSSProperties = {
 };
 
 const authPalette = {
-    textPrimary: '#2d1a22',
-    textSecondary: '#6d545e',
-    textMuted: '#8b717b',
-    footer: '#775d67',
-    accent: '#b7607d',
-    accentDeep: '#7c334d',
-    surfaceBorder: 'rgba(255,255,255,0.46)',
-    surfaceEdge: 'rgba(104,72,86,0.12)',
-    fieldBorder: 'rgba(97,68,82,0.14)',
-    fieldBorderStrong: 'rgba(183,97,126,0.28)',
+    textPrimary: '#2b1b22',
+    textSecondary: '#6e5a62',
+    textMuted: '#8c7780',
+    footer: '#725c65',
+    accent: '#a95470',
+    accentDeep: '#7d3650',
+    surfaceBorder: 'rgba(255,255,255,0.50)',
+    surfaceEdge: 'rgba(255,255,255,0.42)',
+    fieldBorder: 'rgba(96,68,80,0.13)',
+    fieldBorderStrong: 'rgba(171,84,113,0.30)',
 } as const;
 
+const cardGlassFilter = 'url(#lior-auth-card-refraction) blur(18px) saturate(165%) brightness(1.05)';
+const controlGlassFilter = 'url(#lior-auth-control-refraction) blur(12px) saturate(150%) brightness(1.04)';
+const glassFallbackFilter = 'blur(18px) saturate(165%) brightness(1.05)';
+
+const pageBackgroundStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    background:
+        'radial-gradient(circle at 50% -8%, rgba(255,244,232,0.62) 0%, rgba(255,210,224,0.23) 27%, transparent 54%), linear-gradient(180deg, #f7ecef 0%, #eadce3 39%, #d8c1cc 72%, #b998a7 100%)',
+};
+
+const opticalFieldStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    opacity: 0.72,
+    background:
+        'linear-gradient(118deg, transparent 0 22%, rgba(255,255,255,0.20) 22.4% 22.8%, transparent 23.3% 100%), linear-gradient(138deg, transparent 0 58%, rgba(255,255,255,0.14) 58.3% 58.7%, transparent 59.2% 100%), radial-gradient(ellipse at 50% 42%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 32%, transparent 58%)',
+};
+
+const lowerVignetteStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    background:
+        'linear-gradient(180deg, transparent 0%, transparent 54%, rgba(54,31,43,0.12) 100%), radial-gradient(circle at 50% 106%, rgba(80,46,64,0.16) 0%, transparent 31%)',
+};
+
 const surfaceStyle: React.CSSProperties = {
-    background: 'linear-gradient(180deg, rgba(255,252,250,0.84) 0%, rgba(247,239,243,0.94) 100%)',
+    background:
+        'linear-gradient(145deg, rgba(255,255,255,0.32) 0%, rgba(255,247,249,0.20) 44%, rgba(255,255,255,0.14) 100%)',
     border: `1px solid ${authPalette.surfaceBorder}`,
-    boxShadow: '0 24px 64px rgba(28,11,20,0.24), 0 12px 28px rgba(28,11,20,0.12), inset 0 1px 0 rgba(255,255,255,0.76)',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
+    boxShadow:
+        'inset 0 1.4px 0 rgba(255,255,255,0.78), inset 0 -1px 0 rgba(54,32,44,0.09), inset 1px 0 0 rgba(255,255,255,0.28), 0 24px 52px rgba(60,30,45,0.18), 0 7px 18px rgba(68,35,48,0.08)',
+    backdropFilter: cardGlassFilter,
+    WebkitBackdropFilter: glassFallbackFilter,
+    isolation: 'isolate',
 };
 
 const surfaceInnerGlowStyle: React.CSSProperties = {
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.08) 36%, rgba(255,238,243,0.14) 100%)',
+    background:
+        'radial-gradient(ellipse at 18% 0%, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.18) 37%, transparent 61%), radial-gradient(ellipse at 86% 100%, rgba(242,199,213,0.18) 0%, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.18), transparent 38%, rgba(255,255,255,0.08))',
     border: `1px solid ${authPalette.surfaceEdge}`,
 };
 
+const surfaceRimStyle: React.CSSProperties = {
+    background:
+        'linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,255,255,0.12) 31%, transparent 56%), linear-gradient(315deg, rgba(82,48,64,0.12), transparent 28%)',
+    maskImage: 'linear-gradient(#000, #000)',
+    pointerEvents: 'none',
+};
+
+const surfaceHighlightStyle: React.CSSProperties = {
+    background:
+        'linear-gradient(96deg, transparent 0%, rgba(255,255,255,0.80) 18%, rgba(255,250,244,0.30) 31%, transparent 48%)',
+    filter: 'blur(0.2px)',
+};
+
 const fieldStyle: React.CSSProperties = {
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(252,245,248,0.96) 100%)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.60) 0%, rgba(255,248,250,0.42) 100%)',
     border: `1px solid ${authPalette.fieldBorder}`,
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.92), 0 10px 20px rgba(56,24,40,0.06)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), inset 0 -1px 0 rgba(72,43,56,0.04), 0 8px 16px rgba(56,24,40,0.045)',
+    backdropFilter: controlGlassFilter,
+    WebkitBackdropFilter: 'blur(12px) saturate(150%) brightness(1.04)',
 };
 
 const invalidFieldStyle: React.CSSProperties = {
@@ -110,22 +155,52 @@ const invalidFieldStyle: React.CSSProperties = {
 };
 
 const toggleTrackStyle: React.CSSProperties = {
-    background: 'linear-gradient(180deg, rgba(148,106,124,0.10) 0%, rgba(255,255,255,0.44) 100%)',
-    border: '1px solid rgba(105,74,89,0.10)',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.56), inset 0 -1px 0 rgba(255,255,255,0.22)',
+    background: 'rgba(255,255,255,0.18)',
+    border: '1px solid rgba(255,255,255,0.24)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.40), inset 0 -1px 0 rgba(76,43,57,0.06)',
+    backdropFilter: controlGlassFilter,
+    WebkitBackdropFilter: 'blur(12px) saturate(150%) brightness(1.04)',
 };
 
 const activeToggleStyle: React.CSSProperties = {
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,246,249,0.88) 100%)',
-    border: '1px solid rgba(133,95,111,0.16)',
-    boxShadow: '0 10px 18px rgba(69,28,46,0.10), inset 0 1px 0 rgba(255,255,255,0.96)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.58) 0%, rgba(255,244,248,0.34) 100%)',
+    border: '1px solid rgba(255,255,255,0.46)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 16px rgba(61,31,46,0.07)',
+    backdropFilter: controlGlassFilter,
+    WebkitBackdropFilter: 'blur(12px) saturate(150%) brightness(1.04)',
 };
 
 const buttonStyle: React.CSSProperties = {
-    background: 'linear-gradient(135deg, #c26886 0%, #a24869 56%, #7c334d 100%)',
-    border: '1px solid rgba(112,41,67,0.24)',
-    boxShadow: '0 18px 32px rgba(124,51,77,0.24), 0 8px 18px rgba(39,15,25,0.14), inset 0 1px 0 rgba(255,255,255,0.24)',
+    background: 'linear-gradient(135deg, rgba(178,82,111,0.92) 0%, rgba(139,61,88,0.94) 52%, rgba(105,45,68,0.96) 100%)',
+    border: '1px solid rgba(255,255,255,0.26)',
+    boxShadow: 'inset 0 1.2px 0 rgba(255,255,255,0.34), inset 0 -1px 0 rgba(55,19,34,0.24), 0 16px 28px rgba(106,45,68,0.24), 0 5px 12px rgba(44,18,31,0.12)',
+    backdropFilter: 'url(#lior-auth-control-refraction) blur(10px) saturate(145%)',
+    WebkitBackdropFilter: 'blur(10px) saturate(145%)',
 };
+
+const LiquidGlassDefs = () => (
+    <svg className="pointer-events-none absolute h-0 w-0" aria-hidden="true" focusable="false">
+        <defs>
+            <filter id="lior-auth-card-refraction" colorInterpolationFilters="sRGB" x="-18%" y="-18%" width="136%" height="136%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.010 0.018" numOctaves="1" seed="19" result="noise" />
+                <feGaussianBlur in="noise" stdDeviation="1.35" result="softNoise" />
+                <feDisplacementMap in="SourceGraphic" in2="softNoise" scale="15" xChannelSelector="R" yChannelSelector="G" result="refracted" />
+                <feColorMatrix in="refracted" type="saturate" values="1.08" result="saturated" />
+                <feSpecularLighting in="softNoise" surfaceScale="7" specularConstant="0.34" specularExponent="22" lightingColor="#fff6ef" result="specular">
+                    <fePointLight x="-90" y="-120" z="180" />
+                </feSpecularLighting>
+                <feComposite in="specular" in2="saturated" operator="in" result="rimLight" />
+                <feBlend in="saturated" in2="rimLight" mode="screen" />
+            </filter>
+            <filter id="lior-auth-control-refraction" colorInterpolationFilters="sRGB" x="-14%" y="-14%" width="128%" height="128%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.018 0.030" numOctaves="1" seed="7" result="noise" />
+                <feGaussianBlur in="noise" stdDeviation="0.9" result="softNoise" />
+                <feDisplacementMap in="SourceGraphic" in2="softNoise" scale="6" xChannelSelector="R" yChannelSelector="G" result="refracted" />
+                <feColorMatrix in="refracted" type="saturate" values="1.04" />
+            </filter>
+        </defs>
+    </svg>
+);
 
 const StatusBanner = ({ tone, message }: { tone: 'error' | 'success' | 'warning'; message: React.ReactNode }) => {
     const tones = {
@@ -186,17 +261,21 @@ type AuthFieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
 
 const AuthField = ({ label, invalid, supportText, ...props }: AuthFieldProps) => (
     <label className="block" style={pageTextStyle}>
-        <span className="mb-2 block text-[10.5px] font-bold uppercase tracking-[0.16em]" style={{ color: authPalette.textSecondary }}>
+        <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: authPalette.textSecondary }}>
             {label}
         </span>
         <div
-            className="rounded-[1rem] transition-all duration-300 focus-within:-translate-y-px focus-within:ring-1 focus-within:ring-[rgba(198,120,148,0.32)] focus-within:shadow-[0_0_0_4px_rgba(190,110,136,0.10),0_12px_24px_rgba(66,24,43,0.08)]"
+            className="relative overflow-hidden rounded-[0.94rem] transition-all duration-300 focus-within:-translate-y-px focus-within:ring-1 focus-within:ring-[rgba(160,84,112,0.32)] focus-within:shadow-[0_0_0_3px_rgba(160,84,112,0.075),0_10px_20px_rgba(66,24,43,0.07)]"
             style={invalid ? { ...fieldStyle, ...invalidFieldStyle } : fieldStyle}
         >
+            <div
+                className="pointer-events-none absolute inset-x-3 top-0 h-px opacity-80"
+                style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.78), transparent)' }}
+            />
             <input
                 {...props}
                 aria-invalid={invalid || undefined}
-                className="w-full bg-transparent px-[1.05rem] py-[0.98rem] text-[16px] font-medium tracking-[0.01em] outline-none placeholder:text-[#92737d] placeholder:opacity-100"
+                className="relative z-10 w-full bg-transparent px-[1rem] py-[0.94rem] text-[16px] font-medium tracking-[0.005em] outline-none placeholder:text-[#92737d] placeholder:opacity-80"
                 style={{ color: authPalette.textPrimary, caretColor: authPalette.accent }}
             />
         </div>
@@ -340,34 +419,38 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                 : 'Enter Lior';
 
     return (
-        <div className="relative min-h-screen overflow-x-hidden overflow-y-auto" style={{ ...pageTextStyle, color: authPalette.textPrimary }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, #1d1319 0%, #4a333f 43%, #9d7f8a 78%, #f4ebe6 100%)' }} />
+        <div className="relative min-h-screen overflow-x-hidden overflow-y-auto" style={{ ...pageTextStyle, color: authPalette.textPrimary, background: '#eadce3' }}>
+            <LiquidGlassDefs />
+            <div style={pageBackgroundStyle} />
+            <div style={opticalFieldStyle} />
             <motion.div
-                className="absolute left-1/2 top-[-7rem] h-[24rem] w-[24rem] -translate-x-1/2 rounded-full"
-                style={{ background: 'radial-gradient(circle, rgba(255,243,236,0.24) 0%, rgba(246,201,216,0.10) 34%, transparent 66%)', filter: 'blur(68px)' }}
-                animate={reducedMotion ? undefined : { scale: [1, 1.025, 1], opacity: [0.54, 0.72, 0.54] }}
-                transition={reducedMotion ? undefined : { duration: 12, repeat: Infinity, ease: 'easeInOut' }}
+                className="absolute left-1/2 top-[-8.5rem] h-[25rem] w-[25rem] -translate-x-1/2 rounded-full"
+                style={{ background: 'radial-gradient(circle, rgba(255,250,240,0.70) 0%, rgba(255,214,226,0.20) 38%, transparent 67%)', filter: 'blur(42px)' }}
+                animate={reducedMotion ? undefined : { scale: [1, 1.018, 1], opacity: [0.72, 0.88, 0.72] }}
+                transition={reducedMotion ? undefined : { duration: 14, repeat: Infinity, ease: 'easeInOut' }}
             />
-            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 108%, rgba(126,84,105,0.12) 0%, transparent 28%)' }} />
+            <div style={lowerVignetteStyle} />
 
             <div
-                className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[390px] flex-col px-5 md:max-w-[408px] md:py-5"
+                className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[380px] flex-col px-5 md:max-w-[392px] md:py-5"
                 style={{
-                    paddingTop: 'max(env(safe-area-inset-top), clamp(1.35rem, 3.2vh, 1.8rem))',
+                    paddingTop: 'max(env(safe-area-inset-top), clamp(1.15rem, 2.7vh, 1.55rem))',
                     paddingBottom: 'max(env(safe-area-inset-bottom), clamp(1rem, 2.6vh, 1.3rem))',
                 }}
             >
                 <div className="flex-shrink-0 pt-1 text-center">
-                    <span className="text-[11px] font-semibold tracking-[0.38em] text-white/84">LIOR</span>
+                    <span className="text-[10.5px] font-bold tracking-[0.42em]" style={{ color: 'rgba(71,45,57,0.78)' }}>
+                        LIOR
+                    </span>
                 </div>
 
                 <div
                     className="pointer-events-none relative flex flex-1 items-start justify-center"
-                    style={{ minHeight: 'clamp(6.4rem, 15vh, 9rem)', maxHeight: 'clamp(8rem, 18vh, 10rem)' }}
+                    style={{ minHeight: 'clamp(4.3rem, 11vh, 6.2rem)', maxHeight: 'clamp(5.2rem, 13vh, 7rem)' }}
                 >
                     <div
-                        className="absolute top-[8%] h-[11.75rem] w-[11.75rem] rounded-full"
-                        style={{ background: 'radial-gradient(circle, rgba(255,243,236,0.24) 0%, rgba(247,208,220,0.07) 40%, transparent 72%)', filter: 'blur(18px)' }}
+                        className="absolute top-[8%] h-[8rem] w-[14rem] rounded-full"
+                        style={{ background: 'radial-gradient(ellipse, rgba(255,255,255,0.28) 0%, rgba(255,236,240,0.10) 46%, transparent 74%)', filter: 'blur(22px)' }}
                     />
                 </div>
 
@@ -375,36 +458,38 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                     initial={reducedMotion ? undefined : { opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.44, ease: [0.22, 1, 0.36, 1] }}
-                    className="relative flex-shrink-0 overflow-hidden rounded-[1.72rem]"
+                    className="relative flex-shrink-0 overflow-hidden rounded-[1.48rem]"
                     style={{
                         ...surfaceStyle,
-                        paddingTop: 'clamp(1.2rem, 2.2vh, 1.38rem)',
-                        paddingBottom: 'clamp(1.2rem, 2.2vh, 1.38rem)',
-                        paddingLeft: 'clamp(1.16rem, 4vw, 1.34rem)',
-                        paddingRight: 'clamp(1.16rem, 4vw, 1.34rem)',
+                        paddingTop: 'clamp(1.08rem, 2vh, 1.26rem)',
+                        paddingBottom: 'clamp(1.1rem, 2vh, 1.28rem)',
+                        paddingLeft: 'clamp(1.06rem, 3.8vw, 1.24rem)',
+                        paddingRight: 'clamp(1.06rem, 3.8vw, 1.24rem)',
                     }}
                 >
-                        <div className="pointer-events-none absolute inset-[1px] rounded-[1.6rem]" style={surfaceInnerGlowStyle} />
+                        <div className="pointer-events-none absolute inset-[1px] rounded-[1.39rem]" style={surfaceInnerGlowStyle} />
+                        <div className="pointer-events-none absolute inset-0 rounded-[inherit] opacity-80" style={surfaceRimStyle} />
+                        <div className="pointer-events-none absolute left-[12%] right-[12%] top-px h-px opacity-90" style={surfaceHighlightStyle} />
 
-                        <div className="relative z-10 mb-[1.15rem]">
+                        <div className="relative z-10 mb-[1.04rem]">
                             {isForgotPassword && (
-                                <p className="text-[10.5px] font-bold uppercase tracking-[0.18em]" style={{ color: authPalette.textSecondary }}>
+                                <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: authPalette.textSecondary }}>
                                     Recovery
                                 </p>
                             )}
                             <h1
-                                className={`${isForgotPassword ? 'mt-2.5' : ''} text-[2.02rem] font-semibold leading-[0.98] tracking-[-0.038em]`}
-                                style={{ color: authPalette.textPrimary, fontFamily: '"Lora", serif' }}
+                                className={`${isForgotPassword ? 'mt-2.5' : ''} text-[1.82rem] font-bold leading-[1.02] tracking-[-0.045em]`}
+                                style={{ color: authPalette.textPrimary }}
                             >
                                 {headline}
                             </h1>
-                            <p className="mt-3 max-w-[15.25rem] text-[13.25px] leading-[1.58]" style={{ color: authPalette.textSecondary }}>
+                            <p className="mt-2.5 max-w-[15.25rem] text-[13px] leading-[1.54]" style={{ color: authPalette.textSecondary }}>
                                 {subtitle}
                             </p>
                         </div>
 
                         {!isForgotPassword && (
-                            <div className="relative z-10 mb-4 rounded-[1rem] p-[0.24rem]" style={toggleTrackStyle}>
+                            <div className="relative z-10 mb-3.5 rounded-[0.94rem] p-[0.22rem]" style={toggleTrackStyle}>
                                 <div className="grid grid-cols-2 gap-[0.22rem]">
                                     {(['login', 'signup'] as const).map((tab) => {
                                         const active = tab === (isSignUp ? 'signup' : 'login');
@@ -412,13 +497,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                             <button
                                                 key={tab}
                                                 onClick={() => switchMode(tab)}
-                                                className="relative rounded-[0.9rem] px-3 py-2.5 text-[11.5px] font-semibold tracking-[0.01em] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.18)]"
+                                                className="relative rounded-[0.78rem] px-3 py-2.5 text-[11.5px] font-bold tracking-[0.005em] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(160,84,112,0.16)]"
                                                 style={{ color: active ? authPalette.textPrimary : authPalette.textMuted }}
                                             >
                                                 {active && (
                                                     <motion.div
                                                         layoutId="auth-tab"
-                                                        className="absolute inset-0 rounded-[0.9rem]"
+                                                        className="absolute inset-0 rounded-[0.78rem]"
                                                         style={activeToggleStyle}
                                                         transition={{ type: 'spring', stiffness: 360, damping: 30 }}
                                                     />
@@ -431,7 +516,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             </div>
                         )}
 
-                        <div className="relative z-10 mb-4 space-y-2.5">
+                        <div className="relative z-10 mb-3.5 space-y-2.5">
                             <AnimatePresence mode="wait">
                                 {!isConfigured && (
                                     <StatusBanner
@@ -445,7 +530,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             </AnimatePresence>
                         </div>
 
-                        <div className="relative z-10 space-y-3.5">
+                        <div className="relative z-10 space-y-[0.8125rem]">
                             <AuthField
                                 label="Email"
                                 type="email"
@@ -474,7 +559,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             )}
                         </div>
 
-                        <div className="relative z-10 mt-4 flex items-center justify-end">
+                        <div className="relative z-10 mt-3.5 flex items-center justify-end">
                             {!isForgotPassword ? (
                                 !isSignUp && (
                                     <button
@@ -484,7 +569,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                             setSubmitAttempted(false);
                                             clearFeedback();
                                         }}
-                                        className="text-[11.5px] font-semibold tracking-[0.01em] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.16)]"
+                                        className="text-[11.5px] font-bold tracking-[0.005em] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(160,84,112,0.14)]"
                                         style={{ color: authPalette.accentDeep }}
                                     >
                                         Forgot password?
@@ -498,7 +583,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                         setSubmitAttempted(false);
                                         clearFeedback();
                                     }}
-                                    className="text-[11.5px] font-semibold tracking-[0.01em] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(183,97,126,0.16)]"
+                                    className="text-[11.5px] font-bold tracking-[0.005em] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(160,84,112,0.14)]"
                                     style={{ color: authPalette.accentDeep }}
                                 >
                                     Back to sign in
@@ -510,17 +595,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             whileTap={{ scale: 0.988 }}
                             onClick={isForgotPassword ? handleForgotPassword : handleAuth}
                             disabled={loading || rateLimitSecs > 0}
-                            className="relative z-10 mt-5 flex w-full items-center justify-center overflow-hidden rounded-[1.06rem] py-[0.98rem] text-[14px] font-semibold tracking-[0.01em] text-white disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(191,106,135,0.20)]"
+                            className="relative z-10 mt-[1.125rem] flex w-full items-center justify-center overflow-hidden rounded-[0.98rem] py-[0.96rem] text-[14px] font-bold tracking-[0.005em] text-white disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(160,84,112,0.18)]"
                             style={buttonStyle}
                         >
-                            <div className="absolute inset-0 opacity-40" style={{ background: 'linear-gradient(120deg, rgba(255,255,255,0.18) 0%, transparent 44%, transparent 80%, rgba(255,224,205,0.10) 100%)' }} />
+                            <div className="absolute inset-0 opacity-55" style={{ background: 'radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.44) 0%, transparent 44%), linear-gradient(120deg, rgba(255,255,255,0.18) 0%, transparent 42%, rgba(255,226,236,0.10) 100%)' }} />
+                            <div className="absolute left-[11%] right-[11%] top-0 h-px opacity-80" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.86), transparent)' }} />
                             <span className="relative z-10 flex items-center gap-2">
                                 {loading && <Loader2 size={16} className="animate-spin" />}
                                 <span>{buttonLabel}</span>
                             </span>
                         </motion.button>
 
-                        <div className="relative z-10 mt-4 border-t pt-4" style={{ borderColor: 'rgba(111,78,94,0.14)' }}>
+                        <div className="relative z-10 mt-4 border-t pt-3.5" style={{ borderColor: 'rgba(255,255,255,0.24)' }}>
                             <div className="flex items-center justify-center gap-2 text-[11px] font-semibold tracking-[0.01em]" style={{ color: authPalette.footer }}>
                                 <ShieldCheck size={13} />
                                 Encrypted and private

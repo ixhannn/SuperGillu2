@@ -33,11 +33,10 @@ import {
 import { StorageService } from './storage';
 import { VideoMomentsService } from './videoMoments';
 import { generateId } from '../utils/ids';
+import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 
 // ── Storage keys ─────────────────────────────────────────────────────
-const DB_NAME = 'LiorVault_v11';
-const DB_VERSION = 1;
-const STORE = 'metadata_store';
+const STORE = STORES.DATA;
 const ARCHIVE_KEY = 'lior_weekly_recap_archive';
 const INSIGHT_CACHE_KEY = 'lior_weekly_recap_insight_cache';
 

@@ -11,17 +11,17 @@ import { generateId } from '../utils/ids';
 import { RelationshipModelService } from './relationshipModel';
 import { RelationshipSignals } from './relationshipSignals';
 import { differenceInDays, format } from 'date-fns';
+import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 
 // ── Storage ─────────────────────────────────────────────────────────
 
-const DB_NAME = 'LiorVault_v11';
-const STORE = 'metadata_store';
+const STORE = STORES.DATA;
 const INSIGHTS_KEY = 'ri_deep_insights';
 const MESSAGES_KEY = 'ri_system_messages';
 
 const openDb = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = (e.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);

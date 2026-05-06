@@ -7,160 +7,266 @@ export type PetMood = 'happy' | 'excited' | 'neutral' | 'sad' | 'sleeping';
 /* ── Color Palettes ────────────────────────────────────────────── */
 const PALETTES = {
     bear: {
-        body: '#F0B060', bodyLight: '#F8CC80', belly: '#FDE9C8',
-        cheek: '#EE8868', earInner: '#D89838', eye: '#3D2B1F',
-        nose: '#5C3D20', shadow: 'rgba(176,120,48,0.18)', glow: '#FFCC80',
+        body: '#F0D8B8', bodyLight: '#FFF1DC', belly: '#FDE9C8',
+        cheek: '#EE8868', earInner: '#E2A968', eye: '#5C3322',
+        nose: '#5C3D20', shadow: 'rgba(176,120,48,0.22)', glow: '#FFC97A',
+        irisGlow: '#FF9E45',
     },
     dog: {
-        body: '#82C4E4', bodyLight: '#A8D8F0', belly: '#D4EAF6',
-        cheek: '#EE9CA8', earInner: '#68ACD0', eye: '#2D3644',
-        nose: '#3D4854', shadow: 'rgba(56,136,184,0.18)', glow: '#A8D8F0',
+        body: '#D6EAF6', bodyLight: '#F1F9FE', belly: '#E8F2FA',
+        cheek: '#9FCDE8', earInner: '#8EC8EE', eye: '#0D3B5C',
+        nose: '#3D4854', shadow: 'rgba(56,136,184,0.26)', glow: '#9FE0F8',
+        irisGlow: '#3FB8E8',
     },
     cat: {
-        body: '#A494C4', bodyLight: '#BAB0D6', belly: '#D4CCE4',
-        cheek: '#CC94B4', earInner: '#8878B0', eye: '#2B2340',
-        nose: '#7868A0', shadow: 'rgba(104,88,160,0.18)', glow: '#D0C8F0',
+        body: '#DCD2EC', bodyLight: '#F4F0FC', belly: '#E5DDF1',
+        cheek: '#C9A6D6', earInner: '#B6A6D4', eye: '#2B1A40',
+        nose: '#7868A0', shadow: 'rgba(104,88,160,0.24)', glow: '#D0BFFF',
+        irisGlow: '#A98EE8',
     },
     bunny: {
-        body: '#EE9CAC', bodyLight: '#F4B4C0', belly: '#F8D0D8',
-        cheek: '#F488A0', earInner: '#D88898', eye: '#3D2030',
-        nose: '#CC6880', shadow: 'rgba(208,104,128,0.18)', glow: '#FFCCD8',
+        body: '#FADBE2', bodyLight: '#FFEFF3', belly: '#FBE3E8',
+        cheek: '#F488A0', earInner: '#F1B8C2', eye: '#3D1F30',
+        nose: '#CC6880', shadow: 'rgba(208,104,128,0.24)', glow: '#FFB8CE',
+        irisGlow: '#F47AA0',
     },
 } as const;
 
 type Palette = (typeof PALETTES)[PetType];
 
-/* ── Face geometry per type ────────────────────────────────────── */
+const isPetType = (value: unknown): value is PetType => (
+    typeof value === 'string' && Object.prototype.hasOwnProperty.call(PALETTES, value)
+);
+
+/* ── Face geometry — shared across all pets now ─────────────────── */
 const FACE = {
-    bear:  { eyeY: 104, noseY: 114, mouthY: 122, cheekX: 72, cheekR: 9 },
-    dog:   { eyeY: 102, noseY: 112, mouthY: 120, cheekX: 74, cheekR: 8 },
-    cat:   { eyeY: 106, noseY: 116, mouthY: 124, cheekX: 72, cheekR: 8 },
-    bunny: { eyeY: 110, noseY: 120, mouthY: 128, cheekX: 73, cheekR: 9 },
+    bear:  { eyeY: 100, noseY: 116, mouthY: 130, cheekX: 70, cheekR: 9 },
+    dog:   { eyeY: 100, noseY: 116, mouthY: 130, cheekX: 70, cheekR: 9 },
+    cat:   { eyeY: 100, noseY: 116, mouthY: 130, cheekX: 70, cheekR: 9 },
+    bunny: { eyeY: 100, noseY: 116, mouthY: 130, cheekX: 70, cheekR: 9 },
 } as const;
 
 /* ── Hat / accessory Y positions per type ──────────────────────── */
-const HAT_Y:   Record<PetType, number> = { bear: 32, dog: 50, cat: 28, bunny: 0 };
-const SCARF_Y: Record<PetType, number> = { bear: 158, dog: 156, cat: 162, bunny: 160 };
+const HAT_Y:   Record<PetType, number> = { bear: 18, dog: 18, cat: 18, bunny: 18 };
+const SCARF_Y: Record<PetType, number> = { bear: 162, dog: 162, cat: 162, bunny: 162 };
 
-/* ── Body Shapes (pure SVG) ────────────────────────────────────── */
-const BearBody: React.FC<{ c: Palette }> = ({ c }) => (
+/* ═══════════════════════════════════════════════════════════════ */
+/*  FLUFFY MONSTER BODY — shared shape for every pet              */
+/* ═══════════════════════════════════════════════════════════════ */
+const FluffyBody: React.FC<{ c: Palette; type: PetType }> = ({ c, type }) => (
     <g>
-        <circle cx={66} cy={60} r={22} fill={c.body} />
-        <circle cx={134} cy={60} r={22} fill={c.body} />
-        <circle cx={66} cy={60} r={12} fill={c.earInner} opacity={0.55} />
-        <circle cx={134} cy={60} r={12} fill={c.earInner} opacity={0.55} />
-        <ellipse cx={100} cy={118} rx={64} ry={60} fill={c.body} />
-        <ellipse cx={100} cy={130} rx={38} ry={32} fill={c.belly} opacity={0.65} />
+        {/* Outer fluff silhouette — jagged fur outline */}
+        <path
+            d="M100 14
+               L92 30 L78 22 L66 36 L52 30 L46 48 L30 50 L32 70
+               L18 78 L24 96 L12 110 L24 126 L18 144 L34 152
+               L30 170 L48 174 L54 188 L72 184 L84 194 L100 188
+               L116 194 L128 184 L146 188 L152 174 L170 170 L166 152
+               L182 144 L176 126 L188 110 L176 96 L182 78 L168 70
+               L170 50 L154 48 L148 30 L134 36 L122 22 L108 30 Z"
+            fill={c.body}
+        />
+        {/* Inner softer body — gives a 3D fluffy core */}
+        <path
+            d="M100 26
+               L88 42 L74 38 L62 56 L48 60 L46 78 L34 88 L40 102
+               L30 120 L42 132 L40 152 L58 158 L62 174 L80 174 L92 184
+               L108 184 L120 174 L138 174 L142 158 L160 152 L158 132
+               L170 120 L160 102 L166 88 L154 78 L152 60 L138 56
+               L126 38 L112 42 Z"
+            fill={c.bodyLight}
+            opacity={0.85}
+        />
+        {/* Belly highlight */}
+        <ellipse cx={100} cy={140} rx={42} ry={32} fill={c.belly} opacity={0.55} />
+
+        {/* Crystal horns — left */}
+        <g>
+            <path
+                d="M70 36 L60 4 L82 30 Z"
+                fill={c.bodyLight}
+                stroke={c.earInner}
+                strokeWidth={1.4}
+                strokeLinejoin="round"
+            />
+            <path d="M70 36 L66 18 L78 28 Z" fill={c.earInner} opacity={0.5} />
+            <path d="M62 14 L65 4 L70 18 Z" fill="#ffffff" opacity={0.7} />
+        </g>
+        {/* Crystal horns — right */}
+        <g>
+            <path
+                d="M130 36 L140 4 L118 30 Z"
+                fill={c.bodyLight}
+                stroke={c.earInner}
+                strokeWidth={1.4}
+                strokeLinejoin="round"
+            />
+            <path d="M130 36 L134 18 L122 28 Z" fill={c.earInner} opacity={0.5} />
+            <path d="M138 14 L135 4 L130 18 Z" fill="#ffffff" opacity={0.7} />
+        </g>
+
+        {/* Cat-only subtle stripes for differentiation */}
+        {type === 'cat' && (
+            <g opacity={0.18}>
+                <path d="M62 88 Q72 92 82 86" stroke={c.earInner} strokeWidth={3} fill="none" strokeLinecap="round" />
+                <path d="M118 86 Q128 92 138 88" stroke={c.earInner} strokeWidth={3} fill="none" strokeLinecap="round" />
+                <path d="M58 110 Q70 114 80 110" stroke={c.earInner} strokeWidth={3} fill="none" strokeLinecap="round" />
+                <path d="M120 110 Q130 114 142 110" stroke={c.earInner} strokeWidth={3} fill="none" strokeLinecap="round" />
+            </g>
+        )}
+
+        {/* Bear-only forehead tuft */}
+        {type === 'bear' && (
+            <g opacity={0.6}>
+                <path d="M88 50 L94 38 L100 48 L106 38 L112 50 Z" fill={c.earInner} />
+            </g>
+        )}
+
+        {/* Bunny-only soft cheek blush spots — top */}
+        {type === 'bunny' && (
+            <>
+                <circle cx={56} cy={92} r={5} fill={c.cheek} opacity={0.4} />
+                <circle cx={144} cy={92} r={5} fill={c.cheek} opacity={0.4} />
+            </>
+        )}
+
+        {/* Frosty top-of-head sheen */}
+        <ellipse cx={92} cy={62} rx={26} ry={11} fill="#ffffff" opacity={0.55} />
+
+        {/* Tiny fur flecks on body for texture */}
+        <circle cx={60} cy={120} r={2.4} fill={c.earInner} opacity={0.55} />
+        <circle cx={150} cy={108} r={2} fill={c.earInner} opacity={0.5} />
+        <circle cx={144} cy={148} r={1.8} fill={c.earInner} opacity={0.5} />
+        <circle cx={68} cy={152} r={1.6} fill={c.earInner} opacity={0.5} />
+        <circle cx={100} cy={170} r={1.6} fill={c.earInner} opacity={0.5} />
+
+        {/* Stubby paws peeking out */}
+        <ellipse cx={42} cy={148} rx={10} ry={8} fill={c.bodyLight} />
+        <ellipse cx={158} cy={148} rx={10} ry={8} fill={c.bodyLight} />
     </g>
 );
 
-const DogBody: React.FC<{ c: Palette }> = ({ c }) => (
-    <g>
-        <ellipse cx={42} cy={100} rx={18} ry={30} fill={c.body} transform="rotate(-12 42 100)" />
-        <ellipse cx={158} cy={100} rx={18} ry={30} fill={c.body} transform="rotate(12 158 100)" />
-        <ellipse cx={42} cy={100} rx={10} ry={20} fill={c.earInner} opacity={0.4} transform="rotate(-12 42 100)" />
-        <ellipse cx={158} cy={100} rx={10} ry={20} fill={c.earInner} opacity={0.4} transform="rotate(12 158 100)" />
-        <ellipse cx={100} cy={116} rx={62} ry={58} fill={c.body} />
-        <ellipse cx={100} cy={128} rx={36} ry={30} fill={c.belly} opacity={0.55} />
-        <ellipse cx={100} cy={116} rx={16} ry={12} fill={c.belly} opacity={0.35} />
-    </g>
-);
-
-const CatBody: React.FC<{ c: Palette }> = ({ c }) => (
-    <g>
-        <path d="M62 80 Q68 44 82 78" fill={c.body} />
-        <path d="M118 78 Q132 44 138 80" fill={c.body} />
-        <path d="M66 78 Q70 52 80 76" fill={c.earInner} opacity={0.45} />
-        <path d="M120 76 Q130 52 134 78" fill={c.earInner} opacity={0.45} />
-        <ellipse cx={100} cy={120} rx={56} ry={58} fill={c.body} />
-        <ellipse cx={100} cy={132} rx={32} ry={28} fill={c.belly} opacity={0.5} />
-    </g>
-);
-
-const BunnyBody: React.FC<{ c: Palette }> = ({ c }) => (
-    <g>
-        <ellipse cx={76} cy={48} rx={15} ry={42} fill={c.body} transform="rotate(-5 76 48)" />
-        <ellipse cx={124} cy={48} rx={15} ry={42} fill={c.body} transform="rotate(5 124 48)" />
-        <ellipse cx={76} cy={48} rx={8} ry={32} fill={c.earInner} opacity={0.45} transform="rotate(-5 76 48)" />
-        <ellipse cx={124} cy={48} rx={8} ry={32} fill={c.earInner} opacity={0.45} transform="rotate(5 124 48)" />
-        <ellipse cx={100} cy={124} rx={58} ry={52} fill={c.body} />
-        <ellipse cx={100} cy={136} rx={34} ry={28} fill={c.belly} opacity={0.55} />
-    </g>
-);
-
-const BODY_MAP: Record<PetType, React.FC<{ c: Palette }>> = {
-    bear: BearBody, dog: DogBody, cat: CatBody, bunny: BunnyBody,
+const BODY_MAP: Record<PetType, React.FC<{ c: Palette; type: PetType }>> = {
+    bear: FluffyBody, dog: FluffyBody, cat: FluffyBody, bunny: FluffyBody,
 };
 
-/* ── Eyes ───────────────────────────────────────────────────────── */
-const PetEyes: React.FC<{ mood: PetMood; blinking: boolean; color: string; y: number }> = ({
-    mood, blinking, color, y,
-}) => {
+/* ── Big glowing monster eyes ───────────────────────────────────── */
+const PetEyes: React.FC<{
+    mood: PetMood; blinking: boolean; color: string; iris: string; glow: string; y: number;
+}> = ({ mood, blinking, color, iris, glow, y }) => {
     if (mood === 'sleeping' || blinking) {
-        const curve = mood === 'sleeping' ? 5 : 3;
+        const curve = mood === 'sleeping' ? 6 : 4;
         return (
             <>
-                <path d={`M73 ${y} Q82 ${y + curve} 91 ${y}`} stroke={color} strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                <path d={`M109 ${y} Q118 ${y + curve} 127 ${y}`} stroke={color} strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                <path d={`M68 ${y} Q82 ${y + curve} 96 ${y}`} stroke={color} strokeWidth="3" fill="none" strokeLinecap="round" />
+                <path d={`M104 ${y} Q118 ${y + curve} 132 ${y}`} stroke={color} strokeWidth="3" fill="none" strokeLinecap="round" />
             </>
         );
     }
-    if (mood === 'happy') {
-        return (
-            <>
-                <path d={`M73 ${y + 2} Q82 ${y - 6} 91 ${y + 2}`} stroke={color} strokeWidth="2.8" fill="none" strokeLinecap="round" />
-                <path d={`M109 ${y + 2} Q118 ${y - 6} 127 ${y + 2}`} stroke={color} strokeWidth="2.8" fill="none" strokeLinecap="round" />
-            </>
-        );
-    }
-    const ry = mood === 'excited' ? 13 : mood === 'sad' ? 10 : 11;
-    const rx = mood === 'excited' ? 10.5 : mood === 'sad' ? 9 : 9.5;
-    const hlR = mood === 'excited' ? 4.5 : 3.5;
+    const ry = mood === 'excited' ? 16 : mood === 'sad' ? 12 : 14;
+    const rx = mood === 'excited' ? 14 : mood === 'sad' ? 11 : 13;
+    const irisR = mood === 'excited' ? 9 : 8;
+    const pupilR = mood === 'excited' ? 3.6 : 3;
     return (
         <>
-            <ellipse cx={82} cy={y} rx={rx} ry={ry} fill={color} />
-            <circle cx={78} cy={y - 3.5} r={hlR} fill="white" opacity={0.92} />
-            <circle cx={86} cy={y + 2} r={1.8} fill="white" opacity={0.45} />
-            {mood === 'excited' && <circle cx={76} cy={y - 6} r={1.5} fill="white" opacity={0.6} />}
-            <ellipse cx={118} cy={y} rx={rx} ry={ry} fill={color} />
-            <circle cx={114} cy={y - 3.5} r={hlR} fill="white" opacity={0.92} />
-            <circle cx={122} cy={y + 2} r={1.8} fill="white" opacity={0.45} />
-            {mood === 'excited' && <circle cx={112} cy={y - 6} r={1.5} fill="white" opacity={0.6} />}
+            {/* Soft glow halos behind eyes */}
+            <circle cx={82} cy={y} r={20} fill={glow} opacity={0.42} />
+            <circle cx={118} cy={y} r={20} fill={glow} opacity={0.42} />
+            {/* Sclera */}
+            <ellipse cx={82} cy={y} rx={rx} ry={ry} fill="#FFFFFF" stroke={color} strokeWidth={1.6} />
+            <ellipse cx={118} cy={y} rx={rx} ry={ry} fill="#FFFFFF" stroke={color} strokeWidth={1.6} />
+            {/* Iris glow ring */}
+            <circle cx={82} cy={y} r={irisR + 1.5} fill={iris} opacity={0.35} />
+            <circle cx={118} cy={y} r={irisR + 1.5} fill={iris} opacity={0.35} />
+            {/* Iris solid */}
+            <circle cx={82} cy={y} r={irisR} fill={iris} />
+            <circle cx={118} cy={y} r={irisR} fill={iris} />
+            {/* Iris inner gradient hint */}
+            <circle cx={82} cy={y + 1} r={irisR - 1.5} fill={iris} opacity={0.6} />
+            <circle cx={118} cy={y + 1} r={irisR - 1.5} fill={iris} opacity={0.6} />
+            {/* Pupils */}
+            <circle cx={82} cy={y} r={pupilR} fill={color} />
+            <circle cx={118} cy={y} r={pupilR} fill={color} />
+            {/* Catchlights */}
+            <circle cx={79} cy={y - 3} r={1.8} fill="#FFFFFF" />
+            <circle cx={115} cy={y - 3} r={1.8} fill="#FFFFFF" />
+            <circle cx={84} cy={y + 3} r={0.9} fill="#FFFFFF" opacity={0.7} />
+            <circle cx={120} cy={y + 3} r={0.9} fill="#FFFFFF" opacity={0.7} />
             {mood === 'sad' && (
                 <>
-                    <path d={`M72 ${y - 16} Q82 ${y - 20} 92 ${y - 16}`} stroke={color} strokeWidth="1.5" fill="none" opacity={0.35} strokeLinecap="round" />
-                    <path d={`M108 ${y - 16} Q118 ${y - 20} 128 ${y - 16}`} stroke={color} strokeWidth="1.5" fill="none" opacity={0.35} strokeLinecap="round" />
+                    <path d={`M70 ${y - 18} Q82 ${y - 22} 94 ${y - 18}`} stroke={color} strokeWidth="1.8" fill="none" opacity={0.45} strokeLinecap="round" />
+                    <path d={`M106 ${y - 18} Q118 ${y - 22} 130 ${y - 18}`} stroke={color} strokeWidth="1.8" fill="none" opacity={0.45} strokeLinecap="round" />
                 </>
             )}
         </>
     );
 };
 
-/* ── Nose ──────────────────────────────────────────────────────── */
-const PetNose: React.FC<{ type: PetType; color: string; y: number }> = ({ type, color, y }) => {
-    if (type === 'cat') return <path d={`M97 ${y - 2} L100 ${y + 2} L103 ${y - 2} Z`} fill={color} opacity={0.4} />;
-    if (type === 'bunny') return <circle cx={100} cy={y} r={3.5} fill={color} opacity={0.35} />;
-    return <ellipse cx={100} cy={y} rx={5} ry={3.5} fill={color} opacity={0.45} />;
-};
-
-/* ── Mouth ─────────────────────────────────────────────────────── */
+/* ── Toothy monster mouth ───────────────────────────────────────── */
 const PetMouth: React.FC<{ mood: PetMood; y: number }> = ({ mood, y }) => {
-    const c = '#4A3030';
-    if (mood === 'excited') return <ellipse cx={100} cy={y} rx={5.5} ry={4.5} fill={c} opacity={0.2} />;
-    if (mood === 'happy' || mood === 'sleeping') return <path d={`M91 ${y - 2} Q100 ${y + 5} 109 ${y - 2}`} stroke={c} strokeWidth="1.8" fill="none" opacity={0.2} strokeLinecap="round" />;
-    if (mood === 'sad') return <path d={`M93 ${y + 2} Q100 ${y - 3} 107 ${y + 2}`} stroke={c} strokeWidth="1.8" fill="none" opacity={0.2} strokeLinecap="round" />;
-    return <path d={`M94 ${y} Q100 ${y + 2.5} 106 ${y}`} stroke={c} strokeWidth="1.6" fill="none" opacity={0.15} strokeLinecap="round" />;
-};
-
-/* ── Cat whiskers ──────────────────────────────────────────────── */
-const PetWhiskers: React.FC<{ type: PetType; color: string; y: number }> = ({ type, color, y }) => {
-    if (type !== 'cat') return null;
+    if (mood === 'sleeping') {
+        return <path d={`M86 ${y} Q100 ${y + 4} 114 ${y}`} stroke="#2C1A2A" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity={0.7} />;
+    }
+    if (mood === 'sad') {
+        return <path d={`M86 ${y + 5} Q100 ${y - 4} 114 ${y + 5}`} stroke="#2C1A2A" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity={0.7} />;
+    }
+    const wide = mood === 'excited' ? 1.05 : mood === 'happy' ? 0.95 : 0.82;
+    const mw = 24 * wide;
+    const mh = 12 * wide;
     return (
-        <g opacity={0.2}>
-            <line x1={60} y1={y - 2} x2={80} y2={y} stroke={color} strokeWidth={1} strokeLinecap="round" />
-            <line x1={58} y1={y + 4} x2={80} y2={y + 4} stroke={color} strokeWidth={1} strokeLinecap="round" />
-            <line x1={120} y1={y} x2={140} y2={y - 2} stroke={color} strokeWidth={1} strokeLinecap="round" />
-            <line x1={120} y1={y + 4} x2={142} y2={y + 4} stroke={color} strokeWidth={1} strokeLinecap="round" />
+        <g>
+            {/* Mouth interior */}
+            <path
+                d={`M${100 - mw} ${y - 2}
+                    Q100 ${y - 8} ${100 + mw} ${y - 2}
+                    Q${100 + mw - 2} ${y + mh + 2} 100 ${y + mh + 4}
+                    Q${100 - mw + 2} ${y + mh + 2} ${100 - mw} ${y - 2} Z`}
+                fill="#1A0E1A"
+                opacity={0.95}
+            />
+            {/* Inner shadow */}
+            <ellipse cx={100} cy={y + 4} rx={mw - 4} ry={mh * 0.6} fill="#3A1F30" opacity={0.6} />
+            {/* Top jagged tooth row */}
+            <path
+                d={`M${100 - mw + 2} ${y - 1}
+                    L${100 - mw + 5} ${y + 5}
+                    L${100 - mw + 8} ${y - 1}
+                    L${100 - mw + 11} ${y + 6}
+                    L${100 - mw + 14} ${y - 1}
+                    L${100 - mw + 17} ${y + 7}
+                    L${100 - mw + 20} ${y - 1}
+                    L${100 - mw + 23} ${y + 6}
+                    L${100 - mw + 26} ${y - 1}
+                    L${100 - mw + 29} ${y + 5}
+                    L${100 - mw + 32} ${y - 1}
+                    L${100 - mw + 35} ${y + 5}
+                    L${100 - mw + 38} ${y - 1}
+                    L${100 - mw + 41} ${y + 5}
+                    L${100 - mw + 44} ${y - 1} Z`}
+                fill="#FFFFFF"
+                stroke="#D8DBE0"
+                strokeWidth={0.5}
+                strokeLinejoin="round"
+            />
+            {/* Bottom tooth row — fewer, smaller */}
+            <path
+                d={`M${100 - mw + 6} ${y + mh + 1}
+                    L${100 - mw + 9} ${y + mh - 4}
+                    L${100 - mw + 13} ${y + mh + 1}
+                    L${100 - mw + 17} ${y + mh - 5}
+                    L${100 - mw + 21} ${y + mh + 1}
+                    L${100 - mw + 25} ${y + mh - 4}
+                    L${100 - mw + 29} ${y + mh + 1}
+                    L${100 - mw + 33} ${y + mh - 4}
+                    L${100 - mw + 37} ${y + mh + 1} Z`}
+                fill="#FFFFFF"
+                stroke="#D8DBE0"
+                strokeWidth={0.5}
+                strokeLinejoin="round"
+                opacity={0.92}
+            />
+            {/* Tongue hint */}
+            <ellipse cx={100} cy={y + mh - 1} rx={mw * 0.32} ry={1.6} fill="#A65A78" opacity={0.75} />
         </g>
     );
 };
@@ -212,19 +318,19 @@ const HAT_MAP: Record<string, React.FC<{ y: number }>> = {
 /* ── Accessories ───────────────────────────────────────────────── */
 const AccGlasses = ({ y }: { y: number }) => (
     <g opacity={0.65}>
-        <circle cx={82} cy={y} r={12} fill="none" stroke="#3A3A4A" strokeWidth="2" />
-        <circle cx={118} cy={y} r={12} fill="none" stroke="#3A3A4A" strokeWidth="2" />
+        <circle cx={82} cy={y} r={14} fill="none" stroke="#3A3A4A" strokeWidth="2" />
+        <circle cx={118} cy={y} r={14} fill="none" stroke="#3A3A4A" strokeWidth="2" />
         <line x1={94} y1={y} x2={106} y2={y} stroke="#3A3A4A" strokeWidth="1.8" />
-        <line x1={55} y1={y - 2} x2={70} y2={y} stroke="#3A3A4A" strokeWidth="1.5" strokeLinecap="round" />
-        <line x1={130} y1={y} x2={145} y2={y - 2} stroke="#3A3A4A" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx={82} cy={y} r={11} fill="rgba(140,200,255,0.06)" />
-        <circle cx={118} cy={y} r={11} fill="rgba(140,200,255,0.06)" />
+        <line x1={55} y1={y - 2} x2={68} y2={y} stroke="#3A3A4A" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1={132} y1={y} x2={145} y2={y - 2} stroke="#3A3A4A" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx={82} cy={y} r={13} fill="rgba(140,200,255,0.06)" />
+        <circle cx={118} cy={y} r={13} fill="rgba(140,200,255,0.06)" />
     </g>
 );
 const AccScarf = ({ y }: { y: number }) => (
     <g>
-        <rect x={65} y={y} width={70} height={12} rx={6} fill="#E84070" opacity={0.7} />
-        <rect x={67} y={y + 2} width={66} height={8} rx={4} fill="#F06090" opacity={0.5} />
+        <rect x={62} y={y} width={76} height={12} rx={6} fill="#E84070" opacity={0.7} />
+        <rect x={64} y={y + 2} width={72} height={8} rx={4} fill="#F06090" opacity={0.5} />
     </g>
 );
 const AccBow = ({ y }: { y: number }) => (
@@ -262,8 +368,9 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
 }) => {
     const [blinking, setBlinking] = useState(false);
     const blinkRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const colors = PALETTES[type];
-    const face = FACE[type];
+    const safeType = isPetType(type) ? type : 'bear';
+    const colors = PALETTES[safeType];
+    const face = FACE[safeType];
     const sleeping = mood === 'sleeping';
     const excited = mood === 'excited';
 
@@ -284,7 +391,7 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
         return () => { if (blinkRef.current) clearTimeout(blinkRef.current); };
     }, [sleeping]);
 
-    const BodySVG = BODY_MAP[type];
+    const BodySVG = BODY_MAP[safeType];
     const HatComp = equippedHat ? HAT_MAP[equippedHat] : null;
     const AccComp = equippedAccessory ? ACC_MAP[equippedAccessory] : null;
 
@@ -319,7 +426,7 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
             <motion.div
                 animate={sleeping
                     ? { scaleX: [1, 1.008, 1], scaleY: [1, 0.992, 1], y: [0, -1, 0] }
-                    : { scaleX: [1, 1.018, 1], scaleY: [1, 0.982, 1], y: [0, -2.5, 0] }
+                    : { scaleX: [1, 1.022, 1], scaleY: [1, 0.978, 1], y: [0, -3, 0] }
                 }
                 transition={{ duration: sleeping ? 4.5 : 2.8, repeat: Infinity, ease: 'easeInOut' }}
                 style={{ width: '100%', height: '100%', transformOrigin: '50% 85%', position: 'relative', zIndex: 2 }}
@@ -328,15 +435,15 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
                 <motion.div
                     className="absolute pointer-events-none"
                     style={{
-                        inset: '-16%', borderRadius: '50%',
-                        background: `radial-gradient(circle, ${colors.glow}40 0%, ${colors.glow}10 45%, transparent 68%)`,
-                        filter: 'blur(14px)', zIndex: 0,
+                        inset: '-18%', borderRadius: '50%',
+                        background: `radial-gradient(circle, ${colors.glow}55 0%, ${colors.glow}18 45%, transparent 70%)`,
+                        filter: 'blur(16px)', zIndex: 0,
                     }}
                     animate={
-                        excited ? { scale: [1, 1.15, 1], opacity: [0.4, 0.75, 0.4] }
-                        : mood === 'happy' ? { scale: [1, 1.08, 1], opacity: [0.3, 0.5, 0.3] }
-                        : sleeping ? { opacity: [0.06, 0.12, 0.06] }
-                        : { opacity: [0.12, 0.22, 0.12] }
+                        excited ? { scale: [1, 1.18, 1], opacity: [0.5, 0.85, 0.5] }
+                        : mood === 'happy' ? { scale: [1, 1.1, 1], opacity: [0.4, 0.6, 0.4] }
+                        : sleeping ? { opacity: [0.1, 0.18, 0.1] }
+                        : { opacity: [0.18, 0.32, 0.18] }
                     }
                     transition={{ duration: excited ? 1.2 : 2.8, repeat: Infinity, ease: 'easeInOut' }}
                 />
@@ -349,57 +456,66 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
                     className="relative z-10"
                     style={{
                         filter: sleeping
-                            ? `brightness(0.82) saturate(0.6) drop-shadow(0 6px 18px ${colors.shadow})`
+                            ? `brightness(0.85) saturate(0.65) drop-shadow(0 6px 18px ${colors.shadow})`
                             : mood === 'sad'
-                            ? `saturate(0.65) brightness(0.92) drop-shadow(0 8px 20px ${colors.shadow})`
-                            : `drop-shadow(0 10px 28px ${colors.shadow}) drop-shadow(0 2px 8px rgba(0,0,0,0.22))`,
+                            ? `saturate(0.7) brightness(0.94) drop-shadow(0 8px 20px ${colors.shadow})`
+                            : `drop-shadow(0 12px 30px ${colors.shadow}) drop-shadow(0 2px 8px rgba(0,0,0,0.22))`,
                         transition: 'filter 0.6s ease',
                     }}
                 >
                     <defs>
-                        {/* Radial body gradient — light top-left, deep bottom-right */}
-                        <radialGradient id={`bg-${type}`} cx="36%" cy="28%" r="68%" gradientUnits="objectBoundingBox">
+                        <radialGradient id={`bg-${safeType}`} cx="38%" cy="26%" r="72%" gradientUnits="objectBoundingBox">
                             <stop offset="0%"   stopColor={colors.bodyLight} stopOpacity="1" />
                             <stop offset="55%"  stopColor={colors.body}      stopOpacity="1" />
                             <stop offset="100%" stopColor={colors.earInner}  stopOpacity="1" />
                         </radialGradient>
-                        {/* Belly gradient */}
-                        <radialGradient id={`belly-${type}`} cx="50%" cy="30%" r="60%">
-                            <stop offset="0%"   stopColor={colors.belly}     stopOpacity="0.9" />
-                            <stop offset="100%" stopColor={colors.body}      stopOpacity="0.4" />
+                        <radialGradient id={`belly-${safeType}`} cx="50%" cy="30%" r="60%">
+                            <stop offset="0%"   stopColor={colors.belly}     stopOpacity="0.95" />
+                            <stop offset="100%" stopColor={colors.body}      stopOpacity="0.45" />
                         </radialGradient>
-                        {/* Specular highlight */}
-                        <radialGradient id={`spec-${type}`} cx="30%" cy="20%" r="40%">
-                            <stop offset="0%"   stopColor="rgba(255,255,255,0.38)" />
-                            <stop offset="100%" stopColor="rgba(255,255,255,0)"    />
+                        <radialGradient id={`spec-${safeType}`} cx="30%" cy="20%" r="40%">
+                            <stop offset="0%"   stopColor="rgba(255,255,255,0.42)" />
+                            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
                         </radialGradient>
                     </defs>
-                    {/* Render with gradient fills via a clone using the defined gradient ids */}
-                    <BodySVG c={{
-                        ...colors,
-                        body:      `url(#bg-${type})`,
-                        bodyLight: colors.bodyLight,
-                        belly:     `url(#belly-${type})`,
-                    } as any} />
+
+                    <BodySVG
+                        type={safeType}
+                        c={{
+                            ...colors,
+                            body:      `url(#bg-${safeType})`,
+                            bodyLight: colors.bodyLight,
+                            belly:     `url(#belly-${safeType})`,
+                        } as any}
+                    />
+
                     {/* Cheeks */}
-                    <circle cx={face.cheekX} cy={face.eyeY + 8} r={face.cheekR} fill={colors.cheek} opacity={excited ? 0.45 : 0.3} />
-                    <circle cx={200 - face.cheekX} cy={face.eyeY + 8} r={face.cheekR} fill={colors.cheek} opacity={excited ? 0.45 : 0.3} />
+                    <circle cx={face.cheekX} cy={face.eyeY + 14} r={face.cheekR} fill={colors.cheek} opacity={excited ? 0.55 : 0.4} />
+                    <circle cx={200 - face.cheekX} cy={face.eyeY + 14} r={face.cheekR} fill={colors.cheek} opacity={excited ? 0.55 : 0.4} />
+
                     {/* Face */}
-                    <PetEyes mood={mood} blinking={blinking} color={colors.eye} y={face.eyeY} />
-                    <PetNose type={type} color={colors.nose} y={face.noseY} />
-                    <PetWhiskers type={type} color={colors.nose} y={face.noseY} />
+                    <PetEyes
+                        mood={mood}
+                        blinking={blinking}
+                        color={colors.eye}
+                        iris={colors.irisGlow}
+                        glow={colors.glow}
+                        y={face.eyeY}
+                    />
                     <PetMouth mood={mood} y={face.mouthY} />
+
                     {/* Hat */}
-                    {HatComp && <HatComp y={HAT_Y[type]} />}
+                    {HatComp && <HatComp y={HAT_Y[safeType]} />}
                     {/* Accessory */}
                     {AccComp && (
                         equippedAccessory === 'acc_glasses'
                             ? <AccComp y={face.eyeY} />
-                            : <AccComp y={SCARF_Y[type]} />
+                            : <AccComp y={SCARF_Y[safeType]} />
                     )}
-                    {/* Specular highlight — top-left sheen for 3D roundness */}
-                    <ellipse cx={88} cy={82} rx={44} ry={34}
-                        fill={`url(#spec-${type})`}
+
+                    {/* Specular sheen */}
+                    <ellipse cx={88} cy={84} rx={48} ry={36}
+                        fill={`url(#spec-${safeType})`}
                         style={{ pointerEvents: 'none' }}
                     />
                 </svg>
@@ -417,6 +533,37 @@ export const PetCharacter: React.FC<PetCharacterProps> = ({
                         transition={{ duration: 1.3, repeat: Infinity, ease: 'easeOut' }}
                     />
                 )}
+
+                {/* Floating sparkle particles (always on, paused look when sleeping) */}
+                <div className="absolute inset-0 pointer-events-none z-20 overflow-visible">
+                    {[
+                        { left: '8%',  top: '28%', delay: 0,   dur: 3.6, size: 6 },
+                        { left: '88%', top: '34%', delay: 0.6, dur: 4.1, size: 5 },
+                        { left: '18%', top: '70%', delay: 1.2, dur: 3.3, size: 4 },
+                        { left: '82%', top: '74%', delay: 1.8, dur: 4.4, size: 7 },
+                        { left: '50%', top: '6%',  delay: 0.3, dur: 3.8, size: 5 },
+                        { left: '4%',  top: '54%', delay: 2.1, dur: 4.6, size: 4 },
+                    ].map((p, i) => (
+                        <motion.div
+                            key={i}
+                            className="absolute"
+                            style={{
+                                left: p.left, top: p.top, width: p.size, height: p.size,
+                                borderRadius: '50%',
+                                background: `radial-gradient(circle, ${colors.bodyLight} 0%, ${colors.glow} 60%, transparent 100%)`,
+                                boxShadow: `0 0 8px ${colors.glow}`,
+                                opacity: sleeping ? 0.3 : 1,
+                            }}
+                            animate={{
+                                y: [0, -14, 0],
+                                x: [0, i % 2 ? 6 : -6, 0],
+                                opacity: sleeping ? [0.1, 0.3, 0.1] : [0.2, 0.9, 0.2],
+                                scale: [0.8, 1.15, 0.8],
+                            }}
+                            transition={{ duration: p.dur, repeat: Infinity, delay: p.delay, ease: 'easeInOut' }}
+                        />
+                    ))}
+                </div>
 
                 {/* Sleeping z's */}
                 {sleeping && (

@@ -4,6 +4,7 @@ import { ViewState } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SupabaseService } from '../services/supabase';
 import { StorageService } from '../services/storage';
+import { DiagnosticsService, type DiagnosticsSnapshot } from '../services/diagnostics';
 import { formatBytes } from '../shared/mediaPolicy.js';
 import { InternalAdminService } from '../services/internalAdmin';
 
@@ -20,6 +21,7 @@ export const StorageConsoleView: React.FC<StorageConsoleProps> = ({ setView }) =
     const [alerts, setAlerts] = useState<any[]>([]);
     const [events, setEvents] = useState<any[]>([]);
     const [metrics, setMetrics] = useState<any[]>([]);
+    const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot>(() => DiagnosticsService.getSnapshot());
 
     const localStats = StorageService.getManagedStorageStats();
 
@@ -39,6 +41,7 @@ export const StorageConsoleView: React.FC<StorageConsoleProps> = ({ setView }) =
 
         setLoading(true);
         setError(null);
+        setDiagnostics(DiagnosticsService.getSnapshot());
         try {
             const [nextSummary, nextAssets, nextAlerts, nextEvents, nextMetrics] = await Promise.all([
                 SupabaseService.fetchStorageConsoleSummary(),
@@ -60,7 +63,7 @@ export const StorageConsoleView: React.FC<StorageConsoleProps> = ({ setView }) =
     };
 
     useEffect(() => {
-        load();
+        void load();
     }, []);
 
     return (
@@ -127,6 +130,70 @@ export const StorageConsoleView: React.FC<StorageConsoleProps> = ({ setView }) =
 
                 {isAllowed === false ? null : (
                     <>
+
+                <section className="rounded-3xl p-5" style={{ background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(0,0,0,0.06)' }}>
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h2 className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>Local Diagnostics</h2>
+                            <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                                Privacy-preserving device logs for crashes, promise failures, and slow route transitions.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => {
+                                DiagnosticsService.clear();
+                                setDiagnostics(DiagnosticsService.getSnapshot());
+                            }}
+                            className="px-3 py-2 rounded-full text-xs font-bold"
+                            style={{ background: 'rgba(255,255,255,0.7)', color: 'var(--color-text-primary)' }}
+                        >
+                            Clear
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.68)' }}>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>Events</p>
+                            <p className="mt-2 text-2xl font-black" style={{ color: 'var(--color-text-primary)' }}>{diagnostics.totalEvents}</p>
+                        </div>
+                        <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.68)' }}>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>Errors</p>
+                            <p className="mt-2 text-2xl font-black" style={{ color: 'var(--color-text-primary)' }}>
+                                {diagnostics.errorCount + diagnostics.rejectionCount}
+                            </p>
+                        </div>
+                        <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.68)' }}>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>Slow navs</p>
+                            <p className="mt-2 text-2xl font-black" style={{ color: 'var(--color-text-primary)' }}>{diagnostics.slowNavigationCount}</p>
+                        </div>
+                        <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.68)' }}>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>Avg nav</p>
+                            <p className="mt-2 text-2xl font-black" style={{ color: 'var(--color-text-primary)' }}>
+                                {diagnostics.averageNavigationMs == null ? '--' : `${diagnostics.averageNavigationMs}ms`}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="space-y-3 mt-4">
+                        {diagnostics.recent.map((entry) => (
+                            <div key={entry.id} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.68)' }}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{entry.source}</p>
+                                    <span className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-secondary)' }}>
+                                        {entry.kind}
+                                    </span>
+                                </div>
+                                <p className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>{entry.message}</p>
+                                <p className="text-[11px] mt-2" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
+                                    {entry.timestamp}{entry.durationMs != null ? ` · ${entry.durationMs}ms` : ''}
+                                </p>
+                            </div>
+                        ))}
+                        {diagnostics.recent.length === 0 && (
+                            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                                No local diagnostics recorded yet on this device.
+                            </p>
+                        )}
+                    </div>
+                </section>
 
                 <section className="rounded-3xl p-5" style={{ background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(0,0,0,0.06)' }}>
                     <div className="flex items-center gap-2 mb-4">

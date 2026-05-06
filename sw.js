@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lior-v5';
+const CACHE_NAME = 'lior-v6';
 
 const cacheResponse = async (request, response) => {
   if (request.method !== 'GET') return;
@@ -10,7 +10,7 @@ const cacheResponse = async (request, response) => {
 };
 
 // Lifecycle: Install
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   // Activate immediately
   self.skipWaiting();
 });
@@ -36,8 +36,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
 
-  // 1. IGNORE API CALLS (Supabase, etc.)
+  // 1. IGNORE API/MEDIA CALLS (Supabase, R2 Worker, etc.)
   if (url.hostname.includes('supabase.co')) return;
+  if (url.hostname.includes('workers.dev')) return;
 
   // 2. HTML / Navigation -> Network First, Fallback to Cache
   if (event.request.mode === 'navigate') {

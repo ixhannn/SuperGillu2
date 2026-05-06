@@ -16,6 +16,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { getDailyMomentCountdown, isDailyMomentExpired } from '../shared/mediaRetention.js';
+import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -23,11 +24,21 @@ interface DailyMomentsProps {
 
 // ─── Thumbnail Card (with blurred bg + object-contain for zero cropping) ─────
 const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo, onClick }) => {
-    const isVideo = !!photo.video || !!photo.videoId;
-    const mediaId = isVideo ? photo.imageId : (photo.imageId || photo.videoId);
-    const mediaData = isVideo ? photo.image : (photo.image || photo.video);
-
-    const { src: mediaUrl, isLoading, handleError: handleMediaError } = useLiorMedia(mediaId, mediaData, photo.storagePath);
+    const deleteHandledRef = useRef(false);
+    const imageStoragePath = selectImageStoragePath(photo.storagePath, photo.imageMimeType);
+    const videoStoragePath = selectVideoStoragePath(photo.videoStoragePath, photo.storagePath, photo.videoMimeType || photo.imageMimeType);
+    const isVideo = !!(photo.video || photo.videoId || videoStoragePath);
+    const { src: thumbUrl, isLoading: isThumbLoading, handleError: handleThumbError } = useLiorMedia(photo.imageId, photo.image, imageStoragePath);
+    const shouldResolveVideoPreview = isVideo && !thumbUrl && !isThumbLoading;
+    const { src: videoPreviewUrl, isLoading: isVideoLoading, handleError: handleVideoError } = useLiorMedia(
+        shouldResolveVideoPreview ? photo.videoId : undefined,
+        shouldResolveVideoPreview ? photo.video : undefined,
+        shouldResolveVideoPreview ? videoStoragePath : undefined,
+    );
+    const mediaUrl = thumbUrl || videoPreviewUrl;
+    const mediaKind = thumbUrl ? 'image' : videoPreviewUrl ? 'video' : null;
+    const isLoading = isThumbLoading || (shouldResolveVideoPreview && isVideoLoading && !mediaUrl);
+    const handleMediaError = mediaKind === 'video' ? handleVideoError : handleThumbError;
     const [timeLeft, setTimeLeft] = useState('');
 
     useEffect(() => {
@@ -42,9 +53,24 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
 
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-    const handleDelete = async (e: React.MouseEvent) => {
+    const openDeleteConfirm = (e: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => {
         e.stopPropagation();
+        e.preventDefault();
         setShowDeleteConfirm(true);
+    };
+    const handleDeletePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (e.pointerType === 'mouse') return;
+        deleteHandledRef.current = true;
+        openDeleteConfirm(e);
+        window.setTimeout(() => { deleteHandledRef.current = false; }, 350);
+    };
+    const handleDeleteClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        if (deleteHandledRef.current) {
+            e.stopPropagation();
+            e.preventDefault();
+            return;
+        }
+        openDeleteConfirm(e);
     };
 
     const confirmDelete = async () => {
@@ -64,23 +90,31 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
             ) : mediaUrl ? (
                 <div className="relative w-full h-full">
                     {/* Blurred background layer — prevents black bars */}
-                    <img
-                        src={mediaUrl}
-                        className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-60"
-                        alt=""
-                        aria-hidden="true"
-                    />
+                    {mediaKind === 'image' ? (
+                        <img
+                            src={mediaUrl}
+                            className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-60"
+                            alt=""
+                            aria-hidden="true"
+                        />
+                    ) : (
+                        <div className="absolute inset-0 bg-black" aria-hidden="true" />
+                    )}
                     {/* Sharp foreground — using object-cover for clean grid thumbnails */}
-                    {isVideo ? (
+                    {mediaKind === 'video' ? (
                         <>
-                            <motion.img 
+                            <motion.video
                                 initial={{ y: -20, scale: 1.15 }}
                                 whileInView={{ y: 0, scale: 1 }}
                                 viewport={{ once: false, margin: "50px 0px" }}
                                 transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
                                 src={mediaUrl} 
                                 className="relative w-full h-full object-cover z-[1]" 
-                                alt="Video thumbnail"
+                                muted
+                                playsInline
+                                autoPlay
+                                loop
+                                preload="metadata"
                                 onError={handleMediaError}
                             />
                             <div className="absolute inset-0 flex items-center justify-center z-[2]">
@@ -119,8 +153,12 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
             </div>
 
             <button
-                onClick={handleDelete}
-                className="absolute top-2 right-2 p-2 bg-black/40 backdrop-blur-md rounded-full text-white opacity-0 transition-opacity z-20"
+                type="button"
+                aria-label="Delete moment"
+                onPointerDown={e => e.stopPropagation()}
+                onPointerUp={handleDeletePointerUp}
+                onClick={handleDeleteClick}
+                className="absolute top-2 right-2 p-2 bg-black/45 backdrop-blur-md rounded-full text-white transition-opacity z-20 active:scale-90"
             >
                 <Trash2 size={16} />
             </button>
@@ -201,11 +239,13 @@ const PostViewer: React.FC<{
     photo: DailyPhoto;
     onClose: () => void;
 }> = ({ photo, onClose }) => {
-    const isVideo = !!photo.video || !!photo.videoId;
+    const imageStoragePath = selectImageStoragePath(photo.storagePath, photo.imageMimeType);
+    const videoStoragePath = selectVideoStoragePath(photo.videoStoragePath, photo.storagePath, photo.videoMimeType || photo.imageMimeType);
+    const isVideo = !!(photo.video || photo.videoId || videoStoragePath);
     const { src: mediaSrc, isLoading: mediaLoading, handleError: handleMediaError } = useLiorMedia(
         isVideo ? (photo.videoId || photo.imageId) : photo.imageId,
         isVideo ? (photo.video || photo.image) : photo.image,
-        isVideo ? (photo.videoStoragePath || photo.storagePath) : photo.storagePath
+        isVideo ? (videoStoragePath || imageStoragePath) : imageStoragePath
     );
     const [comments, setComments] = useState<Comment[]>([]);
     const [commentText, setCommentText] = useState('');
@@ -454,27 +494,61 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoInputRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => {
-        const load = () => {
-            const data = StorageService.getDailyPhotos();
-            const valid = data.filter((p) => !isDailyMomentExpired(p));
-            setPhotos(valid.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        };
-        load();
-        storageEventTarget.addEventListener('storage-update', load);
-        return () => storageEventTarget.removeEventListener('storage-update', load);
-    }, []);
-
-    useEffect(() => {
-        const interval = setInterval(() => StorageService.cleanupDailyPhotos(), 60000);
-        return () => clearInterval(interval);
-    }, []);
-
-    const handleRefresh = async () => {
-        await new Promise(r => setTimeout(r, 1000));
+    const loadPhotos = useCallback(() => {
         const data = StorageService.getDailyPhotos();
         const valid = data.filter((p) => !isDailyMomentExpired(p));
         setPhotos(valid.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        setSelectedPhoto((current) => current && isDailyMomentExpired(current) ? null : current);
+    }, []);
+
+    useEffect(() => {
+        loadPhotos();
+        storageEventTarget.addEventListener('storage-update', loadPhotos);
+        return () => storageEventTarget.removeEventListener('storage-update', loadPhotos);
+    }, [loadPhotos]);
+
+    useEffect(() => {
+        let expiryTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const runSweep = async () => {
+            await StorageService.cleanupDailyPhotos();
+            loadPhotos();
+        };
+
+        const scheduleNextExpirySweep = () => {
+            if (expiryTimer) clearTimeout(expiryTimer);
+
+            const nextExpiry = StorageService.getDailyPhotos()
+                .map((photo) => getDailyMomentCountdown(photo).expiresMs)
+                .filter((expiresMs): expiresMs is number => Number.isFinite(expiresMs))
+                .sort((a, b) => a - b)[0];
+
+            if (!Number.isFinite(nextExpiry)) return;
+
+            const delay = Math.min(Math.max(0, nextExpiry - Date.now() + 250), 2_147_483_647);
+            expiryTimer = setTimeout(() => {
+                runSweep().catch(() => loadPhotos());
+                scheduleNextExpirySweep();
+            }, delay);
+        };
+
+        runSweep().catch(() => loadPhotos());
+        scheduleNextExpirySweep();
+        const interval = setInterval(() => runSweep().catch(() => loadPhotos()), 60000);
+        const handleStorageUpdate = () => scheduleNextExpirySweep();
+        storageEventTarget.addEventListener('storage-update', handleStorageUpdate);
+
+        return () => {
+            clearInterval(interval);
+            if (expiryTimer) clearTimeout(expiryTimer);
+            storageEventTarget.removeEventListener('storage-update', handleStorageUpdate);
+        };
+    }, [loadPhotos]);
+
+    const handleRefresh = async () => {
+        await new Promise(r => setTimeout(r, 1000));
+        await StorageService.cleanupDailyPhotos();
+        loadPhotos();
     };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -595,7 +669,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
             <input type="file" ref={videoInputRef} className="hidden" accept="video/*" onChange={handleVideoChange} />
 
-            <div className="flex-1 p-6 pb-32">
+            <div className="flex-1 px-5 pt-4 pb-32">
                 {photos.length > 0 ? (
                     <motion.div
                         className="grid grid-cols-2 gap-4"
@@ -646,20 +720,15 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
             {/* Upload Modal */}
             {isUploading && ReactDOM.createPortal(
-                <div className="fixed inset-0 z-50 flex flex-col backdrop-blur-3xl" style={{ background: 'var(--color-surface)', animation: 'slideUp 0.4s cubic-bezier(0.23, 1, 0.32, 1) both' }}>
-                    <div className="p-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)' }}>
-                        <button onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer spring-press focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
-                        <span className="font-bold text-sm uppercase tracking-widest" style={{ color: 'var(--color-text-primary)' }}>Post Moment</span>
-                        <button
-                            onClick={handleSave}
-                            disabled={isSaving}
-                            className="px-4 py-1.5 bg-lior-500 text-white rounded-full text-xs font-bold disabled:opacity-50 spring-press"
-                        >
-                            {isSaving ? 'Sending...' : 'Share'}
-                        </button>
-                    </div>
-                    <div data-lenis-prevent className="lenis-inner flex-1 p-6 flex flex-col overflow-y-auto">
-                        <div className="aspect-[3/4] rounded-[2rem] overflow-hidden mb-6 shadow-xl relative flex items-center justify-center bg-black">
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-xl p-0 sm:p-4">
+                    <div className="w-full max-w-md max-h-[96dvh] flex flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px]" style={{ background: 'var(--color-surface)', animation: 'slideUp 0.35s cubic-bezier(0.23, 1, 0.32, 1) both', boxShadow: '0 -18px 48px rgba(45,31,37,0.18)' }}>
+                        <div className="px-4 py-3 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 86%, transparent)' }}>
+                            <button type="button" onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer spring-press focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={22} /></button>
+                            <span className="font-bold text-sm uppercase tracking-widest" style={{ color: 'var(--color-text-primary)' }}>Post Moment</span>
+                            <div className="w-11" aria-hidden="true" />
+                        </div>
+                    <div data-lenis-prevent className="lenis-inner min-h-0 flex-1 px-5 pt-5 pb-4 flex flex-col overflow-y-auto">
+                        <div className="aspect-[3/4] rounded-[1.5rem] overflow-hidden mb-5 shadow-lg relative flex items-center justify-center bg-black">
                             {newImage && !newVideo && (
                                 <>
                                     <img src={newImage} className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" alt="" aria-hidden="true" />
@@ -684,6 +753,21 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                         <p className="mt-4 text-[10px] text-center font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>
                             Visible for 24 hours
                         </p>
+                    </div>
+                    <div className="shrink-0 px-5 pb-5 pt-3" style={{ borderTop: '1px solid rgba(var(--theme-particle-2-rgb),0.10)' }}>
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={isSaving || (!newImage && !newVideo)}
+                            className="w-full py-4 rounded-2xl text-white text-[14px] font-bold disabled:opacity-45 spring-press"
+                            style={{
+                                background: 'var(--theme-nav-center-bg-active)',
+                                boxShadow: isSaving ? 'none' : '0 10px 28px rgba(196,104,126,0.24)',
+                            }}
+                        >
+                            {isSaving ? 'Sharing...' : 'Share Moment'}
+                        </button>
+                    </div>
                     </div>
                 </div>,
                 document.body

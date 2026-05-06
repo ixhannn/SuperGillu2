@@ -20,6 +20,7 @@ type LegacySupabaseRef = {
     bucket: string;
     key: string;
     absoluteUrl?: string;
+    isPublic?: boolean;
 };
 
 type ManagedFeature =
@@ -29,6 +30,7 @@ type ManagedFeature =
     | 'time-capsules'
     | 'surprises'
     | 'voice-notes'
+    | 'private-space'
     | 'together-music';
 
 type ManagedAssetRole = 'image' | 'video' | 'audio' | 'track';
@@ -57,6 +59,7 @@ const FEATURE_BY_PREFIX: Record<string, ManagedFeature> = {
     cap: 'time-capsules',
     surp: 'surprises',
     vn: 'voice-notes',
+    priv: 'private-space',
 };
 const SOURCE_TABLE_BY_FEATURE: Record<ManagedFeature, string> = {
     memories: 'memories',
@@ -65,6 +68,7 @@ const SOURCE_TABLE_BY_FEATURE: Record<ManagedFeature, string> = {
     'time-capsules': 'time_capsules',
     surprises: 'surprises',
     'voice-notes': 'voice_notes',
+    'private-space': 'private_space_items',
     'together-music': 'together_music',
 };
 
@@ -250,6 +254,7 @@ const parseSupabaseStorageRef = (storagePath: string): LegacySupabaseRef | null 
             bucket: segments[3],
             key: decodeURIComponent(segments.slice(4).join('/')),
             absoluteUrl: parsed.toString(),
+            isPublic: true,
         };
     }
 
@@ -257,6 +262,7 @@ const parseSupabaseStorageRef = (storagePath: string): LegacySupabaseRef | null 
         bucket: segments[1],
         key: decodeURIComponent(segments.slice(2).join('/')),
         absoluteUrl: parsed.toString(),
+        isPublic: segments[0] === 'public',
     };
 };
 
@@ -334,13 +340,41 @@ async function downloadFromSupabaseBucket(bucket: string, key: string): Promise<
     }
 }
 
-async function deleteFromSupabaseBucket(bucket: string, key: string): Promise<void> {
-    if (!key || !SupabaseService.init() || !SupabaseService.client) return;
+async function downloadViaMediaProxy(storagePath: string): Promise<string | null> {
+    if (!storagePath || !SupabaseService.init()) return null;
+
+    const accessToken = await SupabaseService.getAccessToken();
+    const { url, anonKey } = SupabaseService.getProjectConfig();
+    if (!accessToken || !url || !anonKey) return null;
 
     try {
-        await SupabaseService.client.storage.from(bucket).remove([key]);
+        const res = await fetch(`${url.replace(/\/$/, '')}/functions/v1/media-proxy`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                apikey: anonKey,
+                Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ storagePath }),
+        });
+        if (!res.ok) return null;
+        const payload = await res.json().catch(() => null);
+        return typeof payload?.dataUri === 'string' && payload.dataUri.startsWith('data:')
+            ? payload.dataUri
+            : null;
     } catch {
-        // Best-effort cleanup only.
+        return null;
+    }
+}
+
+async function deleteFromSupabaseBucket(bucket: string, key: string): Promise<boolean> {
+    if (!key || !SupabaseService.init() || !SupabaseService.client) return false;
+
+    try {
+        const { error } = await SupabaseService.client.storage.from(bucket).remove([key]);
+        return !error;
+    } catch {
+        return false;
     }
 }
 
@@ -537,7 +571,7 @@ export const MediaStorageService = {
 
     async getLegacySupabaseUrl(storagePath: string): Promise<string | null> {
         const parsedRef = parseSupabaseStorageRef(storagePath);
-        if (parsedRef?.absoluteUrl) return parsedRef.absoluteUrl;
+        if (parsedRef?.absoluteUrl && parsedRef.isPublic) return parsedRef.absoluteUrl;
 
         if (!SupabaseService.init() || !SupabaseService.client) return null;
 
@@ -555,11 +589,14 @@ export const MediaStorageService = {
             }
         }
 
+        if (parsedRef?.absoluteUrl && !parsedRef.isPublic) return null;
+        if (parsedRef?.absoluteUrl) return parsedRef.absoluteUrl;
         return null;
     },
 
     async getAccessibleUrl(storagePath: string): Promise<string | null> {
         if (!storagePath) return null;
+        const parsedSupabaseRef = parseSupabaseStorageRef(storagePath);
 
         const key = extractCandidateR2Key(storagePath);
         if (key) {
@@ -574,6 +611,7 @@ export const MediaStorageService = {
         if (legacyUrl) return legacyUrl;
 
         reportMissingRead(storagePath, 'no-accessible-url').catch(() => {});
+        if (parsedSupabaseRef && !parsedSupabaseRef.isPublic) return null;
         if (storagePath.startsWith('http')) return storagePath;
         return null;
     },
@@ -586,7 +624,9 @@ export const MediaStorageService = {
         if (parsedRef) {
             const viaClient = await downloadFromSupabaseBucket(parsedRef.bucket, parsedRef.key);
             if (viaClient) return viaClient;
-            if (parsedRef.absoluteUrl) return downloadUrlAsDataUri(parsedRef.absoluteUrl);
+            const viaProxy = await downloadViaMediaProxy(storagePath);
+            if (viaProxy) return viaProxy;
+            if (parsedRef.absoluteUrl && parsedRef.isPublic) return downloadUrlAsDataUri(parsedRef.absoluteUrl);
             return null;
         }
 
@@ -600,6 +640,9 @@ export const MediaStorageService = {
             const viaClient = await downloadFromSupabaseBucket(bucket, key);
             if (viaClient) return viaClient;
         }
+
+        const viaProxy = await downloadViaMediaProxy(storagePath);
+        if (viaProxy) return viaProxy;
 
         return null;
     },
@@ -634,32 +677,30 @@ export const MediaStorageService = {
         return uploaded;
     },
 
-    async deleteLegacyMedia(storagePath: string): Promise<void> {
+    async deleteLegacyMedia(storagePath: string): Promise<boolean> {
         const parsedRef = parseSupabaseStorageRef(storagePath);
         if (parsedRef) {
-            await deleteFromSupabaseBucket(parsedRef.bucket, parsedRef.key);
-            return;
+            return await deleteFromSupabaseBucket(parsedRef.bucket, parsedRef.key);
         }
 
         const key = stripLeadingSlash(storagePath);
-        for (const bucket of LEGACY_SUPABASE_BUCKETS) {
-            await deleteFromSupabaseBucket(bucket, key);
-        }
+        const results = await Promise.all(LEGACY_SUPABASE_BUCKETS.map((bucket) => deleteFromSupabaseBucket(bucket, key)));
+        return results.some(Boolean);
     },
 
-    async deleteMedia(storagePath: string): Promise<void> {
-        if (!storagePath) return;
+    async deleteMedia(storagePath: string): Promise<boolean> {
+        if (!storagePath) return true;
 
         const key = extractR2Key(storagePath);
         if (key && isManagedUploadKey(key)) {
-            if (!WORKER_URL) return;
+            if (!WORKER_URL) return false;
             const url = joinWorkerUrl(key);
             if (url) {
                 try {
                     const workerAuthHeaders = await managedWriteHeaders();
                     if (!workerAuthHeaders) {
                         console.warn('[R2] Missing managed worker credentials - delete skipped.');
-                        return;
+                        return false;
                     }
                     const res = await fetch(url, {
                         method: 'DELETE',
@@ -667,15 +708,18 @@ export const MediaStorageService = {
                     });
                     if (!res.ok && res.status !== 404) {
                         console.warn(`[R2] Delete failed (${res.status}):`, await res.text());
+                        return false;
                     }
                     R2_EXISTENCE_CACHE.delete(key);
+                    return true;
                 } catch (e) {
                     console.warn('[R2] Delete exception:', e);
+                    return false;
                 }
             }
-            return;
+            return false;
         }
 
-        await MediaStorageService.deleteLegacyMedia(storagePath);
+        return await MediaStorageService.deleteLegacyMedia(storagePath);
     },
 };

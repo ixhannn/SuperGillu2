@@ -4,7 +4,8 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Droplets, Sparkles, Heart } from 'lucide-react';
 import { feedback } from '../utils/feedback';
-import { isSameDay, formatDistanceToNow, differenceInDays } from 'date-fns';
+import { isSameDay, formatDistanceToNow } from 'date-fns';
+import { daysTogetherFrom } from '../shared/dateOnly.js';
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -984,7 +985,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
     const daysTogether = useMemo(() => {
         if (!profile.anniversaryDate) return 0;
-        return Math.max(0, differenceInDays(new Date(), new Date(profile.anniversaryDate)));
+        return daysTogetherFrom(profile.anniversaryDate);
     }, [profile.anniversaryDate]);
 
     const storage = StorageService as typeof StorageService & {

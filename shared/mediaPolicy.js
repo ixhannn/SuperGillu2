@@ -49,6 +49,15 @@ export const MEDIA_FEATURE_POLICIES = Object.freeze({
       audio: Object.freeze({ maxBytes: 12 * MiB, mimePrefixes: ['audio/', 'application/octet-stream'] }),
     }),
   }),
+  'private-space': Object.freeze({
+    label: 'Private Space',
+    storageBudgetBytes: 192 * MiB,
+    rolePolicies: Object.freeze({
+      image: Object.freeze({ maxBytes: 8 * MiB, mimePrefixes: ['image/'] }),
+      video: Object.freeze({ maxBytes: 35 * MiB, mimePrefixes: ['video/', 'application/octet-stream'] }),
+      audio: Object.freeze({ maxBytes: 12 * MiB, mimePrefixes: ['audio/', 'application/octet-stream'] }),
+    }),
+  }),
   'together-music': Object.freeze({
     label: 'Together Music',
     storageBudgetBytes: 12 * MiB,

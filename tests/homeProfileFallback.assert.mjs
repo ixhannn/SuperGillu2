@@ -17,12 +17,12 @@ assert.match(
 
 assert.match(
   homeSource,
-  /setDaysTogether\(parsedAnniversary \? differenceInDays\(now, start\) : 0\);/,
-  'Expected the home view to guard the together counter when anniversary data is missing or invalid',
+  /setDaysTogether\(daysTogetherFrom\(parsedAnniversary, now\)\);/,
+  'Expected the home view to use the shared date-only helper so missing or invalid anniversary data resolves to 0',
 );
 
 assert.match(
   homeSource,
-  /if \(parsedAnniversary\) \{\s*const anniv = new Date\(parsedAnniversary\);/s,
+  /const anniv = getNextAnnualOccurrence\(anniversaryDate, now\);\s*if \(anniv\) \{/s,
   'Expected countdown generation to skip anniversary math when the stored anniversary date is invalid',
 );

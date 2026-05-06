@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -16,8 +16,8 @@ import {
 import { CoupleRoomState, ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
-import { RoomScene3D } from '../components/room/RoomScene3D';
 import { ROOM_SHOP_BY_ID, RoomCatalogItem } from '../components/room/roomCatalog3D';
+import { daysTogetherFrom } from '../shared/dateOnly.js';
 import {
   normalizeCoupleRoom,
   placeItem,
@@ -106,7 +106,7 @@ const formatRelativeTime = (iso?: string): string => {
 
 const getDaysTogether = (anniversaryDate?: string): number => {
   if (!anniversaryDate) return 0;
-  return Math.max(0, Math.floor((Date.now() - new Date(anniversaryDate).getTime()) / 86_400_000));
+  return daysTogetherFrom(anniversaryDate);
 };
 
 const isMilestoneMet = (rule: MilestoneUnlockRule, room: CoupleRoomState, profile: ReturnType<typeof StorageService.getCoupleProfile>) => {
@@ -249,6 +249,86 @@ const CatalogArtwork: React.FC<{ item: RoomCatalogItem }> = ({ item }) => {
   );
 };
 
+const LazyRoomScene3D = React.lazy(() =>
+  import('../components/room/RoomScene3D').then((module) => ({
+    default: module.RoomScene3D,
+  })),
+);
+
+function RoomSceneFallback() {
+  return (
+    <div
+      className="absolute inset-0"
+      style={{
+        background: 'radial-gradient(circle at 50% 24%, rgba(255,208,154,0.16), transparent 34%), linear-gradient(180deg, #121827 0%, #0f1219 100%)',
+      }}
+    >
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent 32%)' }} />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-2 text-[0.72rem] font-extrabold uppercase tracking-[0.16em]" style={{ color: 'rgba(255,244,224,0.88)' }}>
+        Loading room scene
+      </div>
+    </div>
+  );
+}
+
+function RoomSceneGate({
+  room,
+  profileLabel,
+  onOpen,
+}: {
+  room: CoupleRoomState;
+  profileLabel: string;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      className="absolute inset-0"
+      style={{
+        background: 'radial-gradient(circle at 50% 22%, rgba(255,208,154,0.2), transparent 34%), linear-gradient(180deg, #161d2b 0%, #0f1219 100%)',
+      }}
+    >
+      <div className="absolute inset-x-5 top-[26%] rounded-[28px] border border-white/10 px-5 py-5 backdrop-blur-sm" style={{ background: 'rgba(22,28,40,0.72)' }}>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'rgba(255,240,215,0.72)' }}>
+          Room Lobby
+        </p>
+        <h2 className="mt-3 text-[1.28rem] font-semibold leading-tight" style={{ color: '#fff4e0' }}>
+          Open room scene
+        </h2>
+        <p className="mt-2 text-[0.83rem] leading-6" style={{ color: 'rgba(255,240,215,0.78)' }}>
+          The 3D room stays on-demand on mobile-class devices so the shared space boots faster inside the app.
+        </p>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            { label: 'Placed', value: room.placedItems.length },
+            { label: 'Notes', value: room.notes.length },
+            { label: 'Gifts', value: room.gifts.length },
+          ].map((entry) => (
+            <div key={entry.label} className="rounded-2xl px-3 py-2 text-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <p className="text-lg font-semibold" style={{ color: '#fff4e0' }}>{entry.value}</p>
+              <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'rgba(255,240,215,0.62)' }}>{entry.label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-[0.72rem]" style={{ color: 'rgba(255,240,215,0.56)' }}>
+          {profileLabel}
+        </p>
+        <button
+          onClick={onOpen}
+          className="mt-5 inline-flex items-center justify-center rounded-2xl px-4 py-3 text-[0.8rem] font-extrabold uppercase tracking-[0.16em]"
+          style={{
+            background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
+            color: '#5c3d2e',
+            border: PIXEL_BORDER,
+            boxShadow: '2px 2px 0 #3a2518',
+          }}
+        >
+          Open room scene
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Actions rendered via floating pill + slide-up sheet
 
 export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
@@ -267,6 +347,10 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   const [remoteActivity, setRemoteActivity] = useState('');
   const [knownSelfNames, setKnownSelfNames] = useState<string[]>(() => (profile.myName ? [profile.myName] : []));
   const [knownPartnerNames, setKnownPartnerNames] = useState<string[]>(() => (profile.partnerName ? [profile.partnerName] : []));
+  // Mobile-only app: the 3D room IS the feature on this view, so we always
+  // enable it. The previous gate disabled the scene on phones (the only
+  // target!) leaving an empty placeholder.
+  const [sceneEnabled, setSceneEnabled] = useState(true);
   const stateRef = useRef(room);
   const presenceSnapshotRef = useRef<any>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -305,6 +389,12 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   }, [editingName, room]);
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  useEffect(() => {
+    if (activeModal && !sceneEnabled) {
+      setSceneEnabled(true);
+    }
+  }, [activeModal, sceneEnabled]);
 
   useEffect(() => {
     const onStorage = (event: Event) => {
@@ -548,14 +638,24 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
     <div className="relative" style={{ height: '100dvh', overflow: 'hidden', background: '#0f1219' }}>
       {/* ─── Room Scene (full viewport) ─── */}
       <div className="absolute inset-0">
-        <RoomScene3D
-          room={roomSceneState}
-          catalogById={ROOM_SHOP_BY_ID}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onMoveItemGrid={onMoveItemGrid}
-          onDragCommit={onDragCommit}
-        />
+        {sceneEnabled ? (
+          <Suspense fallback={<RoomSceneFallback />}>
+            <LazyRoomScene3D
+              room={roomSceneState}
+              catalogById={ROOM_SHOP_BY_ID}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onMoveItemGrid={onMoveItemGrid}
+              onDragCommit={onDragCommit}
+            />
+          </Suspense>
+        ) : (
+          <RoomSceneGate
+            room={room}
+            profileLabel={`${profile.myName} & ${profile.partnerName}`}
+            onOpen={() => setSceneEnabled(true)}
+          />
+        )}
       </div>
 
       {/* Soft vignette edge */}

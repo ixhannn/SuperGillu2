@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Plus, X, Heart, Trash2, MailOpen } from 'lucide-react';
+import { Mail, Plus, X, Heart, Trash2, MailOpen, PenLine } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { motion, type Variants } from 'framer-motion';
 import { ViewState, Envelope } from '../types';
@@ -30,6 +30,17 @@ const ENVELOPE_COLORS = [
   { bg: 'bg-rose-500/12', text: 'text-rose-600', bgOnly: 'bg-rose-500/12' }
 ];
 
+const cleanPrompt = (value: string) => value.replace(/^open\s+when\s*/i, '').trim();
+const DEFAULT_ENVELOPE_COLOR = `${ENVELOPE_COLORS[1].bg} ${ENVELOPE_COLORS[1].text}`;
+
+const getEnvelopeColorParts = (color?: string) => {
+  const [bgClass = ENVELOPE_COLORS[1].bg, textClass = ENVELOPE_COLORS[1].text] = (
+    typeof color === 'string' && color.trim() ? color : DEFAULT_ENVELOPE_COLOR
+  ).split(/\s+/);
+
+  return { bgClass, textClass };
+};
+
 export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -49,14 +60,16 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
   }, []);
 
   const handleSave = () => {
-    if (!label.trim() || !content.trim()) return;
+    const prompt = cleanPrompt(label);
+    const body = content.trim();
+    if (!prompt || !body) return;
 
     const colorObj = ENVELOPE_COLORS[Math.floor(Math.random() * ENVELOPE_COLORS.length)];
 
     const newEnvelope: Envelope = {
       id: generateId(),
-      label: `Open when ${label}`,
-      content: content,
+      label: `Open when ${prompt}`,
+      content: body,
       color: `${colorObj.bg} ${colorObj.text}`,
       isLocked: true
     };
@@ -112,43 +125,93 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
       />
 
       <div className="px-6 pt-4">
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.97 }}
+          onClick={() => { feedback.tap(); setIsCreating(true); }}
+          className="w-full mb-5 text-left spring-press overflow-hidden relative"
+          style={{
+            borderRadius: 28,
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,240,246,0.72))',
+            border: '1px solid rgba(255,255,255,0.84)',
+            boxShadow: '0 16px 36px rgba(236,72,153,0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
+          }}
+        >
+          <div
+            className="absolute inset-x-0 top-0 h-1"
+            style={{ background: 'linear-gradient(90deg, #f9a8d4, #a7f3d0, #bae6fd, #fef3c7)' }}
+          />
+          <div className="relative flex items-center gap-4 px-5 py-4">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+              style={{
+                background: 'linear-gradient(135deg, rgba(244,114,182,0.18), rgba(125,211,252,0.18))',
+                border: '1px solid rgba(244,114,182,0.18)',
+                boxShadow: '0 10px 24px rgba(244,114,182,0.16)',
+              }}
+            >
+              <PenLine size={20} style={{ color: '#be185d' }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                Write a new letter
+              </p>
+              <p className="text-[12px] font-medium mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                {envelopes.length} sealed or opened
+              </p>
+            </div>
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--theme-nav-center-bg-active)', color: '#fff' }}
+            >
+              <Plus size={18} />
+            </div>
+          </div>
+        </motion.button>
 
       {/* Grid of Envelopes */}
       <motion.div className="grid grid-cols-2 gap-4" variants={staggerContainer} initial="hidden" animate="show">
-        {envelopes.map((env) => (
-          <motion.div
-            key={env.id}
-            variants={staggerItem}
-            onClick={() => { feedback.tap(); openEnvelope(env); }}
-            className={`aspect-[4/3] rounded-[2rem] relative p-4 flex flex-col items-center justify-center text-center spring-press cursor-pointer glass-card border border-white/40 shadow-sm ${
-              env.isLocked ? 'opacity-95' : 'scale-[1.02] shadow-md ring-2 ring-lior-200'
-            }`}
-          >
-            {/* Envelope Flap decoration */}
-            <div className={`absolute top-0 left-0 right-0 h-1/2 rounded-t-[2rem] opacity-20 pointer-events-none ${env.color.split(' ')[0]}`}></div>
-            
-            <div className={`mb-3 p-3 rounded-full ${env.isLocked ? '' : env.color.split(' ')[0]}`} style={env.isLocked ? { background: 'rgba(var(--theme-particle-2-rgb),0.10)' } : {}}>
-              {env.isLocked ? (
-                <Mail size={24} style={{ color: 'var(--color-text-secondary)' }} />
-              ) : (
-                <MailOpen size={24} className={env.color.split(' ')[1]} />
-              )}
-            </div>
+        {envelopes.map((env) => {
+          const { bgClass, textClass } = getEnvelopeColorParts(env.color);
 
-            <span className="text-xs font-bold leading-tight px-1" style={{ color: 'var(--color-text-primary)' }}>
-              {env.label}
-            </span>
-
-            {/* Delete button */}
-            <button
-               onClick={(e) => handleDelete(env.id, e)}
-               className="absolute top-2 right-2"
-               style={{ color: 'var(--color-text-secondary)' }}
+          return (
+            <motion.div
+              key={env.id}
+              variants={staggerItem}
+              onClick={() => { feedback.tap(); openEnvelope(env); }}
+              className={`aspect-[4/3] rounded-[2rem] relative p-4 flex flex-col items-center justify-center text-center spring-press cursor-pointer glass-card border border-white/40 shadow-sm ${
+                env.isLocked ? 'opacity-95' : 'scale-[1.02] shadow-md ring-2 ring-lior-200'
+              }`}
             >
-              <Trash2 size={14} />
-            </button>
-          </motion.div>
-        ))}
+              {/* Envelope Flap decoration */}
+              <div className={`absolute top-0 left-0 right-0 h-1/2 rounded-t-[2rem] opacity-20 pointer-events-none ${bgClass}`}></div>
+
+              <div className={`mb-3 p-3 rounded-full ${env.isLocked ? '' : bgClass}`} style={env.isLocked ? { background: 'rgba(var(--theme-particle-2-rgb),0.10)' } : {}}>
+                {env.isLocked ? (
+                  <Mail size={24} style={{ color: 'var(--color-text-secondary)' }} />
+                ) : (
+                  <MailOpen size={24} className={textClass} />
+                )}
+              </div>
+
+              <span className="text-xs font-bold leading-tight px-1" style={{ color: 'var(--color-text-primary)' }}>
+                {env.label}
+              </span>
+
+              {/* Delete button */}
+              <button
+                 type="button"
+                 aria-label={`Delete ${env.label}`}
+                 onPointerDown={(e) => e.stopPropagation()}
+                 onClick={(e) => handleDelete(env.id, e)}
+                 className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                 style={{ color: 'var(--color-text-secondary)' }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </motion.div>
+          );
+        })}
 
         {envelopes.length === 0 && (
           <div className="col-span-2 flex flex-col items-center text-center py-16 rounded-[2.5rem] animate-fade-in glass-card" style={{ border: '2px dashed rgba(var(--theme-particle-2-rgb),0.25)' }}>
@@ -161,6 +224,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
             <p className="font-serif font-bold text-lg mb-1" style={{ color: 'var(--color-text-primary)' }}>Write your first letter</p>
             <p className="text-xs font-medium mb-5" style={{ color: 'var(--color-text-secondary)' }}>Letters for every moment</p>
             <button
+              type="button"
               onClick={() => setIsCreating(true)}
               className="px-5 py-2.5 bg-lior-500 text-white rounded-full text-sm font-bold spring-press"
             >
@@ -211,13 +275,15 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
               style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)', color: 'var(--color-text-primary)' }}
             />
 
-            <button
-              onClick={handleSave}
-              className="w-full text-white py-3 rounded-xl font-semibold"
-              style={{ background: 'var(--theme-nav-center-bg-active)' }}
-            >
-              Seal Envelope
-            </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!cleanPrompt(label) || !content.trim()}
+            className="w-full text-white py-3 rounded-xl font-semibold disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all"
+            style={{ background: 'var(--theme-nav-center-bg-active)', boxShadow: '0 10px 24px rgba(236,72,153,0.2)' }}
+          >
+            Seal Envelope
+          </button>
           </div>
         </div>
       )}

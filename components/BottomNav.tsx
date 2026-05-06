@@ -1,8 +1,8 @@
 import React, { useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { Home, Plus, Archive, Sparkles, Heart, Users } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { ViewState } from '../types';
 import { Audio } from '../services/audio';
+import { useNativeShell } from '../hooks/useNativeShell';
 
 interface BottomNavProps {
   currentView: ViewState;
@@ -15,19 +15,19 @@ interface BottomNavProps {
 }
 
 const IND   = 56;   // indicator size
-const BTN   = 64;   // button slot
+const BTN   = 60;   // button slot
 const NAV_H = 76;   // bar height
-const RING  = 3;    // gold ring thickness
 
-// Spring-like cubic-bezier: fast start, overshoots ~8%, settles cleanly.
+// Smooth deceleration without overshoot; keep nav movement calm and predictable.
 // This runs inside WAAPI on the compositor thread — immune to JS jank.
-const SPRING_EASE = 'cubic-bezier(0.34, 1.38, 0.64, 1)';
+const SPRING_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const SPRING_MS   = 420;
 
 export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView, notifications }) => {
   const navRef  = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const { keyboardOpen } = useNativeShell();
 
   // WAAPI animation handle — lets us read the live position on interruption
   const waapiAnim = useRef<Animation | null>(null);
@@ -133,44 +133,72 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
 
   const handleNavTap = useCallback((id: string) => {
     Audio.play(id === 'add-memory' ? 'press' : 'navSwitch');
+    if (currentView === 'private-space' && id === 'add-memory') {
+      window.dispatchEvent(new CustomEvent('private-space:add'));
+      return;
+    }
     setView(id as ViewState);
-  }, [setView]);
+  }, [currentView, setView]);
 
-  const isAddActive = currentView === 'add-memory';
+  const isAddActive = currentView === 'add-memory' || currentView === 'private-space';
 
   return (
     <div
       data-tour-occluder="bottom-nav"
-      className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
-      style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 20px)' }}
+      data-skip-blur-on-transition="true"
+      className="fixed bottom-0 left-0 right-0 z-[60] flex justify-center pointer-events-none"
+      style={{
+        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 14px)',
+        willChange: 'transform',
+        transform: keyboardOpen ? 'translate3d(0, calc(100% + 24px), 0)' : 'translateZ(0)',
+        opacity: keyboardOpen ? 0 : 1,
+        transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out',
+        backfaceVisibility: 'hidden',
+        contain: 'layout paint style',
+        isolation: 'isolate',
+      }}
     >
-      <div className="pointer-events-auto">
+      <div
+        className="pointer-events-auto"
+        style={{
+          width: 'min(calc(100vw - 36px), 372px)',
+          willChange: 'transform',
+          transform: 'translateZ(0)',
+          backfaceVisibility: 'hidden',
+        }}
+      >
         <div
           ref={navRef}
           className="relative flex items-center"
           style={{
             height:       NAV_H,
-            borderRadius: 9999,
-            paddingLeft:  10,
-            paddingRight: 10,
-            background:   'var(--theme-nav-glass-bg)',
-            border:       '1px solid var(--theme-nav-glass-border)',
-            boxShadow: [
-              '0 20px 60px rgba(232, 160, 176, 0.22)',
-              '0 8px 24px rgba(232, 160, 176, 0.14)',
-              '0 2px 6px rgba(0, 0, 0, 0.06)',
-              'inset 0 1.5px 0 rgba(255, 255, 255, 0.98)',
-              'inset 0 -1px 0 rgba(232, 160, 176, 0.12)',
+            width:        '100%',
+            borderRadius: 32,
+            paddingLeft:  12,
+            paddingRight: 12,
+            // Baked frosted look — no live backdrop-filter blur. The previous
+            // blur(22px) on a fixed element re-rasterised the bar every scroll
+            // frame, dropping FPS into the 40s on mid-range phones. This
+            // multi-stop gradient + inner highlight + tinted shadow reads as
+            // glass without any per-frame GPU work.
+            background: [
+              'linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(252,247,250,0.88) 40%, rgba(244,238,247,0.84) 100%)',
+              'radial-gradient(120% 60% at 50% 0%, rgba(255,255,255,0.55) 0%, transparent 70%)',
             ].join(', '),
+            boxShadow: [
+              '0 12px 28px rgba(90,82,102,0.10)',
+              '0 2px 6px rgba(90,82,102,0.05)',
+              'inset 0 1px 0 rgba(255,255,255,0.95)',
+              'inset 0 -1px 0 rgba(174,154,194,0.08)',
+            ].join(', '),
+            border: '1px solid rgba(255,255,255,0.62)',
+            willChange: 'transform',
+            transform: 'translateZ(0)',
+            backfaceVisibility: 'hidden',
+            contain: 'layout paint style',
           }}
         >
-          {/* ── Pink glass indicator ──────────────────────────────────────
-               Plain div — no framer-motion, no React subscriptions.
-               Position animated via WAAPI (compositor thread).
-               Opacity via CSS transition (also compositor thread).
-               left:0 pins the translateX origin to the nav padding-edge.
-               will-change:transform → browser pre-allocates compositor layer.
-          ──────────────────────────────────────────────────────────────── */}
+          {/* ── Neumorphic active pill ─────────────────────────────────── */}
           <div
             ref={pillRef}
             aria-hidden="true"
@@ -180,22 +208,16 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
               top:          `calc(50% - ${IND / 2}px)`,
               width:        IND,
               height:       IND,
-              borderRadius: 16,
+              borderRadius: 999,
               willChange:   'transform, opacity',
               opacity:      1,
-              // Opacity: CSS transition (compositor) — no JS needed
               transition:   'opacity 0.15s ease-out',
-              // Pink glass border ring
-              border:     `${RING}px solid transparent`,
-              background: [
-                'linear-gradient(150deg, rgba(255,255,255,0.96) 0%, rgba(255,235,242,0.92) 100%) padding-box',
-                'linear-gradient(150deg, rgba(251,207,232,0.7) 0%, rgba(196,104,126,0.55) 50%, rgba(251,207,232,0.7) 100%) border-box',
-              ].join(', '),
+              background:   'linear-gradient(145deg, #ffffff, #f6f3fa)',
               boxShadow: [
-                '0 8px 28px rgba(232, 160, 176, 0.38)',
-                '0 4px 12px rgba(0, 0, 0, 0.08)',
-                '0 1px 4px rgba(0, 0, 0, 0.06)',
-                'inset 0 1.5px 1px rgba(255, 255, 255, 0.96)',
+                '0 6px 14px rgba(90,82,102,0.12)',
+                '0 2px 6px rgba(90,82,102,0.06)',
+                'inset 0 1.5px 0 rgba(255,255,255,0.98)',
+                'inset 0 -1px 0 rgba(174,154,194,0.10)',
               ].join(', '),
             }}
           />
@@ -211,59 +233,63 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
                 ref={el => { btnRefs.current[item.id] = el; }}
                 onPointerDown={() => {
                   // Fire before finger lifts — gives React time to pre-render destination
-                  window.dispatchEvent(new CustomEvent('te:prefetch', { detail: { view: item.id } }));
+                  if (!(currentView === 'private-space' && item.id === 'add-memory')) {
+                    window.dispatchEvent(new CustomEvent('te:prefetch', { detail: { view: item.id } }));
+                  }
                 }}
                 onClick={() => handleNavTap(item.id)}
                 className="relative flex items-center justify-center outline-none touch-manipulation select-none"
-                style={{ width: BTN, height: BTN, zIndex: 1, flexShrink: 0 }}
-                aria-label={item.label}
+                style={{ width: BTN, height: BTN, zIndex: 1, flex: '1 1 0', minWidth: 0 }}
+                aria-label={currentView === 'private-space' && item.id === 'add-memory' ? 'Add private item' : item.label}
                 {...(item.id === 'daily-moments' ? { 'data-coachmark': 'daily-moments' } : {})}
               >
                 {item.isCenter ? (
-                  /* Pink FAB — always elevated, never behind the glass indicator */
-                  <motion.div
+                  /* Add orb — neumorphic raised with pastel halo (active).
+                     CSS transition on transform replaces framer-motion's
+                     whileTap spring; identical feel at zero JS cost. */
+                  <div
                     data-coachmark="center-fab"
-                    whileTap={{ scale: 0.87 }}
-                    transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+                    className="relative bn-fab"
                     style={{
                       width:          IND,
                       height:         IND,
-                      borderRadius:   16,
+                      borderRadius:   999,
                       display:        'flex',
                       alignItems:     'center',
                       justifyContent: 'center',
-                      border:         'none',
-                      background: isAddActive
-                        ? 'var(--theme-nav-center-bg-active)'
-                        : 'var(--theme-nav-center-bg-inactive)',
+                      background:     'linear-gradient(145deg, #ffffff, #f6f3fa)',
                       boxShadow: isAddActive
-                        ? 'var(--theme-nav-center-shadow-active)'
-                        : 'var(--theme-nav-center-shadow-inactive)',
+                        ? [
+                            '0 10px 20px rgba(90,82,102,0.14)',
+                            '0 3px 8px rgba(90,82,102,0.07)',
+                            'inset 0 1.5px 0 rgba(255,255,255,0.98)',
+                            'inset 0 -1px 0 rgba(174,154,194,0.10)',
+                          ].join(', ')
+                        : [
+                            '0 6px 14px rgba(90,82,102,0.10)',
+                            '0 2px 5px rgba(90,82,102,0.05)',
+                            'inset 0 1.5px 0 rgba(255,255,255,0.96)',
+                          ].join(', '),
                     }}
                   >
-                    <Plus size={22} strokeWidth={2.5} color="rgba(255,255,255,0.96)" />
-                  </motion.div>
+                    <Plus size={22} strokeWidth={2.1} color={isAddActive ? '#8e78a2' : '#a89cb8'} />
+                  </div>
 
                 ) : (
-                  /* Regular icon — framer-motion spring only fires once per switch */
-                  <motion.div
-                    className="relative flex items-center justify-center"
-                    animate={isActive ? { scale: 1 } : { scale: 0.84 }}
-                    transition={
-                      isActive
-                        ? { type: 'spring', stiffness: 500, damping: 26 }
-                        : { duration: 0.06 }
-                    }
+                  /* Regular icon — pure CSS spring on transform (compositor
+                     thread). No framer-motion solver, no per-frame React
+                     reconciliation. The .bn-icon class declares the cubic
+                     easing that mimics the stiffness/damping spring. */
+                  <div
+                    className={`relative flex items-center justify-center bn-icon ${isActive ? 'is-active' : ''}`}
                   >
                     <Icon
-                      size={21}
-                      strokeWidth={isActive ? 2.2 : 1.55}
+                      size={20}
+                      strokeWidth={isActive ? 2.15 : 1.7}
                       fill={isActive ? 'currentColor' : 'none'}
-                      fillOpacity={isActive ? 0.10 : 0}
+                      fillOpacity={isActive ? 0.1 : 0}
                       style={{
-                        color: isActive
-                          ? 'var(--color-nav-active)'
-                          : 'var(--color-text-secondary)',
+                        color: isActive ? '#8e78a2' : '#a89cb8',
                         transition: 'color 0.06s linear',
                       }}
                     />
@@ -272,7 +298,7 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
                         <Heart size={6} className="text-lior-400 fill-lior-400 animate-breathe" />
                       </div>
                     )}
-                  </motion.div>
+                  </div>
                 )}
               </button>
             );

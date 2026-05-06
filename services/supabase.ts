@@ -1,4 +1,5 @@
 import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
+import { isE2EAppMode } from './e2eHarness';
 
 const KEYS = { URL: 'lior_sb_url', KEY: 'lior_sb_key' };
 const ENV_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || '';
@@ -10,6 +11,12 @@ const DELETION_LEDGER_TABLE = 'sync_deletions';
 
 const buildTenantRowId = (tenantId: string, logicalId: string) => `${tenantId}:${logicalId}`;
 const buildDeletionLedgerRowId = (tenantId: string, table: string, logicalId: string) => `${tenantId}:${table}:${logicalId}`;
+const isMissingTableError = (error: unknown, tableName: string) => {
+    const candidate = error as { code?: string; message?: string };
+    return candidate?.code === 'PGRST205'
+        || candidate?.code === '42P01'
+        || Boolean(candidate?.message?.includes(`public.${tableName}`));
+};
 
 export interface SupabaseRowEnvelope<T = any> {
     id: string;
@@ -55,6 +62,11 @@ export const SupabaseService = {
     }),
 
     init: () => {
+        if (isE2EAppMode()) {
+            SupabaseService.client = null;
+            return false;
+        }
+
         const { url, anonKey: key } = SupabaseService.getProjectConfig();
         if (url && key && !SupabaseService.client) {
             try {
@@ -77,8 +89,12 @@ export const SupabaseService = {
     getCachedUserId: () => cachedUserId,
 
     setCachedUserId: (userId: string | null) => {
-        cachedUserId = userId;
-        if (!userId) cachedCoupleId = null;
+        const normalizedUserId = typeof userId === 'string' && userId.trim() ? userId.trim() : null;
+        if (cachedUserId !== normalizedUserId) {
+            cachedCoupleId = null;
+        }
+        cachedUserId = normalizedUserId;
+        if (!normalizedUserId) cachedCoupleId = null;
     },
 
     getSession: async (): Promise<Session | null> => {
@@ -132,6 +148,54 @@ export const SupabaseService = {
         if (!SupabaseService.client) return null;
 
         try {
+            const userId = await SupabaseService.getCurrentUserId();
+            if (userId) {
+                const { data: membershipRows, error: membershipError } = await SupabaseService.client
+                    .from('couple_memberships')
+                    .select('couple_id, created_at')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: false });
+
+                if (membershipError) {
+                    console.warn('Supabase couple membership lookup failed:', membershipError);
+                    return null;
+                }
+
+                const coupleIds = Array.from(new Set(
+                    (membershipRows ?? [])
+                        .map((row: any) => row?.couple_id ? String(row.couple_id) : '')
+                        .filter(Boolean),
+                ));
+
+                if (coupleIds.length === 1) {
+                    cachedCoupleId = coupleIds[0];
+                    return cachedCoupleId;
+                }
+
+                if (coupleIds.length > 1) {
+                    const { data: peerRows, error: peerError } = await SupabaseService.client
+                        .from('couple_memberships')
+                        .select('couple_id, user_id')
+                        .in('couple_id', coupleIds);
+
+                    if (!peerError && peerRows) {
+                        const linkedCoupleIds = new Set(
+                            peerRows
+                                .filter((row: any) => row?.user_id && row.user_id !== userId)
+                                .map((row: any) => String(row.couple_id)),
+                        );
+                        const linkedCoupleId = coupleIds.find((coupleId) => linkedCoupleIds.has(coupleId));
+                        if (linkedCoupleId) {
+                            cachedCoupleId = linkedCoupleId;
+                            return cachedCoupleId;
+                        }
+                    }
+
+                    cachedCoupleId = coupleIds[0];
+                    return cachedCoupleId;
+                }
+            }
+
             const { data, error } = await SupabaseService.client.rpc('ensure_user_couple');
             if (error || !data) {
                 console.warn('Supabase ensure_user_couple failed:', error);
@@ -168,6 +232,33 @@ export const SupabaseService = {
             return true;
         } catch (e) {
             console.warn('Supabase legacy row claim exception:', e);
+            return false;
+        }
+    },
+
+    upsertUserProfile: async (displayName: string | null | undefined): Promise<boolean> => {
+        if (!SupabaseService.client) return false;
+        const trimmedName = typeof displayName === 'string' ? displayName.trim() : '';
+        if (!trimmedName) return false;
+
+        try {
+            const userId = await SupabaseService.getCurrentUserId();
+            if (!userId) return false;
+
+            const { error } = await SupabaseService.client.from('user_profiles').upsert({
+                user_id: userId,
+                display_name: trimmedName,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+
+            if (error) {
+                if (isMissingTableError(error, 'user_profiles')) return false;
+                console.warn('Supabase user profile upsert failed:', error);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.warn('Supabase user profile upsert exception:', e);
             return false;
         }
     },
@@ -401,7 +492,7 @@ export const SupabaseService = {
         }
     },
 
-    getLinkedPartner: async (coupleId: string): Promise<{ partnerUserId: string | null } | null> => {
+    getLinkedPartner: async (coupleId: string): Promise<{ partnerUserId: string | null; partnerName: string | null } | null> => {
         if (!SupabaseService.client || !coupleId) return null;
         const userId = await SupabaseService.getCurrentUserId();
         if (!userId) return null;
@@ -414,8 +505,22 @@ export const SupabaseService = {
                 .neq('user_id', userId)
                 .limit(1);
 
-            if (error || !data || data.length === 0) return { partnerUserId: null };
-            return { partnerUserId: data[0].user_id ?? null };
+            if (error || !data || data.length === 0) return { partnerUserId: null, partnerName: null };
+
+            const partnerUserId = data[0].user_id ? String(data[0].user_id) : null;
+            if (!partnerUserId) return { partnerUserId: null, partnerName: null };
+
+            const { data: profileData, error: profileError } = await SupabaseService.client
+                .from('user_profiles')
+                .select('display_name')
+                .eq('user_id', partnerUserId)
+                .maybeSingle();
+
+            const partnerName = !profileError && profileData?.display_name
+                ? String(profileData.display_name).trim() || null
+                : null;
+
+            return { partnerUserId, partnerName };
         } catch (e) {
             console.warn('Supabase getLinkedPartner exception:', e);
             return null;

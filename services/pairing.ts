@@ -16,7 +16,7 @@ export interface PairInvite {
   expiresAt: Date;
 }
 
-export type ClaimError = 'invalid' | 'expired' | 'used' | 'self' | 'network';
+export type ClaimError = 'invalid' | 'expired' | 'used' | 'self' | 'already_linked' | 'network';
 
 export type ClaimResult =
   | { ok: true; partnerUserId: string; partnerName: string; coupleId: string }
@@ -58,12 +58,14 @@ export const PairingService = {
     const { data: { user }, error: authErr } = await sb.auth.getUser();
     if (authErr || !user) return null;
 
+    const profile = StorageService.getCoupleProfile();
+    await SupabaseService.upsertUserProfile(profile.myName);
+
     if (!options?.forceRotate) {
       const activeInvite = await PairingService.getActiveInvite();
       if (activeInvite) return activeInvite;
     }
 
-    const profile = StorageService.getCoupleProfile();
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
     if (globalThis.crypto?.getRandomValues) {
@@ -102,6 +104,9 @@ export const PairingService = {
     const { data: { user }, error: authErr } = await sb.auth.getUser();
     if (authErr || !user) return { ok: false, error: 'network' };
 
+    const profile = StorageService.getCoupleProfile();
+    await SupabaseService.upsertUserProfile(profile.myName);
+
     const code = raw.replace(/^LIOR:/i, '').replace(/\s+/g, '').trim().toUpperCase().slice(0, 8);
     if (code.length !== 8) return { ok: false, error: 'invalid' };
 
@@ -112,6 +117,7 @@ export const PairingService = {
       if (msg.includes('expired')) return { ok: false, error: 'expired' };
       if (msg.includes('used')) return { ok: false, error: 'used' };
       if (msg.includes('self')) return { ok: false, error: 'self' };
+      if (msg.includes('already_linked')) return { ok: false, error: 'already_linked' };
       return { ok: false, error: 'network' };
     }
 

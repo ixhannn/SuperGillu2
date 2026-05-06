@@ -10,3 +10,194 @@ html,
 body {
   overscroll-behavior-y: none;
 }
+
+:root {
+  --radius-xl: 24px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Transition GPU budget reclaim.
+   While <html data-transitioning="1"> is set (managed by TransitionEngine),
+   suppress ambient animations + heavy filters so the slide-in animation can
+   land at the device's full refresh rate. The flag is cleared the moment the
+   transition completes.
+   ────────────────────────────────────────────────────────────────────────── */
+html[data-transitioning="1"] *,
+html[data-transitioning="1"] *::before,
+html[data-transitioning="1"] *::after {
+  animation-play-state: paused !important;
+}
+
+/* Skip backdrop-filter compositing during the transition window — it's the
+   single most expensive per-frame GPU op on mobile. */
+html[data-transitioning="1"] .skip-blur-on-transition,
+html[data-transitioning="1"] [data-skip-blur-on-transition] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   `cv-auto` utility — lets any wrapper opt into content-visibility:auto.
+   Use on long, scroll-distant sections (memory cards, timeline rows, etc.)
+   so the browser can skip layout + paint when they're outside the viewport.
+   The `auto` intrinsic-size keyword lets the browser remember each item's
+   last-painted height, keeping page height stable for scroll restore.
+   ────────────────────────────────────────────────────────────────────────── */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Keep-alive tab shells.
+   Every visited ROOT_TAB lives in its own shell. Only the active one paints
+   and accepts input; the rest are display:none (state preserved, paint cost
+   zero). Tab switch = CSS class flip → instant, no React unmount.
+   ────────────────────────────────────────────────────────────────────────── */
+.keep-alive-shell {
+  /* Each shell is the full content area. Stacking handled by display toggle. */
+  width: 100%;
+  min-height: 100%;
+}
+.keep-alive-shell.is-cached {
+  /* display:none preserves React state but skips ALL paint and layout.
+     Effects/listeners continue to run — that's the keep-alive point. */
+  display: none;
+}
+.keep-alive-shell.is-active {
+  display: block;
+  /* Opacity-only fade. Critical that this is opacity (and ONLY opacity) —
+     transform/scale would force every nested compositor layer (TiltCards,
+     motion-divs with will-change, the particle canvases) to re-composite
+     for the whole keyframe duration, which is what made the previous
+     fade feel jittery. Opacity is a single blend pass on the shell layer
+     — the descendants are untouched.
+
+     `forwards` is intentional: we set the final state on the shell itself
+     so there's no flash to opacity:0 if the animation is interrupted. */
+  animation: keep-alive-fade-in 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity;
+}
+
+@keyframes keep-alive-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Reduced motion: instant snap, no fade */
+@media (prefers-reduced-motion: reduce) {
+  .keep-alive-shell.is-active {
+    animation: none;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   BottomNav — pure-CSS spring on icon active state.
+   Replaces five framer-motion <motion.div animate={{scale}} spring> instances.
+   The cubic-bezier curve mimics a stiffness=500 damping=26 spring, runs on
+   the compositor thread, and re-uses one transform per icon.
+   ────────────────────────────────────────────────────────────────────────── */
+.bn-icon {
+  transform: translateZ(0) scale(0.84);
+  transform-origin: center;
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+.bn-icon.is-active {
+  transform: translateZ(0) scale(1);
+}
+.bn-fab {
+  transform: translateZ(0) scale(1);
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+.bn-fab:active {
+  transform: translateZ(0) scale(0.9);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Native View Transitions API styling.
+   The browser captures snapshots of ::view-transition-old(root) and
+   ::view-transition-new(root) on the compositor thread. These keyframes
+   re-create our iOS-style slide + scale per-direction without ever cloning
+   the DOM into a fixed layer.
+   ────────────────────────────────────────────────────────────────────────── */
+@keyframes lior-vt-tab-out {
+  from { opacity: 1; transform: translateZ(0) scale(1); }
+  to   { opacity: 0; transform: translateZ(0) scale(1.03); }
+}
+@keyframes lior-vt-tab-in {
+  from { opacity: 0.72; transform: translateZ(0) scale(0.97); }
+  to   { opacity: 1;    transform: translateZ(0) scale(1); }
+}
+@keyframes lior-vt-push-out {
+  from { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
+  to   { opacity: 0;    transform: translate3d(-12vw,0,0) scale(0.97); }
+}
+@keyframes lior-vt-push-in {
+  from { opacity: 0.84; transform: translate3d(30vw,0,0) scale(0.97); }
+  to   { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes lior-vt-pop-out {
+  from { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
+  to   { opacity: 0;    transform: translate3d(30vw,0,0) scale(0.97); }
+}
+@keyframes lior-vt-pop-in {
+  from { opacity: 0.84; transform: translate3d(-12vw,0,0) scale(0.97); }
+  to   { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes lior-vt-modal-out {
+  from { opacity: 1;    transform: scale(1); }
+  to   { opacity: 0.88; transform: scale(0.96); }
+}
+@keyframes lior-vt-modal-in {
+  from { opacity: 0.80; transform: translate3d(0,6%,0) scale(0.97); }
+  to   { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
+}
+
+/* iOS-spring easing — same curve the JS engine uses */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+  /* Important: don't let the snapshots eat pointer events */
+  pointer-events: none;
+}
+
+html[data-vt-dir="tab"]::view-transition-old(root) {
+  animation: 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94) lior-vt-tab-out;
+}
+html[data-vt-dir="tab"]::view-transition-new(root) {
+  animation: 220ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-tab-in;
+}
+
+html[data-vt-dir="push"]::view-transition-old(root) {
+  animation: 280ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-push-out;
+}
+html[data-vt-dir="push"]::view-transition-new(root) {
+  animation: 280ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-push-in;
+}
+
+html[data-vt-dir="pop"]::view-transition-old(root) {
+  animation: 200ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-pop-out;
+}
+html[data-vt-dir="pop"]::view-transition-new(root) {
+  animation: 200ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-pop-in;
+}
+
+html[data-vt-dir="modal"]::view-transition-old(root) {
+  animation: 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94) lior-vt-modal-out;
+}
+html[data-vt-dir="modal"]::view-transition-new(root) {
+  animation: 300ms cubic-bezier(0.34, 1.56, 0.64, 1) lior-vt-modal-in;
+}
+
+/* Reduced motion — instant snap */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.001ms !important;
+  }
+}

@@ -65,7 +65,7 @@ export const PetAIService = {
         memoryId: typeof payload.memoryId === "string" ? payload.memoryId : undefined,
       };
     } catch (e) {
-      console.error("Pet AI Error:", e);
+      console.warn("Pet dialogue unavailable. Using fallback dialogue:", e);
       return { text: "Thinking of you both! ✨", isFlashback: false };
     }
   }

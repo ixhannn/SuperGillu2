@@ -560,34 +560,34 @@ security definer
 set search_path = public
 as $$
   with refs as (
-    select m.couple_id, 'memories'::text as source_table, m.data->>'id' as logical_row_id, 'memories'::text as feature, 'storagePath'::text as field_name, m.data->>'storagePath' as storage_path
+    select case when nullif(m.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(m.couple_id::text, '')::uuid else null end as couple_id, 'memories'::text as source_table, m.data->>'id' as logical_row_id, 'memories'::text as feature, 'storagePath'::text as field_name, m.data->>'storagePath' as storage_path
     from public.memories m
     union all
-    select m.couple_id, 'memories', m.data->>'id', 'memories', 'videoStoragePath', m.data->>'videoStoragePath'
+    select case when nullif(m.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(m.couple_id::text, '')::uuid else null end, 'memories', m.data->>'id', 'memories', 'videoStoragePath', m.data->>'videoStoragePath'
     from public.memories m
     union all
-    select d.couple_id, 'daily_photos', d.data->>'id', 'daily-moments', 'storagePath', d.data->>'storagePath'
+    select case when nullif(d.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(d.couple_id::text, '')::uuid else null end, 'daily_photos', d.data->>'id', 'daily-moments', 'storagePath', d.data->>'storagePath'
     from public.daily_photos d
     union all
-    select d.couple_id, 'daily_photos', d.data->>'id', 'daily-moments', 'videoStoragePath', d.data->>'videoStoragePath'
+    select case when nullif(d.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(d.couple_id::text, '')::uuid else null end, 'daily_photos', d.data->>'id', 'daily-moments', 'videoStoragePath', d.data->>'videoStoragePath'
     from public.daily_photos d
     union all
-    select k.couple_id, 'keepsakes', k.data->>'id', 'keepsakes', 'storagePath', k.data->>'storagePath'
+    select case when nullif(k.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(k.couple_id::text, '')::uuid else null end, 'keepsakes', k.data->>'id', 'keepsakes', 'storagePath', k.data->>'storagePath'
     from public.keepsakes k
     union all
-    select k.couple_id, 'keepsakes', k.data->>'id', 'keepsakes', 'videoStoragePath', k.data->>'videoStoragePath'
+    select case when nullif(k.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(k.couple_id::text, '')::uuid else null end, 'keepsakes', k.data->>'id', 'keepsakes', 'videoStoragePath', k.data->>'videoStoragePath'
     from public.keepsakes k
     union all
-    select t.couple_id, 'time_capsules', t.data->>'id', 'time-capsules', 'storagePath', t.data->>'storagePath'
+    select case when nullif(t.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(t.couple_id::text, '')::uuid else null end, 'time_capsules', t.data->>'id', 'time-capsules', 'storagePath', t.data->>'storagePath'
     from public.time_capsules t
     union all
-    select s.couple_id, 'surprises', s.data->>'id', 'surprises', 'storagePath', s.data->>'storagePath'
+    select case when nullif(s.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(s.couple_id::text, '')::uuid else null end, 'surprises', s.data->>'id', 'surprises', 'storagePath', s.data->>'storagePath'
     from public.surprises s
     union all
-    select v.couple_id, 'voice_notes', v.data->>'id', 'voice-notes', 'audioStoragePath', v.data->>'audioStoragePath'
+    select case when nullif(v.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(v.couple_id::text, '')::uuid else null end, 'voice_notes', v.data->>'id', 'voice-notes', 'audioStoragePath', v.data->>'audioStoragePath'
     from public.voice_notes v
     union all
-    select tm.couple_id, 'together_music', 'singleton', 'together-music', 'music_url', tm.data->>'music_url'
+    select case when nullif(tm.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(tm.couple_id::text, '')::uuid else null end, 'together_music', 'singleton', 'together-music', 'music_url', tm.data->>'music_url'
     from public.together_music tm
   )
   select

@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef, createContext, useContext, useLayoutEffect, useMemo } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useRef, createContext, useContext, useLayoutEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { Heart } from 'lucide-react';
 import { Onboarding } from './components/Onboarding';
-import { Capacitor } from '@capacitor/core';
-import { App as CapacitorApp } from '@capacitor/app';
 import { ViewState, TransitionDirection, ROOT_TABS, NavigationOptions } from './types';
 import { TransitionEngine } from './utils/TransitionEngine';
 import type { EngineDirection } from './utils/TransitionEngine';
+import { NativeShellService } from './services/nativeShell';
 
 
 // Navigation context for back navigation
@@ -24,44 +23,16 @@ export const NavigationContext = createContext<{
 export const useNavigation = () => useContext(NavigationContext);
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
-import { Home } from './views/Home';
-import { AddMemory } from './views/AddMemory';
-import { MemoryTimeline } from './views/MemoryTimeline';
-import { SpecialDates } from './views/SpecialDates';
-import { Notes } from './views/Notes';
-import { OpenWhen } from './views/OpenWhen';
-import { Sync } from './views/Sync';
-import { DailyMoments } from './views/DailyMoments';
-import { DinnerDecider } from './views/DinnerDecider';
-import { Profile } from './views/Profile';
-import { QuietMode } from './views/QuietMode';
-import { KeepsakeBox } from './views/KeepsakeBox';
 import { ViewTransition } from './components/ViewTransition';
-import { Countdowns } from './views/Countdowns';
-import { MoodCalendar } from './views/MoodCalendar';
 import { Auth } from './views/Auth';
-import { AuraRewind } from './views/AuraRewind';
-import { AuraSignal } from './views/AuraSignal';
-import { PresenceRoom } from './views/PresenceRoom';
-import { BonsaiBloom } from './views/BonsaiBloom';
-import { Us } from './views/Us';
-import { OurRoom } from './views/OurRoom';
-import { Canvas } from './views/Canvas';
-import { PrivacyPolicy } from './views/PrivacyPolicy';
-import { TermsOfService } from './views/TermsOfService';
-import { TimeCapsuleView } from './views/TimeCapsule';
-import { SurprisesView } from './views/Surprises';
-import { VoiceNotesView } from './views/VoiceNotes';
-import { PartnerIntelligenceView } from './views/PartnerIntelligenceView';
-import { DailyVideoView } from './views/DailyVideoView';
-import { WeeklyRecapView } from './views/WeeklyRecapView';
-import { StorageConsoleView } from './views/StorageConsole';
 import { SyncService, syncEventTarget } from './services/sync';
 import { StorageService, storageEventTarget } from './services/storage';
 import { ThemeService, THEMES, ThemeId } from './services/theme';
 import { SupabaseService } from './services/supabase';
 import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
+import { DiagnosticsService } from './services/diagnostics';
+import { NotificationsService } from './services/notifications';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
 import { AppLaunchOverlay } from './components/AppLaunchOverlay';
 import { DevPanel } from './components/DevPanel';
@@ -69,8 +40,29 @@ import { WhatsNew } from './components/WhatsNew';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
 import { InternalAdminService } from './services/internalAdmin';
+import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModules } from './views/viewRegistry';
+import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
 
 const hasCompletedOnboarding = () => StorageService.hasCompletedOnboarding();
+
+const COMMON_NAV_PRELOADS: ViewState[] = [
+  'add-memory',
+  'timeline',
+  'daily-moments',
+  'us',
+  'profile',
+  'sync',
+  'countdowns',
+  'open-when',
+  'dinner-decider',
+  'mood-calendar',
+  'bonsai-bloom',
+  'private-space',
+  'time-capsule',
+  'surprises',
+  'daily-video',
+  'weekly-recap',
+];
 
 /** Inner component — must live inside CoachmarkProvider to access context */
 const CoachmarkTourScheduler: React.FC<{ shouldTrigger: boolean; onTriggered: () => void }> = ({ shouldTrigger, onTriggered }) => {
@@ -124,8 +116,11 @@ const RouteLoader = () => (
   </div>
 );
 
+const RouteFallback = () => null;
+
 // Main App Component with Default Export
 const App = () => {
+  const e2eMode = isE2EAppMode();
   const [currentView, setCurrentView] = useState<ViewState>('home');
   const [transitionDir, setTransitionDir] = useState<TransitionDirection>('tab');
   const [isSwitchingView, setIsSwitchingView] = useState(false);
@@ -134,6 +129,7 @@ const App = () => {
   const pendingScrollRestore = useRef<{ view: ViewState; y: number } | null>(null);
   const transitionLockRef = useRef(false);
   const mainScrollRef = useRef<HTMLElement | null>(null);
+  const pendingNavigationMetricRef = useRef<{ view: ViewState; direction: TransitionDirection; startedAt: number } | null>(null);
   // Tracks current view synchronously for pre-transition direction calculation.
   // Must be updated BEFORE state changes so direction is resolved correctly.
   const currentViewRef = useRef<ViewState>('home');
@@ -179,7 +175,10 @@ const App = () => {
     return () => window.removeEventListener('te:gesture-back', handler);
   }, [getCurrentScroll]);
 
-  // Predictive prefetch: BottomNav fires this on pointerdown before finger lifts.
+  // ── Module preload on prefetch ──────────────────────────────────────────
+  // Keep-alive tab cache obviates the need to pre-mount React trees, but we
+  // still preload the JS modules for non-tab destinations on pointerdown so
+  // their lazy chunks are parsed by the time the user lifts their finger.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ view?: string; views?: string[] }>).detail;
@@ -187,25 +186,92 @@ const App = () => {
         .filter((view): view is ViewState => Boolean(view) && view !== currentViewRef.current)
         .filter((view, index, list) => list.indexOf(view) === index)
         .slice(0, 3);
-
-      setPrefetchView(hintedViews);
+      void preloadViewModules(hintedViews);
     };
     window.addEventListener('te:prefetch', handler);
     return () => window.removeEventListener('te:prefetch', handler);
   }, []);
 
   const finalizeNavigation = useCallback(() => {
+    const metric = pendingNavigationMetricRef.current;
+    if (metric) {
+      const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      DiagnosticsService.recordNavigation(metric.view, metric.direction, Math.round(finishedAt - metric.startedAt));
+      pendingNavigationMetricRef.current = null;
+    }
     transitionLockRef.current = false;
     setIsSwitchingView(false);
   }, []);
 
-  const runNavigation = useCallback((destination: ViewState, dir: TransitionDirection) => {
+  // ── Keep-alive tab cache ────────────────────────────────────────────────
+  // Every ROOT_TAB visited at least once stays mounted in the DOM. Switching
+  // between cached tabs becomes a CSS visibility flip — no React unmount, no
+  // re-render of the just-mounted tree, no Suspense boundary work, no
+  // fresh useState/useEffect cost. Same React instance survives every
+  // back-and-forth (Home → Us → Home is now genuinely free).
+  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => new Set(['home']));
+  useEffect(() => {
+    if (!ROOT_TABS.includes(currentView)) return;
+    setMountedTabs((prev) => {
+      if (prev.has(currentView)) return prev;
+      const next = new Set(prev);
+      next.add(currentView);
+      return next;
+    });
+  }, [currentView]);
+
+  // ── Fast tab transition (CSS-only crossfade) ────────────────────────────
+  // For tab-to-tab switches, we don't need View Transitions API or DOM
+  // cloning — both views are already mounted side-by-side. We just toggle
+  // CSS classes to crossfade between them. This is the path that gives the
+  // app its native feel: no flushSync, no JS work, no main-thread block.
+  const runTabTransition = useCallback((destination: ViewState, startedAt?: number) => {
+    transitionLockRef.current = true;
+    setIsSwitchingView(true);
+    pendingNavigationMetricRef.current = {
+      view: destination,
+      direction: 'tab',
+      startedAt: startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+    };
+
+    // Tag <html> so ambient layers pause for the brief crossfade window.
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.transitioning = '1';
+    }
+
+    setTransitionDir('tab');
+    setCurrentView(destination);
+
+    // Lock window matches the CSS keep-alive-fade-in duration so a rapid
+    // double-tap doesn't try to swap mid-fade. Opacity-only fade is cheap
+    // enough that the lock window doesn't feel laggy.
+    window.setTimeout(() => {
+      if (typeof document !== 'undefined') {
+        delete document.documentElement.dataset.transitioning;
+      }
+      finalizeNavigation();
+    }, 140);
+  }, [finalizeNavigation]);
+
+  const runNavigation = useCallback((destination: ViewState, dir: TransitionDirection, startedAt?: number) => {
     pendingScrollRestore.current = {
       view: destination,
       y: scrollPositions.current[destination] ?? 0,
     };
+
+    // Fast path: tab-to-tab between already-cached views.
+    if (dir === 'tab' && mountedTabs.has(destination) && ROOT_TABS.includes(currentViewRef.current)) {
+      runTabTransition(destination, startedAt);
+      return;
+    }
+
     transitionLockRef.current = true;
     setIsSwitchingView(true);
+    pendingNavigationMetricRef.current = {
+      view: destination,
+      direction: dir,
+      startedAt: startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+    };
 
     TransitionEngine.navigate(
       dir as EngineDirection,
@@ -219,7 +285,7 @@ const App = () => {
         requestAnimationFrame(finalizeNavigation);
       },
     );
-  }, [finalizeNavigation]);
+  }, [finalizeNavigation, mountedTabs, runTabTransition]);
 
   const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
@@ -231,17 +297,31 @@ const App = () => {
     else if (ROOT_TABS.includes(view) && ROOT_TABS.includes(prev)) dir = 'tab';
     else dir = 'push';
 
-    // Save scroll and update history synchronously (ref mutations, no re-render)
-    scrollPositions.current[prev] = getCurrentScroll();
-    if (!ROOT_TABS.includes(view)) {
-      historyStack.current.push(prev);
-      if (historyStack.current.length > 20) historyStack.current.shift();
-    } else {
-      historyStack.current = [];
-    }
-    currentViewRef.current = view;
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    const applyNavigationRefs = () => {
+      // Save scroll and update history synchronously (ref mutations, no re-render)
+      scrollPositions.current[prev] = getCurrentScroll();
+      if (!ROOT_TABS.includes(view)) {
+        historyStack.current.push(prev);
+        if (historyStack.current.length > 20) historyStack.current.shift();
+      } else {
+        historyStack.current = [];
+      }
+      currentViewRef.current = view;
+    };
+
+    const commitNavigation = () => {
+      applyNavigationRefs();
+
+      // ── View Transitions API: captures old/new DOM snapshots around setState ──
+      // flushSync makes React update the DOM synchronously inside the VT callback
+      // so the browser captures the correct before/after states.
+      runNavigation(view, dir, startedAt);
+    };
 
     if (options.instant) {
+      applyNavigationRefs();
       pendingScrollRestore.current = {
         view,
         y: scrollPositions.current[view] ?? 0,
@@ -255,10 +335,23 @@ const App = () => {
       return;
     }
 
-    // ── View Transitions API: captures old/new DOM snapshots around setState ──
-    // flushSync makes React update the DOM synchronously inside the VT callback
-    // so the browser captures the correct before/after states.
-    runNavigation(view, dir);
+    if (!isViewModuleLoaded(view)) {
+      transitionLockRef.current = true;
+      setIsSwitchingView(true);
+      void preloadViewModule(view)
+        .catch((error) => {
+          DiagnosticsService.recordError('navigation.preload', error, { view });
+        })
+        .finally(() => {
+          requestAnimationFrame(() => {
+            transitionLockRef.current = false;
+            commitNavigation();
+          });
+        });
+      return;
+    }
+
+    commitNavigation();
   }, [getCurrentScroll, runNavigation]);
 
   const goBack = useCallback(() => {
@@ -273,19 +366,22 @@ const App = () => {
 
   const canGoBack = historyStack.current.length > 0;
 
-  const [prefetchView, setPrefetchView] = useState<ViewState[]>([]);
-
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [launchReady, setLaunchReady] = useState(false);
-  const [showLaunchOverlay, setShowLaunchOverlay] = useState(true);
+  const [launchReady, setLaunchReady] = useState(e2eMode);
+  const [showLaunchOverlay, setShowLaunchOverlay] = useState(!e2eMode);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [scheduleTour, setScheduleTour] = useState(false);
 
   useEffect(() => {
+    if (e2eMode) return;
     const launchTimer = window.setTimeout(() => setLaunchReady(true), 1350);
     return () => window.clearTimeout(launchTimer);
+  }, [e2eMode]);
+
+  useEffect(() => {
+    DiagnosticsService.start();
   }, []);
 
   useEffect(() => {
@@ -295,16 +391,42 @@ const App = () => {
   }, [isInitialized, launchReady]);
 
   useEffect(() => {
+    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated && SupabaseService.isConfigured())) return;
+    if (typeof window === 'undefined') return;
+
+    const scheduleIdle = window.requestIdleCallback ?? ((cb: IdleRequestCallback) => window.setTimeout(() => cb({
+      didTimeout: false,
+      timeRemaining: () => 0,
+    }), 900));
+    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout;
+    const idleId = scheduleIdle(() => {
+      void preloadViewModules(COMMON_NAV_PRELOADS);
+    }, { timeout: 2400 });
+
+    return () => cancelIdle(idleId as number);
+  }, [e2eMode, isAuthenticated, isInitialized, showOnboarding]);
+
+  useEffect(() => {
+    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated && SupabaseService.isConfigured())) return;
+    void NotificationsService.applySchedule().catch((error) => {
+      DiagnosticsService.recordError('notifications.schedule', error);
+    });
+  }, [e2eMode, isAuthenticated, isInitialized, showOnboarding]);
+
+  useEffect(() => {
     let disposed = false;
     let authSubscription: { unsubscribe: () => void } | null = null;
-    let backHandlerPromise: Promise<{ remove: () => void }> | null = null;
     let whatsNewTimer: number | null = null;
+    let removeResumeListener: (() => void) | null = null;
+    let removeShellListener: (() => void) | null = null;
+    let wasOnline = NativeShellService.getState().isOnline;
 
     const initializeSync = async () => {
       try {
         await SyncService.init();
       } catch (syncError) {
         console.error("Sync Initialization failed:", syncError);
+        DiagnosticsService.recordError('sync.init', syncError);
       }
     };
 
@@ -314,6 +436,10 @@ const App = () => {
         // 1. Initialize Storage and DB
         await StorageService.init();
         if (disposed) return;
+
+        if (e2eMode) {
+          bootstrapE2ELocalState();
+        }
 
         // 2. Read the local profile for theme/bootstrap defaults.
         const profile = StorageService.getCoupleProfile();
@@ -332,6 +458,22 @@ const App = () => {
           window.history.replaceState({}, '', cleanedUrl.toString());
         }
 
+        if (e2eMode) {
+          const initialView = getE2EInitialView();
+          hasOnboardedAfterBootstrap = true;
+          SyncService.reset();
+          if (!disposed) {
+            setIsAuthenticated(true);
+            setShowOnboarding(false);
+            setShowLaunchOverlay(false);
+            if (initialView) {
+              currentViewRef.current = initialView;
+              setCurrentView(initialView);
+            }
+          }
+          return;
+        }
+
         // 4. Initialize Cloud Services (Supabase Auth)
         if (SupabaseService.init()) {
           try {
@@ -339,6 +481,7 @@ const App = () => {
             if (disposed) return;
 
             SupabaseService.setCachedUserId(session?.user?.id || null);
+            StorageService.activateAccount(session?.user?.id || null);
             setIsAuthenticated(Boolean(session));
 
             // Listen for realtime auth changes
@@ -346,6 +489,7 @@ const App = () => {
               void (async () => {
                 if (disposed) return;
                 SupabaseService.setCachedUserId(session?.user?.id || null);
+                StorageService.activateAccount(session?.user?.id || null);
                 setIsAuthenticated(Boolean(session));
 
                 if (session) {
@@ -378,6 +522,7 @@ const App = () => {
             }
           } catch (authError) {
             console.error("Supabase Auth failed:", authError);
+            DiagnosticsService.recordError('supabase.auth', authError);
             SupabaseService.setCachedUserId(null);
             if (!disposed) {
               setIsAuthenticated(false);
@@ -394,23 +539,22 @@ const App = () => {
         }
       } catch (err) {
         console.error("Initialization error:", err);
+        DiagnosticsService.recordError('app.init', err);
       } finally {
         if (!disposed) {
           setIsInitialized(true);
         }
         // Show What's New for returning users who haven't seen this version yet
-        if (!disposed && hasOnboardedAfterBootstrap && !FeatureDiscovery.hasSeenCurrentVersion()) {
+        if (!disposed && !e2eMode && hasOnboardedAfterBootstrap && !FeatureDiscovery.hasSeenCurrentVersion()) {
           whatsNewTimer = window.setTimeout(() => {
             if (!disposed) setShowWhatsNew(true);
           }, 1800);
         }
         // Hide native splash screen after content is ready, with a brief
         // delay so the first paint is composited before the splash fades.
-        if (!disposed && Capacitor.isNativePlatform()) {
+        if (!disposed) {
           requestAnimationFrame(() => {
-            import('@capacitor/splash-screen').then(({ SplashScreen }) => {
-              SplashScreen.hide({ fadeOutDuration: 200 });
-            }).catch(() => {});
+            void NativeShellService.markReady();
           });
         }
       }
@@ -418,15 +562,12 @@ const App = () => {
 
     initializeApp();
 
-    // ── Android hardware back button ──
-    // Intercept the native back gesture/button so it navigates within the app
-    // instead of closing the WebView entirely (default Capacitor behavior).
-    if (Capacitor.isNativePlatform()) {
-      backHandlerPromise = CapacitorApp.addListener('backButton', ({ canGoBack: webCanGoBack }) => {
-        // Dispatch to open modals first
+    NativeShellService.start({
+      onHardwareBack: () => {
+        // Dispatch to open modals first.
         const event = new CustomEvent('lior:hardware-back', { cancelable: true });
         window.dispatchEvent(event);
-        if (event.defaultPrevented) return;
+        if (event.defaultPrevented) return true;
 
         if (historyStack.current.length > 0 && !transitionLockRef.current) {
           const prev        = currentViewRef.current;
@@ -435,25 +576,27 @@ const App = () => {
           scrollPositions.current[prev] = getCurrentScroll();
           currentViewRef.current        = destination;
           runNavigation(destination, 'pop');
-        } else {
-          // Already at root — minimize the app (Android pattern)
-          CapacitorApp.minimizeApp();
+          return true;
         }
-      });
 
-      // ── StatusBar: edge-to-edge transparent overlay ──
-      import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
-        StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
-        StatusBar.setBackgroundColor({ color: '#00000000' }).catch(() => {});
-        StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
-      }).catch(() => {});
+        // Already at root — minimize the app (Android pattern).
+        NativeShellService.minimizeApp();
+        return true;
+      },
+    });
 
-      // ── Keyboard: configure Android resize behavior ──
-      import('@capacitor/keyboard').then(({ Keyboard, KeyboardResize }) => {
-        Keyboard.setResizeMode({ mode: KeyboardResize.Body }).catch(() => {});
-        Keyboard.setScroll({ isDisabled: false }).catch(() => {});
-      }).catch(() => {});
-    }
+    removeResumeListener = NativeShellService.onResume(() => {
+      const shell = NativeShellService.getState();
+      if (shell.isOnline && SyncService.isConnected) {
+        void SyncService.refreshFromCloud();
+      }
+    });
+    removeShellListener = NativeShellService.subscribe((shell) => {
+      if (!wasOnline && shell.isOnline && SyncService.isConnected) {
+        void SyncService.refreshFromCloud();
+      }
+      wasOnline = shell.isOnline;
+    });
 
     return () => {
       disposed = true;
@@ -461,9 +604,11 @@ const App = () => {
       if (whatsNewTimer !== null) {
         window.clearTimeout(whatsNewTimer);
       }
-      backHandlerPromise?.then(h => h.remove()).catch(() => {});
+      removeResumeListener?.();
+      removeShellListener?.();
+      NativeShellService.stop();
     };
-  }, [getCurrentScroll, runNavigation]);
+  }, [e2eMode, getCurrentScroll, runNavigation]);
 
 
   const handleOnboardingSelect = (_me: string, _partner: string) => {
@@ -477,59 +622,37 @@ const App = () => {
     setIsAuthenticated(true);
   };
 
-  // useMemo must be called unconditionally (Rules of Hooks) — before any early returns
-  const renderedView = useMemo(() => {
-    switch (currentView) {
-      case 'home':          return <Home setView={navigateTo} />;
-      case 'add-memory':    return <AddMemory setView={navigateTo} />;
-      case 'timeline':      return <MemoryTimeline setView={navigateTo} />;
-      case 'special-dates': return <SpecialDates setView={navigateTo} />;
-      case 'notes':         return <Notes setView={navigateTo} />;
-      case 'open-when':     return <OpenWhen setView={navigateTo} />;
-      case 'sync':          return <Sync setView={navigateTo} />;
-      case 'daily-moments': return <DailyMoments setView={navigateTo} />;
-      case 'dinner-decider':return <DinnerDecider setView={navigateTo} />;
-      case 'profile':       return <Profile setView={navigateTo} />;
-      case 'quiet-mode':    return <QuietMode setView={navigateTo} />;
-      case 'keepsakes':     return <KeepsakeBox setView={navigateTo} />;
-      case 'countdowns':    return <Countdowns setView={navigateTo} />;
-      case 'mood-calendar': return <MoodCalendar setView={navigateTo} />;
-      case 'aura-rewind':   return <AuraRewind setView={navigateTo} />;
-      case 'aura-signal':   return <AuraSignal setView={navigateTo} />;
-      case 'presence-room': return <PresenceRoom setView={navigateTo} />;
-      case 'bonsai-bloom':  return <BonsaiBloom setView={navigateTo} />;
-      case 'us':            return <Us setView={navigateTo} />;
-      case 'our-room':      return <OurRoom setView={navigateTo} />;
-      case 'canvas':        return <Canvas setView={navigateTo} />;
-      case 'privacy-policy': return <PrivacyPolicy setView={navigateTo} />;
-      case 'terms-of-service': return <TermsOfService setView={navigateTo} />;
-      case 'time-capsule':  return <TimeCapsuleView setView={navigateTo} />;
-      case 'surprises':     return <SurprisesView setView={navigateTo} />;
-      case 'voice-notes':   return <VoiceNotesView setView={navigateTo} />;
-      case 'partner-intelligence': return <PartnerIntelligenceView setView={navigateTo} />;
-      case 'daily-video': return <DailyVideoView setView={navigateTo} />;
-      case 'weekly-recap': return <WeeklyRecapView setView={navigateTo} />;
-      case 'storage-console': return <StorageConsoleView setView={navigateTo} />;
-      default:              return <Home setView={navigateTo} />;
-    }
-  }, [currentView, navigateTo]);
+  // ── Keep-alive tab tree ─────────────────────────────────────────────────
+  // Render every visited ROOT_TAB inside its own keep-alive shell. Only the
+  // active one is visible; the others have `display:none` (state preserved,
+  // effects continue, paint cost zero). Non-tab views render in a separate
+  // overlay slot below.
+  const keepAliveTabs = useMemo(() => {
+    const tabs = Array.from(mountedTabs);
+    return tabs.map((tab) => {
+      const TabView = getViewComponent(tab);
+      const isActive = tab === currentView;
+      return (
+        <div
+          key={tab}
+          data-keep-alive-tab={tab}
+          className={`keep-alive-shell ${isActive ? 'is-active' : 'is-cached'}`}
+          aria-hidden={!isActive}
+          inert={isActive ? undefined : true}
+        >
+          <TabView setView={navigateTo} />
+        </div>
+      );
+    });
+  }, [mountedTabs, currentView, navigateTo]);
 
-  // Pre-render high-probability nav targets silently (finger-on-tab → head-start).
-  const getPrefetchContent = useCallback((view: ViewState): React.ReactNode => {
-    switch (view) {
-      case 'home':          return <Home setView={navigateTo} />;
-      case 'us':            return <Us setView={navigateTo} />;
-      case 'timeline':      return <MemoryTimeline setView={navigateTo} />;
-      case 'daily-moments': return <DailyMoments setView={navigateTo} />;
-      case 'add-memory':    return <AddMemory setView={navigateTo} />;
-      case 'countdowns':    return <Countdowns setView={navigateTo} />;
-      case 'open-when':     return <OpenWhen setView={navigateTo} />;
-      case 'bonsai-bloom':  return <BonsaiBloom setView={navigateTo} />;
-      case 'profile':       return <Profile setView={navigateTo} />;
-      case 'aura-signal':   return <AuraSignal setView={navigateTo} />;
-      default: return null;
-    }
-  }, [navigateTo]);
+  // Non-tab view (push/pop destinations like sync, settings, etc.)
+  // Mounts/unmounts normally — these are not on the hot path.
+  const overlayView = useMemo(() => {
+    if (ROOT_TABS.includes(currentView)) return null;
+    const ActiveView = getViewComponent(currentView);
+    return <ActiveView setView={navigateTo} />;
+  }, [currentView, navigateTo]);
 
   // Global Loading State
   if (!isInitialized) {
@@ -537,7 +660,11 @@ const App = () => {
   }
 
   // Cloud Authentication Check
-  if (!isAuthenticated && SupabaseService.isConfigured()) {
+  if (!e2eMode && !isAuthenticated && SupabaseService.isConfigured()) {
+    const AuthOverlayView = currentView === 'privacy-policy'
+      ? getViewComponent('privacy-policy')
+      : getViewComponent('terms-of-service');
+
     return (
       <ErrorBoundary>
         <Auth
@@ -547,9 +674,9 @@ const App = () => {
         />
         {(currentView === 'privacy-policy' || currentView === 'terms-of-service') && (
           <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: 'var(--theme-bg-main)' }}>
-            {currentView === 'privacy-policy'
-              ? <PrivacyPolicy setView={navigateTo} onBack={() => setCurrentView('home')} />
-              : <TermsOfService setView={navigateTo} onBack={() => setCurrentView('home')} />}
+            <Suspense fallback={<RouteLoader />}>
+              <AuthOverlayView setView={navigateTo} onBack={() => setCurrentView('home')} />
+            </Suspense>
           </div>
         )}
       </ErrorBoundary>
@@ -567,29 +694,24 @@ const App = () => {
         <CoachmarkProvider currentView={currentView} navigateTo={navigateTo}>
           <ErrorBoundary>
             <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef} isSwitchingView={isSwitchingView}>
-              <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
-                {renderedView}
-              </ViewTransition>
+              <Suspense fallback={<RouteFallback />}>
+                <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
+                  {/* Keep-alive: every visited tab stays mounted forever.
+                      Switching between tabs is a CSS visibility flip — no
+                      React unmount, no Suspense roundtrip, no fresh mount
+                      cost. This is what makes tab nav feel native. */}
+                  {keepAliveTabs}
+                  {/* Non-tab views (push/pop destinations) render on top.
+                      They mount/unmount normally since they're not hot-path. */}
+                  {overlayView && (
+                    <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
+                      {overlayView}
+                    </div>
+                  )}
+                </ViewTransition>
+              </Suspense>
             </Layout>
             <AuraSignalReceiver />
-            {/* Predictive prefetch ghost — hidden, zero layout impact */}
-            {prefetchView.length > 0 && (
-              <div
-                aria-hidden="true"
-                style={{
-                  position: 'absolute', visibility: 'hidden',
-                  pointerEvents: 'none', width: 0, height: 0, overflow: 'hidden',
-                }}
-              >
-                {prefetchView
-                  .filter((view) => view !== currentView)
-                  .map((view) => (
-                    <React.Fragment key={view}>
-                      {getPrefetchContent(view)}
-                    </React.Fragment>
-                  ))}
-              </div>
-            )}
             <AnimatePresence>
               {showLaunchOverlay && <AppLaunchOverlay />}
             </AnimatePresence>

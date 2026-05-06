@@ -16,18 +16,19 @@ import {
   Memory,
   VoiceNote,
 } from '../types';
-import { RelationshipSignals } from './relationshipSignals';
+import { RelationshipSignals, signalEventTarget } from './relationshipSignals';
 import { subDays, differenceInDays } from 'date-fns';
+import { daysTogetherFrom } from '../shared/dateOnly.js';
+import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 
 // ── Storage ─────────────────────────────────────────────────────────
 
-const DB_NAME = 'LiorVault_v11';
-const STORE = 'metadata_store';
+const STORE = STORES.DATA;
 const MODEL_KEY = 'ri_relationship_model';
 
 const openDb = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = (e.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
@@ -94,7 +95,7 @@ const getMyName = (): string => {
 const getDaysTogether = (): number => {
   const p = getProfile();
   if (p.anniversaryDate) {
-    return differenceInDays(new Date(), new Date(p.anniversaryDate));
+    return daysTogetherFrom(p.anniversaryDate);
   }
   return 0;
 };
@@ -780,7 +781,6 @@ const scheduleRecompute = () => {
 
 // Listen for signals
 if (typeof window !== 'undefined') {
-  const { signalEventTarget } = require('./relationshipSignals');
   signalEventTarget.addEventListener('signal-update', scheduleRecompute);
 }
 

@@ -71,7 +71,7 @@ begin
     where dp.couple_id is not null
       and nullif(dp.data->>'expiresAt', '') is not null
       and nullif(dp.data->>'expiresAt', '')::timestamptz <= now()
-    order by nullif(dp.data->>'expiresAt', '')::timestamptz asc, dp.created_at asc
+    order by nullif(dp.data->>'expiresAt', '')::timestamptz asc, nullif(dp.data->>'createdAt', '')::timestamptz asc nulls last
     limit greatest(coalesce(batch_size, 100), 1)
     for update skip locked
   ),
@@ -148,4 +148,3 @@ $$;
 
 revoke all on function public.claim_media_cleanup_tasks(text, integer) from public, anon, authenticated;
 grant execute on function public.claim_media_cleanup_tasks(text, integer) to service_role;
-

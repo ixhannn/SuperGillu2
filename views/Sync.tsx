@@ -277,6 +277,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
         expired: "This QR has expired. Ask your partner to show a fresh one.",
         used:    "This QR was already used. Ask your partner to generate a new one.",
         self:    "That's your own QR code! Ask your partner to show theirs.",
+        already_linked: "This account is already paired. Sign in with the paired account to continue.",
         network: "Network error. Check your connection and try again.",
       };
       setScanPhase('error');
@@ -387,7 +388,10 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   };
 
   const handleLogout = async () => {
+    StorageService.prepareForSignOut();
     if (SupabaseService.client) await SupabaseService.client.auth.signOut();
+    SupabaseService.setCachedUserId(null);
+    StorageService.activateAccount(null);
     window.location.reload();
   };
 
@@ -408,6 +412,32 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   };
 
   // ── Sub-renders ───────────────────────────────────────────────────────────────
+  const renderPermanentLink = () => (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-2xl px-4 py-4 flex items-start gap-3"
+        style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.16)' }}>
+        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+          style={{ background: 'rgba(34,197,94,0.14)' }}>
+          <UserCheck size={18} className="text-green-400" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold" style={{ color: 'var(--color-text-primary)' }}>Permanent link saved</p>
+          <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--color-text-primary)', opacity: 0.76 }}>
+            This connection is tied to your accounts. Sign back in on any device and Lior will restore the shared space with <strong style={{ color: 'var(--color-text-primary)' }}>{linkedPartner}</strong>.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={forceSync}
+        className="liquid-glass-btn w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+        style={{ color: 'var(--color-nav-active)', background: 'rgba(var(--theme-particle-1-rgb),0.12)' }}
+      >
+        <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
+        Refresh shared data
+      </button>
+    </div>
+  );
+
   const renderShowQR = () => {
     if (qrLoading) return (
       <div className="flex flex-col items-center py-8 gap-3">
@@ -419,7 +449,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     if (!qrImg || !invite) return (
       <div className="flex flex-col items-center py-6 gap-4">
         <p className="text-xs text-center" style={{ color: 'var(--color-text-primary)', opacity: 0.8 }}>
-          {linkedPartner ? 'Generate a new QR to re-link accounts.' : 'Generate a QR code for your partner to scan.'}
+          Generate a QR code for your partner to scan.
         </p>
         <button onClick={() => generateQR(true)}
           className="liquid-glass-btn liquid-glass-btn--rose flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all"
@@ -678,22 +708,28 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
               </div>
             )}
 
-            <div className="sync-surface-glass-accent flex mx-4 mb-3 rounded-xl overflow-hidden">
-              {(['show', 'scan'] as const).map(tab => (
-                <button key={tab}
-                  onClick={() => switchTab(tab)}
-                  className="flex-1 py-2 text-xs font-bold transition-all"
-                  style={{
-                    background: pairTab === tab ? 'rgba(var(--theme-particle-1-rgb),0.22)' : 'transparent',
-                    color: pairTab === tab ? 'var(--color-nav-active)' : 'var(--color-text-primary)',
-                    opacity: pairTab === tab ? 1 : 0.72,
-                  }}>
-                  {tab === 'show' ? 'My QR' : "Scan Partner's QR"}
-                </button>
-              ))}
-            </div>
+            {linkedPartner ? (
+              <div className="px-4 pb-4">{renderPermanentLink()}</div>
+            ) : (
+              <>
+                <div className="sync-surface-glass-accent flex mx-4 mb-3 rounded-xl overflow-hidden">
+                  {(['show', 'scan'] as const).map(tab => (
+                    <button key={tab}
+                      onClick={() => switchTab(tab)}
+                      className="flex-1 py-2 text-xs font-bold transition-all"
+                      style={{
+                        background: pairTab === tab ? 'rgba(var(--theme-particle-1-rgb),0.22)' : 'transparent',
+                        color: pairTab === tab ? 'var(--color-nav-active)' : 'var(--color-text-primary)',
+                        opacity: pairTab === tab ? 1 : 0.72,
+                      }}>
+                      {tab === 'show' ? 'My QR' : "Scan Partner's QR"}
+                    </button>
+                  ))}
+                </div>
 
-            <div className="px-4 pb-4">{pairTab === 'show' ? renderShowQR() : renderScanQR()}</div>
+                <div className="px-4 pb-4">{pairTab === 'show' ? renderShowQR() : renderScanQR()}</div>
+              </>
+            )}
           </section>
 
           <section className="sync-surface-solid rounded-2xl p-4 text-left space-y-3">

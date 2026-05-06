@@ -895,13 +895,14 @@ interface RoomScene3DProps {
   }
 
   return (
-    <Canvas
-      orthographic
-      dpr={[1, 1.35]}
-      gl={{ antialias: false, powerPreference: 'high-performance' }}
-      camera={{ position: [6.02, 5.72, 6.02], zoom: 74, near: 0.1, far: 120 }}
-      onPointerMissed={() => onSelect(null)}
-    >
+    <div data-testid="room-scene-3d" className="absolute inset-0">
+      <Canvas
+        orthographic
+        dpr={[1, 1.35]}
+        gl={{ antialias: false, powerPreference: 'high-performance' }}
+        camera={{ position: [6.02, 5.72, 6.02], zoom: 74, near: 0.1, far: 120 }}
+        onPointerMissed={() => onSelect(null)}
+      >
       <SceneCameraLock />
       <color attach="background" args={[ambientPreset.background]} />
       <ambientLight intensity={ambientPreset.ambientIntensity} color={ambientPreset.ambientColor} />
@@ -978,6 +979,7 @@ interface RoomScene3DProps {
         far={7.8}
         color="#6b5878"
       />
-    </Canvas>
+      </Canvas>
+    </div>
   );
 };

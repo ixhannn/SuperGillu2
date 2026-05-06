@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, ChevronRight } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
@@ -10,9 +10,7 @@ import {
 import { RelationshipSignals, signalEventTarget } from '../services/relationshipSignals';
 import { RelationshipModelService, modelEventTarget } from '../services/relationshipModel';
 import { InsightEngine, insightEventTarget, checkAndGenerateDeepInsights } from '../services/insightEngine';
-import { ClosenessTrajectoryViz } from '../components/ClosenessTrajectory';
 import { InsightCard } from '../components/InsightCard';
-import { LoveLanguageProfileViz } from '../components/LoveLanguageProfile';
 import { PulseCheckSheet } from '../components/PulseCheckSheet';
 import { WeeklyReflectionSheet } from '../components/WeeklyReflection';
 import { feedback } from '../utils/feedback';
@@ -30,6 +28,12 @@ const getProfileNames = () => {
     };
   } catch { return { myName: 'You', partnerName: 'Partner' }; }
 };
+
+const LazyPartnerIntelligenceVisuals = React.lazy(() =>
+  import('../components/partner-intelligence/PartnerIntelligenceVisuals').then((module) => ({
+    default: module.PartnerIntelligenceVisuals,
+  })),
+);
 
 /* ── Phase Banner ────────────────────────────────────────────────── */
 const PHASE_META: Record<string, { label: string; color: string; description: string }> = {
@@ -248,6 +252,55 @@ function GrowthTimeline({ insights }: { insights: DeepInsight[] }) {
   );
 }
 
+function VisualAnalyticsGate({ onLoad }: { onLoad: () => void }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={() => {
+        feedback.tap();
+        onLoad();
+      }}
+      className="w-full rounded-2xl px-4 py-4 text-left"
+      style={{
+        background: 'rgba(var(--theme-particle-1-rgb), 0.04)',
+        border: '1px solid rgba(var(--theme-particle-1-rgb), 0.1)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-secondary)', opacity: 0.65 }}>
+            Visual Breakdown
+          </p>
+          <p className="mt-2 text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+            Load visual breakdown
+          </p>
+          <p className="mt-1 text-[11px] leading-5" style={{ color: 'var(--color-text-secondary)', opacity: 0.76 }}>
+            Charts stay deferred on mobile-class devices until you ask for them.
+          </p>
+        </div>
+        <ChevronRight size={16} style={{ color: 'var(--color-text-secondary)', opacity: 0.45 }} />
+      </div>
+    </motion.button>
+  );
+}
+
+function VisualAnalyticsFallback() {
+  return (
+    <div
+      className="rounded-2xl px-4 py-5 text-sm"
+      style={{
+        background: 'rgba(var(--theme-particle-2-rgb), 0.04)',
+        border: '1px solid rgba(var(--theme-particle-2-rgb), 0.08)',
+        color: 'var(--color-text-secondary)',
+      }}
+    >
+      Loading visual breakdown...
+    </div>
+  );
+}
+
 /* ── Main View ──────────────────────────────────────────────────────── */
 export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = ({ setView }) => {
   const [model, setModel] = useState<RelationshipModel | null>(null);
@@ -255,6 +308,9 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
   const [showPulse, setShowPulse] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  // Mobile-only app: the visuals are part of the experience, always on.
+  // Previous gate hid them on the only target platform.
+  const [visualsEnabled, setVisualsEnabled] = useState(true);
 
   const names = getProfileNames();
 
@@ -355,9 +411,6 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
               <PhaseBanner model={model} />
             )}
 
-            {/* Closeness Trajectory */}
-            <ClosenessTrajectoryViz model={model} />
-
             {/* Daily Pulse Prompt */}
             <PulseCheckPrompt onOpen={() => setShowPulse(true)} />
 
@@ -408,14 +461,19 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
               <ReciprocityGauge model={model} />
             )}
 
-            {/* Love Language Profiles */}
-            {model && model.partners.length >= 2 && (
-              <LoveLanguageProfileViz
-                myProfile={model.partners[0]?.loveLanguage}
-                partnerProfile={model.partners[1]?.loveLanguage}
-                myName={names.myName}
-                partnerName={names.partnerName}
-              />
+            {/* Visual Analytics */}
+            {model && (
+              visualsEnabled ? (
+                <Suspense fallback={<VisualAnalyticsFallback />}>
+                  <LazyPartnerIntelligenceVisuals
+                    model={model}
+                    myName={names.myName}
+                    partnerName={names.partnerName}
+                  />
+                </Suspense>
+              ) : (
+                <VisualAnalyticsGate onLoad={() => setVisualsEnabled(true)} />
+              )
             )}
 
             {/* Growth Timeline */}

@@ -12,11 +12,11 @@ import {
   PULSE_QUESTIONS,
 } from '../types';
 import { generateId } from '../utils/ids';
+import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 
 // ── Storage ─────────────────────────────────────────────────────────
 
-const DB_NAME = 'LiorVault_v11';
-const STORE = 'metadata_store';
+const STORE = STORES.DATA;
 
 const KEYS = {
   PULSE_CHECKS: 'ri_pulse_checks',
@@ -35,7 +35,7 @@ const KEYS = {
 
 const openDb = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = (e.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);

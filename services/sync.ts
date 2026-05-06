@@ -32,13 +32,14 @@ class SyncServiceClass {
             keepsakes: 'keep',
             time_capsules: 'cap',
             surprises: 'surp',
+            private_space_items: 'priv',
         };
         const prefix = prefixByTable[table];
         return prefix ? `${prefix}_${item.id}` : '';
     }
 
     private async backfillMissingCloudImagePayload(table: string, item: any): Promise<void> {
-        const mediaTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises']);
+        const mediaTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'private_space_items']);
         if (!mediaTables.has(table) || !item?.id || item.image || item.storagePath) return;
         if (table === 'daily_photos' && isDailyMomentExpired(item)) return;
 
@@ -83,6 +84,23 @@ class SyncServiceClass {
         syncEventTarget.dispatchEvent(new CustomEvent('sync-update'));
     }
 
+    private async bootstrapProfileFromCloud() {
+        const cloudProfileRows = await SupabaseService.fetchAll('couple_profile');
+        if (cloudProfileRows === null) return;
+
+        if (cloudProfileRows.length === 0) {
+            const local = StorageService.getCoupleProfile();
+            if (local.myName?.trim() || local.anniversaryDate?.trim() || (local.coupleId && local.partnerUserId)) {
+                await SupabaseService.saveSingle('couple_profile', local);
+            }
+            return;
+        }
+
+        for (const cloudProfile of cloudProfileRows) {
+            await StorageService.handleCloudUpdate('couple_profile', cloudProfile);
+        }
+    }
+
     public async init() {
         if (!SupabaseService.init()) {
             this.reset();
@@ -95,6 +113,12 @@ class SyncServiceClass {
             this.reset();
             this.updateStatus('Offline (Login Required)');
             return;
+        }
+
+        const localProfileBeforeCoupleLookup = StorageService.getCoupleProfile();
+        await SupabaseService.upsertUserProfile(localProfileBeforeCoupleLookup.myName);
+        if (localProfileBeforeCoupleLookup.coupleId) {
+            SupabaseService.setCachedCoupleId(localProfileBeforeCoupleLookup.coupleId);
         }
 
         // ensure_user_couple must run first so couple_memberships has a row
@@ -113,10 +137,16 @@ class SyncServiceClass {
             ...profile,
             coupleId,
             partnerUserId: linked?.partnerUserId || profile.partnerUserId,
+            partnerName: linked?.partnerName || profile.partnerName,
         };
-        if (profile.coupleId !== nextProfile.coupleId || profile.partnerUserId !== nextProfile.partnerUserId) {
+        if (
+            profile.coupleId !== nextProfile.coupleId
+            || profile.partnerUserId !== nextProfile.partnerUserId
+            || profile.partnerName !== nextProfile.partnerName
+        ) {
             StorageService.saveCoupleProfile(nextProfile, 'sync');
         }
+        await this.bootstrapProfileFromCloud();
 
         this.cleanupRealtimeState();
         this.isConnected = true;
@@ -233,8 +263,8 @@ class SyncServiceClass {
                 }
             }
 
-            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes'];
-            const rowEnvelopeTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes', 'together_music']);
+            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items'];
+            const rowEnvelopeTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items', 'together_music']);
             const localCollectionAccessors: Record<string, () => any[]> = {
                 memories: () => StorageService.getMemories(),
                 notes: () => StorageService.getNotes(),
@@ -251,10 +281,11 @@ class SyncServiceClass {
                 time_capsules: () => StorageService.getTimeCapsules(),
                 surprises: () => StorageService.getSurprises(),
                 voice_notes: () => StorageService.getVoiceNotes(),
+                private_space_items: () => StorageService.getPrivateSpaceItems(),
             };
             const mediaPrefixes: Record<string, string> = {
                 memories: 'mem', daily_photos: 'daily', keepsakes: 'keep',
-                time_capsules: 'cap', surprises: 'surp',
+                time_capsules: 'cap', surprises: 'surp', private_space_items: 'priv',
             };
 
             for (const table of tables) {
@@ -400,10 +431,11 @@ class SyncServiceClass {
                     // That prevents the canonical copy from drifting back into JSON rows.
                     if (cleanItem.storagePath) delete cleanItem.image;
                     if (cleanItem.videoStoragePath) delete cleanItem.video;
+                    if (cleanItem.audioStoragePath) delete cleanItem.audio;
 
                     // Guarantee image base64 is in Supabase as a partner fallback.
                     // Only do this while an item is still pending migration to R2.
-                    const mediaTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises']);
+                    const mediaTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'private_space_items']);
                     if (mediaTables.has(detail.table) && !cleanItem.storagePath && !cleanItem.image && cleanItem.imageId) {
                         try {
                             const stored = await StorageService.getImageLocalOnly(cleanItem.imageId);
@@ -422,6 +454,16 @@ class SyncServiceClass {
                             }
                         } catch {
                             // Best-effort — cloud push continues without video fallback
+                        }
+                    }
+                    if (mediaTables.has(detail.table) && !cleanItem.audioStoragePath && !cleanItem.audio && cleanItem.audioId) {
+                        try {
+                            const stored = await StorageService.getPrivateSpaceAudio(cleanItem);
+                            if (stored) {
+                                cleanItem.audio = stored;
+                            }
+                        } catch {
+                            // Best-effort — cloud push continues without audio fallback
                         }
                     }
 
@@ -457,7 +499,7 @@ class SyncServiceClass {
             .subscribe();
         this.realtimeChannels.push(this.channel);
 
-        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes'];
+        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items'];
         tables.forEach(table => {
             const tableChannel = SupabaseService.client?.channel(`public:${table}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {

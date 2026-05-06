@@ -1,4 +1,4 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem } from '../types';
 import { SupabaseService } from './supabase';
 import { MediaStorageService, compressImage } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
@@ -11,224 +11,30 @@ import {
     getFeatureStorageBudgetBytes,
     getMimeTypeFromDataUri,
 } from '../shared/mediaPolicy.js';
-
-
-// ENSURING WE STAY ON V11 FOR DATA CONTINUITY
-const DB_NAME = 'LiorVault_v11';
-const DB_VERSION = 1;
-const STORES = {
-    DATA: 'metadata_store',
-    IMAGES: 'image_vault'
-};
-
-// ── Legacy "Tulika" → "Lior" migration ────────────────────────────────────
-// The app was renamed from Tulika to Lior. Both the IndexedDB name and every
-// localStorage key were prefixed differently before the rename, so existing
-// users would otherwise lose all memories AND their stored Supabase URL/key
-// (meaning the cloud client never initializes, hiding remote data too).
-// This shim runs once on first init to copy old data forward.
-const LEGACY_DB_NAME = 'TulikaVault_v11';
-// v2: prior shim copied IDB entries with their original `tulika_*` keys, so the
-// loader (which reads `lior_*`) found nothing. Bumping the flag re-runs migration
-// with proper key remapping for affected users.
-const LEGACY_MIGRATION_FLAG = 'lior_legacy_migrated_v2';
-const remapLegacyKey = (key: unknown): unknown => {
-    if (typeof key === 'string' && key.startsWith('tulika_')) {
-        return 'lior_' + key.slice('tulika_'.length);
-    }
-    return key;
-};
+import { STORES } from './storage/dbConfig';
+import {
+    migrateLegacyIndexedDB,
+    migrateLegacyLocalStorage,
+    readFromLegacyVault,
+} from './storage/legacyMigration';
+import {
+    addPendingDelete,
+    addPendingUpload,
+    getPendingDeletes,
+    getPendingUploads,
+    isDeletedLocally,
+    removePendingDelete,
+    removePendingUpload,
+    type PendingDelete,
+    type PendingUpload,
+} from './storage/pendingOperations';
+import { createPersonalCollectionsStorageDomain } from './storage/personalCollections';
+import { deleteRaw, getDB, readRaw, writeRaw } from './storage/rawStore';
+import { createUsCollectionsStorageDomain } from './storage/usCollections';
+export { addPendingDelete, getPendingDeletes, isDeletedLocally, removePendingDelete } from './storage/pendingOperations';
 
 const hasOwn = <T extends object>(value: T, key: PropertyKey): boolean =>
     Object.prototype.hasOwnProperty.call(value, key);
-
-const migrateLegacyLocalStorage = () => {
-    if (localStorage.getItem(LEGACY_MIGRATION_FLAG) === 'done') return;
-    try {
-        const oldKeys: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && k.startsWith('tulika_')) oldKeys.push(k);
-        }
-        for (const oldKey of oldKeys) {
-            const newKey = 'lior_' + oldKey.slice('tulika_'.length);
-            // Don't clobber any value already present under the new key
-            if (localStorage.getItem(newKey) !== null) continue;
-            const val = localStorage.getItem(oldKey);
-            if (val !== null) localStorage.setItem(newKey, val);
-        }
-    } catch (e) {
-        console.warn('[migration] localStorage copy failed:', e);
-    }
-};
-
-const openDbVersionless = (name: string): Promise<IDBDatabase> =>
-    new Promise((resolve, reject) => {
-        const req = indexedDB.open(name);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-
-// Read a single entry from TulikaVault_v11/image_vault.
-// Used as a fallback when the IDB migration skipped copying images because
-// LiorVault already had some entries (the skip-if-exists guard).
-const readFromLegacyVault = (mediaId: string): Promise<string | null> =>
-    new Promise((resolve) => {
-        try {
-            const req = indexedDB.open(LEGACY_DB_NAME);
-            req.onerror = () => resolve(null);
-            req.onsuccess = () => {
-                const db = req.result;
-                if (!db.objectStoreNames.contains(STORES.IMAGES)) { db.close(); resolve(null); return; }
-                try {
-                    const getReq = db.transaction(STORES.IMAGES, 'readonly').objectStore(STORES.IMAGES).get(mediaId);
-                    getReq.onsuccess = () => { db.close(); resolve(getReq.result ?? null); };
-                    getReq.onerror = () => { db.close(); resolve(null); };
-                } catch { db.close(); resolve(null); }
-            };
-        } catch { resolve(null); }
-    });
-
-const openLiorDb = (): Promise<IDBDatabase> =>
-    new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-            const db = (e.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains(STORES.DATA)) db.createObjectStore(STORES.DATA);
-            if (!db.objectStoreNames.contains(STORES.IMAGES)) db.createObjectStore(STORES.IMAGES);
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-
-const countStore = (db: IDBDatabase, storeName: string): Promise<number> =>
-    new Promise((resolve) => {
-        if (!db.objectStoreNames.contains(storeName)) return resolve(0);
-        const tx = db.transaction(storeName, 'readonly');
-        const req = tx.objectStore(storeName).count();
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(0);
-    });
-
-const copyAllEntries = (oldDb: IDBDatabase, newDb: IDBDatabase, storeName: string, remapKeys: boolean): Promise<number> =>
-    new Promise((resolve, reject) => {
-        if (!oldDb.objectStoreNames.contains(storeName)) return resolve(0);
-        if (!newDb.objectStoreNames.contains(storeName)) return resolve(0);
-        const readTx = oldDb.transaction(storeName, 'readonly');
-        const writeTx = newDb.transaction(storeName, 'readwrite');
-        const writeStore = writeTx.objectStore(storeName);
-        const cursorReq = readTx.objectStore(storeName).openCursor();
-        let count = 0;
-        cursorReq.onsuccess = (e) => {
-            const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
-            if (cursor) {
-                const targetKey = remapKeys ? remapLegacyKey(cursor.key) : cursor.key;
-                writeStore.put(cursor.value, targetKey as IDBValidKey);
-                count++;
-                cursor.continue();
-            }
-        };
-        cursorReq.onerror = () => reject(cursorReq.error);
-        writeTx.oncomplete = () => resolve(count);
-        writeTx.onerror = () => reject(writeTx.error);
-    });
-
-// Remap any orphaned `tulika_*` keys inside LiorVault_v11/metadata_store
-// in-place. This catches users whose prior (broken) v1 migration copied
-// entries with the wrong keys.
-const remapInPlaceLiorMetadata = async (): Promise<number> => {
-    try {
-        const db = await openLiorDb();
-        return await new Promise<number>((resolve) => {
-            const tx = db.transaction(STORES.DATA, 'readwrite');
-            const store = tx.objectStore(STORES.DATA);
-            const cursorReq = store.openCursor();
-            let remapped = 0;
-            cursorReq.onsuccess = (e) => {
-                const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
-                if (cursor) {
-                    const key = cursor.key;
-                    if (typeof key === 'string' && key.startsWith('tulika_')) {
-                        const newKey = 'lior_' + key.slice('tulika_'.length);
-                        const value = cursor.value;
-                        store.get(newKey).onsuccess = (ev) => {
-                            const existing = (ev.target as IDBRequest).result;
-                            if (existing == null) {
-                                store.put(value, newKey);
-                                remapped++;
-                            }
-                            cursor.delete();
-                        };
-                    }
-                    cursor.continue();
-                }
-            };
-            cursorReq.onerror = () => resolve(remapped);
-            tx.oncomplete = () => { db.close(); resolve(remapped); };
-            tx.onerror = () => { db.close(); resolve(remapped); };
-        });
-    } catch {
-        return 0;
-    }
-};
-
-const migrateLegacyIndexedDB = async (): Promise<void> => {
-    if (localStorage.getItem(LEGACY_MIGRATION_FLAG) === 'done') return;
-
-    let oldDb: IDBDatabase | null = null;
-    let newDb: IDBDatabase | null = null;
-    try {
-        // Always run the in-place remap first — it's cheap and catches orphans
-        // from a prior failed v1 migration even when the legacy DB is gone.
-        const remapped = await remapInPlaceLiorMetadata();
-        if (remapped > 0) console.info(`[migration] remapped ${remapped} orphaned tulika_* keys in LiorVault_v11`);
-
-        // Quick existence check (Chromium/Safari only — Firefox falls through harmlessly)
-        const enumerate = (indexedDB as any).databases as undefined | (() => Promise<{ name?: string }[]>);
-        if (enumerate) {
-            const list = await enumerate.call(indexedDB).catch(() => []);
-            const hasLegacy = list.some((d) => d.name === LEGACY_DB_NAME);
-            if (!hasLegacy) {
-                localStorage.setItem(LEGACY_MIGRATION_FLAG, 'done');
-                return;
-            }
-        }
-
-        oldDb = await openDbVersionless(LEGACY_DB_NAME);
-
-        // If the legacy DB has no stores at all (was just created by our open),
-        // there's nothing to migrate.
-        const storeNames = Array.from(oldDb.objectStoreNames);
-        if (storeNames.length === 0) {
-            localStorage.setItem(LEGACY_MIGRATION_FLAG, 'done');
-            return;
-        }
-
-        newDb = await openLiorDb();
-
-        for (const storeName of [STORES.DATA, STORES.IMAGES]) {
-            if (!oldDb.objectStoreNames.contains(storeName)) continue;
-            // Always copy: metadata_store may be empty (after a failed prior migration)
-            // even though useful entries exist under tulika_* keys we now need to remap.
-            // For image_vault, we still skip if the new store already has entries to
-            // avoid clobbering re-uploaded media.
-            if (storeName === STORES.IMAGES) {
-                const existing = await countStore(newDb, storeName);
-                if (existing > 0) continue;
-            }
-            const remapKeys = storeName === STORES.DATA;
-            const copied = await copyAllEntries(oldDb, newDb, storeName, remapKeys);
-            if (copied > 0) console.info(`[migration] copied ${copied} entries from ${LEGACY_DB_NAME}/${storeName}${remapKeys ? ' (remapped)' : ''}`);
-        }
-
-        localStorage.setItem(LEGACY_MIGRATION_FLAG, 'done');
-    } catch (e) {
-        console.warn('[migration] IndexedDB copy failed:', e);
-    } finally {
-        oldDb?.close();
-        newDb?.close();
-    }
-};
 
 const CACHE_KEYS = {
     MEMORIES: 'lior_memories',
@@ -241,6 +47,7 @@ const CACHE_KEYS = {
     COMMENTS: 'lior_comments',
     SHARED_PROFILE: 'lior_shared_profile',
     IDENTITY: 'lior_identity',
+    LINK_LOCK: 'lior_link_lock',
     SEEN_RELEASE_VERSION: 'lior_seen_version',
     COACHMARKS_SEEN: 'lior_coachmarks_seen',
     USER_STATUS: 'lior_status',
@@ -249,7 +56,6 @@ const CACHE_KEYS = {
     DEVICE_ID: 'lior_device_id',
     TOGETHER_MUSIC_META: 'lior_together_music_meta',
     MOOD_ENTRIES: 'lior_mood_entries',
-    PENDING_DELETES: 'lior_pending_deletes',
     OUR_ROOM_STATE: 'lior_room_state_v2',
     US_BUCKET_ITEMS: 'lior_us_bucket_items',
     US_WISHLIST_ITEMS: 'lior_us_wishlist_items',
@@ -257,15 +63,31 @@ const CACHE_KEYS = {
     TIME_CAPSULES: 'lior_time_capsules',
     SURPRISES: 'lior_surprises',
     VOICE_NOTES: 'lior_voice_notes',
-    PENDING_UPLOADS: 'lior_pending_uploads',
+    PRIVATE_SPACE_ITEMS: 'lior_private_space_items',
 };
 
 const ACCOUNT_LOCAL_KEYS = {
     ONBOARDING_COMPLETE: 'lior_onboarded',
     MANUAL_OVERRIDE: 'lior_manual_override',
+    ACTIVE_USER_ID: 'lior_active_user_id',
 } as const;
 
-const buildAccountScopedStorageKey = (baseKey: string, userId: string | null = SupabaseService.getCachedUserId()) => {
+const EMPTY_IDENTITY = { myName: '', partnerName: '' };
+const EMPTY_SHARED_PROFILE = { anniversaryDate: '', theme: 'rose' };
+
+type LockedPairLink = {
+    coupleId: string;
+    partnerUserId: string;
+    partnerName?: string;
+};
+
+const getActiveAccountScopeUserId = () => (
+    SupabaseService.getCachedUserId()
+    || localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID)
+    || null
+);
+
+const buildAccountScopedStorageKey = (baseKey: string, userId: string | null = getActiveAccountScopeUserId()) => {
     const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
     return normalizedUserId ? `${baseKey}::${normalizedUserId}` : baseKey;
 };
@@ -303,67 +125,233 @@ const clearAccountScopedLocalStorageValue = (baseKey: string) => {
     }
 };
 
+const persistScopedLocalStorageValue = (baseKey: string, value: string, userId: string | null) => {
+    const scopedKey = buildAccountScopedStorageKey(baseKey, userId);
+    if (scopedKey === baseKey) return;
+    localStorage.setItem(scopedKey, value);
+};
+
 const serializeLocalBackupValue = (value: unknown) => (
     typeof value === 'string' ? value : JSON.stringify(value)
 );
 
-/* ─── Pending upload retry queue ─── */
-// When R2 upload fails (network down, misconfigured worker, etc.), the item's
-// IDs are saved here. On the next successful sync cycle, retryPendingUploads()
-// reads the queue, re-reads the media from IDB, and retries the upload.
-export type PendingUpload = {
-    listKey: string;         // keyof DATA_CACHE, e.g. 'memories'
-    storageKey: string;      // CACHE_KEYS value, e.g. 'lior_memories'
-    prefix: string;          // 'mem' | 'daily' | 'keep' etc.
-    itemId: string;
-    hasImage: boolean;
-    hasVideo: boolean;
-};
-
-const _getPendingUploads = (): PendingUpload[] => {
-    try { return JSON.parse(localStorage.getItem(CACHE_KEYS.PENDING_UPLOADS) || '[]'); } catch { return []; }
-};
-
-const _savePendingUploads = (list: PendingUpload[]) => {
-    localStorage.setItem(CACHE_KEYS.PENDING_UPLOADS, JSON.stringify(list));
-};
-
-const _addPendingUpload = (entry: PendingUpload) => {
-    const list = _getPendingUploads();
-    const exists = list.find(u => u.listKey === entry.listKey && u.itemId === entry.itemId);
-    if (!exists) _savePendingUploads([...list, entry]);
-};
-
-const _removePendingUpload = (listKey: string, itemId: string) => {
-    _savePendingUploads(_getPendingUploads().filter(u => !(u.listKey === listKey && u.itemId === itemId)));
-};
-
-/* ─── Pending delete tombstones ─── */
-export type PendingDelete = { table: string; id: string };
-
-const _getPendingDeletes = (): PendingDelete[] => {
-    try { return JSON.parse(localStorage.getItem(CACHE_KEYS.PENDING_DELETES) || '[]'); } catch { return []; }
-};
-
-const _savePendingDeletes = (list: PendingDelete[]) => {
-    localStorage.setItem(CACHE_KEYS.PENDING_DELETES, JSON.stringify(list));
-};
-
-export const addPendingDelete = (table: string, id: string) => {
-    const list = _getPendingDeletes();
-    if (!list.find(d => d.table === table && d.id === id)) {
-        _savePendingDeletes([...list, { table, id }]);
+const readLocalStorageJson = <T,>(key: string): T | null => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw) as T;
+    } catch {
+        return null;
     }
 };
 
-export const removePendingDelete = (table: string, id: string) => {
-    _savePendingDeletes(_getPendingDeletes().filter(d => !(d.table === table && d.id === id)));
+const persistScopedLocalStorageJson = (baseKey: string, value: unknown, userId: string | null = getActiveAccountScopeUserId()) => {
+    const scopedKey = buildAccountScopedStorageKey(baseKey, userId);
+    if (scopedKey === baseKey) return;
+    localStorage.setItem(scopedKey, JSON.stringify(value));
 };
 
-export const getPendingDeletes = (): PendingDelete[] => _getPendingDeletes();
+const hasMeaningfulIdentity = (identity: Record<string, unknown> | null): boolean => (
+    Boolean(cleanString(identity?.myName) || cleanString(identity?.partnerName))
+);
 
-export const isDeletedLocally = (table: string, id: string): boolean =>
-    _getPendingDeletes().some(d => d.table === table && d.id === id);
+const hasMeaningfulSharedProfile = (shared: Record<string, unknown> | null): boolean => {
+    if (!shared) return false;
+    return Object.entries(shared).some(([key, value]) => {
+        if (key === 'theme') return false;
+        if (typeof value === 'string') return value.trim().length > 0;
+        if (Array.isArray(value)) return value.length > 0;
+        return value != null;
+    });
+};
+
+const backupAccountScopedFlagsForAccount = (userId: string | null) => {
+    if (!userId) return;
+    [
+        ACCOUNT_LOCAL_KEYS.ONBOARDING_COMPLETE,
+        ACCOUNT_LOCAL_KEYS.MANUAL_OVERRIDE,
+        CACHE_KEYS.LINK_LOCK,
+        CACHE_KEYS.SEEN_RELEASE_VERSION,
+        CACHE_KEYS.COACHMARKS_SEEN,
+    ].forEach((key) => {
+        const raw = localStorage.getItem(key);
+        if (raw !== null) persistScopedLocalStorageValue(key, raw, userId);
+    });
+};
+
+const restoreAccountScopedFlagsForAccount = (userId: string | null) => {
+    if (!userId) return;
+    [
+        ACCOUNT_LOCAL_KEYS.ONBOARDING_COMPLETE,
+        ACCOUNT_LOCAL_KEYS.MANUAL_OVERRIDE,
+        CACHE_KEYS.LINK_LOCK,
+        CACHE_KEYS.SEEN_RELEASE_VERSION,
+        CACHE_KEYS.COACHMARKS_SEEN,
+    ].forEach((key) => {
+        const scopedValue = localStorage.getItem(buildAccountScopedStorageKey(key, userId));
+        if (scopedValue !== null) {
+            localStorage.setItem(key, scopedValue);
+        } else {
+            localStorage.removeItem(key);
+        }
+    });
+};
+
+const restoreAccountScopedProfile = (userId: string) => {
+    const identityKey = buildAccountScopedStorageKey(CACHE_KEYS.IDENTITY, userId);
+    const sharedKey = buildAccountScopedStorageKey(CACHE_KEYS.SHARED_PROFILE, userId);
+    const scopedIdentity = readLocalStorageJson<Record<string, unknown>>(identityKey);
+    const scopedShared = readLocalStorageJson<Record<string, unknown>>(sharedKey);
+    const hasScopedProfile = Boolean(scopedIdentity || scopedShared);
+
+    if (!hasScopedProfile) return false;
+
+    localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify(scopedIdentity ?? EMPTY_IDENTITY));
+    localStorage.setItem(CACHE_KEYS.SHARED_PROFILE, JSON.stringify(applyLockedPairLink(scopedShared ?? EMPTY_SHARED_PROFILE)));
+    return true;
+};
+
+const backupCurrentProfileForAccount = (userId: string | null) => {
+    if (!userId) return;
+    const identity = readLocalStorageJson<Record<string, unknown>>(CACHE_KEYS.IDENTITY);
+    const shared = readLocalStorageJson<Record<string, unknown>>(CACHE_KEYS.SHARED_PROFILE);
+    if (hasMeaningfulIdentity(identity)) persistScopedLocalStorageJson(CACHE_KEYS.IDENTITY, identity, userId);
+    if (hasMeaningfulSharedProfile(shared)) persistScopedLocalStorageJson(CACHE_KEYS.SHARED_PROFILE, shared, userId);
+    backupAccountScopedFlagsForAccount(userId);
+};
+
+const clearBaseProfileForAccountSwitch = () => {
+    localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify(EMPTY_IDENTITY));
+    localStorage.setItem(CACHE_KEYS.SHARED_PROFILE, JSON.stringify(EMPTY_SHARED_PROFILE));
+    localStorage.removeItem(CACHE_KEYS.LINK_LOCK);
+    localStorage.removeItem(ACCOUNT_LOCAL_KEYS.ONBOARDING_COMPLETE);
+    localStorage.removeItem(ACCOUNT_LOCAL_KEYS.MANUAL_OVERRIDE);
+    localStorage.removeItem(CACHE_KEYS.SEEN_RELEASE_VERSION);
+    localStorage.removeItem(CACHE_KEYS.COACHMARKS_SEEN);
+};
+
+const cleanString = (value: unknown): string => (
+    typeof value === 'string' ? value.trim() : ''
+);
+
+const PET_TYPE_VALUES = new Set(['dog', 'cat', 'bunny', 'bear']);
+const DEFAULT_PET_STATS: PetStats = {
+    name: 'Coco',
+    type: 'bear',
+    lastFed: '1970-01-01T00:00:00.000Z',
+    lastPetted: '1970-01-01T00:00:00.000Z',
+    happiness: 50,
+    xp: 0,
+    careStreak: 0,
+    presenceStreak: 0,
+    bondMoments: 0,
+    coins: 0,
+    inventory: [],
+    equipped: {},
+};
+
+const numberInRange = (value: unknown, fallback: number, min = 0, max = Number.MAX_SAFE_INTEGER) => {
+    const next = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(next)) return fallback;
+    return Math.min(max, Math.max(min, Math.round(next)));
+};
+
+const normalizePetEquipment = (value: unknown): PetStats['equipped'] => {
+    const input = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    return {
+        hat: cleanString(input.hat) || undefined,
+        accessory: cleanString(input.accessory) || undefined,
+        environment: cleanString(input.environment) || undefined,
+    };
+};
+
+const normalizePetStats = (value: unknown): PetStats => {
+    const input = value && typeof value === 'object' ? value as Partial<PetStats> & Record<string, unknown> : {};
+    const type = PET_TYPE_VALUES.has(String(input.type))
+        ? String(input.type) as PetStats['type']
+        : DEFAULT_PET_STATS.type;
+
+    return {
+        ...DEFAULT_PET_STATS,
+        ...input,
+        name: cleanString(input.name) || DEFAULT_PET_STATS.name,
+        type,
+        lastFed: cleanString(input.lastFed) || DEFAULT_PET_STATS.lastFed,
+        lastPetted: cleanString(input.lastPetted) || DEFAULT_PET_STATS.lastPetted,
+        happiness: numberInRange(input.happiness, DEFAULT_PET_STATS.happiness, 0, 100),
+        xp: numberInRange(input.xp, DEFAULT_PET_STATS.xp),
+        careStreak: numberInRange(input.careStreak, DEFAULT_PET_STATS.careStreak),
+        presenceStreak: numberInRange(input.presenceStreak, DEFAULT_PET_STATS.presenceStreak),
+        bondMoments: numberInRange(input.bondMoments, DEFAULT_PET_STATS.bondMoments),
+        coins: numberInRange(input.coins, DEFAULT_PET_STATS.coins),
+        inventory: Array.isArray(input.inventory) ? input.inventory.map(cleanString).filter(Boolean) : [],
+        equipped: normalizePetEquipment(input.equipped),
+    };
+};
+
+const getLockedPairLink = (): LockedPairLink | null => {
+    const raw = getAccountScopedLocalStorageValue(CACHE_KEYS.LINK_LOCK);
+    if (!raw) return null;
+
+    try {
+        const parsed = JSON.parse(raw) as Partial<LockedPairLink>;
+        const coupleId = cleanString(parsed.coupleId);
+        const partnerUserId = cleanString(parsed.partnerUserId);
+        if (!coupleId || !partnerUserId) return null;
+        return {
+            coupleId,
+            partnerUserId,
+            partnerName: cleanString(parsed.partnerName) || undefined,
+        };
+    } catch {
+        return null;
+    }
+};
+
+const persistLockedPairLink = (profile: Partial<CoupleProfile>) => {
+    const coupleId = cleanString(profile.coupleId);
+    const partnerUserId = cleanString(profile.partnerUserId);
+    if (!coupleId || !partnerUserId) return;
+
+    const lock: LockedPairLink = {
+        coupleId,
+        partnerUserId,
+        partnerName: cleanString(profile.partnerName) || undefined,
+    };
+    setAccountScopedLocalStorageValue(CACHE_KEYS.LINK_LOCK, JSON.stringify(lock));
+};
+
+const applyLockedPairLink = <T extends Partial<CoupleProfile>>(profile: T, current?: Partial<CoupleProfile>): T => {
+    const existingLock = getLockedPairLink();
+    const currentCoupleId = cleanString(current?.coupleId);
+    const currentPartnerUserId = cleanString(current?.partnerUserId);
+    const activeLock = existingLock
+        ?? (currentCoupleId && currentPartnerUserId
+            ? {
+                coupleId: currentCoupleId,
+                partnerUserId: currentPartnerUserId,
+                partnerName: cleanString(current?.partnerName) || undefined,
+            }
+            : null);
+
+    if (!activeLock) return profile;
+
+    const incomingCoupleId = cleanString(profile.coupleId);
+    const incomingPartnerUserId = cleanString(profile.partnerUserId);
+    const incomingHasCompleteLink = incomingCoupleId && incomingPartnerUserId;
+    const sameLockedPair = incomingCoupleId === activeLock.coupleId && incomingPartnerUserId === activeLock.partnerUserId;
+
+    if (incomingHasCompleteLink && !sameLockedPair) {
+        console.warn('[pairing] Ignoring attempted partner relink; existing pair lock is preserved.');
+    }
+
+    return {
+        ...profile,
+        coupleId: activeLock.coupleId,
+        partnerUserId: activeLock.partnerUserId,
+        partnerName: cleanString(profile.partnerName) || activeLock.partnerName || profile.partnerName,
+    };
+};
 
 const DATA_CACHE = {
     memories: [] as Memory[],
@@ -381,7 +369,21 @@ const DATA_CACHE = {
     timeCapsules: [] as TimeCapsule[],
     surprises: [] as Surprise[],
     voiceNotes: [] as VoiceNote[],
+    privateSpaceItems: [] as PrivateSpaceItem[],
 };
+
+const DEFAULT_ENVELOPE_COLOR = 'bg-pink-500/12 text-pink-600';
+
+const normalizeEnvelopeColor = (value: unknown): string =>
+    typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_ENVELOPE_COLOR;
+
+const normalizeEnvelope = (value: Envelope | Partial<Envelope>): Envelope => ({
+    ...(value as Envelope),
+    color: normalizeEnvelopeColor(value?.color),
+});
+
+const normalizeEnvelopeList = (items: Envelope[] | Partial<Envelope>[]): Envelope[] =>
+    items.map((item) => normalizeEnvelope(item));
 
 const MEDIA_MEMORY_CACHE = new Map<string, string>();
 export const storageEventTarget = new EventTarget();
@@ -507,7 +509,7 @@ const notifyUpdate = (detail: StorageUpdateDetail) => {
     storageEventTarget.dispatchEvent(new CustomEvent('storage-update', { detail }));
 };
 
-const MEDIA_OWNER_TABLES = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes']);
+const MEDIA_OWNER_TABLES = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items']);
 const TABLE_TO_MEDIA_FEATURE: Record<string, string> = {
     memories: 'memories',
     daily_photos: 'daily-moments',
@@ -515,12 +517,13 @@ const TABLE_TO_MEDIA_FEATURE: Record<string, string> = {
     time_capsules: 'time-capsules',
     surprises: 'surprises',
     voice_notes: 'voice-notes',
+    private_space_items: 'private-space',
     together_music: 'together-music',
 };
 const TOGETHER_MUSIC_SOURCE_KEY = 'custom_together_music';
 type TogetherMusicMetadata = { name: string; date: string; size: number; mimeType?: string; ownerUserId?: string };
 type VoiceNoteAudioSaveResult = { storagePath: string | null; byteSize: number; mimeType: string };
-type ManagedStorageFeature = 'memories' | 'daily-moments' | 'keepsakes' | 'time-capsules' | 'surprises' | 'voice-notes' | 'together-music';
+type ManagedStorageFeature = 'memories' | 'daily-moments' | 'keepsakes' | 'time-capsules' | 'surprises' | 'voice-notes' | 'private-space' | 'together-music';
 type ManagedStorageBreakdown = { feature: ManagedStorageFeature; label: string; bytes: number; quotaBytes: number | null; itemCount: number };
 
 const isInlineMediaPayload = (value?: string | null) => typeof value === 'string' && value.startsWith('data:');
@@ -537,6 +540,7 @@ const MANAGED_FEATURE_LABELS: Record<ManagedStorageFeature, string> = {
     'time-capsules': 'Time Capsules',
     surprises: 'Surprises',
     'voice-notes': 'Voice Notes',
+    'private-space': 'Private Space',
     'together-music': 'Together Music',
 };
 
@@ -568,6 +572,8 @@ const getFeatureItemsForBudget = (feature: ManagedStorageFeature): any[] => {
             return DATA_CACHE.surprises;
         case 'voice-notes':
             return DATA_CACHE.voiceNotes;
+        case 'private-space':
+            return DATA_CACHE.privateSpaceItems;
         case 'together-music': {
             const meta = StorageService.getTogetherMusicMetadata();
             return meta ? [{ size: meta.size }] : [];
@@ -600,6 +606,88 @@ const getManagedStorageTotals = () => {
         totalQuotaBytes: COUPLE_TOTAL_STORAGE_BUDGET_BYTES,
         breakdown,
     };
+};
+
+const coerceIsoDate = (value: unknown): string | null => {
+    let timestamp = Number.NaN;
+    if (value instanceof Date) {
+        timestamp = value.getTime();
+    } else if (typeof value === 'number') {
+        timestamp = value;
+    } else {
+        const raw = cleanString(value);
+        if (raw) timestamp = Date.parse(raw);
+    }
+
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+};
+
+const addMsToIso = (iso: string, ms: number): string | null => {
+    const timestamp = Date.parse(iso);
+    return Number.isFinite(timestamp) ? new Date(timestamp + ms).toISOString() : null;
+};
+
+const normalizeMoodEntry = (value: unknown): MoodEntry | null => {
+    if (!value || typeof value !== 'object') return null;
+    const input = value as Partial<MoodEntry> & Record<string, unknown>;
+    const id = cleanString(input.id);
+    const userId = cleanString(input.userId);
+    const mood = cleanString(input.mood).toLowerCase();
+    const timestamp = coerceIsoDate(input.timestamp) || coerceIsoDate(input.createdAt) || coerceIsoDate(input.date);
+
+    if (!id || !userId || !mood || !timestamp) return null;
+
+    const note = cleanString(input.note);
+    return {
+        id,
+        userId,
+        mood,
+        timestamp,
+        ...(note ? { note } : {}),
+    };
+};
+
+const normalizeMoodEntries = (items: unknown): MoodEntry[] => {
+    if (!Array.isArray(items)) return [];
+    const byId = new Map<string, MoodEntry>();
+    for (const item of items) {
+        const normalized = normalizeMoodEntry(item);
+        if (normalized) byId.set(normalized.id, normalized);
+    }
+    return Array.from(byId.values()).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+};
+
+const normalizeDailyPhoto = (value: unknown): DailyPhoto | null => {
+    if (!value || typeof value !== 'object') return null;
+    const input = value as Partial<DailyPhoto> & Record<string, unknown>;
+    const id = cleanString(input.id);
+    if (!id) return null;
+
+    const expiresAt = coerceIsoDate(input.expiresAt);
+    const createdAt = coerceIsoDate(input.createdAt)
+        || coerceIsoDate(input.date)
+        || (expiresAt ? addMsToIso(expiresAt, -24 * 60 * 60 * 1000) : null);
+    const finalExpiresAt = expiresAt || (createdAt ? addMsToIso(createdAt, 24 * 60 * 60 * 1000) : null);
+    if (!createdAt || !finalExpiresAt) return null;
+
+    return {
+        ...input,
+        id,
+        caption: cleanString(input.caption) || 'Just now',
+        createdAt,
+        expiresAt: finalExpiresAt,
+        senderId: cleanString(input.senderId) || 'unknown',
+    } as DailyPhoto;
+};
+
+const normalizeDailyPhotos = (items: DailyPhoto[], now = Date.now(), includeExpired = false): DailyPhoto[] => {
+    const byId = new Map<string, DailyPhoto>();
+    for (const item of items) {
+        const normalized = normalizeDailyPhoto(item);
+        if (!normalized || (!includeExpired && isDailyMomentExpired(normalized, now))) continue;
+        byId.set(normalized.id, normalized);
+    }
+    return Array.from(byId.values());
 };
 
 const assertManagedStorageBudget = (
@@ -642,54 +730,8 @@ const resolveOwnerUserId = async (item: any, source: 'user' | 'sync', existingIt
     return currentUserId ?? undefined;
 };
 
-const filterActiveDailyPhotos = <T extends { expiresAt?: string }>(items: T[], now = Date.now()): T[] =>
-    items.filter((item) => !isDailyMomentExpired(item, now));
-
-let dbPromise: Promise<IDBDatabase> | null = null;
-const getDB = (): Promise<IDBDatabase> => {
-    if (dbPromise) return dbPromise;
-    dbPromise = new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onupgradeneeded = (e) => {
-            const database = (e.target as IDBOpenDBRequest).result;
-            if (!database.objectStoreNames.contains(STORES.DATA)) database.createObjectStore(STORES.DATA);
-            if (!database.objectStoreNames.contains(STORES.IMAGES)) database.createObjectStore(STORES.IMAGES);
-        };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-    return dbPromise;
-};
-
-const writeRaw = async (store: string, key: string, val: any) => {
-    const db = await getDB();
-    return new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite');
-        tx.objectStore(store).put(val, key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-    });
-};
-
-const readRaw = async (store: string, key: string) => {
-    const db = await getDB();
-    return new Promise<any>((resolve, reject) => {
-        const tx = db.transaction(store, 'readonly');
-        const req = tx.objectStore(store).get(key);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-};
-
-const deleteRaw = async (store: string, key: string) => {
-    const db = await getDB();
-    return new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite');
-        tx.objectStore(store).delete(key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-    });
-};
+const filterActiveDailyPhotos = (items: DailyPhoto[], now = Date.now()): DailyPhoto[] =>
+    normalizeDailyPhotos(items, now);
 
 export const StorageService = {
     isInitialized: false,
@@ -729,9 +771,26 @@ export const StorageService = {
                 load(CACHE_KEYS.TIME_CAPSULES, 'timeCapsules'),
                 load(CACHE_KEYS.SURPRISES, 'surprises'),
                 load(CACHE_KEYS.VOICE_NOTES, 'voiceNotes'),
+                load(CACHE_KEYS.PRIVATE_SPACE_ITEMS, 'privateSpaceItems'),
             ]);
 
+            const hadLegacyEnvelopeColors = DATA_CACHE.envelopes.some(
+                (item) => normalizeEnvelopeColor(item?.color) !== (typeof item?.color === 'string' ? item.color.trim() : ''),
+            );
+            DATA_CACHE.envelopes = normalizeEnvelopeList(DATA_CACHE.envelopes);
+            if (hadLegacyEnvelopeColors) {
+                await writeRaw(STORES.DATA, CACHE_KEYS.ENVELOPES, DATA_CACHE.envelopes);
+            }
+
             DATA_CACHE.keepsakes = DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item));
+            DATA_CACHE.moodEntries = normalizeMoodEntries(DATA_CACHE.moodEntries);
+            await writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, DATA_CACHE.moodEntries);
+
+            const normalizedDailyPhotos = normalizeDailyPhotos(DATA_CACHE.dailyPhotos, Date.now(), true);
+            if (DATA_CACHE.dailyPhotos !== normalizedDailyPhotos) {
+                DATA_CACHE.dailyPhotos = normalizedDailyPhotos;
+                await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, DATA_CACHE.dailyPhotos);
+            }
 
             const restoreLocalBackup = async (key: string) => {
                 const backup = await readRaw(STORES.DATA, key);
@@ -753,7 +812,8 @@ export const StorageService = {
                 restoreLocalBackup(CACHE_KEYS.OUR_ROOM_STATE),
                 restoreLocalBackup(CACHE_KEYS.US_BUCKET_ITEMS),
                 restoreLocalBackup(CACHE_KEYS.US_WISHLIST_ITEMS),
-                restoreLocalBackup(CACHE_KEYS.US_MILESTONES)
+                restoreLocalBackup(CACHE_KEYS.US_MILESTONES),
+                restoreLocalBackup(CACHE_KEYS.PRIVATE_SPACE_ITEMS)
             ]);
 
             // Sync music
@@ -829,7 +889,7 @@ export const StorageService = {
         //    Local data is faster, always fresh, and resilient to R2 outages / URL staleness.
         //    Items uploaded from this device always have their base64 here.
         if (mediaId) {
-            const local = await readRaw(STORES.IMAGES, mediaId);
+            const local = await readRaw<string>(STORES.IMAGES, mediaId);
             if (local) {
                 if (local.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, local);
                 return local;
@@ -890,7 +950,7 @@ export const StorageService = {
             const cacheKey = mediaId;
             if (MEDIA_MEMORY_CACHE.has(cacheKey)) return MEDIA_MEMORY_CACHE.get(cacheKey)!;
 
-            const local = await readRaw(STORES.IMAGES, mediaId);
+            const local = await readRaw<string>(STORES.IMAGES, mediaId);
             if (local) {
                 if (local.length < 2_000_000) MEDIA_MEMORY_CACHE.set(cacheKey, local);
                 return local;
@@ -929,9 +989,14 @@ export const StorageService = {
         const sanitizedItem = sanitizeUserContent(item);
         const normalizedItem = listKey === 'keepsakes'
             ? normalizeKeepsakeSender(sanitizedItem)
+            : listKey === 'dailyPhotos'
+            ? normalizeDailyPhoto(sanitizedItem)
+            : listKey === 'moodEntries'
+            ? normalizeMoodEntry(sanitizedItem)
             : sanitizedItem;
+        if (!normalizedItem) return;
         const list = [...(DATA_CACHE[listKey] as any[])];
-        const idx = list.findIndex(i => i.id === item.id);
+        const idx = list.findIndex(i => i.id === normalizedItem.id);
         const existingItem = idx >= 0 ? list[idx] : undefined;
         const ownerUserId = prefix && table && MEDIA_OWNER_TABLES.has(table)
             ? await resolveOwnerUserId(normalizedItem, source, existingItem)
@@ -1122,12 +1187,12 @@ export const StorageService = {
             const needsVideo = !!(rawVideo || metadata.videoStoragePath)
                 && (!metadata.videoStoragePath || !(await MediaStorageService.isScopedToCurrentUser(metadata.videoStoragePath)));
             if (!needsImage && !needsVideo) {
-                _removePendingUpload(listKey, metadata.id);
+                removePendingUpload(listKey, metadata.id);
             }
         } catch (e) {
             console.warn('Background storage upload failed — queued for retry:', e);
             // Queue for retry on next sync cycle so media is never permanently lost
-            _addPendingUpload({
+            addPendingUpload({
                 listKey,
                 storageKey,
                 prefix,
@@ -1144,7 +1209,7 @@ export const StorageService = {
      * Reads media from IDB (where it was safely persisted) and uploads to R2.
      */
     async retryPendingUploads(): Promise<void> {
-        const queue = _getPendingUploads();
+        const queue = getPendingUploads();
         if (queue.length === 0) return;
 
         console.info(`[upload-retry] Retrying ${queue.length} pending upload(s)…`);
@@ -1155,7 +1220,7 @@ export const StorageService = {
                 if (!cacheList) continue;
                 const item = cacheList.find((i: any) => i.id === entry.itemId);
                 if (!item) {
-                    _removePendingUpload(entry.listKey, entry.itemId);
+                    removePendingUpload(entry.listKey, entry.itemId);
                     continue;
                 }
 
@@ -1167,6 +1232,7 @@ export const StorageService = {
                     keepsakes: 'keepsakes',
                     timeCapsules: 'time_capsules',
                     surprises: 'surprises',
+                    privateSpaceItems: 'private_space_items',
                 };
                 const tbl = tableForCache[entry.listKey];
                 const pathOptions = {
@@ -1250,7 +1316,7 @@ export const StorageService = {
                 const remainingVideo = entry.hasVideo
                     && (!item.videoStoragePath || !(await MediaStorageService.isScopedToCurrentUser(item.videoStoragePath)));
                 if (!remainingImage && !remainingVideo) {
-                    _removePendingUpload(entry.listKey, entry.itemId);
+                    removePendingUpload(entry.listKey, entry.itemId);
                     if (updated) console.info(`[upload-retry] Uploaded ${entry.itemId}`);
                 }
             } catch (e) {
@@ -1261,11 +1327,16 @@ export const StorageService = {
     },
 
     async _replaceCollection(listKey: keyof typeof DATA_CACHE, storageKey: string, items: any[]) {
-        (DATA_CACHE[listKey] as any) = items;
-        await writeRaw(STORES.DATA, storageKey, items);
+        const normalizedItems = listKey === 'envelopes'
+            ? normalizeEnvelopeList(items)
+            : listKey === 'moodEntries'
+            ? normalizeMoodEntries(items)
+            : items;
+        (DATA_CACHE[listKey] as any) = normalizedItems;
+        await writeRaw(STORES.DATA, storageKey, normalizedItems);
     },
 
-    getMemories: () => DATA_CACHE.memories,
+    getMemories: () => DATA_CACHE.memories.filter(m => !isDeletedLocally('memories', m.id)),
     saveMemory: (m: Memory) => StorageService._saveInternal('memories', CACHE_KEYS.MEMORIES, m, 'mem', 'memories'),
     deleteMemory: async (id: string) => {
         addPendingDelete('memories', id);
@@ -1275,11 +1346,32 @@ export const StorageService = {
             MEDIA_MEMORY_CACHE.delete(item.imageId);
         }
         if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
-        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
-        if (item?.videoStoragePath) MediaStorageService.deleteMedia(item.videoStoragePath);
+        if (item?.audioId) await deleteRaw(STORES.IMAGES, item.audioId);
+        const remoteMediaDeletes: Promise<boolean>[] = [];
+        if (item?.storagePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.storagePath));
+        if (item?.videoStoragePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.videoStoragePath));
+        if (item?.audioStoragePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.audioStoragePath));
         DATA_CACHE.memories = DATA_CACHE.memories.filter(m => m.id !== id);
         await writeRaw(STORES.DATA, CACHE_KEYS.MEMORIES, DATA_CACHE.memories);
+        const mediaDeleteResults = remoteMediaDeletes.length > 0
+            ? await Promise.allSettled(remoteMediaDeletes)
+            : [];
+        const remoteMediaDeleted = mediaDeleteResults.every((result) => result.status === 'fulfilled' && result.value === true);
+
+        // Immediate cloud delete so the record is removed before sync reconciliation.
+        // notifyUpdate below still keeps the standard sync path as backup.
+        let cloudRowDeleted = false;
+        try {
+            if (SupabaseService.init()) {
+                cloudRowDeleted = await SupabaseService.deleteItem('memories', id);
+            }
+        } catch {
+            cloudRowDeleted = false;
+        }
         notifyUpdate({ source: 'user', action: 'delete', table: 'memories', id });
+        if (!cloudRowDeleted || !remoteMediaDeleted) {
+            throw new Error('Memory deleted locally, but cloud deletion did not confirm. Sync will retry from the tombstone.');
+        }
     },
 
     async _purgeDailyPhotoLocalOnly(id: string, notifySource: 'sync' | 'user' = 'sync') {
@@ -1291,7 +1383,7 @@ export const StorageService = {
         if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
         DATA_CACHE.dailyPhotos = DATA_CACHE.dailyPhotos.filter(p => p.id !== id);
         await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, DATA_CACHE.dailyPhotos);
-        notifyUpdate({ source: notifySource, action: 'save', table: 'daily_photos', id });
+        notifyUpdate({ source: notifySource, action: 'delete', table: 'daily_photos', id });
     },
 
     getDailyPhotos: () => filterActiveDailyPhotos(DATA_CACHE.dailyPhotos),
@@ -1312,10 +1404,16 @@ export const StorageService = {
     },
 
     async cleanupDailyPhotos() {
-        const now = new Date();
+        const now = Date.now();
+        const normalized = normalizeDailyPhotos(DATA_CACHE.dailyPhotos, now, true);
+        if (normalized.length !== DATA_CACHE.dailyPhotos.length) {
+            DATA_CACHE.dailyPhotos = normalized;
+            await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, DATA_CACHE.dailyPhotos);
+            notifyUpdate({ source: 'sync', action: 'save', table: 'daily_photos', id: 'cleanup' });
+        }
 
         // Find expired photos
-        const expired = DATA_CACHE.dailyPhotos.filter(p => isDailyMomentExpired(p, now.getTime()));
+        const expired = DATA_CACHE.dailyPhotos.filter(p => isDailyMomentExpired(p, now));
 
         if (expired.length > 0) {
             for (const item of expired) {
@@ -1351,8 +1449,11 @@ export const StorageService = {
         notifyUpdate({ source: 'user', action: 'delete', table: 'dates', id });
     },
 
-    getEnvelopes: () => DATA_CACHE.envelopes,
-    saveEnvelope: (e: Envelope) => StorageService._saveInternal('envelopes', CACHE_KEYS.ENVELOPES, e, undefined, 'envelopes'),
+    getEnvelopes: () => {
+        DATA_CACHE.envelopes = normalizeEnvelopeList(DATA_CACHE.envelopes);
+        return DATA_CACHE.envelopes;
+    },
+    saveEnvelope: (e: Envelope) => StorageService._saveInternal('envelopes', CACHE_KEYS.ENVELOPES, normalizeEnvelope(e), undefined, 'envelopes'),
     deleteEnvelope: async (id: string) => {
         addPendingDelete('envelopes', id);
         DATA_CACHE.envelopes = DATA_CACHE.envelopes.filter(e => e.id !== id);
@@ -1393,10 +1494,21 @@ export const StorageService = {
         const rowMeta = data?.data
             ? { userId: data.user_id, coupleId: data.couple_id }
             : undefined;
-        const item = rowMeta ? { ...data.data, __rowMeta: rowMeta } : (data.data || data);
+        let item = rowMeta ? { ...data.data, __rowMeta: rowMeta } : (data.data || data);
         if (!item) return;
         const singletonTables = new Set(['couple_profile', 'pet_stats', 'together_music', 'our_room_state']);
         if (!singletonTables.has(table) && !item.id) return;
+
+        if (table === 'daily_photos') {
+            const normalizedDailyPhoto = normalizeDailyPhoto(item);
+            if (!normalizedDailyPhoto || isDailyMomentExpired(normalizedDailyPhoto)) {
+                if (DATA_CACHE.dailyPhotos.some((photo) => photo.id === item.id)) {
+                    await this._purgeDailyPhotoLocalOnly(item.id, 'sync');
+                }
+                return;
+            }
+            item = normalizedDailyPhoto;
+        }
 
         if (table === 'daily_photos' && isDailyMomentExpired(item)) {
             if (DATA_CACHE.dailyPhotos.some((photo) => photo.id === item.id)) {
@@ -1405,8 +1517,12 @@ export const StorageService = {
             return;
         }
 
-        // Never restore a tombstoned item — it was deleted locally and cloud hasn't caught up yet
-        if (isDeletedLocally(table, item.id)) return;
+        // Never restore a tombstoned item — it was deleted locally and cloud hasn't caught up yet.
+        // Also purge any stale cached copy so UI reloads cannot briefly resurrect it.
+        if (isDeletedLocally(table, item.id)) {
+            await this.handleCloudDelete(table, item.id);
+            return;
+        }
 
         const tableMap: Record<string, { cache: keyof typeof DATA_CACHE, key: string, prefix?: string }> = {
             memories: { cache: 'memories', key: CACHE_KEYS.MEMORIES, prefix: 'mem' },
@@ -1424,14 +1540,16 @@ export const StorageService = {
             time_capsules: { cache: 'timeCapsules', key: CACHE_KEYS.TIME_CAPSULES, prefix: 'cap' },
             surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES, prefix: 'surp' },
             voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES, prefix: 'vn' },
+            private_space_items: { cache: 'privateSpaceItems', key: CACHE_KEYS.PRIVATE_SPACE_ITEMS, prefix: 'priv' },
         };
 
         if (tableMap[table]) {
             const config = tableMap[table];
             const list = DATA_CACHE[config.cache] as any[];
             const isNew = !list.find(i => i.id === item.id);
+            const normalizedItem = table === 'envelopes' ? normalizeEnvelope(item as Envelope) : item;
             
-            await this._saveInternal(config.cache, config.key, item, config.prefix, table, 'sync');
+            await this._saveInternal(config.cache, config.key, normalizedItem, config.prefix, table, 'sync');
 
             // Send push notification if app is in background and item is new
             if (isNew && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
@@ -1446,11 +1564,11 @@ export const StorageService = {
             }
         } else if (table === 'couple_profile') {
             const local = this.getCoupleProfile();
-            if (item.anniversaryDate) {
-                // Only merge shared fields — never overwrite local identity (myName/partnerName)
-                // from cloud data. Each device owns its own identity; syncing would swap names.
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            if (item && typeof item === 'object') {
+                // Only merge shared fields; each account keeps its own local display identity.
                 const { myName: _m, partnerName: _p, ...sharedFromCloud } = item as any;
+                const hasSharedFields = Object.keys(sharedFromCloud).some((key) => sharedFromCloud[key] != null && sharedFromCloud[key] !== '');
+                if (!hasSharedFields) return;
                 this.saveCoupleProfile({ ...local, ...sharedFromCloud }, 'sync');
             }
         } else if (table === 'pet_stats') {
@@ -1514,6 +1632,7 @@ export const StorageService = {
             time_capsules: { cache: 'timeCapsules', key: CACHE_KEYS.TIME_CAPSULES },
             surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES },
             voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES },
+            private_space_items: { cache: 'privateSpaceItems', key: CACHE_KEYS.PRIVATE_SPACE_ITEMS },
         };
         if (tableToStorage[table]) {
             const cfg = tableToStorage[table];
@@ -1524,8 +1643,10 @@ export const StorageService = {
                 MEDIA_MEMORY_CACHE.delete(item.imageId);
             }
             if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
+            if (item?.audioId) await deleteRaw(STORES.IMAGES, item.audioId);
             if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
             if (item?.videoStoragePath) MediaStorageService.deleteMedia(item.videoStoragePath);
+            if (item?.audioStoragePath) MediaStorageService.deleteMedia(item.audioStoragePath);
             DATA_CACHE[cfg.cache] = list.filter(i => i.id !== id);
             await writeRaw(STORES.DATA, cfg.key, DATA_CACHE[cfg.cache]);
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
@@ -1609,7 +1730,10 @@ export const StorageService = {
         });
     },
 
-    getStoredTogetherMusicSource: async (): Promise<string | null> => readRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY),
+    getStoredTogetherMusicSource: async (): Promise<string | null> => {
+        const stored = await readRaw<string | null>(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY);
+        return stored ?? null;
+    },
     getTogetherMusic: async (): Promise<string | null> => {
         const stored = await readRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY) as string | null;
         if (!stored) return null;
@@ -1645,7 +1769,42 @@ export const StorageService = {
 
         const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: '', theme: 'rose' };
 
-        return { ...id, ...shared };
+        return applyLockedPairLink({ ...id, ...shared });
+    },
+
+    activateAccount: (userId: string | null) => {
+        const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
+        const previousUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID);
+
+        if (!normalizedUserId) {
+            if (previousUserId) {
+                backupCurrentProfileForAccount(previousUserId);
+            }
+            localStorage.removeItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID);
+            clearBaseProfileForAccountSwitch();
+            return;
+        }
+
+        if (previousUserId && previousUserId !== normalizedUserId) {
+            backupCurrentProfileForAccount(previousUserId);
+        }
+
+        localStorage.setItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID, normalizedUserId);
+        restoreAccountScopedFlagsForAccount(normalizedUserId);
+        const restoredScopedProfile = restoreAccountScopedProfile(normalizedUserId);
+        if (!restoredScopedProfile) {
+            if (previousUserId && previousUserId !== normalizedUserId) {
+                clearBaseProfileForAccountSwitch();
+                restoreAccountScopedFlagsForAccount(normalizedUserId);
+            } else {
+                backupCurrentProfileForAccount(normalizedUserId);
+            }
+        }
+    },
+
+    prepareForSignOut: () => {
+        const activeUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID) || SupabaseService.getCachedUserId();
+        backupCurrentProfileForAccount(activeUserId);
     },
 
     hasCompletedOnboarding: (): boolean => {
@@ -1654,17 +1813,10 @@ export const StorageService = {
             return true;
         }
 
-        // Only derive completion from profile data for unauthenticated/offline mode.
-        // Authenticated accounts should rely on their own scoped flag so one account
-        // does not inherit another account's onboarding state on a shared device.
-        if (SupabaseService.getCachedUserId()) {
-            return false;
-        }
-
         const profile = StorageService.getCoupleProfile();
         const hasProfileIdentity = typeof profile.myName === 'string' && profile.myName.trim().length > 0;
-        const hasAnniversary = typeof profile.anniversaryDate === 'string' && profile.anniversaryDate.trim().length > 0;
-        const derivedCompletion = hasProfileIdentity && hasAnniversary;
+        const hasPairLink = Boolean(cleanString(profile.coupleId) && cleanString(profile.partnerUserId));
+        const derivedCompletion = hasProfileIdentity || hasPairLink;
 
         if (derivedCompletion) {
             StorageService.markOnboardingComplete();
@@ -1713,14 +1865,21 @@ export const StorageService = {
     },
 
     saveCoupleProfile: (p: CoupleProfile, source: 'user' | 'sync' = 'user') => {
-        const sanitizedProfile = normalizeIdentityPair(sanitizeUserContent(p));
+        const currentProfile = StorageService.getCoupleProfile();
+        const sanitizedProfile = applyLockedPairLink(
+            normalizeIdentityPair(sanitizeUserContent(p)),
+            currentProfile,
+        ) as CoupleProfile;
+        persistLockedPairLink(sanitizedProfile);
         const identityProfile = { myName: sanitizedProfile.myName, partnerName: sanitizedProfile.partnerName };
         localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify(identityProfile));
+        persistScopedLocalStorageJson(CACHE_KEYS.IDENTITY, identityProfile);
         writeRaw(STORES.DATA, CACHE_KEYS.IDENTITY, identityProfile);
         const sharedProfile = { ...sanitizedProfile };
         delete (sharedProfile as any).myName;
         delete (sharedProfile as any).partnerName;
         localStorage.setItem(CACHE_KEYS.SHARED_PROFILE, JSON.stringify(sharedProfile));
+        persistScopedLocalStorageJson(CACHE_KEYS.SHARED_PROFILE, sharedProfile);
 
         // BACKUP TO INDEXEDDB (Deep Lock)
         writeRaw(STORES.DATA, CACHE_KEYS.SHARED_PROFILE, sharedProfile);
@@ -1893,45 +2052,50 @@ export const StorageService = {
     getMoodEntries: (): MoodEntry[] => {
         if (DATA_CACHE.moodEntries.length > 0) return DATA_CACHE.moodEntries;
         const str = localStorage.getItem(CACHE_KEYS.MOOD_ENTRIES);
-        if (str) {
-            DATA_CACHE.moodEntries = JSON.parse(str);
+        if (!str) return [];
+        try {
+            DATA_CACHE.moodEntries = normalizeMoodEntries(JSON.parse(str));
+            localStorage.setItem(CACHE_KEYS.MOOD_ENTRIES, JSON.stringify(DATA_CACHE.moodEntries));
+            writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, DATA_CACHE.moodEntries);
             return DATA_CACHE.moodEntries;
+        } catch {
+            DATA_CACHE.moodEntries = [];
+            localStorage.removeItem(CACHE_KEYS.MOOD_ENTRIES);
+            writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, []);
+            return [];
         }
-        return [];
     },
 
     saveMoodEntry: (entry: MoodEntry, source: 'user' | 'sync' = 'user') => {
+        const normalized = normalizeMoodEntry(sanitizeUserContent(entry));
+        if (!normalized) return;
         const entries = StorageService.getMoodEntries();
-        const existingIdx = entries.findIndex(e => e.id === entry.id);
+        const existingIdx = entries.findIndex(e => e.id === normalized.id);
         if (existingIdx >= 0) {
-            entries[existingIdx] = entry;
+            entries[existingIdx] = normalized;
         } else {
-            entries.push(entry);
+            entries.push(normalized);
         }
-        localStorage.setItem(CACHE_KEYS.MOOD_ENTRIES, JSON.stringify(entries));
-        writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, entries);
-        notifyUpdate({ source, action: 'save', table: 'mood_entries', id: entry.id, item: entry });
+        DATA_CACHE.moodEntries = normalizeMoodEntries(entries);
+        localStorage.setItem(CACHE_KEYS.MOOD_ENTRIES, JSON.stringify(DATA_CACHE.moodEntries));
+        writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, DATA_CACHE.moodEntries);
+        notifyUpdate({ source, action: 'save', table: 'mood_entries', id: normalized.id, item: normalized });
     },
 
     getPetStats: (): PetStats => {
         const str = localStorage.getItem(CACHE_KEYS.PET_STATS);
-        const defaults: PetStats = {
-            name: 'Coco', type: 'bear', lastFed: '1970-01-01T00:00:00.000Z', lastPetted: '1970-01-01T00:00:00.000Z', happiness: 50,
-            xp: 0,
-            careStreak: 0,
-            presenceStreak: 0,
-            bondMoments: 0,
-            coins: 0, inventory: [], equipped: {}
-        };
         if (str) {
-            const parsed = JSON.parse(str);
-            return { ...defaults, ...parsed };
+            try {
+                return normalizePetStats(JSON.parse(str));
+            } catch {
+                return normalizePetStats(null);
+            }
         }
-        return defaults;
+        return normalizePetStats(null);
     },
 
     savePetStats: (s: PetStats, source: 'user' | 'sync' = 'user') => {
-        const sanitizedStats = sanitizeUserContent(s);
+        const sanitizedStats = normalizePetStats(sanitizeUserContent(s));
         localStorage.setItem(CACHE_KEYS.PET_STATS, JSON.stringify(sanitizedStats));
         // BACKUP TO INDEXEDDB (Deep Lock)
         writeRaw(STORES.DATA, CACHE_KEYS.PET_STATS, sanitizedStats);
@@ -2060,118 +2224,15 @@ export const StorageService = {
         notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
     },
 
-
-    getUsBucketItems: (): UsBucketItem[] => {
-        if (DATA_CACHE.usBucketItems.length > 0) return DATA_CACHE.usBucketItems;
-        const raw = localStorage.getItem(CACHE_KEYS.US_BUCKET_ITEMS) || localStorage.getItem('lior_bucket');
-        try {
-            const parsed = raw ? JSON.parse(raw) : [];
-            DATA_CACHE.usBucketItems = Array.isArray(parsed) ? parsed : [];
-            return DATA_CACHE.usBucketItems;
-        } catch {
-            DATA_CACHE.usBucketItems = [];
-            return [];
-        }
-    },
-
-    saveUsBucketItem: (item: UsBucketItem, source: 'user' | 'sync' = 'user') => {
-        const sanitized = sanitizeUserContent(item);
-        const list = StorageService.getUsBucketItems();
-        const idx = list.findIndex((it) => it.id === sanitized.id);
-        if (idx >= 0) list[idx] = sanitized;
-        else list.unshift(sanitized);
-        DATA_CACHE.usBucketItems = list;
-        localStorage.setItem(CACHE_KEYS.US_BUCKET_ITEMS, JSON.stringify(list));
-        localStorage.setItem('lior_bucket', JSON.stringify(list)); // legacy key mirror
-        writeRaw(STORES.DATA, CACHE_KEYS.US_BUCKET_ITEMS, list);
-        notifyUpdate({ source, action: 'save', table: 'us_bucket_items', id: sanitized.id, item: sanitized });
-    },
-
-    deleteUsBucketItem: (id: string, source: 'user' | 'sync' = 'user') => {
-        if (source === 'user') addPendingDelete('us_bucket_items', id);
-        DATA_CACHE.usBucketItems = StorageService.getUsBucketItems().filter((it) => it.id !== id);
-        localStorage.setItem(CACHE_KEYS.US_BUCKET_ITEMS, JSON.stringify(DATA_CACHE.usBucketItems));
-        localStorage.setItem('lior_bucket', JSON.stringify(DATA_CACHE.usBucketItems));
-        writeRaw(STORES.DATA, CACHE_KEYS.US_BUCKET_ITEMS, DATA_CACHE.usBucketItems);
-        notifyUpdate({ source, action: 'delete', table: 'us_bucket_items', id });
-    },
-
-    getUsWishlistItems: (): UsWishlistItem[] => {
-        if (DATA_CACHE.usWishlistItems.length > 0) return DATA_CACHE.usWishlistItems;
-        const raw = localStorage.getItem(CACHE_KEYS.US_WISHLIST_ITEMS) || localStorage.getItem('lior_wishlist');
-        try {
-            const parsed = raw ? JSON.parse(raw) : [];
-            const profile = StorageService.getCoupleProfile();
-            const normalized = (Array.isArray(parsed) ? parsed : []).map((item: any) => {
-                if (item.ownerName) return item;
-                if (item.owner === 'me') return { ...item, ownerName: profile.myName };
-                if (item.owner === 'partner') return { ...item, ownerName: profile.partnerName };
-                return { ...item, ownerName: profile.myName };
-            });
-            DATA_CACHE.usWishlistItems = normalized;
-            return DATA_CACHE.usWishlistItems;
-        } catch {
-            DATA_CACHE.usWishlistItems = [];
-            return [];
-        }
-    },
-
-    saveUsWishlistItem: (item: UsWishlistItem, source: 'user' | 'sync' = 'user') => {
-        const sanitized = sanitizeUserContent(item);
-        const list = StorageService.getUsWishlistItems();
-        const idx = list.findIndex((it) => it.id === sanitized.id);
-        if (idx >= 0) list[idx] = sanitized;
-        else list.unshift(sanitized);
-        DATA_CACHE.usWishlistItems = list;
-        localStorage.setItem(CACHE_KEYS.US_WISHLIST_ITEMS, JSON.stringify(list));
-        localStorage.setItem('lior_wishlist', JSON.stringify(list)); // legacy key mirror
-        writeRaw(STORES.DATA, CACHE_KEYS.US_WISHLIST_ITEMS, list);
-        notifyUpdate({ source, action: 'save', table: 'us_wishlist_items', id: sanitized.id, item: sanitized });
-    },
-
-    deleteUsWishlistItem: (id: string, source: 'user' | 'sync' = 'user') => {
-        if (source === 'user') addPendingDelete('us_wishlist_items', id);
-        DATA_CACHE.usWishlistItems = StorageService.getUsWishlistItems().filter((it) => it.id !== id);
-        localStorage.setItem(CACHE_KEYS.US_WISHLIST_ITEMS, JSON.stringify(DATA_CACHE.usWishlistItems));
-        localStorage.setItem('lior_wishlist', JSON.stringify(DATA_CACHE.usWishlistItems));
-        writeRaw(STORES.DATA, CACHE_KEYS.US_WISHLIST_ITEMS, DATA_CACHE.usWishlistItems);
-        notifyUpdate({ source, action: 'delete', table: 'us_wishlist_items', id });
-    },
-
-    getUsMilestones: (): UsMilestone[] => {
-        if (DATA_CACHE.usMilestones.length > 0) return DATA_CACHE.usMilestones;
-        const raw = localStorage.getItem(CACHE_KEYS.US_MILESTONES) || localStorage.getItem('lior_milestones');
-        try {
-            const parsed = raw ? JSON.parse(raw) : [];
-            DATA_CACHE.usMilestones = Array.isArray(parsed) ? parsed : [];
-            return DATA_CACHE.usMilestones;
-        } catch {
-            DATA_CACHE.usMilestones = [];
-            return [];
-        }
-    },
-
-    saveUsMilestone: (item: UsMilestone, source: 'user' | 'sync' = 'user') => {
-        const sanitized = sanitizeUserContent(item);
-        const list = StorageService.getUsMilestones();
-        const idx = list.findIndex((it) => it.id === sanitized.id);
-        if (idx >= 0) list[idx] = sanitized;
-        else list.push(sanitized);
-        DATA_CACHE.usMilestones = list;
-        localStorage.setItem(CACHE_KEYS.US_MILESTONES, JSON.stringify(list));
-        localStorage.setItem('lior_milestones', JSON.stringify(list)); // legacy key mirror
-        writeRaw(STORES.DATA, CACHE_KEYS.US_MILESTONES, list);
-        notifyUpdate({ source, action: 'save', table: 'us_milestones', id: sanitized.id, item: sanitized });
-    },
-
-    deleteUsMilestone: (id: string, source: 'user' | 'sync' = 'user') => {
-        if (source === 'user') addPendingDelete('us_milestones', id);
-        DATA_CACHE.usMilestones = StorageService.getUsMilestones().filter((it) => it.id !== id);
-        localStorage.setItem(CACHE_KEYS.US_MILESTONES, JSON.stringify(DATA_CACHE.usMilestones));
-        localStorage.setItem('lior_milestones', JSON.stringify(DATA_CACHE.usMilestones));
-        writeRaw(STORES.DATA, CACHE_KEYS.US_MILESTONES, DATA_CACHE.usMilestones);
-        notifyUpdate({ source, action: 'delete', table: 'us_milestones', id });
-    },
+    ...createUsCollectionsStorageDomain({
+        cache: DATA_CACHE,
+        cacheKeys: CACHE_KEYS,
+        getCoupleProfile: () => StorageService.getCoupleProfile(),
+        sanitizeUserContent,
+        addPendingDelete,
+        notifyUpdate,
+        persistData: (storageKey, value) => writeRaw(STORES.DATA, storageKey, value),
+    }),
 
     // ── Free-tier limits ────────────────────────────────────────────────────
     FREE_MEMORY_LIMIT: 50,
@@ -2191,131 +2252,31 @@ export const StorageService = {
         return todayPhotos.length >= this.FREE_DAILY_LIMIT;
     },
 
-    // ── Time Capsules ────────────────────────────────────────────────────────
-    getTimeCapsules: (): TimeCapsule[] => {
-        if (DATA_CACHE.timeCapsules.length > 0) return DATA_CACHE.timeCapsules;
-        const raw = localStorage.getItem(CACHE_KEYS.TIME_CAPSULES);
-        try {
-            const parsed = raw ? JSON.parse(raw) : [];
-            DATA_CACHE.timeCapsules = Array.isArray(parsed) ? parsed : [];
-        } catch { DATA_CACHE.timeCapsules = []; }
-        return DATA_CACHE.timeCapsules;
-    },
-
-    saveTimeCapsule: (item: TimeCapsule) => StorageService._saveInternal('timeCapsules', CACHE_KEYS.TIME_CAPSULES, item, 'cap', 'time_capsules'),
-
-    deleteTimeCapsule: async (id: string) => {
-        addPendingDelete('time_capsules', id);
-        const item = DATA_CACHE.timeCapsules.find(c => c.id === id);
-        if (item?.imageId) await deleteRaw(STORES.IMAGES, item.imageId);
-        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
-        DATA_CACHE.timeCapsules = DATA_CACHE.timeCapsules.filter(c => c.id !== id);
-        await writeRaw(STORES.DATA, CACHE_KEYS.TIME_CAPSULES, DATA_CACHE.timeCapsules);
-        notifyUpdate({ source: 'user', action: 'delete', table: 'time_capsules', id });
-    },
-
-    unlockTimeCapsule: async (id: string) => {
-        const idx = DATA_CACHE.timeCapsules.findIndex(c => c.id === id);
-        if (idx < 0) return;
-        DATA_CACHE.timeCapsules = DATA_CACHE.timeCapsules.map(c =>
-            c.id === id ? { ...c, isUnlocked: true } : c
-        );
-        await writeRaw(STORES.DATA, CACHE_KEYS.TIME_CAPSULES, DATA_CACHE.timeCapsules);
-        notifyUpdate({ source: 'user', action: 'save', table: 'time_capsules', id });
-    },
-
-    // ── Surprises ─────────────────────────────────────────────────────────────
-    getSurprises: (): Surprise[] => {
-        if (DATA_CACHE.surprises.length > 0) return DATA_CACHE.surprises;
-        const raw = localStorage.getItem(CACHE_KEYS.SURPRISES);
-        try {
-            const parsed = raw ? JSON.parse(raw) : [];
-            DATA_CACHE.surprises = Array.isArray(parsed) ? parsed : [];
-        } catch { DATA_CACHE.surprises = []; }
-        return DATA_CACHE.surprises;
-    },
-
-    saveSurprise: (item: Surprise) => StorageService._saveInternal('surprises', CACHE_KEYS.SURPRISES, item, 'surp', 'surprises'),
-
-    deleteSurprise: async (id: string) => {
-        addPendingDelete('surprises', id);
-        const item = DATA_CACHE.surprises.find(s => s.id === id);
-        if (item?.imageId) await deleteRaw(STORES.IMAGES, item.imageId);
-        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
-        DATA_CACHE.surprises = DATA_CACHE.surprises.filter(s => s.id !== id);
-        await writeRaw(STORES.DATA, CACHE_KEYS.SURPRISES, DATA_CACHE.surprises);
-        notifyUpdate({ source: 'user', action: 'delete', table: 'surprises', id });
-    },
-
-    markSurpriseDelivered: async (id: string) => {
-        DATA_CACHE.surprises = DATA_CACHE.surprises.map(s =>
-            s.id === id ? { ...s, delivered: true, deliveredAt: new Date().toISOString() } : s
-        );
-        await writeRaw(STORES.DATA, CACHE_KEYS.SURPRISES, DATA_CACHE.surprises);
-        notifyUpdate({ source: 'user', action: 'save', table: 'surprises', id });
-    },
-
-    // ── Voice Notes ──────────────────────────────────────────────────────────
-    getVoiceNotes: (): VoiceNote[] => {
-        if (DATA_CACHE.voiceNotes.length > 0) return DATA_CACHE.voiceNotes;
-        const raw = localStorage.getItem(CACHE_KEYS.VOICE_NOTES);
-        try {
-            const parsed = raw ? JSON.parse(raw) : [];
-            DATA_CACHE.voiceNotes = Array.isArray(parsed) ? parsed : [];
-        } catch { DATA_CACHE.voiceNotes = []; }
-        return DATA_CACHE.voiceNotes;
-    },
-
-    saveVoiceNote: (item: VoiceNote) => StorageService._saveInternal('voiceNotes', CACHE_KEYS.VOICE_NOTES, item, 'vn', 'voice_notes'),
-
-    deleteVoiceNote: async (id: string) => {
-        addPendingDelete('voice_notes', id);
-        const item = DATA_CACHE.voiceNotes.find(v => v.id === id);
-        if (item?.audioId) await deleteRaw(STORES.IMAGES, item.audioId);
-        if (item?.audioStoragePath) MediaStorageService.deleteMedia(item.audioStoragePath);
-        DATA_CACHE.voiceNotes = DATA_CACHE.voiceNotes.filter(v => v.id !== id);
-        await writeRaw(STORES.DATA, CACHE_KEYS.VOICE_NOTES, DATA_CACHE.voiceNotes);
-        notifyUpdate({ source: 'user', action: 'delete', table: 'voice_notes', id });
-    },
-
-    async saveVoiceNoteAudio(id: string, audioDataUri: string, options?: { ownerUserId?: string; createdAt?: string }): Promise<VoiceNoteAudioSaveResult> {
-        const audioId = `vn_${id}`;
-        const byteSize = estimateDataUriBytes(audioDataUri);
-        const mimeType = getMimeTypeFromDataUri(audioDataUri);
-        const existingNote = DATA_CACHE.voiceNotes.find(v => v.id === id);
-        assertManagedStorageBudget('voice-notes', byteSize, Number(existingNote?.audioBytes || 0));
-        await writeRaw(STORES.IMAGES, audioId, audioDataUri);
-        const path = await MediaStorageService.buildCustomPath(id, 'voice-notes', 'audio', {
-            ownerUserId: options?.ownerUserId,
-            timestamp: options?.createdAt,
-        });
-        const uploaded = await MediaStorageService.uploadMedia(audioDataUri, path, {
-            sourceTable: 'voice_notes',
-            logicalRowId: id,
-            itemId: id,
-            ownerUserId: options?.ownerUserId ?? null,
-            metadata: { mediaField: 'audio' },
-        });
-        const verified = uploaded ? await MediaStorageService.probeR2Path(uploaded) : false;
-        return {
-            storagePath: uploaded && verified === true ? uploaded : null,
-            byteSize,
-            mimeType,
-        };
-    },
-
-    async getVoiceNoteAudio(note: VoiceNote): Promise<string | null> {
-        if (note.audioId) {
-            const cached = await readRaw(STORES.IMAGES, note.audioId);
-            if (cached) return cached as string;
-        }
-        if (note.audioStoragePath) {
-            return await MediaStorageService.getAccessibleUrl(note.audioStoragePath)
-                || await MediaStorageService.downloadMedia(note.audioStoragePath)
-                || note.audioStoragePath;
-        }
-        return null;
-    },
+    ...createPersonalCollectionsStorageDomain({
+        cache: DATA_CACHE,
+        cacheKeys: CACHE_KEYS,
+        addPendingDelete,
+        notifyUpdate,
+        saveInternal: (listKey, storageKey, item, prefix, table, source) =>
+            StorageService._saveInternal(listKey as keyof typeof DATA_CACHE, storageKey, item, prefix, table, source),
+        persistData: (storageKey, value) => writeRaw(STORES.DATA, storageKey, value),
+        readMedia: async (id) => {
+            const cached = await readRaw<string>(STORES.IMAGES, id);
+            return cached || undefined;
+        },
+        writeMedia: (id, value) => writeRaw(STORES.IMAGES, id, value),
+        deleteMediaBlob: (id) => deleteRaw(STORES.IMAGES, id),
+        deleteMemoryCache: (id) => {
+            MEDIA_MEMORY_CACHE.delete(id);
+        },
+        sanitizeUserContent,
+        resolveOwnerUserId,
+        stripInternalRowMeta,
+        isInlineMediaPayload,
+        extractInlineMediaMeta,
+        assertManagedStorageBudget,
+        nowIso: () => new Date().toISOString(),
+    }),
 
     async exportAllData() {
         const [memories, dailyPhotos, keepsakes, togetherMusic] = await Promise.all([

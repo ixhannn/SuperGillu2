@@ -91,12 +91,187 @@ export type AdminMetric = {
   alert_count: number;
 };
 
+export type AdminTableCount = {
+  table: string;
+  count: number | null;
+  ok: boolean;
+  error: string | null;
+};
+
+export type AdminCleanupTask = {
+  id: string;
+  source_table: string;
+  logical_item_id: string | null;
+  couple_id: string | null;
+  feature: string;
+  storage_paths?: string[];
+  status: string;
+  attempts: number;
+  last_error: string | null;
+  run_after: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type AdminR2Usage = {
+  feature: string;
+  object_count: number;
+  total_bytes: number;
+  couple_count: number;
+};
+
+export type AdminR2Object = {
+  key: string;
+  size: number;
+  uploaded: string | null;
+  etag: string | null;
+  feature: string;
+  couple_id: string | null;
+  owner_user_id: string | null;
+  asset_role: string | null;
+  item_id: string | null;
+  managed: boolean;
+};
+
+export type AdminMediaSection = 'journey' | 'moments' | 'secret-space';
+
+export type AdminMediaItem = {
+  id: string;
+  section: AdminMediaSection;
+  sectionLabel: string;
+  feature: string | null;
+  sourceTable: string | null;
+  rowId: string | null;
+  logicalId: string | null;
+  title: string;
+  caption: string;
+  coupleId: string | null;
+  ownerUserId: string | null;
+  ownerFolder: string;
+  assetRole: 'image' | 'video' | 'audio' | 'track' | string;
+  mediaKind: 'image' | 'video' | 'audio';
+  r2Key: string | null;
+  legacyUrl: string | null;
+  legacyPath: string | null;
+  inlineOnly: boolean;
+  refField: string | null;
+  byteSize: number;
+  mimeType: string | null;
+  checksumSha256: string | null;
+  status: string;
+  uploadedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  expiresAt: string | null;
+  origin: string;
+};
+
+export type AdminMediaGallery = {
+  ok: boolean;
+  generatedAt: string;
+  limit: number;
+  totals: {
+    total: number;
+    journey: number;
+    moments: number;
+    secretSpace: number;
+    withR2Preview: number;
+    inlineOnly: number;
+    legacyRefs: number;
+    totalBytes: number;
+  };
+  sources: {
+    mediaAssets: number;
+    r2Objects: number;
+    tables: Array<{ table: string; ok: boolean; error: string | null; rowCount: number }>;
+  };
+  items: AdminMediaItem[];
+};
+
+export type AdminUserSummary = {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  createdAt: string | null;
+  lastSignInAt: string | null;
+  lastActivityAt: string | null;
+  coupleIds: string[];
+  roleByCouple: Record<string, string>;
+  rowCount: number;
+  mediaRefCount: number;
+  mediaCount: number;
+  mediaBytes: number;
+  missingMediaCount: number;
+  inlineRefCount: number;
+  legacyRefCount: number;
+  tableCounts: Record<string, number>;
+  mediaByFeature: Array<{ feature: string; count: number; bytes: number }>;
+};
+
+export type AdminUsersSnapshot = {
+  ok: boolean;
+  generatedAt: string;
+  limit: number;
+  totals: {
+    totalUsers: number;
+    totalRows: number;
+    totalMedia: number;
+    totalMediaBytes: number;
+    totalInlineRefs: number;
+    totalLegacyRefs: number;
+    totalMissingMedia: number;
+  };
+  sources: {
+    authUsers: { ok: boolean; error: string | null; count: number };
+    memberships: number;
+    mediaAssets: number;
+    tables: Array<{ table: string; ok: boolean; error: string | null; rowCount: number }>;
+  };
+  users: AdminUserSummary[];
+};
+
+export type AdminAppDataRow = {
+  table: string;
+  row_id: string | null;
+  logical_id: string | null;
+  user_id: string | null;
+  couple_id: string | null;
+  title: string;
+  created_at: string | null;
+  updated_at: string | null;
+  expires_at: string | null;
+  media_ref_count: number;
+  media_refs: Array<{ field: string; kind: string }>;
+  data_keys: string[];
+};
+
+export type AdminAppDataTable = {
+  table: string;
+  count: number | null;
+  ok: boolean;
+  error: string | null;
+  recent: AdminAppDataRow[];
+};
+
+export type AdminAppDataInventory = {
+  totals: {
+    available_tables: number;
+    unavailable_tables: number;
+    total_rows: number;
+    recent_rows: number;
+    media_refs: number;
+  };
+  tables: AdminAppDataTable[];
+};
+
 export type AdminDashboardSnapshot = {
   ok: boolean;
   generatedAt: string;
   worker: {
     bucketConfigured: boolean;
     supabaseConfigured: boolean;
+    cleanupTokenConfigured?: boolean;
+    adminTokenConfigured?: boolean;
   };
   overview: AdminOverviewSummary;
   couples: AdminCoupleUsage[];
@@ -104,6 +279,29 @@ export type AdminDashboardSnapshot = {
   alerts: AdminAlert[];
   events: AdminEvent[];
   metrics: AdminMetric[];
+  cleanupTasks?: AdminCleanupTask[];
+  r2?: {
+    summary: {
+      object_count: number;
+      total_bytes: number;
+      managed_count: number;
+      unmanaged_count: number;
+      latest_uploaded_at: string | null;
+      usage: AdminR2Usage[];
+    };
+    objects: AdminR2Object[];
+  };
+  appData?: AdminAppDataInventory;
+  health?: {
+    configIssues: string[];
+    tableCounts: AdminTableCount[];
+    dataCoverage: {
+      r2ObjectCount: number;
+      indexedObjectCount: number;
+      unindexedR2Objects: number;
+      mediaIndexCoveragePct: number | null;
+    };
+  };
   audit?: Record<string, unknown>;
   cleanup?: Record<string, unknown>;
 };
@@ -145,7 +343,7 @@ export const AdminDashboardApi = {
     config: AdminDashboardConfig,
     path: string,
     init: RequestInit = {},
-  ): Promise<AdminDashboardSnapshot> {
+  ): Promise<any> {
     const workerUrl = normalizeWorkerUrl(config.workerUrl);
     if (!workerUrl) throw new Error('Worker URL is required.');
     if (!config.token.trim()) throw new Error('Admin token is required.');
@@ -170,24 +368,63 @@ export const AdminDashboardApi = {
       throw new Error(payload?.error || `Request failed (${response.status})`);
     }
 
-    return payload as AdminDashboardSnapshot;
+    return payload;
   },
 
   fetchOverview(config: AdminDashboardConfig) {
-    return this.request(config, '/__admin/overview?assets=25&alerts=20&events=20&couples=25&days=14', {
+    return this.request(config, '/__admin/overview?assets=75&alerts=50&events=75&couples=50&days=30&r2Objects=75&appRows=5', {
       method: 'GET',
-    });
+    }) as Promise<AdminDashboardSnapshot>;
   },
 
-  runAudit(config: AdminDashboardConfig) {
-    return this.request(config, '/__admin/actions/audit', { method: 'POST', body: '{}' });
+  fetchMedia(config: AdminDashboardConfig) {
+    return this.request(config, '/__admin/media?limit=500', {
+      method: 'GET',
+    }) as Promise<AdminMediaGallery>;
   },
 
-  runCleanup(config: AdminDashboardConfig) {
-    return this.request(config, '/__admin/actions/cleanup', { method: 'POST', body: '{}' });
+  fetchUsers(config: AdminDashboardConfig) {
+    return this.request(config, '/__admin/users?limit=500', {
+      method: 'GET',
+    }) as Promise<AdminUsersSnapshot>;
   },
 
-  runRepair(config: AdminDashboardConfig) {
-    return this.request(config, '/__admin/actions/repair', { method: 'POST', body: '{}' });
+  async runAudit(config: AdminDashboardConfig) {
+    const action = await this.request(config, '/__admin/actions/audit', { method: 'POST', body: '{}' });
+    const overview = await this.fetchOverview(config);
+    return { ...overview, audit: action.audit };
+  },
+
+  async runCleanup(config: AdminDashboardConfig) {
+    const action = await this.request(config, '/__admin/actions/cleanup', { method: 'POST', body: '{}' });
+    const overview = await this.fetchOverview(config);
+    return { ...overview, cleanup: action.cleanup };
+  },
+
+  async runRepair(config: AdminDashboardConfig) {
+    const action = await this.request(config, '/__admin/actions/repair', { method: 'POST', body: '{}' });
+    const overview = await this.fetchOverview(config);
+    return { ...overview, repair: (action as any).repair } as AdminDashboardSnapshot & { repair?: Record<string, unknown> };
+  },
+
+  resolveAlert(config: AdminDashboardConfig, id: string) {
+    return this.request(config, '/__admin/actions/resolve-alert', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }) as Promise<{ ok: boolean; generatedAt: string; result: Record<string, unknown> }>;
+  },
+
+  retryCleanupTask(config: AdminDashboardConfig, id: string) {
+    return this.request(config, '/__admin/actions/retry-cleanup-task', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }) as Promise<{ ok: boolean; generatedAt: string; result: Record<string, unknown> }>;
+  },
+
+  verifyMedia(config: AdminDashboardConfig, r2Key: string) {
+    return this.request(config, '/__admin/actions/verify-media', {
+      method: 'POST',
+      body: JSON.stringify({ r2Key }),
+    }) as Promise<{ ok: boolean; generatedAt: string; result: Record<string, unknown> }>;
   },
 };

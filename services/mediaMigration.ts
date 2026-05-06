@@ -1,6 +1,7 @@
 import { StorageService } from './storage';
 import { SupabaseRowEnvelope, SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
+import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 
 const MIGRATION_KEY = 'lior_media_migrated_v6';
 
@@ -383,10 +384,8 @@ async function migrateTogetherMusic(result: MigrationResult, onProgress?: (msg: 
 const DAILY_VIDEO_MIGRATION_KEY = 'lior_daily_video_blob_migrated_v1';
 const LEGACY_MONTHLY_KEY = 'lior_monthly_video_compilations';
 const LEGACY_DAILY_VIDEO_V1_KEY = 'lior_daily_video_clips'; // kept; schema-compatible
-const DB_NAME = 'LiorVault_v11';
-const DB_VERSION = 1;
-const IMAGES_STORE = 'image_vault';
-const DATA_STORE = 'metadata_store';
+const IMAGES_STORE = STORES.IMAGES;
+const DATA_STORE = STORES.DATA;
 
 function openDailyVideoDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {

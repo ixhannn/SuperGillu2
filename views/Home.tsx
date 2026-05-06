@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, Brain, Video, Film } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, Brain, Video, Film, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
-import { differenceInDays, getYear, intervalToDuration, isAfter, setYear } from 'date-fns';
+import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
@@ -14,6 +14,7 @@ import { CouplePet } from '../components/CouplePet';
 import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
+import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -31,10 +32,15 @@ const getDisplayName = (value: string | undefined, fallback: string) => {
     return trimmed ? trimmed : fallback;
 };
 
-const parseAnniversaryDate = (value: string | undefined) => {
-    const parsed = value ? new Date(value) : new Date('');
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+const parseAnniversaryDate = (value: string | undefined) => parseStoredDateOnly(value);
+
+const getMemoryDateKey = (memory: Partial<Memory>): string | null => {
+    if (typeof memory.date !== 'string') return null;
+    const dateKey = memory.date.trim().split('T')[0];
+    return /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : null;
 };
+
+const isMemoryDateKey = (value: string | null): value is string => Boolean(value);
 
 const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note', item: Memory | Note }, onClose: () => void }) => {
     const { type, item } = content;
@@ -210,20 +216,34 @@ const ScrollReveal = ({ children, variant = 'fadeUp', delay = 0, className = '' 
 // Counting number animation hook
 const useCountUp = (target: number, inView: boolean, duration = 1800) => {
     const [count, setCount] = useState(0);
-    const hasRun = useRef(false);
+    const countRef = useRef(0);
 
     useEffect(() => {
-        if (!inView || hasRun.current || target === 0) return;
-        hasRun.current = true;
-        let startTime: number;
+        if (!inView) return;
+
+        if (target <= 0) {
+            countRef.current = 0;
+            setCount(0);
+            return;
+        }
+
+        const start = countRef.current;
+        const delta = target - start;
+        if (delta === 0) return;
+
+        let frameId = 0;
+        let startTime: number | null = null;
         const animate = (time: number) => {
-            if (!startTime) startTime = time;
+            if (startTime === null) startTime = time;
             const progress = Math.min((time - startTime) / duration, 1);
             const eased = 1 - Math.pow(1 - progress, 3);
-            setCount(Math.floor(eased * target));
-            if (progress < 1) requestAnimationFrame(animate);
+            const next = Math.round(start + delta * eased);
+            countRef.current = next;
+            setCount(next);
+            if (progress < 1) frameId = requestAnimationFrame(animate);
         };
-        requestAnimationFrame(animate);
+        frameId = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(frameId);
     }, [inView, target, duration]);
 
     return count;
@@ -245,6 +265,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [streak, setStreak] = useState(0);
     const [memories, setMemories] = useState<Memory[]>([]);
     const [notes, setNotes] = useState<Note[]>([]);
+    const [privateItemCount, setPrivateItemCount] = useState(0);
     const [showHeartbeat, setShowHeartbeat] = useState(false);
     const [receivedHeartbeat, setReceivedHeartbeat] = useState(false);
     const [isDissolving, setIsDissolving] = useState(false);
@@ -261,7 +282,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
     const calculateStreak = (mems: Memory[]) => {
         if (mems.length === 0) return 0;
-        const dates = [...new Set(mems.map(m => m.date.split('T')[0]))].sort().reverse();
+        const dates = [...new Set(mems.map(getMemoryDateKey).filter(isMemoryDateKey))].sort().reverse();
+        if (dates.length === 0) return 0;
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         if (dates[0] !== today && dates[0] !== yesterday) return 0;
@@ -282,22 +304,19 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         const now = new Date();
         const events: { title: string, date: Date }[] = [];
         specialDates.forEach(sd => {
-            let eventDate = new Date(sd.date);
+            let eventDate = parseStoredDateOnly(sd.date);
+            if (!eventDate) return;
             if (sd.type === 'birthday' || sd.type === 'anniversary') {
-                eventDate.setFullYear(now.getFullYear());
-                if (!isAfter(eventDate, now)) eventDate.setFullYear(now.getFullYear() + 1);
+                eventDate = getNextAnnualOccurrence(sd.date, now);
             }
-            if (isAfter(eventDate, now)) events.push({ title: sd.title, date: eventDate });
+            if (eventDate && calendarDayDifference(eventDate, now) >= 0) events.push({ title: sd.title, date: eventDate });
         });
-        const parsedAnniversary = parseAnniversaryDate(anniversaryDate);
-        if (parsedAnniversary) {
-            const anniv = new Date(parsedAnniversary);
-            anniv.setFullYear(now.getFullYear());
-            if (!isAfter(anniv, now)) anniv.setFullYear(now.getFullYear() + 1);
+        const anniv = getNextAnnualOccurrence(anniversaryDate, now);
+        if (anniv) {
             events.push({ title: 'Our Anniversary', date: anniv });
         }
         events.sort((a, b) => a.date.getTime() - b.date.getTime());
-        return events.length > 0 ? { title: events[0].title, days: differenceInDays(events[0].date, now) } : null;
+        return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
     };
 
     const loadData = () => {
@@ -313,7 +332,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         const now = new Date();
         const parsedAnniversary = parseAnniversaryDate(prof.anniversaryDate);
         const start = parsedAnniversary ?? now;
-        setDaysTogether(parsedAnniversary ? differenceInDays(now, start) : 0);
+        setDaysTogether(daysTogetherFrom(parsedAnniversary, now));
         if (parsedAnniversary && start <= now) {
             const dur = intervalToDuration({ start, end: now });
             const parts: string[] = [];
@@ -329,6 +348,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         const sds = StorageService.getSpecialDates();
         setMemories(mems);
         setNotes(nts);
+        setPrivateItemCount(StorageService.getPrivateSpaceItems().length);
         setStreak(calculateStreak(mems));
         setNextEvent(getNextEvent(sds, prof.anniversaryDate));
         const throwback = mems.find(m => {
@@ -371,10 +391,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             setIsTogether(partnerOnline);
         };
         syncEventTarget.addEventListener('presence-update', handlePresence);
-
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
 
         return () => {
             storageEventTarget.removeEventListener('storage-update', handleUpdate);
@@ -461,7 +477,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     };
 
     return (
-        <div className="px-5 relative parallax-container" style={homeContainerStyle}>
+        <div className="px-4 relative parallax-container" style={homeContainerStyle}>
             {/* Scroll-linked floating header bar */}
             <div
                 className="fixed top-0 left-0 right-0 z-30 pointer-events-none transition-opacity ease-out"
@@ -498,30 +514,62 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 >
                     <button
                         onClick={() => setView('profile')}
-                        className={`flex items-center gap-3.5 group transition-all duration-500 rounded-[1.5rem] ${isTogether ? 'glass-card p-2.5 pr-4 animate-glow-pulse' : 'p-0'}`}
+                        className={`group relative flex min-w-0 items-center transition-all duration-300 ${
+                            isTogether
+                                ? 'max-w-[calc(100vw-9.75rem)] gap-2.5 overflow-hidden rounded-[1.35rem] border px-2.5 py-2 pr-3 spring-press'
+                                : 'max-w-[calc(100vw-9rem)] gap-3.5 p-0'
+                        }`}
+                        style={isTogether ? {
+                            background: 'linear-gradient(145deg, rgba(255,218,192,0.82), rgba(232,200,178,0.70) 54%, rgba(210,232,192,0.62))',
+                            borderColor: 'rgba(176,111,88,0.22)',
+                            boxShadow: '0 8px 18px rgba(139,86,74,0.10), inset 0 1px 0 rgba(255,242,226,0.66)',
+                            backdropFilter: 'blur(12px) saturate(118%)',
+                            WebkitBackdropFilter: 'blur(12px) saturate(118%)',
+                        } : undefined}
+                        aria-label={`${getDisplayName(profile.myName, 'You')} and ${getDisplayName(profile.partnerName, 'Partner')}${isTogether ? ', live together now' : ', open profile'}`}
                     >
-                        <div
-                            className={`w-12 h-12 rounded-full bg-lior-50 overflow-hidden flex-shrink-0 transition-all duration-500 ${isTogether ? 'ring-[3px] ring-lior-300/50' : ''}`}
-                            style={{ boxShadow: '0 2px 8px rgba(251,207,232,0.1), 0 0 0 2px rgba(251,207,232,0.3)' }}
-                        >
-                            {profile.photo
-                                ? <img src={profile.photo} className="w-full h-full object-cover" alt="Profile" />
-                                : <div className="w-full h-full flex items-center justify-center text-lior-400"><Heart fill="currentColor" size={20} /></div>
-                            }
+                        <div className="relative flex-shrink-0">
+                            <div
+                                className={`overflow-hidden rounded-full bg-lior-50 transition-all duration-300 ${isTogether ? 'h-10 w-10' : 'h-12 w-12'}`}
+                                style={{
+                                    boxShadow: isTogether
+                                        ? '0 4px 10px rgba(124,76,67,0.12), 0 0 0 2px rgba(255,237,218,0.52)'
+                                        : '0 2px 8px rgba(251,207,232,0.1), 0 0 0 2px rgba(251,207,232,0.3)',
+                                }}
+                            >
+                                {profile.photo
+                                    ? <img src={profile.photo} className="w-full h-full object-cover" alt="Profile" />
+                                    : <div className="w-full h-full flex items-center justify-center text-lior-400"><Heart fill="currentColor" size={20} /></div>
+                                }
+                            </div>
+                            {isTogether && (
+                                <motion.span
+                                    className="absolute -right-0.5 bottom-0 h-3 w-3 rounded-full border-2 border-[#f7d6bf] bg-emerald-500"
+                                    animate={{ scale: [1, 1.13, 1], opacity: [0.78, 1, 0.78] }}
+                                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                                />
+                            )}
                         </div>
-                        <div className="text-left">
-                            <h1 className="font-serif text-headline text-gray-800 leading-none" style={{ fontSize: '1.625rem' }}>
-                                {profile.myName} <span className="text-lior-500">&</span> {profile.partnerName}
+                        <div className="min-w-0 text-left">
+                            <h1
+                                className="font-serif truncate text-gray-800 leading-none"
+                                style={{ fontSize: isTogether ? '1.22rem' : '1.625rem' }}
+                            >
+                                {getDisplayName(profile.myName, 'You')} <span className="text-lior-500">&</span> {getDisplayName(profile.partnerName, 'Partner')}
                             </h1>
-                            {streak > 0 && (
+                            {isTogether ? (
+                                <p className="mt-1 truncate text-[10px] font-extrabold leading-none tracking-[0.02em] text-[#386b4f]">
+                                    Together now
+                                </p>
+                            ) : streak > 0 && (
                                 <div className="inline-flex items-center gap-1 bg-amber-100/80 text-amber-600 px-2 py-0.5 rounded-full mt-1">
                                     <Zap size={10} fill="currentColor" />
                                     <span className="text-micro">{streak} Day Streak</span>
                                 </div>
                             )}
-                            {streak === 0 && (
-                                <p className={`text-micro mt-1 ${isTogether ? 'text-lior-500' : 'text-gray-400'}`}>
-                                    {isTogether ? 'Together right now' : 'Tap to edit profile'}
+                            {!isTogether && streak === 0 && (
+                                <p className="text-micro mt-1 text-gray-400">
+                                    Tap to edit profile
                                 </p>
                             )}
                         </div>
@@ -551,23 +599,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 </motion.button>
             </div>
 
-            {/* Together indicator */}
-            {isTogether && (
-                <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="mb-4"
-                >
-                    <div className="flex items-center gap-2 px-1">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sage-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-sage-500" />
-                        </span>
-                        <span className="text-micro text-sage-600">Both online</span>
-                    </div>
-                </motion.div>
-            )}
-
             {/* ── DAYS TOGETHER — Hero Card ────────────────────────────── */}
             <ScrollReveal variant="fadeScale">
                 <div ref={heroRef}>
@@ -576,7 +607,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         glare
                         scale={1.01}
                         onClick={() => setShowDetailedDuration(!showDetailedDuration)}
-                        className="relative overflow-hidden p-8 rounded-[1.75rem] mb-5 aurora-card border border-white/20 cursor-pointer"
+                        className="relative overflow-hidden p-6 rounded-[1.75rem] mb-4 aurora-card border border-white/20 cursor-pointer"
                         style={{
                             background: 'linear-gradient(135deg, #ec4899 0%, #f9a8d4 35%, #ec4899 70%, #f472b6 100%)',
                             boxShadow: '0 8px 32px rgba(251,207,232,0.25), 0 24px 64px rgba(251,207,232,0.10)',
@@ -870,11 +901,13 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
                 {/* Mood Board */}
                 <motion.div variants={gridItemVariants} className="col-span-1">
-                    <motion.div
+                    <motion.button
+                        type="button"
+                        aria-label="Open Aura Board"
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
                         onClick={() => setView('mood-calendar')}
-                        className="w-full h-full cursor-pointer"
+                        className="w-full h-full cursor-pointer text-left appearance-none border-0 bg-transparent p-0"
                     >
                         <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
                             <div className="mb-3">
@@ -882,10 +915,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                     <Sparkles size={22} className="text-pink-500" />
                                 </div>
                             </div>
-                            <span className="font-semibold text-sm text-gray-800">Mood Board</span>
-                            <span className="text-xs text-gray-400 mt-1">Daily colors & feelings</span>
+                            <span className="font-semibold text-sm text-gray-800">Aura Board</span>
+                            <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
                         </div>
-                    </motion.div>
+                    </motion.button>
                 </motion.div>
 
                 {/* Bonsai Bloom */}
@@ -904,6 +937,46 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             </div>
                             <span className="font-semibold text-sm text-gray-800">Bonsai</span>
                             <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Private Space */}
+                <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
+                    <motion.div
+                        whileTap={{ scale: 0.98 }}
+                        transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                        onClick={() => setView('private-space')}
+                        className="w-full cursor-pointer"
+                    >
+                        <div
+                            className="relative overflow-hidden rounded-[1.5rem] px-4 py-3.5 spring-press"
+                            style={{
+                                background: 'linear-gradient(145deg, rgba(255,255,255,0.78), rgba(246,242,248,0.70))',
+                                boxShadow: '0 6px 16px rgba(90,82,102,0.06), inset 0 1px 0 rgba(255,255,255,0.92)',
+                                border: '1px solid rgba(255,255,255,0.72)',
+                            }}
+                        >
+                            <div className="relative flex items-center gap-3.5">
+                                <motion.div
+                                    animate={{ scale: [1, 1.04, 1], opacity: [0.92, 1, 0.92] }}
+                                    transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                                    style={{
+                                        background: 'linear-gradient(145deg, #ffffff, #f3eef7)',
+                                        boxShadow: '0 4px 10px rgba(90,82,102,0.08), inset 0 1px 0 rgba(255,255,255,0.96), inset 0 -1px 0 rgba(174,154,194,0.08)',
+                                    }}
+                                >
+                                    <Lock size={17} strokeWidth={2.2} style={{ color: '#8e78a2' }} />
+                                </motion.div>
+                                <div className="flex-1 min-w-0 text-left">
+                                    <p className="font-serif text-[1.02rem] font-semibold leading-tight" style={{ color: '#5a5266' }}>Private Space</p>
+                                    <p className="mt-0.5 text-[0.72rem]" style={{ color: '#867b94' }}>
+                                        {privateItemCount > 0 ? `${privateItemCount} sealed ${privateItemCount === 1 ? 'item' : 'items'}` : 'Just for the two of you'}
+                                    </p>
+                                </div>
+                                <ChevronRight size={16} style={{ color: '#b8a4c8' }} />
+                            </div>
                         </div>
                     </motion.div>
                 </motion.div>
@@ -994,15 +1067,15 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                         </motion.div>
                                     </motion.div>
 
-                                    {/* Time Capsule */}
+                                    {/* Future Letters */}
                                     <motion.div variants={gridItemVariants}>
                                         <motion.div whileTap={{ scale: 0.92, y: 2 }} transition={{ type: 'spring', stiffness: 600, damping: 26 }} onClick={() => setView('time-capsule')} className="w-full h-full cursor-pointer">
                                             <div className="bento-card p-4 flex flex-col items-center text-center h-full relative overflow-hidden spring-press">
                                                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-2.5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.18)' }}>
                                                     <Lock size={20} style={{ color: '#d97706' }} />
                                                 </div>
-                                                <span className="font-semibold text-[13px] text-gray-800 leading-tight">Capsule</span>
-                                                <span className="text-[10px] text-gray-400 mt-0.5 leading-snug">Seal letters</span>
+                                                <span className="font-semibold text-[13px] text-gray-800 leading-tight">Future Letters</span>
+                                                <span className="text-[10px] text-gray-400 mt-0.5 leading-snug">Open later</span>
                                             </div>
                                         </motion.div>
                                     </motion.div>

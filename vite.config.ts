@@ -40,7 +40,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react(), devCspPlugin()],
     build: {
-      chunkSizeWarningLimit: 2200,
+      chunkSizeWarningLimit: 760,
       rollupOptions: {
         output: {
           manualChunks(id) {

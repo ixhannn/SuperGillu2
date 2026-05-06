@@ -3,6 +3,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform, animate } from '
 import { Heart, ArrowRight, Calendar, UserPlus, Sparkles } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { Haptics } from '../services/haptics';
+import { dateInputValueToStoredDate, daysTogetherFrom, parseStoredDateOnly, todayInputValue } from '../shared/dateOnly.js';
 
 interface OnboardingProps {
     onComplete: (myName: string, partnerName: string) => void;
@@ -329,8 +330,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
     const daysApart = useMemo(() => {
         if (!anniversary) return 0;
-        const diff = Date.now() - new Date(anniversary).getTime();
-        return Math.max(0, Math.floor(diff / 86_400_000));
+        const parsedAnniversary = parseStoredDateOnly(anniversary);
+        return parsedAnniversary ? daysTogetherFrom(parsedAnniversary) : 0;
     }, [anniversary]);
 
     const dotIndex = step === 'myName' ? 0 : step === 'anniversary' ? 1 : -1;
@@ -349,7 +350,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             ...profile,
             myName: myName.trim(),
             anniversaryDate: anniversary
-                ? new Date(anniversary).toISOString()
+                ? dateInputValueToStoredDate(anniversary)
                 : profile.anniversaryDate,
         });
         StorageService.markOnboardingComplete();
@@ -630,7 +631,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                         setAnniversary(e.target.value);
                                         if (e.target.value) Haptics.success();
                                     }}
-                                    max={new Date().toISOString().split('T')[0]}
+                                    max={todayInputValue()}
                                     style={{
                                         background: 'transparent',
                                         border: 'none',

@@ -21,8 +21,38 @@ assert.match(
 
 assert.match(
   storageSource,
-  /hasCompletedOnboarding:\s*\(\): boolean => \{[\s\S]*if \(SupabaseService\.getCachedUserId\(\)\) \{[\s\S]*return false;[\s\S]*\}/,
-  'Expected authenticated onboarding checks to avoid inheriting another account\'s derived profile state on shared devices',
+  /activateAccount:\s*\(userId: string \| null\) => \{[\s\S]*restoreAccountScopedProfile\(normalizedUserId\)[\s\S]*clearBaseProfileForAccountSwitch\(\);/,
+  'Expected login to activate the current account profile before onboarding decisions are made',
+);
+
+assert.match(
+  storageSource,
+  /persistScopedLocalStorageJson\(CACHE_KEYS\.IDENTITY, identityProfile\);[\s\S]*persistScopedLocalStorageJson\(CACHE_KEYS\.SHARED_PROFILE, sharedProfile\);/,
+  'Expected saved couple profiles, including partner links, to be persisted under the active account scope',
+);
+
+assert.match(
+  storageSource,
+  /LINK_LOCK: 'lior_link_lock'/,
+  'Expected linked partners to have a dedicated local lock separate from normal profile fields',
+);
+
+assert.match(
+  storageSource,
+  /const applyLockedPairLink = <T extends Partial<CoupleProfile>>\(profile: T, current\?: Partial<CoupleProfile>\): T => \{[\s\S]*Ignoring attempted partner relink[\s\S]*coupleId: activeLock\.coupleId,[\s\S]*partnerUserId: activeLock\.partnerUserId,/,
+  'Expected existing coupleId and partnerUserId to be reapplied when stale profile data tries to clear or replace them',
+);
+
+assert.match(
+  storageSource,
+  /persistLockedPairLink\(sanitizedProfile\);/,
+  'Expected complete pair links to be locked whenever the couple profile is saved',
+);
+
+assert.doesNotMatch(
+  storageSource,
+  /if \(SupabaseService\.getCachedUserId\(\)\) \{[\s\S]*return false;[\s\S]*\}/,
+  'Authenticated accounts with a restored complete profile must not be forced through onboarding again',
 );
 
 assert.match(
@@ -41,6 +71,12 @@ assert.match(
   appSource,
   /const hasCompletedOnboarding = \(\) => StorageService\.hasCompletedOnboarding\(\);/,
   'Expected the app bootstrap to rely on StorageService for onboarding persistence logic',
+);
+
+assert.match(
+  appSource,
+  /SupabaseService\.setCachedUserId\(session\?\.user\?\.id \|\| null\);\s*StorageService\.activateAccount\(session\?\.user\?\.id \|\| null\);/,
+  'Expected app bootstrap to restore the signed-in account profile before initializing sync or checking onboarding',
 );
 
 assert.match(

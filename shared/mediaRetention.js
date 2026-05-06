@@ -33,7 +33,7 @@ export function resolveExpiryMs(feature, expiresAt, createdAt = null) {
 
 export function isExpiredAt(feature, expiresAt, now = Date.now(), createdAt = null) {
   const expiresMs = resolveExpiryMs(feature, expiresAt, createdAt);
-  if (!Number.isFinite(expiresMs)) return false;
+  if (!Number.isFinite(expiresMs)) return isFeatureEphemeral(feature);
   return expiresMs <= now;
 }
 
@@ -45,9 +45,9 @@ export function getDailyMomentCountdown(item, now = Date.now()) {
   const expiresMs = resolveExpiryMs('daily-moments', item?.expiresAt, item?.createdAt);
   if (!Number.isFinite(expiresMs)) {
     return {
-      state: 'unknown',
-      label: 'Expiring soon',
-      compactLabel: 'Soon',
+      state: 'expired',
+      label: 'Expired',
+      compactLabel: 'Expired',
       expiresMs: null,
     };
   }

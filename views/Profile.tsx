@@ -10,6 +10,7 @@ import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
 import { formatBytes } from '../shared/mediaPolicy.js';
 import { InternalAdminService } from '../services/internalAdmin';
+import { dateInputValueToStoredDate, formatStoredDate, storedDateToInputValue } from '../shared/dateOnly.js';
 
 interface ProfileProps {
     setView: (view: ViewState) => void;
@@ -376,6 +377,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const handleSignOut = async () => {
         if (confirm("Sign out on this device? You can sign back in anytime.")) {
             try {
+                StorageService.prepareForSignOut();
                 if (SupabaseService.client) {
                     const { error } = await SupabaseService.client.auth.signOut();
                     if (error) {
@@ -383,6 +385,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                         return;
                     }
                 }
+                SupabaseService.setCachedUserId(null);
+                StorageService.activateAccount(null);
                 window.location.reload();
             } catch (error) {
                 console.error(error);
@@ -558,7 +562,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                         </p>
                                         {profile.anniversaryDate && (
                                             <p className="text-[12px] mt-1 font-medium" style={{ color: activeTheme.palette[500] }}>
-                                                Together since {new Date(profile.anniversaryDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                                                Together since {formatStoredDate(profile.anniversaryDate, { month: 'long', year: 'numeric' }, 'en-US')}
                                             </p>
                                         )}
                                     </>
@@ -594,8 +598,8 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                             <label className="text-[15px] font-medium w-[110px] flex-shrink-0" style={{ color: 'var(--color-text-primary)' }}>Anniversary</label>
                             <input
                                 type="date"
-                                value={profile.anniversaryDate ? new Date(profile.anniversaryDate).toISOString().split('T')[0] : ''}
-                                onChange={(e) => handleChange('anniversaryDate', e.target.value ? new Date(e.target.value).toISOString() : '')}
+                                value={storedDateToInputValue(profile.anniversaryDate)}
+                                onChange={(e) => handleChange('anniversaryDate', e.target.value ? dateInputValueToStoredDate(e.target.value) : '')}
                                 className="flex-1 bg-transparent py-3 text-[15px] outline-none text-right"
                                 style={{ color: 'var(--color-text-primary)' }}
                             />

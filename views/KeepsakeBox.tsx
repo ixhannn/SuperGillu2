@@ -14,6 +14,7 @@ import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { ViewHeader } from '../components/ViewHeader';
 import { SectionDivider } from './Home';
+import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
 
 interface KeepsakeBoxProps {
     setView: (view: ViewState) => void;
@@ -22,7 +23,9 @@ interface KeepsakeBoxProps {
 const normalizeSenderName = (senderId?: string) => senderId === 'Lior' ? 'Tulika' : senderId;
 
 const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void, isReacted?: boolean, onReact?: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick, isReacted, onReact }) => {
-    const { src: mediaSrc, handleError: handleMediaError } = useLiorMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, keepsake.storagePath || keepsake.videoStoragePath);
+    const imageStoragePath = selectImageStoragePath(keepsake.storagePath, keepsake.imageMimeType);
+    const videoStoragePath = selectVideoStoragePath(keepsake.videoStoragePath, keepsake.storagePath, keepsake.videoMimeType || keepsake.imageMimeType);
+    const { src: mediaSrc, handleError: handleMediaError } = useLiorMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, imageStoragePath || videoStoragePath);
 
     const formattedDate = new Date(keepsake.date).toLocaleDateString(undefined, {
         year: 'numeric', month: 'short', day: 'numeric'
@@ -121,11 +124,16 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
 
 // Extracted to separate component so we can use hooks conditionally for the specific opened keepsake
 const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void }> = ({ keepsake, onClose }) => {
+    const imageStoragePath = selectImageStoragePath(keepsake.storagePath, keepsake.imageMimeType);
+    const videoStoragePath = selectVideoStoragePath(keepsake.videoStoragePath, keepsake.storagePath, keepsake.videoMimeType || keepsake.imageMimeType);
+    const hasMedia = !!(keepsake.image || keepsake.video || keepsake.imageId || keepsake.videoId || imageStoragePath || videoStoragePath);
+    const isVideo = !!(keepsake.video || keepsake.videoId || videoStoragePath);
+
     // For detail views, we want the FULL resolution image/video
     const { src: mediaUrl, isLoading, handleError: handleMediaError } = useLiorMedia(
         keepsake.videoId || keepsake.imageId,
         keepsake.video || keepsake.image,
-        keepsake.videoStoragePath || keepsake.storagePath
+        videoStoragePath || imageStoragePath
     );
 
     return (
@@ -145,14 +153,14 @@ const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void 
                     </h3>
                 )}
 
-                {(keepsake.image || keepsake.video || keepsake.imageId || keepsake.videoId) && (
+                {hasMedia && (
                     <div className="rounded-2xl overflow-hidden mb-8 border-2 border-white/10 bg-white/5 flex items-center justify-center min-h-[200px] relative">
                         {isLoading ? (
                            <div className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center">
                                <div className="w-8 h-8 rounded-full border-4 border-gray-600 border-t-lior-400 animate-spin"></div>
                            </div>
                         ) : (
-                            keepsake.video || keepsake.videoId ? (
+                            isVideo ? (
                                 <video src={mediaUrl || ''} controls autoPlay className="max-w-full max-h-[40vh] object-contain relative z-10" onError={handleMediaError} />
                             ) : (
                                 <img src={mediaUrl || ''} className="max-w-full max-h-[40vh] object-contain relative z-10" alt="Keepsake" onError={handleMediaError} />

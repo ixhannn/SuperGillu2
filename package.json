@@ -5,17 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:admin": "vite --config vite.admin.config.ts",
-    "build": "vite build",
-    "build:admin": "vite build --config vite.admin.config.ts",
+    "dev:admin": "npm --prefix admin-dashboard run dev",
+    "build": "vite build && node scripts/check-bundle-budget.mjs",
+    "build:admin": "npm --prefix admin-dashboard run build",
     "preview": "vite preview",
-    "preview:admin": "vite preview --config vite.admin.config.ts --outDir dist-admin",
+    "preview:admin": "npm --prefix admin-dashboard run preview",
     "brain:build": "python scripts/graphify_second_brain.py",
     "brain:watch": "python scripts/graphify_second_brain.py --watch",
+    "lint": "eslint App.tsx components/AmbientVisuals.tsx components/DeferredOverlays.tsx components/OfflineNotice.tsx components/ErrorBoundary.tsx components/partner-intelligence/PartnerIntelligenceVisuals.tsx views/StorageConsole.tsx views/viewRegistry.tsx views/OurRoom.tsx views/PartnerIntelligenceView.tsx services/diagnostics.ts services/e2eHarness.ts services/storage.ts \"services/storage/*.ts\" utils/runtimeProfile.ts scripts/check-bundle-budget.mjs \"tests/browser/**/*.ts\" \"tests/unit/**/*.ts\" \"tests/*.assert.mjs\" tests/run-assertions.mjs vitest.config.ts playwright.config.ts eslint.config.js --max-warnings=0",
     "test": "node tests/run-assertions.mjs",
+    "test:browser": "playwright test",
+    "test:browser:mobile": "playwright test tests/browser/mobileRegression.spec.ts",
+    "test:unit": "vitest run",
     "typecheck": "npm run typecheck:app && npm run typecheck:supabase",
     "typecheck:app": "npx tsc --noEmit -p tsconfig.json",
-    "typecheck:supabase": "npx tsc --noEmit -p tsconfig.supabase.json"
+    "typecheck:supabase": "npx tsc --noEmit -p tsconfig.supabase.json",
+    "verify": "npm run lint && npm run test:unit && npm test && npm run typecheck && npm run build && npm run test:browser",
+    "integrity": "npm run verify"
   },
   "overrides": {
     "@xmldom/xmldom": "0.8.12"
@@ -41,16 +47,24 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "recharts": "^3.8.1",
     "three": "^0.183.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.56.1",
     "@types/node": "^22.14.0",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.27",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.5.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.8.2",
-    "vite": "^8.0.8"
+    "typescript-eslint": "^8.59.1",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.5"
   }
 }

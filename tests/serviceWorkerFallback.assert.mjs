@@ -2,11 +2,24 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const swSource = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const publicSwSource = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 
 assert.match(
   swSource,
-  /const CACHE_NAME = 'lior-v5';/,
+  /const CACHE_NAME = 'lior-v6';/,
   'Expected the service worker cache version to roll forward after startup safety fixes',
+);
+
+assert.match(
+  publicSwSource,
+  /const CACHE_NAME = 'lior-v6';/,
+  'Expected the built public service worker to use the current cache version',
+);
+
+assert.match(
+  publicSwSource,
+  /url\.hostname\.includes\('workers\.dev'\)/,
+  'Expected media worker requests to bypass the service worker cache',
 );
 
 assert.match(

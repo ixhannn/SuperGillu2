@@ -126,7 +126,7 @@ export interface StreakData {
 export interface CoupleProfile {
   myName: string;
   partnerName: string;
-  anniversaryDate: string; // ISO string
+  anniversaryDate: string; // YYYY-MM-DD date-only string; legacy ISO strings are parsed safely
   photo?: string; // Base64 data URI
   theme?: string; // 'rose', 'blue', 'green', 'orange', 'purple', 'dark'
   isPremium?: boolean; // Premium status for unlocking features like video uploads
@@ -215,6 +215,8 @@ export interface MoodEntry {
   mood: string;
   timestamp: string; // ISO string
   note?: string;
+  /** Optional intensity 1–5. Powers the Aura Board's depth visualizations. */
+  intensity?: number;
 }
 
 export interface TimeCapsule {
@@ -262,6 +264,34 @@ export interface VoiceNote {
   duration: number; // seconds
   createdAt: string; // ISO string
   senderId: string;
+}
+
+export type PrivateSpaceItemKind = 'photo' | 'video' | 'audio' | 'note';
+
+export interface PrivateSpaceItem {
+  id: string;
+  kind: PrivateSpaceItemKind;
+  title: string;
+  note?: string;
+  image?: string;
+  imageId?: string;
+  imageBytes?: number;
+  imageMimeType?: string;
+  video?: string;
+  videoId?: string;
+  videoBytes?: number;
+  videoMimeType?: string;
+  audio?: string;
+  audioId?: string;
+  audioBytes?: number;
+  audioMimeType?: string;
+  storagePath?: string;
+  videoStoragePath?: string;
+  audioStoragePath?: string;
+  ownerUserId?: string;
+  addedBy: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 // ── Daily Voice Moments (10-second ritual) ─────────────────────────
@@ -617,7 +647,7 @@ export interface SystemMessage {
   seenAt?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console';
 
 // ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {

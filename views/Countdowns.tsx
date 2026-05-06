@@ -4,23 +4,19 @@ import { ViewHeader } from '../components/ViewHeader';
 import { motion } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
-import { differenceInDays, isAfter, intervalToDuration, setYear, isBefore } from 'date-fns';
+import { countdownDateParts, daysUntilDate, getNextAnnualOccurrence, parseStoredDateOnly, formatStoredDate } from '../shared/dateOnly.js';
 
 interface CountdownsProps {
     setView: (view: ViewState) => void;
 }
 
 const LiveCountdown = ({ targetDate }: { targetDate: Date }) => {
-    const [timeLeft, setTimeLeft] = useState(intervalToDuration({ start: new Date(), end: targetDate }));
+    const getTimeLeft = () => countdownDateParts(targetDate, new Date());
+    const [timeLeft, setTimeLeft] = useState(getTimeLeft());
 
     useEffect(() => {
         const timer = setInterval(() => {
-            const now = new Date();
-            if (isAfter(now, targetDate)) {
-                clearInterval(timer);
-                return;
-            }
-            setTimeLeft(intervalToDuration({ start: now, end: targetDate }));
+            setTimeLeft(getTimeLeft());
         }, 1000);
         return () => clearInterval(timer);
     }, [targetDate]);
@@ -59,16 +55,10 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
     }, []);
 
     const calculateNextOccurence = (date: string, type: string) => {
-        const now = new Date();
-        let target = new Date(date);
-
         if (type === 'anniversary' || type === 'birthday') {
-            target.setFullYear(now.getFullYear());
-            if (isBefore(target, now)) {
-                target.setFullYear(now.getFullYear() + 1);
-            }
+            return getNextAnnualOccurrence(date) ?? new Date(Number.NaN);
         }
-        return target;
+        return parseStoredDateOnly(date) ?? new Date(Number.NaN);
     };
 
     const allEvents = [
@@ -83,7 +73,8 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
             type: 'anniversary' as const,
             nextDate: calculateNextOccurence(anniversaryDate, 'anniversary')
         }
-    ].sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime());
+    ].filter((event) => !Number.isNaN(event.nextDate.getTime()))
+        .sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime());
 
     const nextEvent = allEvents[0];
     const restEvents = allEvents.slice(1);
@@ -114,7 +105,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
 
                         <h3 className="text-3xl font-serif font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>{nextEvent.title}</h3>
                         <p className="text-sm mb-8 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                            {nextEvent.nextDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                            {formatStoredDate(nextEvent.nextDate, { weekday: 'long', month: 'long', day: 'numeric' })}
                         </p>
 
                         <LiveCountdown targetDate={nextEvent.nextDate} />
@@ -144,12 +135,12 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                             <div className="flex-1 min-w-0">
                                 <h5 className="font-bold text-lg truncate" style={{ color: 'var(--color-text-primary)' }}>{event.title}</h5>
                                 <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                                    {event.nextDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    {formatStoredDate(event.nextDate, { month: 'short', day: 'numeric' })}
                                 </p>
                             </div>
                             <div className="text-right">
                                 <span className="text-2xl font-bold font-mono text-lior-400">
-                                    {differenceInDays(event.nextDate, new Date())}
+                                    {daysUntilDate(event.nextDate)}
                                 </span>
                                 <span className="block text-[10px] uppercase font-bold" style={{ color: 'var(--color-text-secondary)' }}>Days To Go</span>
                             </div>

@@ -18,15 +18,9 @@ import {
   VideoMomentSettings,
 } from '../types';
 import { generateId } from '../utils/ids';
+import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 
 // ── Constants ─────────────────────────────────────────────────────────
-const DB_NAME = 'LiorVault_v11'; // kept; migration via mediaMigration.ts
-const DB_VERSION = 1;
-const STORES = {
-  DATA: 'metadata_store',
-  IMAGES: 'image_vault',
-};
-
 const CACHE_KEYS = {
   VIDEO_CLIPS: 'lior_daily_video_clips',
   VIDEO_SETTINGS: 'lior_video_moment_settings',

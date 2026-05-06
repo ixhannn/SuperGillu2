@@ -5,6 +5,7 @@ import { motion, type Variants } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { feedback } from '../utils/feedback';
+import { calendarDayDifference, dateInputValueToStoredDate, daysUntilDate, formatStoredDate, parseStoredDateOnly } from '../shared/dateOnly.js';
 
 const staggerContainer: Variants = {
   hidden: {},
@@ -15,7 +16,6 @@ const staggerItem: Variants = {
   hidden: { opacity: 0, y: 16 },
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const } }
 };
-import { differenceInDays, isFuture } from 'date-fns';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { generateId } from '../utils/ids';
 
@@ -43,7 +43,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
     const item: SpecialDate = {
       id: generateId(),
       title: newTitle,
-      date: new Date(newDate).toISOString(),
+      date: dateInputValueToStoredDate(newDate),
       type: 'other'
     };
     StorageService.saveSpecialDate(item);
@@ -67,14 +67,16 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   };
 
   const getDaysText = (dateStr: string) => {
-    const targetDate = new Date(dateStr);
+    const targetDate = parseStoredDateOnly(dateStr);
     const today = new Date();
+    if (!targetDate) return { count: 0, label: 'days' };
     
-    if (isFuture(targetDate)) {
-        const diff = differenceInDays(targetDate, today);
+    const days = calendarDayDifference(targetDate, today);
+    if (days >= 0) {
+        const diff = daysUntilDate(targetDate, today);
         return { count: diff, label: 'days to go' };
     } else {
-        const diff = differenceInDays(today, targetDate);
+        const diff = Math.abs(days);
         return { count: diff, label: 'days since' };
     }
   };
@@ -172,7 +174,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                     </div>
                     <div>
                       <h3 className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{item.title}</h3>
-                      <p className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>{new Date(item.date).toDateString()}</p>
+                      <p className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>{formatStoredDate(item.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</p>
                     </div>
                   </div>
                   <div className="text-right">

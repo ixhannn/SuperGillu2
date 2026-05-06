@@ -11,6 +11,7 @@ import { shaderMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 import { readThemeVar } from '../utils/themeVars';
 
+
 // ── GLSL Noise functions ────────────────────────────────────────────────
 const noiseGLSL = /* glsl */ `
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -84,12 +85,15 @@ const heartGLSL = /* glsl */ `
 const DarkGlassMaterial = shaderMaterial(
   {
     uTime: 0,
-    uNoiseScale: 0.8,
-    uNoiseSpeed: 0.12, /* Slower, more hypnotic and soothing */
-    uNoiseStrength: 0.28,
-    uFresnelPower: 3.0,
-    uRimColor: new THREE.Color('#fbcfe8'), /* Soft pink rim */
-    uAccentColor: new THREE.Color('#fda4af'), /* Rose accent */
+    // Richer multi-frequency noise — deeper organic motion, more visible
+    // surface detail without overdriving the mesh.
+    uNoiseScale: 0.95,
+    uNoiseSpeed: 0.16,
+    uNoiseStrength: 0.36,
+    // Tighter fresnel = brighter, more defined rim halo (the euphoric glow)
+    uFresnelPower: 2.4,
+    uRimColor: new THREE.Color('#ffd6e8'),  /* Brighter pink rim */
+    uAccentColor: new THREE.Color('#ffb3c1'), /* Warmer rose accent */
     uHeartBlend: 0.0,
   },
   // Vertex shader
@@ -110,12 +114,14 @@ const DarkGlassMaterial = shaderMaterial(
     void main() {
       vec3 pos = position;
 
-      // Multi-octave noise displacement
+      // Two-octave noise displacement (was three). The third 4× octave was
+      // adding jittery high-frequency surface ripples that, at our low DPR,
+      // aliased into the "ant crawl" noise. Two octaves give the same
+      // organic motion with smooth, photographic surface gradients.
       float t = uTime * uNoiseSpeed;
       float n1 = snoise(pos * uNoiseScale + t);
       float n2 = snoise(pos * uNoiseScale * 2.0 + t * 1.3) * 0.5;
-      float n3 = snoise(pos * uNoiseScale * 4.0 + t * 0.7) * 0.25;
-      float noise = n1 + n2 + n3;
+      float noise = n1 + n2;
 
       // Organic displacement along normal
       vec3 displaced = pos + normal * noise * uNoiseStrength;
@@ -157,29 +163,45 @@ const DarkGlassMaterial = shaderMaterial(
       float accentMask = smoothstep(0.2, 0.6, vNoise) * smoothstep(0.5, 0.0, abs(vWorldPosition.y - 0.3));
       vec3 accent = uAccentColor * accentMask * 0.3;
 
-      // Moving specular highlights
-      float spec1 = pow(max(dot(reflect(-viewDir, normal), normalize(vec3(sin(uTime * 0.5), cos(uTime * 0.3), 1.0))), 0.0), 32.0);
-      float spec2 = pow(max(dot(reflect(-viewDir, normal), normalize(vec3(-cos(uTime * 0.4), sin(uTime * 0.6), 0.5))), 0.0), 64.0);
+      // Moving specular highlights — softer power so they read as wide
+      // glints (not pinpricks) which would also feel like noise at low DPR.
+      float spec1 = pow(max(dot(reflect(-viewDir, normal), normalize(vec3(sin(uTime * 0.5), cos(uTime * 0.3), 1.0))), 0.0), 18.0);
+      float spec2 = pow(max(dot(reflect(-viewDir, normal), normalize(vec3(-cos(uTime * 0.4), sin(uTime * 0.6), 0.5))), 0.0), 28.0);
 
-      // Particle dust effect — fine sparkles based on world position
-      float dust = smoothstep(0.97, 1.0, fract(sin(dot(vWorldPosition.xy * 40.0 + uTime * 0.1, vec2(12.9898, 78.233))) * 43758.5453));
-      dust += smoothstep(0.98, 1.0, fract(sin(dot(vWorldPosition.yz * 30.0 - uTime * 0.05, vec2(39.346, 11.135))) * 43758.5453));
+      // ── REMOVED: per-pixel hash-based dust sparkle ──
+      // Was: smoothstep(0.97..1.0) of fract(sin(world * 40)*43758) — at our
+      // low DPR (0.55–0.85) those single-pixel dots aliased into a constantly
+      // crawling ant-like texture across the entire blob. Atmosphere is now
+      // contributed entirely by the proper geometry-based DustField (motes
+      // with size attenuation), which doesn't alias and reads as soft sparkle.
 
-      // Compose: deep hypnotic crimson/blood red body + bright soft luminous edges
-      vec3 bodyColor = vec3(0.55, 0.02, 0.15); // Deep soothing crimson/red
-      vec3 rimLight = uRimColor * fresnel * 0.85; // A bit stronger glow
-      vec3 causticLight = vec3(1.0, 0.4, 0.5) * caustic * fresnel; // Reddish caustics
-      vec3 specLight = vec3(1.0, 0.8, 0.9) * (spec1 * 0.4 + spec2 * 0.3); // Soft speculars
-      vec3 dustLight = vec3(1.0, 0.5, 0.6) * dust * 0.4; // Soft red dust
+      // Body modulated by noise — gives the surface a living, breathing
+      // gradient instead of a flat color. Deep crimson core fades into a
+      // warmer magenta where the noise displacement is highest.
+      vec3 deepCore = vec3(0.42, 0.02, 0.14);
+      vec3 warmFlush = vec3(0.78, 0.18, 0.42);
+      vec3 bodyColor = mix(deepCore, warmFlush, smoothstep(-0.4, 0.6, vNoise));
 
-      vec3 color = bodyColor + rimLight + causticLight + specLight + dustLight + accent;
+      vec3 rimLight     = uRimColor * fresnel * 1.15;
+      vec3 causticLight = vec3(1.0, 0.55, 0.7) * caustic * fresnel * 1.3;
+      vec3 specLight    = vec3(1.0, 0.92, 0.96) * (spec1 * 0.55 + spec2 * 0.4);
 
-      // Very subtle transparency — mostly opaque dark glass
-      float alpha = 0.85 + fresnel * 0.15;
+      // Soft inner aurora glow — second fresnel pass at a wider angle adds
+      // depth without flattening the form.
+      float innerGlow = pow(1.0 - abs(dot(normal, viewDir)), 1.6) * 0.35;
+      vec3 auroraGlow = vec3(0.92, 0.55, 0.72) * innerGlow;
+
+      vec3 color = bodyColor + rimLight + causticLight + specLight + accent + auroraGlow;
+
+      // Slightly more transparent edges so the rim feels more glowy/atmospheric
+      float alpha = 0.82 + fresnel * 0.18;
 
       gl_FragColor = vec4(color, alpha);
     }
-  `
+  `,
+  // Set mediump on the material so Three.js emits mediump precision in its
+  // shader header — halves fragment ALU cost on mid-range mobile GPUs.
+  (mat) => { if (mat) (mat as THREE.ShaderMaterial).precision = 'mediump'; },
 );
 
 extend({ DarkGlassMaterial });
@@ -199,26 +221,31 @@ const RingRipple: React.FC<{ delay: number; maxScale: number }> = ({ delay, maxS
     if (!ref.current) return;
     const t = ((clock.elapsedTime * 0.3 + delay) % 4.0) / 4.0; // 0-1 loop over 4s
     const scale = 0.5 + t * maxScale;
-    const opacity = (1.0 - t) * 0.15;
+    // Ease-in-out alpha curve so rings fade in softly, peak in the middle,
+    // then fade out — feels more breath-like than a hard linear decay.
+    const eased = Math.sin(t * Math.PI);
+    const opacity = eased * 0.22;
 
     ref.current.scale.setScalar(scale);
     (ref.current.material as THREE.MeshBasicMaterial).opacity = opacity;
 
-    // Subtle wobble on the ring
-    ref.current.rotation.x = Math.sin(clock.elapsedTime * 0.2 + delay) * 0.1;
-    ref.current.rotation.y = Math.cos(clock.elapsedTime * 0.15 + delay) * 0.08;
+    // Slightly more wobble for the layered ripples to feel less rigid
+    ref.current.rotation.x = Math.sin(clock.elapsedTime * 0.22 + delay) * 0.14;
+    ref.current.rotation.y = Math.cos(clock.elapsedTime * 0.17 + delay) * 0.10;
   });
 
   return (
     <mesh ref={ref} rotation={[Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[0.95, 1.0, 32]} />
+      {/* Slightly thicker ring band — reads better on retina at this opacity */}
+      <ringGeometry args={[0.93, 1.0, 48]} />
       <meshBasicMaterial
-        color="#ffffff"
+        color="#ffd6e8"
         transparent
-        opacity={0.1}
+        opacity={0.18}
         side={THREE.DoubleSide}
         depthWrite={false}
         blending={THREE.AdditiveBlending}
+        precision="mediump"
       />
     </mesh>
   );
@@ -248,13 +275,15 @@ const OrbitalLine: React.FC<{ index: number; total: number }> = ({ index, total 
   }, [index, total]);
 
   const material = useMemo(() => {
-    return new THREE.LineBasicMaterial({
+    const mat = new THREE.LineBasicMaterial({
       color: '#ffffff',
       transparent: true,
       opacity: 0.1,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
+    mat.precision = 'mediump';
+    return mat;
   }, []);
 
   const line = useMemo(() => new THREE.Line(geometry, material), [geometry, material]);
@@ -310,7 +339,10 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
 
   return (
     <mesh ref={meshRef}>
-      <icosahedronGeometry args={[1.6, 4]} />
+      {/* Detail 3 (≈320 tris). The mid-frequency noise displacement now has
+          enough vertices to express its detail without smearing — this is
+          the visible "more detailed" leap from the previous detail-2 mesh. */}
+      <icosahedronGeometry args={[1.7, 3]} />
       <darkGlassMaterial
         ref={materialRef}
         transparent
@@ -321,70 +353,82 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
   );
 };
 
-// ── Floating dust motes ─────────────────────────────────────────────────
+// ── Floating dust motes — fully GPU-driven ───────────────────────────────
+// Initial positions and per-axis drift phases are buffer attributes set once.
+// The vertex shader computes the current world position from uTime every frame
+// on the GPU — zero CPU→GPU buffer uploads, no posAttr.needsUpdate per frame.
 const DustField: React.FC<{ dustColor: string }> = ({ dustColor }) => {
-  const count = 24;
-  const ref = useRef<THREE.Points>(null);
+  const count = 12;
 
-  const [positions, velocities] = useMemo(() => {
-    const pos = new Float32Array(count * 3);
-    const vel = new Float32Array(count * 3);
+  const { geometry, material } = useMemo(() => {
+    const initPos = new Float32Array(count * 3);
+    const phases  = new Float32Array(count * 3); // per-axis sinusoidal phase offsets
+
     for (let i = 0; i < count; i++) {
-      // Distribute in a sphere around the blob
       const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const r = 1.5 + Math.random() * 3;
-      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      pos[i * 3 + 2] = r * Math.cos(phi);
-      vel[i * 3] = (Math.random() - 0.5) * 0.003;
-      vel[i * 3 + 1] = (Math.random() - 0.5) * 0.003;
-      vel[i * 3 + 2] = (Math.random() - 0.5) * 0.003;
+      const phi   = Math.acos(2 * Math.random() - 1);
+      const r     = 1.5 + Math.random() * 2.5;
+      initPos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+      initPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      initPos[i * 3 + 2] = r * Math.cos(phi);
+      phases[i * 3]      = Math.random() * Math.PI * 2;
+      phases[i * 3 + 1]  = Math.random() * Math.PI * 2;
+      phases[i * 3 + 2]  = Math.random() * Math.PI * 2;
     }
-    return [pos, vel];
-  }, []);
 
-  useFrame(() => {
-    if (!ref.current) return;
-    const posAttr = ref.current.geometry.getAttribute('position') as THREE.BufferAttribute;
-    for (let i = 0; i < count; i++) {
-      const ix = i * 3;
-      posAttr.array[ix] += velocities[ix];
-      posAttr.array[ix + 1] += velocities[ix + 1];
-      posAttr.array[ix + 2] += velocities[ix + 2];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(initPos, 3));
+    geo.setAttribute('aPhase',   new THREE.BufferAttribute(phases, 3));
 
-      // Soft boundary — wrap around (distSq avoids sqrt per particle)
-      const distSq = posAttr.array[ix] ** 2 + posAttr.array[ix + 1] ** 2 + posAttr.array[ix + 2] ** 2;
-      if (distSq > 25) {
-        const scale = 1.8 / Math.sqrt(distSq);
-        posAttr.array[ix] *= scale;
-        posAttr.array[ix + 1] *= scale;
-        posAttr.array[ix + 2] *= scale;
-      }
-    }
-    posAttr.needsUpdate = true;
+    const mat = new THREE.ShaderMaterial({
+      precision: 'mediump',
+      uniforms: {
+        uTime:  { value: 0 },
+        uColor: { value: new THREE.Color(dustColor) },
+      },
+      vertexShader: /* glsl */`
+        attribute vec3 aPhase;
+        uniform float uTime;
+        void main() {
+          float t    = uTime * 0.05;
+          vec3  pos  = position + vec3(
+            sin(t * 0.9 + aPhase.x) * 0.7,
+            sin(t * 0.7 + aPhase.y) * 0.5,
+            sin(t * 0.8 + aPhase.z) * 0.7
+          );
+          vec4 mvPos   = modelViewMatrix * vec4(pos, 1.0);
+          gl_Position  = projectionMatrix * mvPos;
+          gl_PointSize = 38.0 / -mvPos.z;
+        }
+      `,
+      fragmentShader: /* glsl */`
+        uniform vec3 uColor;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+          float a = smoothstep(1.0, 0.2, d) * 0.14;
+          if (a < 0.01) discard;
+          gl_FragColor = vec4(uColor, a);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+
+    return { geometry: geo, material: mat };
+  }, [dustColor]);
+
+  useEffect(() => () => {
+    geometry.dispose();
+    material.dispose();
+  }, [geometry, material]);
+
+  // One uniform write per frame — no buffer re-upload, no GPU stall
+  useFrame(({ clock }) => {
+    material.uniforms.uTime.value = clock.elapsedTime;
   });
 
-  return (
-    <points ref={ref}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[positions, 3]}
-          count={count}
-        />
-      </bufferGeometry>
-      <pointsMaterial
-        color={dustColor}
-        size={0.015}
-        transparent
-        opacity={0.4}
-        sizeAttenuation
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-      />
-    </points>
-  );
+  return <points geometry={geometry} material={material} />;
 };
 
 // ── Scene composition ───────────────────────────────────────────────────
@@ -406,15 +450,17 @@ const Scene: React.FC<{ theme: FloatingThemeColors }> = ({ theme }) => (
     {/* The main dark glass blob */}
     <DarkGlassBlob rimColor={theme.rimColor} accentColor={theme.accentColor} />
 
-    {/* Concentric expanding rings — reduced to 2 */}
-    {Array.from({ length: 2 }, (_, i) => (
-      <RingRipple key={`ring-${i}`} delay={i * 1.8} maxScale={2.5 + i * 0.4} />
-    ))}
+    {/* Three concentric ring ripples — staggered phase creates a continuous
+        breathing pulse outward instead of a single sweep that has dead time. */}
+    <RingRipple delay={0}    maxScale={3.0} />
+    <RingRipple delay={1.3}  maxScale={3.4} />
+    <RingRipple delay={2.6}  maxScale={3.8} />
 
-    {/* Wispy orbital curves — reduced to 2 */}
-    {Array.from({ length: 2 }, (_, i) => (
-      <OrbitalLine key={`orbit-${i}`} index={i} total={2} />
-    ))}
+    {/* Three orbital wisps at different radii — adds the layered cosmic
+        feeling (think aurora bands wrapping around the form). */}
+    <OrbitalLine index={0} total={3} />
+    <OrbitalLine index={1} total={3} />
+    <OrbitalLine index={2} total={3} />
 
     {/* Floating dust particles */}
     <DustField dustColor={theme.dustColor} />
@@ -450,17 +496,54 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
     return () => observer.disconnect();
   }, []);
 
+  // ── Global transition gating ────────────────────────────────────────────
+  // R3F runs its own rAF; we toggle it to 'never' during view switches so the
+  // GPU is fully available for the slide-in animation. Avoids the "blob jitters
+  // mid-transition" + "FPS dips into 50s on tab change" symptoms.
+  const [globalPause, setGlobalPause] = React.useState<boolean>(false);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const sync = () => setGlobalPause(Boolean(root.dataset.transitioning));
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ['data-transitioning'] });
+    return () => obs.disconnect();
+  }, []);
+  const effectivePause = paused || globalPause;
+
+  // Mobile-only app: blob is centered on the viewport as a hero ambient
+  // backdrop the content floats over. Camera distance + canvas size are tuned
+  // for phone aspect ratios — large enough to read as a recognisable form,
+  // small enough to leave breathing room around the cards.
   return (
     <div
-      className="fixed inset-0 z-[1] pointer-events-none"
+      className="fixed pointer-events-none z-[1]"
       aria-hidden="true"
-      style={{ opacity: 0.45 }}
+      style={{
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: '140vw',
+        height: '140vw',
+        maxHeight: '125vh',
+        opacity: 0.5,
+        willChange: 'transform', // promote to GPU compositor layer
+      }}
     >
       <Canvas
-        camera={{ position: [0, 0, 5], fov: 50 }}
-        dpr={[0.5, 1]}
-        frameloop={paused ? 'demand' : 'always'}
-        gl={{ alpha: true, antialias: false, powerPreference: 'high-performance' }}
+        camera={{ position: [0, 0, 6.4], fov: 52 }}
+        dpr={[0.55, 0.85]}
+        frameloop={effectivePause ? 'never' : 'always'}
+        flat
+        performance={{ min: 0.5 }}
+        gl={{
+          alpha: true,
+          antialias: false,
+          powerPreference: 'high-performance',
+          depth: false,
+          stencil: false,
+        }}
       >
         <Scene theme={theme} />
       </Canvas>

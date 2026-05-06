@@ -12,6 +12,12 @@ assert.match(
 );
 
 assert.match(
+  supabaseSource,
+  /from\('couple_memberships'\)[\s\S]*\.select\('couple_id, created_at'\)[\s\S]*\.eq\('user_id', userId\)[\s\S]*linkedCoupleIds[\s\S]*rpc\('ensure_user_couple'\)/,
+  'Expected Supabase couple lookup to prefer an existing paired membership before falling back to ensure_user_couple',
+);
+
+assert.match(
   appSource,
   /const session = await SupabaseService\.getSession\(\);/,
   'Expected the app bootstrap to reuse the shared Supabase session lookup instead of calling auth.getSession directly',
@@ -27,4 +33,16 @@ assert.match(
   syncSource,
   /public reset\(\)\s*\{\s*this\.cleanupRealtimeState\(\);\s*this\.isConnected = false;\s*this\.status = 'Offline';/s,
   'Expected SyncService to expose a reset path so startup and sign-out can cleanly tear down realtime state',
+);
+
+assert.match(
+  syncSource,
+  /if \(localProfileBeforeCoupleLookup\.coupleId\) \{[\s\S]*SupabaseService\.setCachedCoupleId\(localProfileBeforeCoupleLookup\.coupleId\);[\s\S]*\}[\s\S]*const coupleId = await SupabaseService\.getCurrentCoupleId\(\);/,
+  'Expected sync bootstrap to preserve the existing linked couple id before asking Supabase for a couple id',
+);
+
+assert.match(
+  syncSource,
+  /private async bootstrapProfileFromCloud\(\)[\s\S]*await this\.bootstrapProfileFromCloud\(\);/,
+  'Expected SyncService.init to hydrate couple profile data before App decides whether onboarding is needed',
 );

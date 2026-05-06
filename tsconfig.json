@@ -12,7 +12,9 @@
     "skipLibCheck": true,
     "types": [
       "node",
-      "vite/client"
+      "vite/client",
+      "vitest/globals",
+      "playwright/test"
     ],
     "resolveJsonModule": true,
     "moduleResolution": "bundler",

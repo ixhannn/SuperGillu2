@@ -262,7 +262,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="flex flex-col h-full min-h-screen" 
+        className="flex flex-col h-[100dvh] max-h-[100dvh] min-h-0 overflow-hidden"
         style={{ background: 'transparent' }}
     >
       <ViewHeader
@@ -271,7 +271,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         variant="centered"
       />
 
-      <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto px-5 pt-2 pb-48">
+      <div data-lenis-prevent className="lenis-inner min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-48">
         {/* ══════════════════════════════════════════════════════════════
              SECTION 1 — TEXT INPUT (Hero area, biggest real estate)
            ══════════════════════════════════════════════════════════════ */}
@@ -377,8 +377,11 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
               {/* Remove media button */}
               <motion.button
+                type="button"
                 whileTap={{ scale: 0.85 }}
                 onClick={removeMedia}
+                onPointerDown={e => e.stopPropagation()}
+                aria-label="Remove attached media"
                 className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
                 style={{
                   background: 'rgba(0,0,0,0.45)',

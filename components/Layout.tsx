@@ -1,21 +1,26 @@
 import React, { useRef, useEffect, createContext, useContext, memo, useCallback } from 'react';
 import { BottomNav } from './BottomNav';
-import { LiveBackground3D } from './LiveBackground3D';
-import { FloatingHeartsScene } from './FloatingHeartsScene';
+import { AmbientVisuals } from './AmbientVisuals';
 import { TogetherMode } from './TogetherMode';
 import { DebugOverlay } from './DebugOverlay';
 import { DynamicToast } from './DynamicToast';
-import { TouchTrailCanvas } from './TouchTrailCanvas';
-import { PhysicsConfetti, ConfettiHandle } from './PhysicsConfetti';
+import { DeferredOverlays } from './DeferredOverlays';
+import type { ConfettiHandle } from './PhysicsConfetti';
+import { OfflineNotice } from './OfflineNotice';
 import { ViewState } from '../types';
 import { startBreathingRhythm } from '../utils/BreathingRhythm';
-import { SafeRender } from './SafeRender';
 
 interface LayoutProps {
   children: React.ReactNode;
   currentView: ViewState;
   setView: (view: ViewState) => void;
   registerScrollRef?: (el: HTMLElement | null) => void;
+  /**
+   * @deprecated No longer drilled — AmbientVisuals reads
+   * `<html data-transitioning>` directly. Keeping the prop signature so the
+   * App.tsx call site doesn't need to change in this pass; passing it is a
+   * no-op. Layout no longer re-renders on every tab switch.
+   */
   isSwitchingView?: boolean;
   notifications?: {
     timeline?: boolean;
@@ -29,7 +34,7 @@ export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number)
 });
 export const useConfetti = () => useContext(ConfettiContext);
 
-export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, registerScrollRef, isSwitchingView = false, notifications }) => {
+export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setView, registerScrollRef, notifications }) => {
   // wrapperRef = overflow:hidden clip container for the app's main scroll root.
   const wrapperRef  = useRef<HTMLElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
@@ -74,14 +79,22 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
       <div
         className="fixed inset-0 text-gray-800 overflow-hidden flex flex-col"
         style={{
+          // Use the dynamic viewport so the app extends to the full screen as
+          // browser chrome (URL bar, gesture nav) collapses on scroll.
+          height: '100dvh',
+          width: '100vw',
+          // Gradient bleeds edge-to-edge under the status bar and gesture pill
+          // so there is no hard color band where browser chrome meets the app.
           background: 'var(--theme-bg-main, linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%))',
           color: 'var(--color-text-primary, #2D1F25)',
         }}
         onPointerDown={handleRipple}
       >
-        {/* Ambient background layers — wrapped so GPU/WebGL crashes don't take down the app */}
-        <SafeRender><LiveBackground3D paused={isSwitchingView} /></SafeRender>
-        <SafeRender><FloatingHeartsScene paused={isSwitchingView} /></SafeRender>
+        {/* No paused prop — AmbientVisuals reads <html data-transitioning>
+            directly so toggling it during a navigation no longer breaks
+            Layout's React.memo and forces a re-render of every keep-alive
+            shell underneath. */}
+        <AmbientVisuals />
 
         {/* Vignette */}
         <div
@@ -105,11 +118,16 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           ─────────────────────────────────────────────────────────── */}
         <main
           ref={wrapperRef}
+          // max-w-md mx-auto caps the content to a phone-width column even
+          // when previewed on a desktop browser. Without it, cards sprawl
+          // edge-to-edge on wide viewports — looks broken even though the
+          // app targets phones.
           className="lenis-wrapper flex-1 min-h-0 relative z-10 w-full max-w-md mx-auto"
           style={{
             background: 'transparent',
             overflowAnchor: 'none',
             overscrollBehaviorY: 'none',
+            scrollPaddingBottom: 'calc(8rem + var(--lior-keyboard-height, 0px))',
             backfaceVisibility: 'hidden',
             transform: 'translateZ(0)',
           }}
@@ -128,11 +146,14 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
 
         {/* Global overlays — these sit above the scroll layer */}
         <TogetherMode />
+        <OfflineNotice />
         <BottomNav currentView={currentView} setView={setView} notifications={notifications} />
         <DebugOverlay />
         <DynamicToast />
-        <TouchTrailCanvas />
-        <PhysicsConfetti ref={confettiRef} />
+        {/* PhysicsConfetti + TouchTrailCanvas are deferred until after first
+            paint settles. They were previously stealing 5–15ms from the
+            initial frame budget for canvases the user can't even see yet. */}
+        <DeferredOverlays ref={confettiRef} />
       </div>
     </ConfettiContext.Provider>
   );

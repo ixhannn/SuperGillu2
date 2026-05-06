@@ -5,12 +5,14 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   <meta name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
 
   <!-- PWA Meta Tags -->
   <title>Lior</title>
   <meta name="description" content="A private memory app for couples.">
-  <meta name="theme-color" content="#f8f9fb">
+  <!-- Theme-color blends Android Chrome address bar + nav bar with the app background -->
+  <meta name="theme-color" content="#F8E7EC" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1A0F14" media="(prefers-color-scheme: dark)">
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esm.sh https://fonts.googleapis.com https://fonts.gstatic.com https://lior-media.joinlior.workers.dev; media-src 'self' data: blob: https://*.supabase.co https://lior-media.joinlior.workers.dev; worker-src 'self' blob:;">
   <link rel="manifest" href="/manifest.json">
@@ -27,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Nunito+Sans:wght@300;400;500;600;700;800&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Nunito+Sans:wght@300;400;500;600;700;800&family=Gloria+Hallelujah&display=swap"
     rel="stylesheet">
 
   <!-- Tailwind CSS is now handled via PostCSS/Build step -->
@@ -48,8 +50,17 @@
       padding: 0;
       width: 100%;
       min-height: 100%;
-      background-color: #f8f9fb;
+      /* Match the gradient start so Android Chrome's collapsed address bar +
+         bottom gesture pill blend with the app instead of showing a hard band */
+      background-color: #F8E7EC;
       color: #1e293b;
+    }
+
+    html {
+      /* Use the largest viewport height so iOS Safari + Android Chrome
+         visually expand into the URL bar / gesture nav once the user scrolls. */
+      height: 100dvh;
+      height: 100lvh;
     }
 
     body {
@@ -57,11 +68,16 @@
       overflow-x: hidden;
       overflow-y: auto;
       -webkit-tap-highlight-color: transparent;
+      /* Prevent rubber-band white flash on iOS by matching bg */
+      background: linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%);
+      /* Allow the page to draw under the iOS dynamic island / status bar */
+      padding: 0;
     }
 
     #root {
       width: 100%;
       height: 100%;
+      min-height: 100dvh;
     }
 
     .pb-safe {

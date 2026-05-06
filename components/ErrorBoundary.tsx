@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Heart, RefreshCw } from 'lucide-react';
+import { DiagnosticsService } from '../services/diagnostics';
 
 interface Props {
     children: ReactNode;
@@ -22,6 +23,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
     componentDidCatch(error: Error, info: ErrorInfo) {
         console.error('App crashed:', error, info.componentStack);
+        DiagnosticsService.recordError('react.boundary', error, {
+            componentStack: info.componentStack,
+        });
     }
 
     private handleReset = () => {

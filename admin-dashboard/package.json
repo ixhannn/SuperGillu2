@@ -1,0 +1,23 @@
+{
+  "name": "lior-admin-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "build": "vite build --config vite.config.ts",
+    "preview": "vite preview --config vite.config.ts",
+    "deploy:cloudflare": "npm run build && wrangler pages deploy dist --project-name lior-admin-dashboard --branch production --commit-dirty=true"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.8",
+    "typescript": "~5.8.2",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "lucide-react": "^0.562.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0"
+  }
+}

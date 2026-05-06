@@ -13,6 +13,7 @@ import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, AnimatePresence } from 'framer-motion';
+import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
 
 interface MemoryTimelineProps {
     setView: (view: ViewState) => void;
@@ -122,18 +123,22 @@ const MemoryCard: React.FC<{
     memory: Memory;
     index: number;
     featured?: boolean;
+    tilt?: number;
     onClick: () => void;
     onDelete: (id: string) => void;
-}> = ({ memory, index, featured = false, onClick, onDelete }) => {
-    const isVideo = !!memory.video || !!memory.videoId;
+}> = ({ memory, index, featured = false, tilt = 0, onClick, onDelete }) => {
+    const deleteRequestScheduledRef = useRef(false);
+    const imageStoragePath = selectImageStoragePath(memory.storagePath, memory.imageMimeType);
+    const videoStoragePath = selectVideoStoragePath(memory.videoStoragePath, memory.storagePath, memory.videoMimeType || memory.imageMimeType);
+    const isVideo = !!(memory.video || memory.videoId || videoStoragePath);
     const hasAudio = !!memory.audioId;
-    const { src: thumbUrl, isLoading: isImageLoading, handleError: handleThumbError } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
-    const hasImagePreviewSource = !!(memory.imageId || memory.image || memory.storagePath);
+    const { src: thumbUrl, isLoading: isImageLoading, handleError: handleThumbError } = useLiorMedia(memory.imageId, memory.image, imageStoragePath);
+    const hasImagePreviewSource = !!(memory.imageId || memory.image || imageStoragePath);
     const shouldResolveVideoPreview = isVideo && (!hasImagePreviewSource || (!thumbUrl && !isImageLoading));
     const { src: rawVideoPreviewUrl, isLoading: isVideoLoading, handleError: handleVideoThumbError } = useLiorMedia(
         shouldResolveVideoPreview ? memory.videoId : undefined,
         shouldResolveVideoPreview ? memory.video : undefined,
-        shouldResolveVideoPreview ? memory.videoStoragePath : undefined,
+        shouldResolveVideoPreview ? videoStoragePath : undefined,
     );
     const videoPreviewUrl = useVideoBlobUrl(shouldResolveVideoPreview ? rawVideoPreviewUrl : null);
     const isVideoPreviewPending = shouldResolveVideoPreview && !!rawVideoPreviewUrl && !videoPreviewUrl;
@@ -143,22 +148,41 @@ const MemoryCard: React.FC<{
     const handleMediaError = mediaKind === 'video' ? handleVideoThumbError : handleThumbError;
     const dateLabel = new Date(memory.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
     const mood = MOOD_MAP[memory.mood] || '✨';
+    const openDeleteConfirm = (
+        e: React.PointerEvent<HTMLButtonElement>
+            | React.MouseEvent<HTMLButtonElement>
+            | React.TouchEvent<HTMLButtonElement>,
+    ) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (deleteRequestScheduledRef.current) return;
+        deleteRequestScheduledRef.current = true;
+        onDelete(memory.id);
+        window.setTimeout(() => {
+            deleteRequestScheduledRef.current = false;
+        }, 500);
+    };
 
+    const staggerDelay = Math.min(index * 0.035, 0.32);
     return (
         <motion.div
             layout
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: 18, rotate: 0, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, rotate: tilt, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92, rotate: 0 }}
+            transition={{ duration: 0.55, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => { feedback.light(); onClick(); }}
-            whileTap={{ scale: 0.97 }}
-            className="relative overflow-hidden cursor-pointer"
+            whileTap={{ scale: 0.97, rotate: tilt * 0.3 }}
+            whileHover={{ y: -3, rotate: tilt * 0.5 }}
+            className="relative overflow-hidden cursor-pointer group"
             style={{
-                borderRadius: '1.25rem',
-                boxShadow: '0 2px 16px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04)',
+                borderRadius: featured ? '14px' : '12px',
+                boxShadow: featured
+                    ? '0 14px 28px -14px rgba(120, 53, 15, 0.22), 0 4px 8px rgba(0,0,0,0.06)'
+                    : '0 8px 18px -10px rgba(120, 53, 15, 0.2), 0 2px 4px rgba(0,0,0,0.05)',
                 aspectRatio: featured ? '4/3' : '3/4',
-                background: 'rgba(var(--theme-particle-2-rgb),0.08)',
+                background: '#fffaf2',
+                transformOrigin: 'center',
             }}
         >
             {mediaLoading ? (
@@ -228,37 +252,86 @@ const MemoryCard: React.FC<{
                 </div>
             )}
 
-            <div className="absolute inset-0 pointer-events-none"
-                style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.08) 50%, transparent 75%)' }} />
+            {/* Soft bottom-only vignette — keeps the photo clear, just enough for legible caption */}
+            <div className="absolute inset-x-0 bottom-0 h-[55%] pointer-events-none"
+                style={{
+                    background: 'linear-gradient(to top, rgba(20, 14, 8, 0.7) 0%, rgba(20, 14, 8, 0.25) 45%, transparent 100%)',
+                }} />
+
+            {/* Mood emoji sticker — pasted-on look, slight counter-rotation */}
+            <div
+                className="absolute z-10 flex items-center justify-center"
+                style={{
+                    top: featured ? 10 : 8,
+                    left: featured ? 10 : 8,
+                    width: featured ? 30 : 26,
+                    height: featured ? 30 : 26,
+                    background: '#fffaf2',
+                    borderRadius: '50%',
+                    transform: `rotate(${-tilt * 2.2}deg)`,
+                    boxShadow: '0 1px 4px rgba(120, 53, 15, 0.25), inset 0 0 0 1.5px rgba(255,255,255,0.9)',
+                }}
+            >
+                <span style={{ fontSize: featured ? 15 : 13, lineHeight: 1 }}>{mood}</span>
+            </div>
 
             <button
-                onPointerDown={e => { e.stopPropagation(); e.preventDefault(); }}
-                onClick={e => { e.stopPropagation(); e.preventDefault(); onDelete(memory.id); }}
-                className="absolute top-2.5 right-2.5 z-20 w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                type="button"
+                aria-label="Delete memory"
+                data-memory-delete="true"
+                onPointerDownCapture={openDeleteConfirm}
+                onMouseDownCapture={openDeleteConfirm}
+                onTouchStartCapture={openDeleteConfirm}
+                onClickCapture={openDeleteConfirm}
+                className="absolute -top-2 -right-2 z-30 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all opacity-95 hover:opacity-100"
                 style={{
-                    background: 'rgba(0,0,0,0.38)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255,255,255,0.18)',
                     WebkitTapHighlightColor: 'transparent',
                     touchAction: 'manipulation',
                 }}
             >
-                <Trash2 size={13} className="text-white" />
+                <span
+                    className="w-9 h-9 rounded-full flex items-center justify-center"
+                    style={{
+                        background: 'rgba(20, 14, 8, 0.78)',
+                        border: '1px solid rgba(255,255,255,0.25)',
+                    }}
+                >
+                    <Trash2 size={14} className="text-white" />
+                </span>
             </button>
 
-            <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pointer-events-none">
-                <div className="flex items-end justify-between gap-2">
-                    <div className="min-w-0">
-                        <p className="text-white font-semibold text-[12px] leading-tight drop-shadow">{dateLabel}</p>
-                        {memory.text && (
-                            <p className="text-white/75 mt-0.5 leading-snug drop-shadow line-clamp-1" style={{ fontSize: featured ? '12px' : '11px' }}>
-                                {memory.text}
-                            </p>
-                        )}
-                    </div>
-                    <span className="text-xl leading-none shrink-0">{mood}</span>
-                </div>
+            {/* Caption — handwritten date + serif text, no chip */}
+            <div className="absolute bottom-0 left-0 right-0 px-3 pb-2.5 pt-6 pointer-events-none">
+                <span
+                    className="block leading-none mb-1"
+                    style={{
+                        fontFamily: '"Gloria Hallelujah", cursive',
+                        fontSize: featured ? 14 : 12,
+                        color: 'rgba(255, 248, 230, 0.95)',
+                        textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                        transform: `rotate(${-tilt * 1.6}deg)`,
+                        transformOrigin: 'left bottom',
+                        display: 'inline-block',
+                    }}
+                >
+                    {dateLabel}
+                </span>
+                {memory.text && (
+                    <p
+                        className="leading-snug font-serif italic"
+                        style={{
+                            fontSize: featured ? 13 : 11,
+                            color: 'rgba(255, 248, 230, 0.92)',
+                            textShadow: '0 1px 3px rgba(0,0,0,0.45)',
+                            display: '-webkit-box',
+                            WebkitLineClamp: featured ? 2 : 1,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                        }}
+                    >
+                        “{memory.text}”
+                    </p>
+                )}
             </div>
         </motion.div>
     );
@@ -556,18 +629,21 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
     onClose: () => void;
     onDelete: (id: string) => void;
 }) => {
-    const isVideo = !!memory.video || !!memory.videoId;
+    const deleteRequestScheduledRef = useRef(false);
+    const imageStoragePath = selectImageStoragePath(memory.storagePath, memory.imageMimeType);
+    const videoStoragePath = selectVideoStoragePath(memory.videoStoragePath, memory.storagePath, memory.videoMimeType || memory.imageMimeType);
+    const isVideo = !!(memory.video || memory.videoId || videoStoragePath);
     const hasAudio = !!memory.audioId;
-    const isAudioOnly = hasAudio && !memory.image && !memory.imageId && !memory.video && !memory.videoId;
+    const isAudioOnly = hasAudio && !memory.image && !memory.imageId && !imageStoragePath && !memory.video && !memory.videoId && !videoStoragePath;
     const { src: imageSrc, isLoading: isImageLoading, handleError: handleImageError } = useLiorMedia(
         memory.imageId,
         memory.image,
-        memory.storagePath,
+        imageStoragePath,
     );
     const { src: rawVideoSrc, isLoading: isVideoLoading, handleError: handleVideoError } = useLiorMedia(
         isVideo ? memory.videoId : undefined,
         isVideo ? memory.video : undefined,
-        isVideo ? memory.videoStoragePath : undefined,
+        isVideo ? videoStoragePath : undefined,
     );
     const videoSrc = useVideoBlobUrl(isVideo ? rawVideoSrc : null);
     const mediaKind = isVideo && videoSrc ? 'video' : imageSrc ? 'image' : null;
@@ -642,6 +718,20 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
     const deleteComment = async (id: string) => {
         await StorageService.deleteComment(id);
     };
+    const openMemoryDeleteConfirm = (
+        e: React.PointerEvent<HTMLButtonElement>
+            | React.MouseEvent<HTMLButtonElement>
+            | React.TouchEvent<HTMLButtonElement>,
+    ) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (deleteRequestScheduledRef.current) return;
+        deleteRequestScheduledRef.current = true;
+        onDelete(memory.id);
+        window.setTimeout(() => {
+            deleteRequestScheduledRef.current = false;
+        }, 500);
+    };
 
     return ReactDOM.createPortal(
         <motion.div
@@ -679,8 +769,14 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                         <span className="text-[10px] mt-0.5 tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>{time}</span>
                     </div>
                     <button
-                        onClick={e => { e.stopPropagation(); onDelete(memory.id); onClose(); }}
-                        className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform shrink-0"
+                        type="button"
+                        aria-label="Delete memory"
+                        data-memory-delete="true"
+                        onPointerDownCapture={openMemoryDeleteConfirm}
+                        onMouseDownCapture={openMemoryDeleteConfirm}
+                        onTouchStartCapture={openMemoryDeleteConfirm}
+                        onClickCapture={openMemoryDeleteConfirm}
+                        className="w-12 h-12 -m-1.5 rounded-full flex items-center justify-center active:scale-95 transition-transform shrink-0"
                         style={{ background: 'rgba(239,68,68,0.1)', WebkitTapHighlightColor: 'transparent' }}
                     >
                         <Trash2 size={15} className="text-red-400" />
@@ -848,6 +944,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
     const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
     const [surpriseMemory, setSurpriseMemory] = useState<Memory | null>(null);
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+    const deletingMemoryIdsRef = useRef(new Set<string>());
     const [isRecoveringCloud, setIsRecoveringCloud] = useState(false);
     const recoveryAttemptedRef = useRef(false);
 
@@ -889,21 +986,43 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
     };
 
     const requestDelete = (id: string) => {
-        feedback.tap();
         setPendingDeleteId(id);
+        try {
+            feedback.tap();
+        } catch {
+            // Haptics/audio feedback should never block opening delete confirmation.
+        }
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (!pendingDeleteId) return;
         const id = pendingDeleteId;
+        if (deletingMemoryIdsRef.current.has(id)) return;
+        deletingMemoryIdsRef.current.add(id);
         setPendingDeleteId(null);
         setMemories(prev => prev.filter(m => m.id !== id));
         setSelectedMemory(current => current?.id === id ? null : current);
-        StorageService.deleteMemory(id).catch(() => {
+        try {
+            await StorageService.deleteMemory(id);
+            toast.show('Memory deleted forever', 'success');
+        } catch {
             setMemories(StorageService.getMemories());
-            toast.show('Could not delete memory', 'error');
-        });
-        toast.show('Memory deleted forever', 'success');
+            toast.show('Deleted here; cloud delete will retry', 'error');
+        } finally {
+            deletingMemoryIdsRef.current.delete(id);
+        }
+    };
+
+    // Deterministic, pleasant tilt sequences — featured cards tilt slightly,
+    // grid items alternate tighter angles. Pulled from per-group offset so each
+    // chapter feels visually distinct without random instability across renders.
+    const featuredTiltSeq = [-0.8, 1.2, -0.5, 0.9, -1.3, 0.6];
+    const gridTiltSeqA = [1.1, -1.4, 0.7, -0.9, 1.3, -0.6];
+    const gridTiltSeqB = [-1.2, 0.9, -0.7, 1.4, -1.1, 0.6];
+    const featuredTilt = (g: number) => featuredTiltSeq[g % featuredTiltSeq.length];
+    const gridTilt = (g: number, i: number) => {
+        const seq = (g + i) % 2 === 0 ? gridTiltSeqA : gridTiltSeqB;
+        return seq[(g * 3 + i) % seq.length];
     };
 
     const handleSurprise = () => {
@@ -931,6 +1050,25 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
             new Date(grouped[b][0].date).getTime() - new Date(grouped[a][0].date).getTime()
         ), [grouped]
     );
+
+    // Journey stats (memo): total count, span in months, dominant mood
+    const stats = useMemo(() => {
+        if (memories.length === 0) return null;
+        const sortedAsc = [...memories].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const first = new Date(sortedAsc[0].date);
+        const last = new Date(sortedAsc[sortedAsc.length - 1].date);
+        const monthSpan = Math.max(
+            1,
+            (last.getFullYear() - first.getFullYear()) * 12 + (last.getMonth() - first.getMonth()) + 1,
+        );
+        const moodCounts: Record<string, number> = {};
+        for (const m of memories) {
+            if (!m.mood) continue;
+            moodCounts[m.mood] = (moodCounts[m.mood] || 0) + 1;
+        }
+        const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+        return { count: memories.length, monthSpan, topMood, topMoodEmoji: topMood ? (MOOD_MAP[topMood] || '✨') : '✨' };
+    }, [memories]);
 
     return (
         <PullToRefresh onRefresh={handleRefresh}>
@@ -993,70 +1131,182 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                     </div>
                 ) : (
                     <>
-                        {/* Surprise button */}
-                        <motion.button
-                            onClick={handleSurprise}
-                            whileTap={{ scale: 0.96 }}
-                            className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl mb-8 cursor-pointer shadow-sm relative overflow-hidden group"
-                            style={{
-                                background: 'linear-gradient(135deg, rgba(236,72,153,0.06), rgba(251,207,232,0.12))',
-                                border: '1.5px solid rgba(236,72,153,0.12)',
-                            }}
-                        >
+                        {/* Scrapbook HUD — compact stats strip + tiny surprise chip. No card. */}
+                        {stats && (
                             <motion.div
-                                animate={{ rotate: [0, 10, -10, 0] }}
-                                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                                initial={{ opacity: 0, y: -6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                                className="flex items-center justify-between gap-3 mb-5 px-1"
                             >
-                                <Sparkles size={16} style={{ color: '#ec4899' }} />
+                                <div className="flex items-baseline gap-1.5 min-w-0">
+                                    <span
+                                        className="tabular-nums leading-none"
+                                        style={{
+                                            fontFamily: '"Gloria Hallelujah", cursive',
+                                            fontSize: 22,
+                                            color: '#9a3412',
+                                            transform: 'rotate(-2deg)',
+                                            display: 'inline-block',
+                                        }}
+                                    >
+                                        {stats.count}
+                                    </span>
+                                    <span
+                                        className="text-[12px] tracking-tight"
+                                        style={{ color: 'var(--color-text-secondary)' }}
+                                    >
+                                        {stats.count === 1 ? 'moment' : 'moments'}
+                                    </span>
+                                    <span
+                                        className="text-[12px] tracking-tight mx-1.5"
+                                        style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}
+                                    >
+                                        ·
+                                    </span>
+                                    <span style={{ fontSize: 14, lineHeight: 1 }}>{stats.topMoodEmoji}</span>
+                                    <span
+                                        className="text-[12px] tracking-tight"
+                                        style={{ color: 'var(--color-text-secondary)' }}
+                                    >
+                                        most felt
+                                    </span>
+                                </div>
+                                <motion.button
+                                    onClick={handleSurprise}
+                                    whileTap={{ scale: 0.92 }}
+                                    aria-label="Open a random memory"
+                                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full active:opacity-80"
+                                    style={{
+                                        background: 'rgba(254, 215, 170, 0.55)',
+                                        border: '1px dashed rgba(154, 52, 18, 0.35)',
+                                        color: '#9a3412',
+                                        WebkitTapHighlightColor: 'transparent',
+                                    }}
+                                >
+                                    <motion.span
+                                        animate={{ rotate: [0, 18, -12, 0] }}
+                                        transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut', repeatDelay: 1.6 }}
+                                        style={{ display: 'inline-flex' }}
+                                    >
+                                        <Sparkles size={12} fill="currentColor" />
+                                    </motion.span>
+                                    <span
+                                        style={{
+                                            fontFamily: '"Gloria Hallelujah", cursive',
+                                            fontSize: 13,
+                                            lineHeight: 1,
+                                        }}
+                                    >
+                                        surprise me
+                                    </span>
+                                </motion.button>
                             </motion.div>
-                            <span className="text-[14px] font-bold tracking-wide uppercase" style={{ color: '#be185d' }}>Surprise me</span>
-                            <div className="absolute inset-x-0 bottom-0 h-[2px] bg-pink-400/20 scale-x-0 group-active:scale-x-100 transition-transform duration-500" />
-                        </motion.button>
+                        )}
 
-                        <div className="space-y-10">
+                        <div className="space-y-9">
                             <AnimatePresence mode="popLayout">
                                 {keys.map((key, groupIdx) => {
                                     const group = grouped[key];
                                     const [featured, ...rest] = group;
+                                    const [monthLabel, yearLabel] = key.split(' ');
+                                    const yearShort = yearLabel ? `'${yearLabel.slice(-2)}` : '';
 
                                     return (
-                                        <motion.div key={key} layout exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-                                            {/* Month divider */}
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <div className="flex-1 h-px" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.15)' }} />
-                                                <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-secondary)' }}>
-                                                    {key}
+                                        <motion.section
+                                            key={key}
+                                            layout
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0 }}
+                                            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: Math.min(groupIdx * 0.06, 0.24) }}
+                                        >
+                                            {/* Inline scrapbook chapter heading — handwritten, NOT sticky */}
+                                            <div className="flex items-end justify-between gap-3 mb-3.5 pl-0.5">
+                                                <div className="flex items-baseline gap-2 min-w-0">
+                                                    <h3
+                                                        className="leading-none truncate"
+                                                        style={{
+                                                            fontFamily: '"Gloria Hallelujah", cursive',
+                                                            fontSize: 26,
+                                                            color: 'var(--color-text-primary)',
+                                                            transform: 'rotate(-1.5deg)',
+                                                            display: 'inline-block',
+                                                            letterSpacing: '-0.01em',
+                                                        }}
+                                                    >
+                                                        {monthLabel}
+                                                    </h3>
+                                                    {yearShort && (
+                                                        <span
+                                                            className="leading-none"
+                                                            style={{
+                                                                fontFamily: '"Gloria Hallelujah", cursive',
+                                                                fontSize: 16,
+                                                                color: 'var(--color-text-secondary)',
+                                                                opacity: 0.7,
+                                                                transform: 'rotate(-1.5deg)',
+                                                                display: 'inline-block',
+                                                            }}
+                                                        >
+                                                            {yearShort}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span
+                                                    className="shrink-0 tabular-nums"
+                                                    style={{
+                                                        fontFamily: '"Gloria Hallelujah", cursive',
+                                                        fontSize: 13,
+                                                        color: 'var(--color-text-secondary)',
+                                                        opacity: 0.65,
+                                                    }}
+                                                >
+                                                    {group.length === 1 ? '1 page' : `${group.length} pages`}
                                                 </span>
-                                                <span className="text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded-full"
-                                                    style={{ background: 'rgba(var(--theme-particle-2-rgb),0.1)', color: 'var(--color-text-secondary)' }}>
-                                                    {group.length}
-                                                </span>
-                                                <div className="flex-1 h-px" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.15)' }} />
                                             </div>
+                                            {/* Hand-drawn page rule */}
+                                            <svg
+                                                className="w-full mb-4"
+                                                height="6"
+                                                viewBox="0 0 400 6"
+                                                preserveAspectRatio="none"
+                                                aria-hidden="true"
+                                            >
+                                                <path
+                                                    d="M 2 3 Q 80 1 160 3.2 T 320 2.6 T 398 3.4"
+                                                    fill="none"
+                                                    stroke="rgba(154, 52, 18, 0.28)"
+                                                    strokeWidth="1.2"
+                                                    strokeLinecap="round"
+                                                />
+                                            </svg>
 
-                                            {/* Featured */}
+                                            {/* Featured polaroid — chapter centerpiece */}
                                             <AnimatePresence mode="popLayout">
-                                                <div className="mb-3">
+                                                <div className="mb-4 px-1">
                                                     <MemoryCard
                                                         key={featured.id}
                                                         memory={featured}
                                                         index={groupIdx * 10}
                                                         featured
+                                                        tilt={featuredTilt(groupIdx)}
                                                         onClick={() => setSelectedMemory(featured)}
                                                         onDelete={requestDelete}
                                                     />
                                                 </div>
                                             </AnimatePresence>
 
-                                            {/* Grid */}
+                                            {/* Scrapbook grid — alternating tilts */}
                                             {rest.length > 0 && (
-                                                <div className="grid grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-1">
                                                     <AnimatePresence mode="popLayout">
                                                         {rest.map((m, i) => (
                                                             <MemoryCard
                                                                 key={m.id}
                                                                 memory={m}
                                                                 index={groupIdx * 10 + i + 1}
+                                                                tilt={gridTilt(groupIdx, i)}
                                                                 onClick={() => setSelectedMemory(m)}
                                                                 onDelete={requestDelete}
                                                             />
@@ -1064,7 +1314,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                     </AnimatePresence>
                                                 </div>
                                             )}
-                                        </motion.div>
+                                        </motion.section>
                                     );
                                 })}
                             </AnimatePresence>

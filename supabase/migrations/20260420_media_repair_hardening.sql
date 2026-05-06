@@ -204,8 +204,8 @@ as $$
 
     select
       v.id::text,
-      v.user_id,
-      v.couple_id,
+      null::uuid,
+      case when nullif(v.couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then nullif(v.couple_id::text, '')::uuid else null end,
       'voice_notes',
       v.data->>'id',
       'voice-notes',
@@ -216,7 +216,7 @@ as $$
           then nullif(v.data->>'ownerUserId', '')::uuid
           else null
         end,
-        v.user_id
+        null::uuid
       ),
       coalesce(nullif(v.data->>'createdAt', ''), nullif(v.data->>'date', '')),
       null::timestamptz,

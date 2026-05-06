@@ -5,6 +5,7 @@
  */
 
 import { CoupleProfile, CoupleRoomState, RoomGift, RoomNote, RoomPlacedItem } from '../../types';
+import { daysTogetherFrom } from '../../shared/dateOnly.js';
 import { ROOM_SHOP, percentToGrid, gridToPercent, RoomCatalogItem } from './roomCatalog3D';
 
 export const DEFAULT_COUPLE_ROOM: CoupleRoomState = {
@@ -213,7 +214,7 @@ export const checkMilestoneUnlocks = (room: CoupleRoomState, profile: CoupleProf
         break;
       case 'days-together':
         if (profile.anniversaryDate) {
-          const days = Math.floor((Date.now() - new Date(profile.anniversaryDate).getTime()) / 86_400_000);
+          const days = daysTogetherFrom(profile.anniversaryDate);
           met = days >= rule.threshold;
         }
         break;

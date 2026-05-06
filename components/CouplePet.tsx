@@ -29,6 +29,7 @@ const PET_TYPES = [
     { id: 'dog',   emoji: '💨', label: 'Breeze'    },
     { id: 'cat',   emoji: '🌙', label: 'Moonlight' },
     { id: 'bunny', emoji: '🌸', label: 'Blossom'   },
+    { id: 'yeti',  emoji: '❄️', label: 'Frost'     },
 ];
 
 /* ═══════════════════════════════════════════════════════════════ */
@@ -716,17 +717,23 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
         if (aiLoadingRef.current) return;
         aiLoadingRef.current = true;
         setIsAILoading(true);
-        const profile = StorageService.getCoupleProfile();
-        const res = await PetAIService.generateDialogue(
-            nextStats ?? statsRef.current,
-            profile,
-            memoriesRef.current.slice(0, 10),
-            notesRef.current.slice(0, 10),
-        );
-        setDialogue(res.text);
-        setIsFlashback(res.isFlashback);
-        aiLoadingRef.current = false;
-        setIsAILoading(false);
+        try {
+            const profile = StorageService.getCoupleProfile();
+            const res = await PetAIService.generateDialogue(
+                nextStats ?? statsRef.current,
+                profile,
+                memoriesRef.current.slice(0, 10),
+                notesRef.current.slice(0, 10),
+            );
+            setDialogue(res.text);
+            setIsFlashback(res.isFlashback);
+        } catch {
+            setDialogue('Thinking of you both!');
+            setIsFlashback(false);
+        } finally {
+            aiLoadingRef.current = false;
+            setIsAILoading(false);
+        }
     }, []);
 
     useEffect(() => {

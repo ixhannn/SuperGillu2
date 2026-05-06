@@ -1,15 +1,12 @@
 import { PartnerInsight, InsightCategory, InsightAggregates, MoodEntry, Note, Memory, VoiceNote } from '../types';
 import { generateId } from '../utils/ids';
 import { format, subDays, differenceInDays } from 'date-fns';
+import { daysTogetherFrom } from '../shared/dateOnly.js';
+import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 
 const CACHE_KEYS = {
   INSIGHTS: 'lior_partner_insights',
   AGGREGATES: 'lior_insight_aggregates',
-};
-
-const DB_NAME = 'LiorVault_v11';
-const STORES = {
-  DATA: 'metadata_store',
 };
 
 export const partnerIntelligenceEventTarget = new EventTarget();
@@ -21,7 +18,7 @@ const notifyUpdate = () => {
 // IndexedDB helpers
 const openDb = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = (e.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORES.DATA)) db.createObjectStore(STORES.DATA);
@@ -81,7 +78,7 @@ const getDaysTogether = (): number => {
   try {
     const profile = JSON.parse(localStorage.getItem('lior_shared_profile') || '{}');
     if (profile.anniversaryDate) {
-      return differenceInDays(new Date(), new Date(profile.anniversaryDate));
+      return daysTogetherFrom(profile.anniversaryDate);
     }
     return 0;
   } catch {

@@ -324,6 +324,9 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
 
       tick(_delta, timestamp) {
         if (pausedRef.current) return;
+        // Hand the GPU back to the page transition during view switches —
+        // ambient particles are invisible during a 220ms slide anyway.
+        if (typeof document !== 'undefined' && document.documentElement.dataset.transitioning) return;
         const t = timestamp * 0.001;
         material.uniforms.uTime.value = t;
 

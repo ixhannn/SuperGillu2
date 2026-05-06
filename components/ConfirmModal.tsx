@@ -25,8 +25,11 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     onConfirm,
     onCancel
 }) => {
+    const openedAtRef = React.useRef(0);
+
     React.useEffect(() => {
         if (!isOpen) return;
+        openedAtRef.current = Date.now();
         const handleBack = (e: Event) => {
             e.preventDefault(); // Stop App.tsx from popping route
             onCancel();
@@ -44,7 +47,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 z-[200] flex items-center justify-center p-8"
                     style={{ backgroundColor: 'rgba(21,12,16,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-                    onClick={onCancel}
+                    onClick={() => {
+                        if (Date.now() - openedAtRef.current < 500) return;
+                        onCancel();
+                    }}
                 >
                     <motion.div
                         initial={{ scale: 0.92, opacity: 0, y: 12 }}

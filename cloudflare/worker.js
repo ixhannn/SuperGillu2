@@ -17,6 +17,8 @@ import {
  *   DELETE /:path*              - delete file from R2 (requires Supabase user session)
  *   POST   /__internal/cleanup  - run cleanup immediately (requires X-Cleanup-Token)
  *   GET    /__admin/overview    - admin storage dashboard snapshot (requires admin token)
+ *   GET    /__admin/media       - admin media browser data (requires admin token)
+ *   GET    /__admin/users       - admin user inventory data (requires admin token)
  *   POST   /__admin/actions/audit   - run storage audit immediately (requires admin token)
  *   POST   /__admin/actions/repair  - repair legacy refs into canonical R2 keys (requires admin token)
  *   POST   /__admin/actions/cleanup - run cleanup immediately (requires admin token)
@@ -32,12 +34,18 @@ import {
 const CLEANUP_ROUTE = '/__internal/cleanup';
 const ADMIN_ROUTE_PREFIX = '/__admin';
 const ADMIN_OVERVIEW_ROUTE = '/__admin/overview';
+const ADMIN_MEDIA_ROUTE = '/__admin/media';
+const ADMIN_USERS_ROUTE = '/__admin/users';
 const ADMIN_AUDIT_ROUTE = '/__admin/actions/audit';
 const ADMIN_CLEANUP_ROUTE = '/__admin/actions/cleanup';
 const ADMIN_REPAIR_ROUTE = '/__admin/actions/repair';
+const ADMIN_RESOLVE_ALERT_ROUTE = '/__admin/actions/resolve-alert';
+const ADMIN_RETRY_CLEANUP_TASK_ROUTE = '/__admin/actions/retry-cleanup-task';
+const ADMIN_VERIFY_MEDIA_ROUTE = '/__admin/actions/verify-media';
 const CLEANUP_FEATURE = 'daily-moments';
 const CLEANUP_FEATURE_RETENTION_MS = getMediaRetentionMs(CLEANUP_FEATURE);
 const CLEANUP_BATCH_SIZE = 100;
+const ORPHAN_DAILY_OBJECT_CLEANUP_BATCH_SIZE = 15;
 const REPAIR_BATCH_SIZE = 100;
 const MAX_CLEANUP_ATTEMPTS = 8;
 const COMPLETED_TASK_RETENTION_DAYS = 30;
@@ -45,6 +53,44 @@ const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'];
 
 const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/', 'application/octet-stream'];
 const EMAIL_LIKE_SEGMENT = /^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/i;
+const ADMIN_DATA_TABLES = [
+  'media_assets',
+  'storage_alerts',
+  'storage_events',
+  'storage_metrics_daily',
+  'media_cleanup_tasks',
+  'memories',
+  'daily_photos',
+  'private_space_items',
+  'keepsakes',
+  'time_capsules',
+  'surprises',
+  'voice_notes',
+  'together_music',
+];
+const ADMIN_APP_DATA_TABLES = [
+  'memories',
+  'daily_photos',
+  'private_space_items',
+  'keepsakes',
+  'time_capsules',
+  'surprises',
+  'voice_notes',
+  'together_music',
+  'notes',
+  'dates',
+  'envelopes',
+  'comments',
+  'mood_entries',
+  'couple_profile',
+  'pet_stats',
+  'user_status',
+  'our_room_state',
+  'us_bucket_items',
+  'us_wishlist_items',
+  'us_milestones',
+  'sync_deletions',
+];
 
 function isMimeAllowed(contentType) {
   if (!contentType) return false;
@@ -407,6 +453,27 @@ async function insertStorageEvent(env, payload) {
   });
 }
 
+async function insertAdminActionEvent(env, eventType, metadata = {}, severity = 'info') {
+  await insertStorageEvent(env, {
+    couple_id: metadata.coupleId ?? metadata.couple_id ?? null,
+    feature: metadata.feature ?? null,
+    severity,
+    event_type: `admin.${eventType}`,
+    r2_key: metadata.r2Key ?? metadata.r2_key ?? null,
+    source_table: metadata.sourceTable ?? metadata.source_table ?? null,
+    logical_row_id: metadata.logicalRowId ?? metadata.logical_row_id ?? metadata.id ?? null,
+    metadata,
+  }).catch(() => {});
+}
+
+async function readJsonBody(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
 async function upsertStorageAlert(env, payload) {
   if (!hasSupabaseAdmin(env)) return;
   await supabaseRequest(env, '/rpc/upsert_storage_alert', {
@@ -472,6 +539,888 @@ async function fetchPagedRestRows(env, buildPath, { pageSize = 1000, maxPages = 
 function sortFeatureUsage(a, b) {
   return Number(b.total_bytes || 0) - Number(a.total_bytes || 0)
     || String(a.feature || '').localeCompare(String(b.feature || ''));
+}
+
+function buildEmptyAdminOverview() {
+  return {
+    total_couples: 0,
+    total_assets: 0,
+    ready_assets: 0,
+    pending_assets: 0,
+    missing_assets: 0,
+    orphaned_assets: 0,
+    total_bytes: 0,
+    open_alerts: 0,
+    cleanup_backlog: 0,
+    usage: [],
+  };
+}
+
+function inferAdminRowTitle(table, data) {
+  if (!data || typeof data !== 'object') return table;
+  const fields = ['title', 'caption', 'name', 'text', 'message', 'note', 'content', 'prompt', 'label'];
+  for (const field of fields) {
+    const value = data[field];
+    if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 120);
+  }
+  if (data.date) return `${table} · ${String(data.date).slice(0, 32)}`;
+  if (data.createdAt) return `${table} · ${String(data.createdAt).slice(0, 32)}`;
+  if (data.id) return `${table} · ${String(data.id).slice(0, 48)}`;
+  return table;
+}
+
+function listAdminMediaRefs(data) {
+  if (!data || typeof data !== 'object') return [];
+  const fields = [
+    'storagePath',
+    'videoStoragePath',
+    'audioStoragePath',
+    'image',
+    'video',
+    'audio',
+    'music_url',
+    'thumbnail',
+    'thumbnailStoragePath',
+  ];
+
+  return fields
+    .filter((field) => typeof data[field] === 'string' && data[field].trim())
+    .map((field) => {
+      const value = String(data[field]);
+      return {
+        field,
+        kind: value.startsWith('v2/couples/') ? 'r2-key' : value.startsWith('data:') ? 'inline-base64' : tryParseUrl(value) ? 'url' : 'path',
+      };
+    });
+}
+
+function summarizeAdminRow(table, row) {
+  const data = row?.data && typeof row.data === 'object' ? row.data : {};
+  const mediaRefs = listAdminMediaRefs(data);
+  return {
+    table,
+    row_id: row?.id ?? null,
+    logical_id: data?.id ?? (typeof row?.id === 'string' && row.id.includes(':') ? row.id.split(':').pop() : row?.id ?? null),
+    user_id: row?.user_id ?? null,
+    couple_id: row?.couple_id ?? null,
+    title: inferAdminRowTitle(table, data),
+    created_at: row?.created_at ?? data?.createdAt ?? null,
+    updated_at: row?.updated_at ?? data?.updatedAt ?? null,
+    expires_at: data?.expiresAt ?? null,
+    media_ref_count: mediaRefs.length,
+    media_refs: mediaRefs,
+    data_keys: Object.keys(data).slice(0, 24),
+  };
+}
+
+const ADMIN_MEDIA_SECTIONS = Object.freeze({
+  memories: Object.freeze({ section: 'journey', sectionLabel: 'Our Journey', sourceTable: 'memories' }),
+  'daily-moments': Object.freeze({ section: 'moments', sectionLabel: 'Moments', sourceTable: 'daily_photos' }),
+  'private-space': Object.freeze({ section: 'secret-space', sectionLabel: 'Secret Space', sourceTable: 'private_space_items' }),
+});
+
+const ADMIN_MEDIA_TABLES = Object.freeze([
+  Object.freeze({ table: 'memories', feature: 'memories', section: 'journey', sectionLabel: 'Our Journey' }),
+  Object.freeze({ table: 'daily_photos', feature: 'daily-moments', section: 'moments', sectionLabel: 'Moments' }),
+  Object.freeze({ table: 'private_space_items', feature: 'private-space', section: 'secret-space', sectionLabel: 'Secret Space' }),
+]);
+
+const ADMIN_MEDIA_FIELD_ROLES = Object.freeze({
+  storagePath: 'image',
+  image: 'image',
+  thumbnail: 'image',
+  thumbnailStoragePath: 'image',
+  videoStoragePath: 'video',
+  video: 'video',
+  audioStoragePath: 'audio',
+  audio: 'audio',
+  music_url: 'track',
+});
+
+function getAdminRowData(row) {
+  return row?.data && typeof row.data === 'object' ? row.data : (row && typeof row === 'object' ? row : {});
+}
+
+function getAdminLogicalId(row, data) {
+  if (data?.id) return String(data.id);
+  if (typeof row?.id === 'string' && row.id.includes(':')) return row.id.split(':').pop();
+  return row?.id ? String(row.id) : null;
+}
+
+function getAdminSectionForMedia(feature, sourceTable) {
+  if (ADMIN_MEDIA_SECTIONS[feature]) return ADMIN_MEDIA_SECTIONS[feature];
+  const tableMatch = ADMIN_MEDIA_TABLES.find((entry) => entry.table === sourceTable);
+  if (!tableMatch) return null;
+  return {
+    section: tableMatch.section,
+    sectionLabel: tableMatch.sectionLabel,
+    sourceTable: tableMatch.table,
+  };
+}
+
+function inferAdminMediaKind(assetRole, mimeType) {
+  const normalizedMime = normalizeMimeType(mimeType || '');
+  if (normalizedMime.startsWith('image/')) return 'image';
+  if (normalizedMime.startsWith('video/')) return 'video';
+  if (normalizedMime.startsWith('audio/')) return 'audio';
+  if (assetRole === 'video') return 'video';
+  if (assetRole === 'audio' || assetRole === 'track') return 'audio';
+  return 'image';
+}
+
+function inferAdminMediaMime(assetRole, data, field) {
+  const mimeField = field === 'video' || field === 'videoStoragePath'
+    ? 'videoMimeType'
+    : field === 'audio' || field === 'audioStoragePath' || field === 'music_url'
+      ? 'audioMimeType'
+      : 'imageMimeType';
+  return data?.[mimeField] || (assetRole === 'video' ? 'video/mp4' : assetRole === 'audio' || assetRole === 'track' ? 'audio/mpeg' : 'image/jpeg');
+}
+
+function resolveAdminMediaRef(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return null;
+
+  if (value.startsWith('data:')) {
+    return { kind: 'inline-base64', inlineOnly: true, r2Key: null, legacyUrl: null, legacyPath: null };
+  }
+
+  const parsed = tryParseUrl(value);
+  const extracted = extractManagedKey(value);
+  if (extracted && isManagedUploadKey(extracted)) {
+    return { kind: 'r2-key', inlineOnly: false, r2Key: extracted, legacyUrl: null, legacyPath: null };
+  }
+
+  if (parsed) {
+    return { kind: 'legacy-url', inlineOnly: false, r2Key: null, legacyUrl: parsed.toString(), legacyPath: null };
+  }
+
+  return { kind: 'legacy-path', inlineOnly: false, r2Key: null, legacyUrl: null, legacyPath: value };
+}
+
+function buildAdminMediaItemFromAsset(asset, knownR2Keys = null) {
+  const sectionInfo = getAdminSectionForMedia(asset?.feature, asset?.source_table);
+  if (!sectionInfo) return null;
+
+  const assetRole = asset?.asset_role || parseManagedMediaKey(asset?.r2_key)?.assetRole || 'image';
+  const mimeType = normalizeMimeType(asset?.mime_type || '');
+  const r2Key = asset?.r2_key || null;
+  const hasR2Object = !!r2Key && (!knownR2Keys || knownR2Keys.has(r2Key));
+  return {
+    id: `asset:${asset?.id || asset?.r2_key}`,
+    section: sectionInfo.section,
+    sectionLabel: sectionInfo.sectionLabel,
+    feature: asset?.feature || null,
+    sourceTable: asset?.source_table || sectionInfo.sourceTable,
+    rowId: asset?.logical_row_id || null,
+    logicalId: asset?.item_id || asset?.logical_row_id || null,
+    title: `${sectionInfo.sectionLabel} media`,
+    caption: '',
+    coupleId: asset?.couple_id || null,
+    ownerUserId: asset?.owner_user_id || null,
+    ownerFolder: asset?.owner_user_id || 'legacy-or-unknown',
+    assetRole,
+    mediaKind: inferAdminMediaKind(assetRole, mimeType),
+    r2Key: hasR2Object ? r2Key : null,
+    legacyUrl: null,
+    legacyPath: hasR2Object ? null : r2Key,
+    inlineOnly: false,
+    refField: null,
+    byteSize: Number(asset?.byte_size || 0),
+    mimeType,
+    checksumSha256: asset?.checksum_sha256 || null,
+    status: hasR2Object ? asset?.status || 'ready' : 'missing-object',
+    uploadedAt: null,
+    createdAt: null,
+    updatedAt: asset?.updated_at || null,
+    expiresAt: null,
+    origin: 'media_assets',
+  };
+}
+
+function buildAdminMediaItemFromR2Object(object) {
+  const parsed = parseManagedMediaKey(object?.key);
+  if (!parsed) return null;
+  const sectionInfo = getAdminSectionForMedia(parsed.feature, null);
+  if (!sectionInfo) return null;
+
+  return {
+    id: `r2:${object.key}`,
+    section: sectionInfo.section,
+    sectionLabel: sectionInfo.sectionLabel,
+    feature: parsed.feature,
+    sourceTable: sectionInfo.sourceTable,
+    rowId: null,
+    logicalId: parsed.itemId,
+    title: `${sectionInfo.sectionLabel} media`,
+    caption: '',
+    coupleId: parsed.coupleId || null,
+    ownerUserId: parsed.ownerUserId || null,
+    ownerFolder: parsed.ownerUserId || 'legacy-or-unknown',
+    assetRole: parsed.assetRole,
+    mediaKind: inferAdminMediaKind(parsed.assetRole, null),
+    r2Key: object.key,
+    legacyUrl: null,
+    legacyPath: null,
+    inlineOnly: false,
+    refField: null,
+    byteSize: Number(object.size || 0),
+    mimeType: null,
+    checksumSha256: null,
+    status: object.managed ? 'r2-managed' : 'r2-unmanaged',
+    uploadedAt: object.uploaded || null,
+    createdAt: null,
+    updatedAt: object.uploaded || null,
+    expiresAt: null,
+    origin: 'r2',
+  };
+}
+
+function buildAdminMediaItemsFromRow(tableConfig, row, knownR2Keys = null) {
+  const data = getAdminRowData(row);
+  const logicalId = getAdminLogicalId(row, data);
+  const title = inferAdminRowTitle(tableConfig.table, data);
+  const caption = data?.caption || data?.text || data?.note || data?.title || '';
+  const createdAt = row?.created_at || data?.createdAt || data?.date || null;
+  const updatedAt = row?.updated_at || data?.updatedAt || createdAt;
+  const ownerUserId = data?.ownerUserId || row?.user_id || data?.senderId || data?.addedBy || null;
+  const coupleId = row?.couple_id || data?.coupleId || data?.couple_id || null;
+
+  return Object.entries(ADMIN_MEDIA_FIELD_ROLES).flatMap(([field, assetRole]) => {
+    const ref = resolveAdminMediaRef(data?.[field]);
+    if (!ref) return [];
+    const parsed = ref.r2Key ? parseManagedMediaKey(ref.r2Key) : null;
+    const hasR2Object = !!ref.r2Key && (!knownR2Keys || knownR2Keys.has(ref.r2Key));
+    const mimeType = inferAdminMediaMime(assetRole, data, field);
+
+    return [{
+      id: `row:${tableConfig.table}:${logicalId || row?.id || 'unknown'}:${field}`,
+      section: tableConfig.section,
+      sectionLabel: tableConfig.sectionLabel,
+      feature: parsed?.feature || tableConfig.feature,
+      sourceTable: tableConfig.table,
+      rowId: row?.id || null,
+      logicalId: logicalId || parsed?.itemId || null,
+      title,
+      caption: String(caption || '').slice(0, 180),
+      coupleId: parsed?.coupleId || coupleId,
+      ownerUserId: parsed?.ownerUserId || ownerUserId,
+      ownerFolder: parsed?.ownerUserId || ownerUserId || 'legacy-or-unknown',
+      assetRole: parsed?.assetRole || assetRole,
+      mediaKind: inferAdminMediaKind(parsed?.assetRole || assetRole, mimeType),
+      r2Key: hasR2Object ? ref.r2Key : null,
+      legacyUrl: ref.legacyUrl,
+      legacyPath: hasR2Object ? ref.legacyPath : ref.legacyPath || ref.r2Key,
+      inlineOnly: ref.inlineOnly,
+      refField: field,
+      byteSize: Number(
+        assetRole === 'video' ? data?.videoBytes
+          : assetRole === 'audio' || assetRole === 'track' ? data?.audioBytes
+            : data?.imageBytes || 0,
+      ),
+      mimeType,
+      checksumSha256: null,
+      status: ref.r2Key && !hasR2Object ? 'missing-object' : ref.kind,
+      uploadedAt: null,
+      createdAt,
+      updatedAt,
+      expiresAt: data?.expiresAt || null,
+      origin: 'supabase-row',
+    }];
+  });
+}
+
+function mergeAdminMediaItem(existing, incoming) {
+  if (!existing) return incoming;
+  return {
+    ...existing,
+    ...Object.fromEntries(Object.entries(incoming).filter(([, value]) => value !== null && value !== undefined && value !== '')),
+    title: existing.title && existing.title !== `${existing.sectionLabel} media` ? existing.title : incoming.title,
+    caption: existing.caption || incoming.caption || '',
+    byteSize: Number(existing.byteSize || 0) || Number(incoming.byteSize || 0),
+    mimeType: existing.mimeType || incoming.mimeType || null,
+    checksumSha256: existing.checksumSha256 || incoming.checksumSha256 || null,
+    status: existing.status === 'ready' ? existing.status : incoming.status || existing.status,
+    origin: Array.from(new Set(String(existing.origin || '').split('+').concat(String(incoming.origin || '').split('+')).filter(Boolean))).join('+'),
+  };
+}
+
+function addAdminMediaItem(mediaMap, item) {
+  if (!item) return;
+  const key = item.r2Key
+    ? `${item.section}:r2:${item.r2Key}`
+    : `${item.section}:row:${item.sourceTable}:${item.logicalId || item.rowId}:${item.assetRole}:${item.refField || item.status}`;
+  mediaMap.set(key, mergeAdminMediaItem(mediaMap.get(key), item));
+}
+
+async function fetchAdminMediaRows(env, tableConfig, maxRows) {
+  if (!hasSupabaseAdmin(env)) return { table: tableConfig.table, ok: false, error: 'Supabase admin access is missing.', rows: [] };
+
+  const response = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${tableConfig.table}?select=*&limit=${parsePositiveInteger(maxRows, 100)}&order=id.desc`,
+    { method: 'GET', headers: cleanupAuthHeaders(env) },
+  );
+
+  if (!response.ok) {
+    return { table: tableConfig.table, ok: false, error: `HTTP ${response.status}`, rows: [] };
+  }
+
+  const rows = await response.json().catch(() => []);
+  return { table: tableConfig.table, ok: true, error: null, rows: Array.isArray(rows) ? rows : [] };
+}
+
+async function fetchAdminMediaGallery(env, maxRows = 300) {
+  const limit = Math.min(parsePositiveInteger(maxRows, 300), 750);
+  const mediaMap = new Map();
+
+  const [assets, r2, tableResults] = await Promise.all([
+    hasSupabaseAdmin(env)
+      ? fetchPagedRestRows(
+          env,
+          (offset, pageLimit) => `/media_assets?select=id,couple_id,owner_user_id,feature,asset_role,status,item_id,source_table,logical_row_id,r2_key,byte_size,mime_type,checksum_sha256,updated_at&order=updated_at.desc&limit=${pageLimit}&offset=${offset}`,
+          { pageSize: Math.min(limit, 1000), maxPages: 2 },
+        ).catch(() => [])
+      : [],
+    summarizeR2Bucket(env, limit),
+    Promise.all(ADMIN_MEDIA_TABLES.map((tableConfig) => fetchAdminMediaRows(env, tableConfig, limit))),
+  ]);
+  const knownR2Keys = new Set((r2.objects || []).map((object) => object.key));
+
+  for (const asset of assets.slice(0, limit)) {
+    addAdminMediaItem(mediaMap, buildAdminMediaItemFromAsset(asset, knownR2Keys));
+  }
+
+  for (const object of r2.objects || []) {
+    addAdminMediaItem(mediaMap, buildAdminMediaItemFromR2Object(object));
+  }
+
+  for (const result of tableResults) {
+    const tableConfig = ADMIN_MEDIA_TABLES.find((entry) => entry.table === result.table);
+    if (!tableConfig) continue;
+    for (const row of result.rows || []) {
+      for (const item of buildAdminMediaItemsFromRow(tableConfig, row, knownR2Keys)) {
+        addAdminMediaItem(mediaMap, item);
+      }
+    }
+  }
+
+  const items = Array.from(mediaMap.values())
+    .sort((a, b) => String(b.updatedAt || b.uploadedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.uploadedAt || a.createdAt || '')))
+    .slice(0, limit);
+
+  const totals = items.reduce((acc, item) => {
+    acc.total += 1;
+    acc.totalBytes += Number(item.byteSize || 0);
+    if (item.r2Key) acc.withR2Preview += 1;
+    if (item.inlineOnly) acc.inlineOnly += 1;
+    if (item.legacyUrl || item.legacyPath) acc.legacyRefs += 1;
+    if (item.section === 'journey') acc.journey += 1;
+    if (item.section === 'moments') acc.moments += 1;
+    if (item.section === 'secret-space') acc.secretSpace += 1;
+    return acc;
+  }, {
+    total: 0,
+    journey: 0,
+    moments: 0,
+    secretSpace: 0,
+    withR2Preview: 0,
+    inlineOnly: 0,
+    legacyRefs: 0,
+    totalBytes: 0,
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    limit,
+    totals,
+    sources: {
+      mediaAssets: assets.length,
+      r2Objects: r2.summary.object_count,
+      tables: tableResults.map(({ table, ok, error, rows }) => ({ table, ok, error, rowCount: rows.length })),
+    },
+    items,
+  };
+}
+
+function createAdminUserSummary(userId) {
+  return {
+    id: userId,
+    email: null,
+    phone: null,
+    createdAt: null,
+    lastSignInAt: null,
+    lastActivityAt: null,
+    coupleIds: [],
+    roleByCouple: {},
+    rowCount: 0,
+    mediaRefCount: 0,
+    mediaCount: 0,
+    mediaBytes: 0,
+    missingMediaCount: 0,
+    inlineRefCount: 0,
+    legacyRefCount: 0,
+    tableCounts: {},
+    mediaByFeature: {},
+  };
+}
+
+function touchAdminUser(users, userId) {
+  const normalized = String(userId || '').trim();
+  if (!normalized) return null;
+  if (!users.has(normalized)) users.set(normalized, createAdminUserSummary(normalized));
+  return users.get(normalized);
+}
+
+function updateAdminUserActivity(user, timestamp) {
+  if (!user || !timestamp) return;
+  const iso = (() => {
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  })();
+  if (iso && (!user.lastActivityAt || iso > user.lastActivityAt)) user.lastActivityAt = iso;
+}
+
+async function fetchSupabaseAuthUsers(env, maxRows = 1000) {
+  if (!hasSupabaseAdmin(env)) return { ok: false, error: 'Supabase admin access is missing.', users: [] };
+
+  const response = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/admin/users?per_page=${Math.min(parsePositiveInteger(maxRows, 1000), 1000)}&page=1`,
+    { method: 'GET', headers: cleanupAuthHeaders(env) },
+  );
+
+  if (!response.ok) {
+    return { ok: false, error: `HTTP ${response.status}`, users: [] };
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  const users = Array.isArray(payload?.users) ? payload.users : Array.isArray(payload) ? payload : [];
+  return { ok: true, error: null, users };
+}
+
+async function fetchAdminUserTableRows(env, table, maxRows) {
+  if (!hasSupabaseAdmin(env)) return { table, ok: false, error: 'Supabase admin access is missing.', rows: [] };
+
+  const response = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${table}?select=*&limit=${parsePositiveInteger(maxRows, 500)}`,
+    { method: 'GET', headers: cleanupAuthHeaders(env) },
+  );
+
+  if (!response.ok) {
+    return { table, ok: false, error: `HTTP ${response.status}`, rows: [] };
+  }
+
+  const rows = await response.json().catch(() => []);
+  return { table, ok: true, error: null, rows: Array.isArray(rows) ? rows : [] };
+}
+
+async function fetchAdminUsers(env, maxRows = 500) {
+  const limit = Math.min(parsePositiveInteger(maxRows, 500), 1000);
+  const users = new Map();
+
+  const [authUsers, memberships, mediaAssets, tableResults] = await Promise.all([
+    fetchSupabaseAuthUsers(env, limit).catch((error) => ({ ok: false, error: String(error), users: [] })),
+    hasSupabaseAdmin(env)
+      ? fetchPagedRestRows(
+          env,
+          (offset, pageLimit) => `/couple_memberships?select=couple_id,user_id,role,created_at&limit=${pageLimit}&offset=${offset}`,
+          { pageSize: Math.min(limit, 1000), maxPages: 2 },
+        ).catch(() => [])
+      : [],
+    hasSupabaseAdmin(env)
+      ? fetchPagedRestRows(
+          env,
+          (offset, pageLimit) => `/media_assets?select=owner_user_id,couple_id,feature,status,byte_size,updated_at&limit=${pageLimit}&offset=${offset}`,
+          { pageSize: Math.min(limit, 1000), maxPages: 4 },
+        ).catch(() => [])
+      : [],
+    Promise.all(ADMIN_APP_DATA_TABLES.map((table) => fetchAdminUserTableRows(env, table, limit).catch((error) => ({
+      table,
+      ok: false,
+      error: String(error instanceof Error ? error.message : error),
+      rows: [],
+    })))),
+  ]);
+
+  for (const authUser of authUsers.users || []) {
+    const user = touchAdminUser(users, authUser?.id);
+    if (!user) continue;
+    user.email = authUser.email || null;
+    user.phone = authUser.phone || null;
+    user.createdAt = authUser.created_at || null;
+    user.lastSignInAt = authUser.last_sign_in_at || null;
+    updateAdminUserActivity(user, authUser.last_sign_in_at || authUser.updated_at || authUser.created_at);
+  }
+
+  for (const membership of memberships || []) {
+    const user = touchAdminUser(users, membership?.user_id);
+    if (!user) continue;
+    if (membership.couple_id && !user.coupleIds.includes(membership.couple_id)) user.coupleIds.push(membership.couple_id);
+    if (membership.couple_id) user.roleByCouple[membership.couple_id] = membership.role || 'member';
+    updateAdminUserActivity(user, membership.created_at);
+  }
+
+  for (const asset of mediaAssets || []) {
+    const user = touchAdminUser(users, asset?.owner_user_id);
+    if (!user) continue;
+    const feature = asset.feature || 'unknown';
+    const bytes = Number(asset.byte_size || 0);
+    user.mediaCount += 1;
+    user.mediaBytes += bytes;
+    if (asset.status === 'missing' || asset.status === 'missing-object') user.missingMediaCount += 1;
+    if (asset.couple_id && !user.coupleIds.includes(asset.couple_id)) user.coupleIds.push(asset.couple_id);
+    if (!user.mediaByFeature[feature]) user.mediaByFeature[feature] = { feature, count: 0, bytes: 0 };
+    user.mediaByFeature[feature].count += 1;
+    user.mediaByFeature[feature].bytes += bytes;
+    updateAdminUserActivity(user, asset.updated_at);
+  }
+
+  for (const result of tableResults) {
+    for (const row of result.rows || []) {
+      const data = getAdminRowData(row);
+      const userId = row?.user_id || data?.ownerUserId || data?.senderId || data?.addedBy || null;
+      const user = touchAdminUser(users, userId);
+      if (!user) continue;
+
+      const mediaRefs = listAdminMediaRefs(data);
+      user.rowCount += 1;
+      user.mediaRefCount += mediaRefs.length;
+      user.tableCounts[result.table] = (user.tableCounts[result.table] || 0) + 1;
+      if (row?.couple_id && !user.coupleIds.includes(row.couple_id)) user.coupleIds.push(row.couple_id);
+      user.inlineRefCount += mediaRefs.filter((ref) => ref.kind === 'inline-base64').length;
+      user.legacyRefCount += mediaRefs.filter((ref) => ref.kind === 'url' || ref.kind === 'path').length;
+      updateAdminUserActivity(user, row?.updated_at || row?.created_at || data?.updatedAt || data?.createdAt || data?.date);
+    }
+  }
+
+  const items = Array.from(users.values()).map((user) => ({
+    ...user,
+    coupleIds: user.coupleIds.sort(),
+    mediaByFeature: Object.values(user.mediaByFeature).sort((a, b) => b.bytes - a.bytes || b.count - a.count),
+    tableCounts: Object.fromEntries(Object.entries(user.tableCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))),
+  })).sort((a, b) =>
+    String(b.lastActivityAt || b.lastSignInAt || b.createdAt || '').localeCompare(String(a.lastActivityAt || a.lastSignInAt || a.createdAt || ''))
+      || Number(b.mediaBytes || 0) - Number(a.mediaBytes || 0)
+      || String(a.email || a.id).localeCompare(String(b.email || b.id)));
+
+  const totals = items.reduce((acc, user) => {
+    acc.totalUsers += 1;
+    acc.totalRows += Number(user.rowCount || 0);
+    acc.totalMedia += Number(user.mediaCount || 0);
+    acc.totalMediaBytes += Number(user.mediaBytes || 0);
+    acc.totalInlineRefs += Number(user.inlineRefCount || 0);
+    acc.totalLegacyRefs += Number(user.legacyRefCount || 0);
+    acc.totalMissingMedia += Number(user.missingMediaCount || 0);
+    return acc;
+  }, {
+    totalUsers: 0,
+    totalRows: 0,
+    totalMedia: 0,
+    totalMediaBytes: 0,
+    totalInlineRefs: 0,
+    totalLegacyRefs: 0,
+    totalMissingMedia: 0,
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    limit,
+    totals,
+    sources: {
+      authUsers: { ok: authUsers.ok, error: authUsers.error || null, count: authUsers.users?.length || 0 },
+      memberships: memberships.length,
+      mediaAssets: mediaAssets.length,
+      tables: tableResults.map(({ table, ok, error, rows }) => ({ table, ok, error, rowCount: rows.length })),
+    },
+    users: items.slice(0, limit),
+  };
+}
+
+async function resolveAdminAlert(env, alertId) {
+  const id = String(alertId || '').trim();
+  if (!id) throw new Error('Alert id is required');
+
+  await supabaseRequest(env, `/storage_alerts?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ status: 'resolved' }),
+  });
+
+  await insertAdminActionEvent(env, 'alert_resolved', { id, sourceTable: 'storage_alerts' });
+  return { id, status: 'resolved' };
+}
+
+async function retryAdminCleanupTask(env, taskId) {
+  const id = String(taskId || '').trim();
+  if (!id) throw new Error('Cleanup task id is required');
+
+  await supabaseRequest(env, `/media_cleanup_tasks?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      status: 'pending',
+      run_after: new Date().toISOString(),
+      completed_at: null,
+      last_error: null,
+    }),
+  });
+
+  await insertAdminActionEvent(env, 'cleanup_task_retried', { id, sourceTable: 'media_cleanup_tasks' });
+  return { id, status: 'pending' };
+}
+
+async function verifyAdminMedia(env, r2Key) {
+  const key = sanitizeKey(String(r2Key || ''));
+  if (!key || !isManagedWriteKey(key)) throw new Error('A valid managed R2 key is required');
+
+  const parsed = parseManagedMediaKey(key);
+  const [head, assetRows] = await Promise.all([
+    env.LIOR_BUCKET ? env.LIOR_BUCKET.head(key) : null,
+    hasSupabaseAdmin(env)
+      ? supabaseRequest(
+          env,
+          `/media_assets?r2_key=eq.${encodeURIComponent(key)}&select=id,status,byte_size,mime_type,checksum_sha256,updated_at,couple_id,owner_user_id,feature,asset_role,item_id&limit=1`,
+          { method: 'GET' },
+        ).catch(() => [])
+      : [],
+  ]);
+
+  const asset = Array.isArray(assetRows) ? assetRows[0] || null : null;
+  const result = {
+    r2Key: key,
+    exists: !!head,
+    r2Size: head?.size ?? null,
+    r2Etag: head?.etag || head?.httpEtag || null,
+    r2Uploaded: head?.uploaded ? new Date(head.uploaded).toISOString() : null,
+    asset,
+    parsed,
+    sizeMatches: !!head && !!asset ? Number(asset.byte_size || 0) === Number(head.size || 0) : null,
+    indexStatus: asset?.status || null,
+  };
+
+  await insertAdminActionEvent(env, 'media_verified', {
+    r2Key: key,
+    coupleId: parsed?.coupleId || asset?.couple_id || null,
+    feature: parsed?.feature || asset?.feature || null,
+    exists: result.exists,
+    sizeMatches: result.sizeMatches,
+  }, result.exists ? 'info' : 'warning');
+
+  return result;
+}
+
+async function fetchRestTableCount(env, table) {
+  if (!hasSupabaseAdmin(env)) return null;
+
+  const response = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${table}?select=*&limit=1`,
+    {
+      method: 'GET',
+      headers: {
+        ...cleanupAuthHeaders(env),
+        Prefer: 'count=exact',
+      },
+    },
+  );
+
+  if (!response.ok) {
+    return { table, count: null, ok: false, error: `HTTP ${response.status}` };
+  }
+
+  const contentRange = response.headers.get('Content-Range') || '';
+  const total = Number(contentRange.split('/').pop());
+  return {
+    table,
+    count: Number.isFinite(total) ? total : null,
+    ok: true,
+    error: null,
+  };
+}
+
+async function fetchAdminDataHealth(env, r2Summary, overview) {
+  const configIssues = [];
+  if (!env.LIOR_BUCKET) configIssues.push('LIOR_BUCKET binding is missing.');
+  if (!env.SUPABASE_URL) configIssues.push('SUPABASE_URL secret is missing.');
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) configIssues.push('SUPABASE_SERVICE_ROLE_KEY secret is missing in Cloudflare Worker.');
+  if (!env.CLEANUP_INTERNAL_TOKEN) configIssues.push('CLEANUP_INTERNAL_TOKEN secret is missing.');
+
+  const tableCounts = hasSupabaseAdmin(env)
+    ? await Promise.all(ADMIN_DATA_TABLES.map((table) => fetchRestTableCount(env, table).catch((error) => ({
+        table,
+        count: null,
+        ok: false,
+        error: String(error instanceof Error ? error.message : error),
+      }))))
+    : [];
+
+  const indexedObjectCount = Number(overview?.total_assets || 0);
+  const r2ObjectCount = Number(r2Summary?.object_count || 0);
+
+  return {
+    configIssues,
+    tableCounts,
+    dataCoverage: {
+      r2ObjectCount,
+      indexedObjectCount,
+      unindexedR2Objects: Math.max(0, r2ObjectCount - indexedObjectCount),
+      mediaIndexCoveragePct: r2ObjectCount > 0 ? Math.round((indexedObjectCount / r2ObjectCount) * 1000) / 10 : null,
+    },
+  };
+}
+
+async function fetchAdminAppTableInventory(env, table, maxRows = 5) {
+  if (!hasSupabaseAdmin(env)) {
+    return { table, count: null, ok: false, error: 'Supabase admin access is missing.', recent: [] };
+  }
+
+  const response = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${table}?select=*&limit=${parsePositiveInteger(maxRows, 5)}`,
+    {
+      method: 'GET',
+      headers: {
+        ...cleanupAuthHeaders(env),
+        Prefer: 'count=exact',
+      },
+    },
+  );
+
+  const contentRange = response.headers.get('Content-Range') || '';
+  const total = Number(contentRange.split('/').pop());
+  const count = Number.isFinite(total) ? total : null;
+
+  if (!response.ok) {
+    return { table, count, ok: false, error: `HTTP ${response.status}`, recent: [] };
+  }
+
+  const rows = await response.json().catch(() => []);
+  return {
+    table,
+    count,
+    ok: true,
+    error: null,
+    recent: Array.isArray(rows) ? rows.map((row) => summarizeAdminRow(table, row)) : [],
+  };
+}
+
+async function fetchAdminAppDataInventory(env, maxRows = 5) {
+  const tables = await Promise.all(
+    ADMIN_APP_DATA_TABLES.map((table) => fetchAdminAppTableInventory(env, table, maxRows).catch((error) => ({
+      table,
+      count: null,
+      ok: false,
+      error: String(error instanceof Error ? error.message : error),
+      recent: [],
+    }))),
+  );
+
+  const totals = tables.reduce((acc, table) => {
+    if (table.ok) acc.available_tables += 1;
+    else acc.unavailable_tables += 1;
+    acc.total_rows += Number(table.count || 0);
+    acc.recent_rows += table.recent.length;
+    acc.media_refs += table.recent.reduce((sum, row) => sum + Number(row.media_ref_count || 0), 0);
+    return acc;
+  }, {
+    available_tables: 0,
+    unavailable_tables: 0,
+    total_rows: 0,
+    recent_rows: 0,
+    media_refs: 0,
+  });
+
+  return { totals, tables };
+}
+
+async function fetchAdminCleanupTasks(env, maxRows = 25) {
+  if (!hasSupabaseAdmin(env)) return [];
+
+  const response = await supabaseRequest(
+    env,
+    `/media_cleanup_tasks?select=id,source_table,logical_item_id,couple_id,feature,status,attempts,last_error,run_after,created_at,completed_at&order=created_at.desc&limit=${parsePositiveInteger(maxRows, 25)}`,
+    { method: 'GET' },
+  );
+  return Array.isArray(response) ? response : [];
+}
+
+async function summarizeR2Bucket(env, maxObjects = 40) {
+  if (!env.LIOR_BUCKET) {
+    return {
+      summary: { object_count: 0, total_bytes: 0, managed_count: 0, unmanaged_count: 0, latest_uploaded_at: null, usage: [] },
+      objects: [],
+    };
+  }
+
+  const objects = [];
+  const usageMap = new Map();
+  let cursor = undefined;
+  let objectCount = 0;
+  let managedCount = 0;
+  let unmanagedCount = 0;
+  let totalBytes = 0;
+  let latestUploadedAt = null;
+
+  do {
+    const page = await env.LIOR_BUCKET.list({ cursor });
+    for (const object of page.objects || []) {
+      objectCount += 1;
+      const byteSize = Number(object.size || 0);
+      totalBytes += byteSize;
+      const parsed = parseManagedMediaKey(object.key);
+      const feature = parsed?.feature || 'unmanaged';
+      if (parsed) managedCount += 1;
+      else unmanagedCount += 1;
+
+      if (!usageMap.has(feature)) {
+        usageMap.set(feature, {
+          feature,
+          object_count: 0,
+          total_bytes: 0,
+          couple_count: new Set(),
+        });
+      }
+      const usage = usageMap.get(feature);
+      usage.object_count += 1;
+      usage.total_bytes += byteSize;
+      if (parsed?.coupleId) usage.couple_count.add(parsed.coupleId);
+
+      const uploadedAt = object.uploaded ? new Date(object.uploaded).toISOString() : null;
+      if (uploadedAt && (!latestUploadedAt || uploadedAt > latestUploadedAt)) {
+        latestUploadedAt = uploadedAt;
+      }
+
+      objects.push({
+        key: object.key,
+        size: byteSize,
+        uploaded: uploadedAt,
+        etag: object.etag || object.httpEtag || null,
+        feature,
+        couple_id: parsed?.coupleId || null,
+        owner_user_id: parsed?.ownerUserId || null,
+        asset_role: parsed?.assetRole || null,
+        item_id: parsed?.itemId || null,
+        managed: !!parsed,
+      });
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+
+  objects.sort((a, b) => String(b.uploaded || '').localeCompare(String(a.uploaded || '')));
+
+  return {
+    summary: {
+      object_count: objectCount,
+      total_bytes: totalBytes,
+      managed_count: managedCount,
+      unmanaged_count: unmanagedCount,
+      latest_uploaded_at: latestUploadedAt,
+      usage: Array.from(usageMap.values()).map((entry) => ({
+        feature: entry.feature,
+        object_count: entry.object_count,
+        total_bytes: entry.total_bytes,
+        couple_count: entry.couple_count.size,
+      })).sort(sortFeatureUsage),
+    },
+    objects: objects.slice(0, parsePositiveInteger(maxObjects, 40)),
+  };
 }
 
 async function buildAdminOverviewFallback(env) {
@@ -712,21 +1661,55 @@ async function buildAdminOverview(env, options = {}) {
   const eventsLimit = parsePositiveInteger(options.eventsLimit, 20);
   const couplesLimit = parsePositiveInteger(options.couplesLimit, 25);
   const daysBack = parsePositiveInteger(options.daysBack, 14);
+  const r2ObjectsLimit = parsePositiveInteger(options.r2ObjectsLimit, 40);
+  const appRowsLimit = parsePositiveInteger(options.appRowsLimit, 5);
 
-  const [overview, couples, assets, alerts, events, metrics] = await Promise.all([
-    fetchAdminOverview(env),
-    fetchAdminCoupleUsage(env, couplesLimit),
-    fetchAdminRecentAssets(env, assetsLimit),
-    fetchAdminOpenAlerts(env, alertsLimit),
-    fetchAdminRecentEvents(env, eventsLimit),
-    fetchAdminMetrics(env, daysBack),
-  ]);
+  const r2 = await summarizeR2Bucket(env, r2ObjectsLimit);
+
+  const [overview, couples, assets, alerts, events, metrics, cleanupTasks, appData] = hasSupabaseAdmin(env)
+    ? await Promise.all([
+        fetchAdminOverview(env),
+        fetchAdminCoupleUsage(env, couplesLimit),
+        fetchAdminRecentAssets(env, assetsLimit),
+        fetchAdminOpenAlerts(env, alertsLimit),
+        fetchAdminRecentEvents(env, eventsLimit),
+        fetchAdminMetrics(env, daysBack),
+        fetchAdminCleanupTasks(env, 25),
+        fetchAdminAppDataInventory(env, appRowsLimit),
+      ])
+    : [
+        {
+          ...buildEmptyAdminOverview(),
+          total_assets: r2.summary.object_count,
+          ready_assets: r2.summary.managed_count,
+          orphaned_assets: r2.summary.unmanaged_count,
+          total_bytes: r2.summary.total_bytes,
+          usage: r2.summary.usage.map((entry) => ({
+            feature: entry.feature,
+            object_count: entry.object_count,
+            total_bytes: entry.total_bytes,
+            missing_count: 0,
+            couple_count: entry.couple_count,
+          })),
+        },
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        { totals: { available_tables: 0, unavailable_tables: ADMIN_APP_DATA_TABLES.length, total_rows: 0, recent_rows: 0, media_refs: 0 }, tables: [] },
+      ];
+
+  const health = await fetchAdminDataHealth(env, r2.summary, overview);
 
   return {
     generatedAt: new Date().toISOString(),
     worker: {
       bucketConfigured: !!env.LIOR_BUCKET,
       supabaseConfigured: hasSupabaseAdmin(env),
+      cleanupTokenConfigured: !!env.CLEANUP_INTERNAL_TOKEN,
+      adminTokenConfigured: !!env.ADMIN_DASHBOARD_TOKEN,
     },
     overview,
     couples,
@@ -734,6 +1717,10 @@ async function buildAdminOverview(env, options = {}) {
     alerts,
     events,
     metrics,
+    cleanupTasks,
+    r2,
+    health,
+    appData,
   };
 }
 
@@ -992,6 +1979,71 @@ async function processCleanupTask(env, task) {
   }
 }
 
+async function fetchActiveDailyMomentKeys(env) {
+  if (!hasSupabaseAdmin(env)) return new Set();
+  const rows = await fetchPagedRestRows(
+    env,
+    (offset, limit) => `/daily_photos?select=data&limit=${limit}&offset=${offset}`,
+    { pageSize: 1000, maxPages: 10 },
+  ).catch(() => []);
+
+  const keys = new Set();
+  for (const row of rows) {
+    const data = row?.data && typeof row.data === 'object' ? row.data : {};
+    for (const field of ['storagePath', 'videoStoragePath', 'image', 'video']) {
+      const key = extractManagedKey(data[field]);
+      if (key && isCleanupEligibleKey(key)) keys.add(key);
+    }
+  }
+  return keys;
+}
+
+async function deleteExpiredOrphanDailyMomentObjects(env) {
+  if (!env.LIOR_BUCKET || !Number.isFinite(CLEANUP_FEATURE_RETENTION_MS)) {
+    return { scanned: 0, deleted: 0, skippedActive: 0, skippedFresh: 0, failed: 0 };
+  }
+
+  const activeKeys = await fetchActiveDailyMomentKeys(env);
+  const cutoffMs = Date.now() - CLEANUP_FEATURE_RETENTION_MS;
+  let cursor = undefined;
+  let scanned = 0;
+  let deleted = 0;
+  let skippedActive = 0;
+  let skippedFresh = 0;
+  let failed = 0;
+
+  do {
+    const page = await env.LIOR_BUCKET.list({ prefix: 'v2/couples/', cursor });
+    for (const object of page.objects || []) {
+      const parsed = parseManagedMediaKey(object.key);
+      if (parsed?.feature !== CLEANUP_FEATURE) continue;
+      scanned += 1;
+      if (activeKeys.has(object.key)) {
+        skippedActive += 1;
+        continue;
+      }
+      const uploadedMs = object.uploaded ? new Date(object.uploaded).getTime() : 0;
+      if (uploadedMs && uploadedMs > cutoffMs) {
+        skippedFresh += 1;
+        continue;
+      }
+      try {
+        const verified = await deleteAndVerify(env, object.key);
+        if (!verified) failed += 1;
+        else deleted += 1;
+      } catch {
+        failed += 1;
+      }
+      if (deleted + failed >= ORPHAN_DAILY_OBJECT_CLEANUP_BATCH_SIZE) {
+        return { scanned, deleted, skippedActive, skippedFresh, failed };
+      }
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+
+  return { scanned, deleted, skippedActive, skippedFresh, failed };
+}
+
 async function listAllManagedKeys(env) {
   const keys = [];
   let cursor = undefined;
@@ -1072,6 +2124,7 @@ async function runAudit(env) {
 
   const bucketKeys = await listAllManagedKeys(env);
   let orphanedObjects = 0;
+  const orphanGroups = new Map();
   for (const key of bucketKeys) {
     if (assetKeys.has(key)) continue;
     orphanedObjects += 1;
@@ -1091,18 +2144,33 @@ async function runAudit(env) {
       });
     }
     metricsByGroup.get(groupKey).orphan_object_count += 1;
+    if (!orphanGroups.has(groupKey)) {
+      orphanGroups.set(groupKey, {
+        couple_id: parsed?.coupleId ?? null,
+        feature: parsed?.feature ?? null,
+        count: 0,
+        sample_keys: [],
+      });
+    }
+    const orphanGroup = orphanGroups.get(groupKey);
+    orphanGroup.count += 1;
+    if (orphanGroup.sample_keys.length < 8) orphanGroup.sample_keys.push(key);
+  }
+
+  for (const [groupKey, group] of orphanGroups.entries()) {
     await upsertStorageAlert(env, {
-      couple_id: parsed?.coupleId ?? null,
-      feature: parsed?.feature ?? null,
+      couple_id: group.couple_id,
+      feature: group.feature,
       alert_type: 'orphaned_object',
       severity: 'warning',
-      fingerprint: `orphaned_object:${key}`,
-      title: 'R2 object has no media_assets row',
-      details: { r2Key: key },
+      fingerprint: `orphaned_object_group:${groupKey}`,
+      title: 'R2 objects have no media_assets rows',
+      details: { count: group.count, sampleKeys: group.sample_keys },
     }).catch(() => {});
   }
 
   const legacyRefs = await runRpc(env, 'storage_audit_legacy_refs', { max_rows: 200 }).catch(() => []);
+  const legacyGroups = new Map();
   for (const ref of legacyRefs || []) {
     const groupKey = `${ref.couple_id || 'unknown'}:${ref.feature || 'unknown'}`;
     if (!metricsByGroup.has(groupKey)) {
@@ -1119,18 +2187,41 @@ async function runAudit(env) {
       });
     }
     metricsByGroup.get(groupKey).legacy_ref_count += 1;
+    const alertKey = `${ref.couple_id || 'unknown'}:${ref.feature || 'unknown'}:${ref.source_table}`;
+    if (!legacyGroups.has(alertKey)) {
+      legacyGroups.set(alertKey, {
+        couple_id: ref.couple_id ?? null,
+        feature: ref.feature ?? null,
+        source_table: ref.source_table,
+        count: 0,
+        sample_refs: [],
+      });
+    }
+    const legacyGroup = legacyGroups.get(alertKey);
+    legacyGroup.count += 1;
+    if (legacyGroup.sample_refs.length < 8) {
+      legacyGroup.sample_refs.push({
+        logicalRowId: ref.logical_row_id,
+        fieldName: ref.field_name,
+        storagePath: ref.storage_path,
+      });
+    }
+  }
+
+  for (const [alertKey, group] of legacyGroups.entries()) {
     await upsertStorageAlert(env, {
-      couple_id: ref.couple_id ?? null,
-      feature: ref.feature ?? null,
+      couple_id: group.couple_id,
+      feature: group.feature,
       alert_type: 'legacy_storage_ref',
       severity: 'warning',
-      fingerprint: `legacy_ref:${ref.source_table}:${ref.logical_row_id}:${ref.field_name}`,
-      title: 'Legacy storage path still present',
-      details: { sourceTable: ref.source_table, logicalRowId: ref.logical_row_id, fieldName: ref.field_name, storagePath: ref.storage_path },
+      fingerprint: `legacy_ref_group:${alertKey}`,
+      title: 'Legacy storage paths still present',
+      details: { sourceTable: group.source_table, count: group.count, sampleRefs: group.sample_refs },
     }).catch(() => {});
   }
 
   const expiredRows = await runRpc(env, 'storage_audit_expired_daily_photos', { max_rows: 200 }).catch(() => []);
+  const expiredGroups = new Map();
   for (const row of expiredRows || []) {
     const groupKey = `${row.couple_id || 'unknown'}:${CLEANUP_FEATURE}`;
     if (!metricsByGroup.has(groupKey)) {
@@ -1147,14 +2238,29 @@ async function runAudit(env) {
       });
     }
     metricsByGroup.get(groupKey).expired_row_count += 1;
+    if (!expiredGroups.has(groupKey)) {
+      expiredGroups.set(groupKey, {
+        couple_id: row.couple_id ?? null,
+        count: 0,
+        sample_rows: [],
+      });
+    }
+    const expiredGroup = expiredGroups.get(groupKey);
+    expiredGroup.count += 1;
+    if (expiredGroup.sample_rows.length < 8) {
+      expiredGroup.sample_rows.push({ rowId: row.row_id, logicalRowId: row.logical_row_id, expiresAt: row.expires_at });
+    }
+  }
+
+  for (const [groupKey, group] of expiredGroups.entries()) {
     await upsertStorageAlert(env, {
-      couple_id: row.couple_id ?? null,
+      couple_id: group.couple_id,
       feature: CLEANUP_FEATURE,
       alert_type: 'expired_daily_row',
       severity: 'error',
-      fingerprint: `expired_daily_row:${row.row_id}`,
-      title: 'Expired daily moment row still exists',
-      details: { rowId: row.row_id, logicalRowId: row.logical_row_id, expiresAt: row.expires_at },
+      fingerprint: `expired_daily_row_group:${groupKey}`,
+      title: 'Expired daily moment rows still exist',
+      details: { count: group.count, sampleRows: group.sample_rows },
     }).catch(() => {});
   }
 
@@ -1382,15 +2488,9 @@ async function runCleanup(env, source = 'manual') {
     console.warn('[cleanup] prune failed', error);
     return 0;
   });
-  const auditStats = await runAudit(env).catch((error) => {
-    console.warn('[audit] run failed', error);
-    return {
-      missingAssets: 0,
-      orphanedObjects: 0,
-      legacyRefs: 0,
-      expiredRows: 0,
-      repeatedMissingReads: 0,
-    };
+  const orphanDailyObjects = await deleteExpiredOrphanDailyMomentObjects(env).catch((error) => {
+    console.warn('[cleanup] orphan daily object cleanup failed', error);
+    return { scanned: 0, deleted: 0, skippedActive: 0, skippedFresh: 0, failed: 1 };
   });
 
   return {
@@ -1404,7 +2504,7 @@ async function runCleanup(env, source = 'manual') {
     skippedPaths,
     failedTasks,
     prunedTasks,
-    audit: auditStats,
+    orphanDailyObjects,
   };
 }
 
@@ -1439,9 +2539,6 @@ export default {
       if (!requireAdminToken(request, env)) {
         return jsonResponse({ ok: false, error: 'Unauthorized' }, 401, cors);
       }
-      if (!hasSupabaseAdmin(env)) {
-        return jsonResponse({ ok: false, error: 'Supabase admin secrets are missing' }, 500, cors);
-      }
 
       if (request.method === 'GET' && url.pathname === ADMIN_OVERVIEW_ROUTE) {
         try {
@@ -1451,6 +2548,8 @@ export default {
             eventsLimit: url.searchParams.get('events'),
             couplesLimit: url.searchParams.get('couples'),
             daysBack: url.searchParams.get('days'),
+            r2ObjectsLimit: url.searchParams.get('r2Objects'),
+            appRowsLimit: url.searchParams.get('appRows'),
           });
           return jsonResponse({ ok: true, ...payload }, 200, cors);
         } catch (error) {
@@ -1458,11 +2557,33 @@ export default {
         }
       }
 
+      if (request.method === 'GET' && url.pathname === ADMIN_MEDIA_ROUTE) {
+        try {
+          const media = await fetchAdminMediaGallery(env, url.searchParams.get('limit'));
+          return jsonResponse({ ok: true, ...media }, 200, cors);
+        } catch (error) {
+          return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+        }
+      }
+
+      if (request.method === 'GET' && url.pathname === ADMIN_USERS_ROUTE) {
+        try {
+          const users = await fetchAdminUsers(env, url.searchParams.get('limit'));
+          return jsonResponse({ ok: true, ...users }, 200, cors);
+        } catch (error) {
+          return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+        }
+      }
+
+      if (!hasSupabaseAdmin(env)) {
+        return jsonResponse({ ok: false, error: 'Supabase admin secrets are missing' }, 500, cors);
+      }
+
       if (request.method === 'POST' && url.pathname === ADMIN_AUDIT_ROUTE) {
         try {
           const audit = await runAudit(env);
-          const payload = await buildAdminOverview(env);
-          return jsonResponse({ ok: true, audit, ...payload }, 200, cors);
+          await insertAdminActionEvent(env, 'audit_ran', { result: audit });
+          return jsonResponse({ ok: true, generatedAt: new Date().toISOString(), audit }, 200, cors);
         } catch (error) {
           return jsonResponse({ ok: false, error: String(error) }, 500, cors);
         }
@@ -1471,8 +2592,8 @@ export default {
       if (request.method === 'POST' && url.pathname === ADMIN_CLEANUP_ROUTE) {
         try {
           const cleanup = await runCleanup(env, 'admin');
-          const payload = await buildAdminOverview(env);
-          return jsonResponse({ ok: cleanup.ok, cleanup, ...payload }, cleanup.ok ? 200 : 500, cors);
+          await insertAdminActionEvent(env, 'cleanup_ran', { result: cleanup }, cleanup.ok ? 'info' : 'error');
+          return jsonResponse({ ok: cleanup.ok, generatedAt: new Date().toISOString(), cleanup }, cleanup.ok ? 200 : 500, cors);
         } catch (error) {
           return jsonResponse({ ok: false, error: String(error) }, 500, cors);
         }
@@ -1481,8 +2602,38 @@ export default {
       if (request.method === 'POST' && url.pathname === ADMIN_REPAIR_ROUTE) {
         try {
           const repair = await runRepair(env, 'admin');
-          const payload = await buildAdminOverview(env);
-          return jsonResponse({ ok: repair.ok, repair, ...payload }, repair.ok ? 200 : 500, cors);
+          await insertAdminActionEvent(env, 'repair_ran', { result: repair }, repair.ok ? 'info' : 'error');
+          return jsonResponse({ ok: repair.ok, generatedAt: new Date().toISOString(), repair }, repair.ok ? 200 : 500, cors);
+        } catch (error) {
+          return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === ADMIN_RESOLVE_ALERT_ROUTE) {
+        try {
+          const body = await readJsonBody(request);
+          const result = await resolveAdminAlert(env, body.id);
+          return jsonResponse({ ok: true, generatedAt: new Date().toISOString(), result }, 200, cors);
+        } catch (error) {
+          return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === ADMIN_RETRY_CLEANUP_TASK_ROUTE) {
+        try {
+          const body = await readJsonBody(request);
+          const result = await retryAdminCleanupTask(env, body.id);
+          return jsonResponse({ ok: true, generatedAt: new Date().toISOString(), result }, 200, cors);
+        } catch (error) {
+          return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === ADMIN_VERIFY_MEDIA_ROUTE) {
+        try {
+          const body = await readJsonBody(request);
+          const result = await verifyAdminMedia(env, body.r2Key);
+          return jsonResponse({ ok: true, generatedAt: new Date().toISOString(), result }, 200, cors);
         } catch (error) {
           return jsonResponse({ ok: false, error: String(error) }, 500, cors);
         }
