@@ -27,7 +27,7 @@ assert.match(
 
 assert.match(
   moodCalendarSource,
-  /const getMoodTheme = \(value\?: string \| null\) => moodThemes\[normalizeMoodKey\(value\)\] \|\| moodThemes\.default;/,
+  /const getMoodTheme = \(value\?: string \| null\)(?:: MoodTheme)? => moodThemes\[normalizeMoodKey\(value\)\] \|\| moodThemes\.default;/,
   'Expected Aura Board to use a fallback mood theme for unknown synced moods.',
 );
 
