@@ -75,18 +75,18 @@ const isAndroid = (): boolean =>
 // [on_ms, off_ms, on_ms, ...]
 
 const W: Record<string, VibratePattern> = {
-  // Single crisp tap — lightest possible
-  tap:        [7],
+  // Single crisp tap — lightest possible (tightened for subtler feel)
+  tap:        [4],
   // Weighted single tap — standard button
-  press:      [12],
+  press:      [8],
   // Deep single thud
-  heavy:      [20],
+  heavy:      [14],
   // Ultra-short — ghost button, back arrow
-  softTap:    [5],
+  softTap:    [3],
   // Hard wall — one firm pulse
-  rigidStop:  [22],
+  rigidStop:  [16],
   // Fine selection tick
-  select:     [4],
+  select:     [2],
   // Two rising pulses: short-pause-long
   success:    [8, 60, 14],
   // Two flat pulses with drop: long-pause-long
@@ -151,10 +151,17 @@ class HapticsService {
    * Light impact.
    * Use for: nav tabs, list rows, ghost buttons, any subtle interaction.
    * iOS feel: touching a small light object
+   *
+   * On Android the native ImpactStyle.Light maps to HapticFeedbackConstants
+   * (VIRTUAL_KEY / CONTEXT_CLICK) which carry a multi-bump decay envelope
+   * that feels "springy". We bypass it with a 3ms direct vibration for a
+   * sharp single click with no tail. iOS keeps the Taptic Engine impact —
+   * its actuator is already crisp.
    */
   async tap() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Light }); }
+    if (isAndroid()) vibrate(W.tap);
+    else if (isNative()) CapHaptics.impact({ style: ImpactStyle.Light });
     else vibrate(W.tap);
   }
 
@@ -165,7 +172,8 @@ class HapticsService {
    */
   async press() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Medium }); }
+    if (isAndroid()) vibrate(W.press);
+    else if (isNative()) CapHaptics.impact({ style: ImpactStyle.Medium });
     else vibrate(W.press);
   }
 
@@ -176,7 +184,8 @@ class HapticsService {
    */
   async heavy() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Heavy }); }
+    if (isAndroid()) vibrate(W.heavy);
+    else if (isNative()) CapHaptics.impact({ style: ImpactStyle.Heavy });
     else vibrate(W.heavy);
   }
 
@@ -187,11 +196,9 @@ class HapticsService {
    */
   async softTap() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) {
-      await CapHaptics.impact({ style: ImpactStyle.Light });
-    } else {
-      vibrate(W.softTap);
-    }
+    if (isAndroid()) vibrate(W.softTap);
+    else if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Light });
+    else vibrate(W.softTap);
   }
 
   /**

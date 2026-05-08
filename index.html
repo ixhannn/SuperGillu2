@@ -85,7 +85,7 @@
     }
 
     .pt-safe {
-      padding-top: env(safe-area-inset-top);
+      padding-top: clamp(1.5rem, env(safe-area-inset-top, 1.5rem), 3rem);
     }
 
     .no-scrollbar::-webkit-scrollbar {

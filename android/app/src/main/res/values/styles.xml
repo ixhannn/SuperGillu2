@@ -13,9 +13,14 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
-        <!-- Edge-to-edge: draw behind system bars -->
-        <item name="android:windowTranslucentStatus">true</item>
+        <!-- Edge-to-edge: status bar fully transparent, no system scrim.
+             windowTranslucentStatus paints a dark gradient behind the bar —
+             do not use it. statusBarColor=transparent + setDecorFitsSystemWindows
+             (handled by Capacitor's StatusBar.setOverlaysWebView at runtime)
+             gives true draw-behind-bars with no tint. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 
 

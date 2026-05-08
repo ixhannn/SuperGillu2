@@ -419,7 +419,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                 : 'Enter Lior';
 
     return (
-        <div className="relative min-h-screen overflow-x-hidden overflow-y-auto" style={{ ...pageTextStyle, color: authPalette.textPrimary, background: '#eadce3' }}>
+        <div className="relative min-h-[100dvh] overflow-x-hidden overflow-y-auto" style={{ ...pageTextStyle, color: authPalette.textPrimary, background: '#eadce3' }}>
             <LiquidGlassDefs />
             <div style={pageBackgroundStyle} />
             <div style={opticalFieldStyle} />
@@ -432,21 +432,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
             <div style={lowerVignetteStyle} />
 
             <div
-                className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[380px] flex-col px-5 md:max-w-[392px] md:py-5"
+                className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[380px] flex-col justify-center px-5 md:max-w-[392px] md:py-5"
                 style={{
                     paddingTop: 'max(env(safe-area-inset-top), clamp(1.15rem, 2.7vh, 1.55rem))',
                     paddingBottom: 'max(env(safe-area-inset-bottom), clamp(1rem, 2.6vh, 1.3rem))',
                 }}
             >
-                <div className="flex-shrink-0 pt-1 text-center">
+                <div className="flex-shrink-0 pt-1 pb-4 text-center">
                     <span className="text-[10.5px] font-bold tracking-[0.42em]" style={{ color: 'rgba(71,45,57,0.78)' }}>
                         LIOR
                     </span>
                 </div>
 
                 <div
-                    className="pointer-events-none relative flex flex-1 items-start justify-center"
-                    style={{ minHeight: 'clamp(4.3rem, 11vh, 6.2rem)', maxHeight: 'clamp(5.2rem, 13vh, 7rem)' }}
+                    className="pointer-events-none relative flex items-start justify-center"
+                    style={{ height: 'clamp(2rem, 5vh, 3.5rem)' }}
                 >
                     <div
                         className="absolute top-[8%] h-[8rem] w-[14rem] rounded-full"

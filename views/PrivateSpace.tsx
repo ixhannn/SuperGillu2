@@ -57,6 +57,10 @@ const NEU_LILAC = '#b8a4c8';
 const neuBgStyle: React.CSSProperties = {
     background: NEU_BG,
     color: NEU_INK,
+    // Extend bg through the safe-area region at top of viewport so the
+    // Layout's pink theme doesn't leak through pt-safe behind the status bar.
+    marginTop: 'calc(0px - env(safe-area-inset-top, 0px))',
+    paddingTop: 'env(safe-area-inset-top, 0px)',
 };
 
 const neuDotPattern: React.CSSProperties = {
@@ -356,7 +360,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
             <div className="relative min-h-[100dvh] overflow-hidden" style={neuBgStyle}>
                 <div className="absolute inset-0 opacity-60" style={neuDotPattern} />
                 <div className="absolute left-1/2 top-[30%] h-80 w-80 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(232,200,230,0.35),transparent_70%)] blur-2xl" />
-                <ViewHeader title="" onBack={() => setView('home')} tone="romance" />
+                <ViewHeader title="Private Space" subtitle="locked" onBack={() => setView('home')} tone="romance" />
 
                 <div className="relative z-10 flex min-h-[84vh] flex-col items-center justify-center px-6">
                     <motion.div

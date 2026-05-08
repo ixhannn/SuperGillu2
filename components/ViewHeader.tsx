@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigation } from '../App';
 import { motion } from 'framer-motion';
@@ -13,6 +14,64 @@ interface ViewHeaderProps {
   tone?: 'default' | 'romance';
 }
 
+/**
+ * Returns whether the spacer (and therefore this header instance) is currently
+ * visible on screen. Keep-alive shells set `display:none` on inactive views,
+ * but the React portal escapes that — so we observe the spacer's own layout
+ * to decide whether to render the floating pill. Only the active view's pill
+ * is mounted at any time.
+ */
+const useSpacerVisible = (ref: React.RefObject<HTMLDivElement>) => {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const compute = () => {
+      // offsetParent is null when any ancestor has display:none.
+      // Combined with offsetWidth>0 this is a robust visibility probe that
+      // works inside keep-alive shells, transitions, and modals alike.
+      const isVisible = el.offsetParent !== null && el.offsetWidth > 0;
+      setVisible((prev) => (prev === isVisible ? prev : isVisible));
+    };
+
+    compute();
+
+    // Watch the keep-alive shell for class flips that toggle display.
+    const shell = el.closest('.keep-alive-shell');
+    let mo: MutationObserver | null = null;
+    if (shell) {
+      mo = new MutationObserver(compute);
+      mo.observe(shell, { attributes: true, attributeFilter: ['class', 'style'] });
+    }
+
+    // Also recompute on resize / orientation changes.
+    window.addEventListener('resize', compute);
+
+    // Periodic safety net — covers any state changes the observers miss
+    // (transitions, view-transition snapshots, etc.). Cheap: one rAF every ~250ms.
+    let raf = 0;
+    let lastCheck = 0;
+    const tick = (t: number) => {
+      if (t - lastCheck > 250) {
+        compute();
+        lastCheck = t;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      if (mo) mo.disconnect();
+      window.removeEventListener('resize', compute);
+      cancelAnimationFrame(raf);
+    };
+  }, [ref]);
+
+  return visible;
+};
+
 export const ViewHeader: React.FC<ViewHeaderProps> = ({
   title,
   subtitle,
@@ -24,12 +83,11 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
   const { goBack } = useNavigation();
   const handleBack = onBack ?? goBack;
   const isGhost = borderless || variant === 'transparent';
+  const spacerRef = useRef<HTMLDivElement>(null);
+  const visible = useSpacerVisible(spacerRef);
 
-  return (
-    <>
-      <div className="vh-spacer" aria-hidden="true" />
-      {/* vh-shell owns fixed positioning + centering — no Framer transforms here */}
-      <div className="vh-shell">
+  const shell = (
+    <div className="vh-shell">
       <motion.header
         className={`vh${isGhost ? ' vh--ghost' : ''}`}
         initial={{ opacity: 0, y: -12, scale: 0.97 }}
@@ -83,7 +141,13 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
           )}
         </div>
       </motion.header>
-      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div ref={spacerRef} className="vh-spacer" aria-hidden="true" />
+      {visible && typeof document !== 'undefined' ? ReactDOM.createPortal(shell, document.body) : null}
     </>
   );
 };

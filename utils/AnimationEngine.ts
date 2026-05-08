@@ -81,8 +81,16 @@ class AnimationEngineClass {
   private adaptLockUntil = 0;
   private upgradeFrames = 0;
 
-  /** Active quality tier — broadcast to subscribers and CSS via data-tier */
+  /** Active quality tier — locked at 'ultra' (tier gating disabled). */
   public tier: QualityTier = 'ultra';
+
+  // Eagerly publish the ultra tier on construction so any CSS rules that
+  // depend on data-tier match the highest tier from first paint.
+  constructor() {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.tier = 'ultra';
+    }
+  }
 
   /**
    * Ring buffer of frame deltas (ms). Length 128 → ~1s of history at 120fps.
@@ -120,46 +128,24 @@ class AnimationEngineClass {
     this.costs.delete(id);
   }
 
-  /** Override tier externally (e.g. from settings or debug UI) */
-  setTier(tier: QualityTier): void {
-    if (this.tier === tier) return;
-    this.tier = tier;
-    this.upgradeFrames = 0;
-    this._publishTier(tier);
+  /**
+   * Tier system disabled — every device runs at "ultra" regardless of FPS.
+   * Adaptive downgrading and the data-tier CSS gating it controls are off
+   * by design; setTier() and _adaptTier() are intentionally no-ops.
+   */
+  setTier(_tier: QualityTier): void {
+    // no-op — tier is locked at 'ultra'
+    this._publishTier('ultra');
   }
 
-  private _publishTier(tier: QualityTier): void {
+  private _publishTier(_tier: QualityTier): void {
     if (typeof document !== 'undefined') {
-      document.documentElement.dataset.tier = tier;
+      document.documentElement.dataset.tier = 'ultra';
     }
   }
 
-  private _adaptTier(fps: number, ts: number): void {
-    if (ts < this.adaptLockUntil) {
-      this.upgradeFrames = 0;
-      return;
-    }
-
-    const rank  = TIER_RANK[this.tier];
-    const tiers = TIER_SORTED;
-
-    if (fps < DOWNGRADE_FPS && rank > 0) {
-      this.upgradeFrames = 0;
-      const lower = tiers.find(t => TIER_RANK[t] === rank - 1)!;
-      this.tier = lower;
-      this._publishTier(lower);
-      this.adaptLockUntil = ts + DOWNGRADE_LOCK;
-    } else if (fps >= UPGRADE_FPS && rank < TIER_RANK['ultra']) {
-      if (++this.upgradeFrames >= UPGRADE_REQUIRED) {
-        this.upgradeFrames = 0;
-        const higher = tiers.find(t => TIER_RANK[t] === rank + 1)!;
-        this.tier = higher;
-        this._publishTier(higher);
-        this.adaptLockUntil = ts + UPGRADE_LOCK;
-      }
-    } else {
-      this.upgradeFrames = 0;
-    }
+  private _adaptTier(_fps: number, _ts: number): void {
+    // no-op — adaptive tier downgrade is disabled
   }
 
   private readonly loop = (ts: number): void => {

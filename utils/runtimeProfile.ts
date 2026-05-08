@@ -16,16 +16,7 @@ export const isCompactViewport = (): boolean => (
   typeof window !== 'undefined' && window.innerWidth <= 480
 );
 
-export const isLowPowerDevice = (): boolean => {
-  if (typeof navigator === 'undefined') return false;
-  const hardwareConcurrency = navigator.hardwareConcurrency;
-  const deviceMemory = (navigator as NavigatorWithDeviceMemory).deviceMemory;
-  return (
-    (typeof hardwareConcurrency === 'number' && hardwareConcurrency > 0 && hardwareConcurrency <= 6)
-    || (typeof deviceMemory === 'number' && deviceMemory > 0 && deviceMemory <= 4)
-  );
-};
+export const isLowPowerDevice = (): boolean => false;
 
-export const shouldGateHeavyView = (): boolean => (
-  isNativePlatform() || isCompactViewport() || isLowPowerDevice()
-);
+// Tier gating disabled — every device gets every effect.
+export const shouldGateHeavyView = (): boolean => false;
