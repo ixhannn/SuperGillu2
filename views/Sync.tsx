@@ -584,7 +584,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       <div className="flex flex-col items-center gap-3">
         {/* QR image */}
         <div className="rounded-2xl overflow-hidden shadow-lg border-[3px] border-white/80">
-          <img src={qrImg} alt="Pairing QR" width={200} height={200} style={{ display: 'block' }} />
+          <img src={qrImg} alt="Pairing QR" width={200} height={200} style={{ display: 'block' }} decoding="async" />
         </div>
 
         {/* Countdown */}

@@ -128,7 +128,7 @@ const PrivateMediaPreview: React.FC<{ item: PrivateSpaceItem; mode?: 'card' | 'd
     }, [item]);
 
     if (item.kind === 'photo' && src) {
-        return <img src={src} alt={item.title || 'Private photo'} className="h-full w-full object-cover" loading="lazy" />;
+        return <img src={src} alt={item.title || 'Private photo'} className="h-full w-full object-cover" loading="lazy" decoding="async" />;
     }
 
     if (item.kind === 'video' && src) {

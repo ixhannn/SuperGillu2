@@ -932,8 +932,11 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                       )}
                     </div>
 
-                    {/* Item grid */}
-                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {/* Item grid — offscreen rows skip layout via content-visibility */}
+                    <div
+                      className="grid grid-cols-3 gap-2 sm:grid-cols-4"
+                      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 600px' } as React.CSSProperties}
+                    >
                       {shopItems.map(({ item, locked }) => (
                         <motion.button
                           key={item.id}

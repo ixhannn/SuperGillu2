@@ -350,6 +350,17 @@ const persistLockedPairLink = (profile: Partial<CoupleProfile>) => {
     setAccountScopedLocalStorageValue(CACHE_KEYS.LINK_LOCK, JSON.stringify(lock));
 };
 
+// ── getCoupleProfile content-keyed micro-cache ──────────────────────────────
+// getCoupleProfile() is called dozens of times per render pass across the app
+// AND internally by many storage methods. The unmemoized version re-ran three
+// localStorage reads + three JSON.parse + identity normalization + locked-pair
+// merge on EVERY call. The cache key is the exact source strings, so it is
+// fully self-invalidating (any write changes a string → cache miss → recompute)
+// with zero staleness risk. We hand back a shallow clone so callers that
+// reassign a top-level field don't corrupt the cached object.
+let _profileCacheKey: string | null = null;
+let _profileCacheVal: CoupleProfile | null = null;
+
 const applyLockedPairLink = <T extends Partial<CoupleProfile>>(profile: T, current?: Partial<CoupleProfile>): T => {
     const existingLock = getLockedPairLink();
     const currentCoupleId = cleanString(current?.coupleId);
@@ -1926,6 +1937,16 @@ export const StorageService = {
     getCoupleProfile: (): CoupleProfile => {
         const idStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
         const sharedStr = localStorage.getItem(CACHE_KEYS.SHARED_PROFILE);
+        const lockStr = getAccountScopedLocalStorageValue(CACHE_KEYS.LINK_LOCK);
+
+        // Content-keyed cache: if all three source strings are unchanged the
+        // computed profile is identical, so skip the parse/normalize/merge.
+        const cacheKey = `${idStr ?? ''} ${sharedStr ?? ''} ${lockStr ?? ''}`;
+        if (cacheKey === _profileCacheKey && _profileCacheVal) {
+            // Shallow clone so a caller reassigning a top-level field cannot
+            // corrupt the cached object shared with other readers.
+            return { ..._profileCacheVal };
+        }
 
         const rawIdentity = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
         const id = normalizeIdentityPair(rawIdentity);
@@ -1935,7 +1956,13 @@ export const StorageService = {
 
         const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: '', theme: 'rose' };
 
-        return applyLockedPairLink({ ...id, ...shared });
+        const result = applyLockedPairLink({ ...id, ...shared });
+        _profileCacheVal = result;
+        // Re-key off the possibly-normalized identity string so the next call
+        // hits the cache instead of missing once more after a normalization write.
+        const finalIdStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
+        _profileCacheKey = `${finalIdStr ?? ''} ${sharedStr ?? ''} ${lockStr ?? ''}`;
+        return { ...result };
     },
 
     activateAccount: (userId: string | null) => {
@@ -2359,14 +2386,14 @@ export const StorageService = {
 
     addMissedAura: (payload: any) => {
         const profile = StorageService.getCoupleProfile();
-        if (!profile.missedAuras) profile.missedAuras = [];
         const msg = {
             id: crypto.randomUUID(),
             target: profile.partnerName,
             timestamp: new Date().toISOString(),
             payload
         };
-        profile.missedAuras.push(msg);
+        // Reassign (not nested push) so the cached profile array is never mutated.
+        profile.missedAuras = [...(profile.missedAuras ?? []), msg];
         StorageService.saveCoupleProfile(profile);
     },
 

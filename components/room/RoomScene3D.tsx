@@ -865,6 +865,10 @@ interface RoomScene3DProps {
     };
   }, [floorTex, wallTex]);
 
+  // Note: codex's newer base uses `frameloop="demand"` + an invalidator, which
+  // already renders only when something changes — strictly better than the
+  // transition-pause approach, so we defer to it here.
+
   const ambientPreset = useMemo(() => {
     if (room.ambient === 'cool') {
       return {

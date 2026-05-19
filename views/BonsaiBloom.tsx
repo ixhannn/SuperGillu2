@@ -997,7 +997,19 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
     useEffect(() => {
         if (storage.getBonsaiState) setState(storage.getBonsaiState());
-        const handler = () => { if (storage.getBonsaiState) setState(storage.getBonsaiState()); };
+        // rAF-coalesce: 'storage-update' fires for every table; without this
+        // we re-read + setState on each event in a sync burst. One read per
+        // frame is plenty and keeps the bonsai canvas from re-rendering in a
+        // tight loop during sync pulls.
+        let pending = false;
+        const handler = (): void => {
+            if (pending || !storage.getBonsaiState) return;
+            pending = true;
+            requestAnimationFrame(() => {
+                pending = false;
+                if (storage.getBonsaiState) setState(storage.getBonsaiState());
+            });
+        };
         storageEventTarget.addEventListener('bonsaiUpdated', handler);
         storageEventTarget.addEventListener('storage-update', handler);
         return () => {

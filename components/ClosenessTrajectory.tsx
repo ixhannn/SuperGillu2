@@ -38,6 +38,27 @@ function SparklineBar({ value, maxValue, delay }: { value: number; maxValue: num
 }
 
 export const ClosenessTrajectoryViz: React.FC<ClosenessTrajectoryVizProps> = ({ model, compact = false }) => {
+  // Pull score values with safe fallbacks BEFORE any conditional return so the
+  // hook below always runs in the same order (rules-of-hooks). Previously the
+  // useMemo sat after an early `if (!model) return`, which crashed React when
+  // `model` toggled between null and non-null.
+  const score = model?.closenessScore;
+  const current = score?.current ?? 0;
+  const d7 = score?.d7 ?? 0;
+  const d30 = score?.d30 ?? 0;
+  const d90 = score?.d90 ?? 0;
+
+  // Generate sparkline data points (simulated daily scores between windows)
+  const sparklineData = useMemo(() => {
+    const points: number[] = [];
+    // Interpolate between d90 → d30 → d7 → current
+    for (let i = 0; i < 6; i++) points.push(d90 + (d30 - d90) * (i / 6) + (Math.random() * 6 - 3));
+    for (let i = 0; i < 4; i++) points.push(d30 + (d7 - d30) * (i / 4) + (Math.random() * 4 - 2));
+    for (let i = 0; i < 3; i++) points.push(d7 + (current - d7) * (i / 3) + (Math.random() * 3 - 1.5));
+    points.push(current);
+    return points.map(p => Math.max(0, Math.min(100, Math.round(p))));
+  }, [current, d7, d30, d90]);
+
   if (!model) {
     return (
       <motion.div
@@ -59,18 +80,6 @@ export const ClosenessTrajectoryViz: React.FC<ClosenessTrajectoryVizProps> = ({ 
 
   const trajectory = model.closenessTrajectory;
   const meta = TRAJECTORY_META[trajectory];
-  const { current, d7, d30, d90 } = model.closenessScore;
-
-  // Generate sparkline data points (simulated daily scores between windows)
-  const sparklineData = useMemo(() => {
-    const points: number[] = [];
-    // Interpolate between d90 → d30 → d7 → current
-    for (let i = 0; i < 6; i++) points.push(d90 + (d30 - d90) * (i / 6) + (Math.random() * 6 - 3));
-    for (let i = 0; i < 4; i++) points.push(d30 + (d7 - d30) * (i / 4) + (Math.random() * 4 - 2));
-    for (let i = 0; i < 3; i++) points.push(d7 + (current - d7) * (i / 3) + (Math.random() * 3 - 1.5));
-    points.push(current);
-    return points.map(p => Math.max(0, Math.min(100, Math.round(p))));
-  }, [current, d7, d30, d90]);
 
   const maxVal = Math.max(...sparklineData, 1);
 
