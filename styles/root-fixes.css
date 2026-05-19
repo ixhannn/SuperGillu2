@@ -66,22 +66,17 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
 }
 .keep-alive-shell.is-active {
   display: block;
-  /* Opacity-only fade. Critical that this is opacity (and ONLY opacity) —
-     transform/scale would force every nested compositor layer (TiltCards,
-     motion-divs with will-change, the particle canvases) to re-composite
-     for the whole keyframe duration, which is what made the previous
-     fade feel jittery. Opacity is a single blend pass on the shell layer
-     — the descendants are untouched.
+  /* Rich tab transition — declared in index.css as `@keyframes kas-enter`.
+     Combines a subtle 14px vertical rise, a ~2% scale-up, and a brief
+     saturation pulse so the new tab feels like it "comes into focus"
+     rather than just fading in.
 
-     `forwards` is intentional: we set the final state on the shell itself
-     so there's no flash to opacity:0 if the animation is interrupted. */
-  animation: keep-alive-fade-in 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: opacity;
-}
-
-@keyframes keep-alive-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+     Compositor cost: one re-rasterisation pass for nested layers during
+     the 380ms window. The GPU absorbs this easily; the previous opacity-
+     only path was tuned for cheap hardware that we no longer need to
+     bottom-feed thanks to the AnimationEngine adaptive-tier work. */
+  animation: kas-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity, filter;
 }
 
 /* Reduced motion: instant snap, no fade */

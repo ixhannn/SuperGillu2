@@ -20,7 +20,6 @@
  */
 import React, { Suspense, useEffect, useState, useImperativeHandle, forwardRef, useRef } from 'react';
 import type { ConfettiHandle } from './PhysicsConfetti';
-import { shouldGateHeavyView } from '../utils/runtimeProfile';
 
 const LazyPhysicsConfetti = React.lazy(() =>
   import('./PhysicsConfetti').then((m) => ({ default: m.PhysicsConfetti })),
@@ -80,7 +79,9 @@ export const DeferredOverlays = forwardRef<ConfettiHandle, DeferredOverlaysProps
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (shouldGateHeavyView()) return;
+    // No device-tier gate here — every device mounts the same overlays so
+    // visuals are identical. Cost is controlled inside each overlay via
+    // AnimationEngine subscriber priority + frame budget.
 
     const win = window as WindowWithIdle;
     let cancelled = false;

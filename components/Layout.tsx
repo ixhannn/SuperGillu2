@@ -57,8 +57,18 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
     startBreathingRhythm();
   }, []);
 
-  // Global ink-ripple on every .spring-press tap
+  // Global ink-ripple on every .spring-press tap.
+  // Each tap creates one short-lived <span> on the DOM. We rate-limit so that
+  // multi-touch / rapid taps don't fire 10 ripples per second.
+  const rippleLastTs = useRef(0);
   const handleRipple = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Only respond to primary touches — avoids costs from hover/move events
+    // when the user is dragging across the screen.
+    if (e.pointerType === 'mouse' && (e.buttons & 1) === 0) return;
+    const now = e.timeStamp;
+    if (now - rippleLastTs.current < 40) return;
+    rippleLastTs.current = now;
+
     const target = (e.target as HTMLElement).closest('.spring-press') as HTMLElement | null;
     if (!target) return;
     // ── Read phase first — prevents layout thrash ──────────────────

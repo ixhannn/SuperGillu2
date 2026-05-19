@@ -316,29 +316,46 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
     const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
     const posArr  = posAttr.array as Float32Array;
 
+    // Frame skipping based on tier. We never SKIP positions visually because
+    // smoothness is mandatory — we instead reduce particle UPDATE cadence at
+    // lower tiers while continuing to render every frame (the GPU work is
+    // cheap, the JS Lissajous integration was the actual cost). Every device
+    // sees the same visual — the cost is what changes.
+    let frame = 0;
     AnimationEngine.register({
       id:        'live-bg-3d',
       priority:  3,
       budgetMs:  4,
-      minTier:   'medium' as QualityTier,
+      // 'css-only' so even reduced-motion devices keep the same visual.
+      // The static fallback path is preserved only if WebGL itself failed.
+      minTier:   'css-only' as QualityTier,
 
-      tick(_delta, timestamp) {
+      tick(_delta, timestamp, tier) {
         if (pausedRef.current) return;
-        // Hand the GPU back to the page transition during view switches —
-        // ambient particles are invisible during a 220ms slide anyway.
-        if (typeof document !== 'undefined' && document.documentElement.dataset.transitioning) return;
+        // Engine-level transition pause is now centralized in AnimationEngine
+        // (subscribers with priority < 8 are skipped during transitions).
+        frame++;
+        // Update stride scales inversely with tier — the *visible* particles
+        // and shader are identical; only the per-frame JS integration cost
+        // changes. The orbit period is seconds long, so a 3-frame stride at
+        // 60fps is visually indistinguishable from per-frame.
+        let stride = 1;
+        if (tier === 'medium')   stride = 2;
+        else if (tier === 'low') stride = 3;
+        else if (tier === 'css-only') stride = 4;
         const t = timestamp * 0.001;
         material.uniforms.uTime.value = t;
 
-        // Always update every frame — no skip to avoid breathing/position desync blink
-        for (let i = 0; i < TOTAL; i++) {
-          const ax = phaseOff[i] + t * freqX[i];
-          const ay = phaseOff[i] + t * freqY[i];
-          posArr[i * 3]     = centerX[i] + Math.cos(ax) * orbitRX[i];
-          posArr[i * 3 + 1] = centerY[i] + Math.sin(ay) * orbitRY[i];
-          posArr[i * 3 + 2] = baseZ[i]   + Math.sin(t * zDriftFreq[i] + phaseOff[i]) * zDriftAmp[i];
+        if ((frame % stride) === 0) {
+          for (let i = 0; i < TOTAL; i++) {
+            const ax = phaseOff[i] + t * freqX[i];
+            const ay = phaseOff[i] + t * freqY[i];
+            posArr[i * 3]     = centerX[i] + Math.cos(ax) * orbitRX[i];
+            posArr[i * 3 + 1] = centerY[i] + Math.sin(ay) * orbitRY[i];
+            posArr[i * 3 + 2] = baseZ[i]   + Math.sin(t * zDriftFreq[i] + phaseOff[i]) * zDriftAmp[i];
+          }
+          posAttr.needsUpdate = true;
         }
-        posAttr.needsUpdate = true;
 
         // Camera: scroll parallax + very slow gentle breath on Z
         camera.position.y = -scrollY * 0.006;
@@ -348,14 +365,7 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
       },
     });
 
-    // ── Tier watchdog — fall back if device gets hot ──────────────
-    const tierCheck = setInterval(() => {
-      const tier = AnimationEngine.tier;
-      if (tier === 'low' || tier === 'css-only') setUseFallback(true);
-    }, 3000);
-
     return () => {
-      clearInterval(tierCheck);
       themeObserver.disconnect();
       AnimationEngine.unregister('live-bg-3d');
       window.removeEventListener('resize', resize);
@@ -366,6 +376,7 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
     };
   }, [preset]);
 
+  // Only fall back if WebGL itself isn't available (not based on device tier).
   if (useFallback) return <LiveBackground />;
 
   return (

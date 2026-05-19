@@ -1,7 +1,6 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { LiveBackground } from './LiveBackground';
 import { SafeRender } from './SafeRender';
-import { shouldGateHeavyView } from '../utils/runtimeProfile';
 
 const LazyLiveBackground3D = React.lazy(() =>
   import('./LiveBackground3D').then((module) => ({ default: module.LiveBackground3D })),
@@ -30,12 +29,22 @@ type WindowWithIdleCallback = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
+/**
+ * AmbientVisuals — same visuals on every device.
+ *
+ * Previously we gated the 3D scenes off for low-power phones to protect the
+ * frame budget. That created two different-looking apps. Instead, every
+ * device mounts the same WebGL ambient layers; performance is held by:
+ *   • Lazy chunks loaded after first paint (requestIdleCallback)
+ *   • Per-tier frame stride inside the scene tick (AnimationEngine.tier)
+ *   • Lower devicePixelRatio inside the renderer
+ *   • SafeRender fallback that swaps to the static gradient if WebGL fails
+ */
 export const AmbientVisuals: React.FC<AmbientVisualsProps> = ({ paused = false }) => {
   const [ambientReady, setAmbientReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (shouldGateHeavyView()) return;
 
     const win = window as WindowWithIdleCallback;
     let cancelled = false;

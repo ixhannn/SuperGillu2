@@ -107,7 +107,7 @@ const Glass = ({ children, className = '' }: { children: React.ReactNode; classN
 
 export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
     const reduceMotion = useReducedMotion();
-    const [profile, setProfile] = useState(StorageService.getCoupleProfile());
+    const [profile, setProfile] = useState(() => StorageService.getCoupleProfile());
     const [selectedIntentId, setSelectedIntentId] = useState(INTENTS[0].id);
     const [note, setNote] = useState('');
     const [draftAudio, setDraftAudio] = useState<string>();

@@ -51,13 +51,11 @@ class PerformanceManagerClass {
 
     this.tier = this._detectTier();
 
-    // Map DeviceTier → initial AnimationEngine QualityTier
-    if (this.tier === 3) {
-      AnimationEngine.setTier('low');
-    } else if (this.tier === 2) {
-      AnimationEngine.setTier('high');
-    }
-    // Tier 1 → AnimationEngine defaults to 'ultra'
+    // Every device starts at 'ultra' so the FIRST frame looks identical
+    // everywhere. AnimationEngine.adaptTier downgrades within ~5s if the
+    // device can't sustain the frame budget — but the *visual content* is
+    // unchanged, only the per-frame integration stride/DPR is adjusted.
+    AnimationEngine.setTier('ultra');
   }
 
   /** Live FPS — delegates to AnimationEngine (no separate RAF) */

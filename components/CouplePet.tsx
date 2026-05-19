@@ -114,12 +114,22 @@ const useTypewriter = (text: string, speed = 22) => {
     return displayed;
 };
 
+/**
+ * TypewriterText — leaf wrapper so the per-character state churn stays
+ * isolated to this tiny node instead of re-rendering the entire CouplePet
+ * tree ~80× during a dialogue reveal. Output is byte-identical to inlining
+ * useTypewriter in the parent; only the re-render scope shrinks.
+ */
+const TypewriterText = React.memo(({ text, speed = 20, className }: { text: string; speed?: number; className?: string }) => {
+    const typed = useTypewriter(text, speed);
+    return <p className={className}>"{typed}"</p>;
+});
+TypewriterText.displayName = 'TypewriterText';
+
 /* ═══════════════════════════════════════════════════════════════ */
 /*  FLOATING ORBS — layered ambient particle system               */
 /* ═══════════════════════════════════════════════════════════════ */
 const FloatingOrbs = React.memo(({ theme, sleeping, reduceMotion }: { theme: SceneTheme; sleeping?: boolean; reduceMotion?: boolean }) => {
-    if (reduceMotion) return null;
-
     const orbs = useMemo(() => Array.from({ length: 22 }, (_, i) => {
         const isLarge = i < 4;
         const isMedium = i >= 4 && i < 10;
@@ -138,6 +148,9 @@ const FloatingOrbs = React.memo(({ theme, sleeping, reduceMotion }: { theme: Sce
             diamond: !isLarge && Math.random() > 0.6,
         };
     }), [theme.particleColors, sleeping]);
+
+    // Early-return AFTER hooks to satisfy rules-of-hooks (behavior identical).
+    if (reduceMotion) return null;
 
     return (
         <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
@@ -170,8 +183,6 @@ const FloatingOrbs = React.memo(({ theme, sleeping, reduceMotion }: { theme: Sce
 /*  ENVIRONMENT DECORATIONS                                       */
 /* ═══════════════════════════════════════════════════════════════ */
 const EnvDecorations = React.memo(({ envKey, reduceMotion }: { envKey: string; reduceMotion?: boolean }) => {
-    if (reduceMotion) return null;
-
     const stars = useMemo(() => Array.from({ length: 34 }, (_, i) => ({
         id: i, x: Math.random() * 100, y: Math.random() * 75,
         size: 0.8 + Math.random() * 2.5, dur: 1.5 + Math.random() * 3.5, delay: Math.random() * 6,
@@ -184,6 +195,9 @@ const EnvDecorations = React.memo(({ envKey, reduceMotion }: { envKey: string; r
         id: i, x: 8 + Math.random() * 84, dur: 6 + Math.random() * 7, delay: Math.random() * 8,
         drift: (Math.random() - 0.5) * 28,
     })), []);
+
+    // Early-return AFTER hooks to satisfy rules-of-hooks (behavior identical).
+    if (reduceMotion) return null;
 
     if (envKey === 'env_space' || envKey === 'default') return (
         <div className="absolute inset-0 pointer-events-none overflow-hidden z-[5]">
@@ -634,7 +648,9 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
     const textSec = theme.textSecondary;
     const hoursSincePetted = (Date.now() - new Date(stats.lastPetted || stats.lastFed).getTime()) / (1000 * 3600);
     const isActiveToday = hoursSincePetted < 24;
-    const typedDialogue = useTypewriter(dialogue, 20);
+    // Dialogue typing now lives in the <TypewriterText> leaf so the parent no
+    // longer re-renders per character. Container visibility keys off the source
+    // `dialogue` string instead of the per-char typed value.
     const progressPercent = Math.max(6, xpIntoLevel);
     const bondState = xpIntoLevel >= 80 ? 'Radiant bond' : xpIntoLevel >= 45 ? 'Blooming bond' : 'Awakening bond';
     const worldLabel = envKey === 'env_space'
@@ -1076,7 +1092,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                     >
                         {/* Whisper bubble */}
                         <AnimatePresence>
-                            {(typedDialogue || isAILoading) && (
+                            {(dialogue || isAILoading) && (
                                 <motion.div
                                     key="whisper"
                                     initial={{ opacity: 0, height: 0 }}
@@ -1086,7 +1102,7 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                                 >
                                     <button type="button" onClick={() => void refreshAI()}
                                         className="w-full px-5 pt-4 pb-0 text-left">
-                                        {isAILoading && !typedDialogue ? (
+                                        {isAILoading && !dialogue ? (
                                             <div className="flex gap-1.5 items-center h-4">
                                                 {[0,1,2].map(i => (
                                                     <motion.div key={i} className="w-1.5 h-1.5 rounded-full"
@@ -1097,9 +1113,11 @@ export const CouplePet: React.FC<CouplePetProps> = ({ memories, notes, status, p
                                                 ))}
                                             </div>
                                         ) : (
-                                            <p className="text-[12px] italic line-clamp-1 text-white/40">
-                                                "{typedDialogue}"
-                                            </p>
+                                            <TypewriterText
+                                                text={dialogue}
+                                                speed={20}
+                                                className="text-[12px] italic line-clamp-1 text-white/40"
+                                            />
                                         )}
                                     </button>
                                 </motion.div>

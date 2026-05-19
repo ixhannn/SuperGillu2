@@ -812,6 +812,21 @@ interface RoomScene3DProps {
     };
   }, [floorTex, wallTex]);
 
+  // Pause the WebGL render loop while a view transition is in flight. The
+  // room's idle motion isn't visible during the ~280ms slide-in anyway, and
+  // handing the GPU fully to the page transition keeps it buttery. Mirrors
+  // the pattern used by FloatingHeartsScene. Zero visual change.
+  const [transitionPaused, setTransitionPaused] = useState(false);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const sync = () => setTransitionPaused(Boolean(root.dataset.transitioning));
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ['data-transitioning'] });
+    return () => obs.disconnect();
+  }, []);
+
   const ambientPreset = useMemo(() => {
     if (room.ambient === 'cool') {
       return {
@@ -899,6 +914,7 @@ interface RoomScene3DProps {
       <Canvas
         orthographic
         dpr={[1, 1.35]}
+        frameloop={transitionPaused ? 'never' : 'always'}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
         camera={{ position: [6.02, 5.72, 6.02], zoom: 74, near: 0.1, far: 120 }}
         onPointerMissed={() => onSelect(null)}

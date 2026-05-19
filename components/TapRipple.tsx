@@ -12,6 +12,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { PerformanceManager } from '../services/performance';
+import { AnimationEngine } from '../utils/AnimationEngine';
 
 interface Ripple {
   x: number;
@@ -30,7 +31,8 @@ export const TapRipple: React.FC = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!PerformanceManager.useCanvas) return;
+    // Same visual on every device — only accessibility (prefers-reduced-motion)
+    // skips the effect, never device tier.
 
     const ctx = canvas.getContext('2d', { alpha: true })!;
     if (!ctx) return;
@@ -67,65 +69,69 @@ export const TapRipple: React.FC = () => {
     /* Capture phase so we get taps even on interactive elements */
     window.addEventListener('pointerdown', onPointerDown, { passive: true, capture: true });
 
-    let rafId: number;
     let hasActiveRipples = false;
 
-    const animate = () => {
-      rafId = requestAnimationFrame(animate);
-
-      if (ripples.length === 0) {
-        if (hasActiveRipples) {
-          ctx.clearRect(0, 0, w, h);
-          hasActiveRipples = false;
-        }
-        return;
-      }
-
-      ctx.clearRect(0, 0, w, h);
-      hasActiveRipples = true;
-      const now = performance.now();
-
-      for (let i = ripples.length - 1; i >= 0; i--) {
-        const r = ripples[i];
-        const elapsed = now - r.startTime - r.delay;
-
-        /* Not started yet (delayed ring) */
-        if (elapsed < 0) continue;
-
-        /* Expired */
-        if (elapsed > RIPPLE_DURATION) {
-          ripples.splice(i, 1);
-          continue;
+    // Subscribe to AnimationEngine — only does work when ripples exist.
+    // When idle, the early-return costs <50ns and shares the global RAF
+    // with every other animation in the app.
+    AnimationEngine.register({
+      id: 'tap-ripple',
+      priority: 4,
+      budgetMs: 0.5,
+      minTier: 'low',
+      tick() {
+        if (ripples.length === 0) {
+          if (hasActiveRipples) {
+            ctx.clearRect(0, 0, w, h);
+            hasActiveRipples = false;
+          }
+          return;
         }
 
-        /* Progress 0→1 with ease-out */
-        const t = elapsed / RIPPLE_DURATION;
-        const eased = 1 - Math.pow(1 - t, 3); /* cubic ease out */
-        const radius = eased * RIPPLE_MAX_RADIUS;
-        const opacity = (1 - t) * 0.4; /* Fade out */
+        ctx.clearRect(0, 0, w, h);
+        hasActiveRipples = true;
+        const now = performance.now();
 
-        /* Draw the ring — gradient stroke from rose to transparent */
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(244, 63, 94, ${opacity})`;
-        ctx.lineWidth = 2 - t * 1.5; /* Thins as it expands */
-        ctx.stroke();
+        for (let i = ripples.length - 1; i >= 0; i--) {
+          const r = ripples[i];
+          const elapsed = now - r.startTime - r.delay;
 
-        /* Inner soft glow fill */
-        if (t < 0.3) {
-          const glowOpacity = (1 - t / 0.3) * 0.06;
+          /* Not started yet (delayed ring) */
+          if (elapsed < 0) continue;
+
+          /* Expired */
+          if (elapsed > RIPPLE_DURATION) {
+            ripples.splice(i, 1);
+            continue;
+          }
+
+          /* Progress 0→1 with ease-out */
+          const t = elapsed / RIPPLE_DURATION;
+          const eased = 1 - Math.pow(1 - t, 3); /* cubic ease out */
+          const radius = eased * RIPPLE_MAX_RADIUS;
+          const opacity = (1 - t) * 0.4; /* Fade out */
+
+          /* Draw the ring — gradient stroke from rose to transparent */
           ctx.beginPath();
           ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(244, 63, 94, ${glowOpacity})`;
-          ctx.fill();
-        }
-      }
-    };
+          ctx.strokeStyle = `rgba(244, 63, 94, ${opacity})`;
+          ctx.lineWidth = 2 - t * 1.5; /* Thins as it expands */
+          ctx.stroke();
 
-    rafId = requestAnimationFrame(animate);
+          /* Inner soft glow fill */
+          if (t < 0.3) {
+            const glowOpacity = (1 - t / 0.3) * 0.06;
+            ctx.beginPath();
+            ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(244, 63, 94, ${glowOpacity})`;
+            ctx.fill();
+          }
+        }
+      },
+    });
 
     return () => {
-      cancelAnimationFrame(rafId);
+      AnimationEngine.unregister('tap-ripple');
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointerdown', onPointerDown, { capture: true } as any);
     };

@@ -96,6 +96,8 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                             className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-60"
                             alt=""
                             aria-hidden="true"
+                            loading="lazy"
+                            decoding="async"
                         />
                     ) : (
                         <div className="absolute inset-0 bg-black" aria-hidden="true" />
@@ -363,6 +365,8 @@ const PostViewer: React.FC<{
                             alt=""
                             aria-hidden="true"
                             onError={handleMediaError}
+                            loading="lazy"
+                            decoding="async"
                         />
                         {isVideo ? (
                             <video
@@ -379,6 +383,7 @@ const PostViewer: React.FC<{
                                 className="relative z-[1] max-w-full max-h-[50vh] object-contain"
                                 alt="Moment"
                                 onError={handleMediaError}
+                                decoding="async"
                             />
                         )}
                     </>
@@ -503,8 +508,17 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
     useEffect(() => {
         loadPhotos();
-        storageEventTarget.addEventListener('storage-update', loadPhotos);
-        return () => storageEventTarget.removeEventListener('storage-update', loadPhotos);
+        // rAF-coalesce — sync replays often emit a burst of events; without
+        // this we ran the whole expired-photo filter + sort + dedup loop
+        // per event instead of once per frame.
+        let pending = false;
+        const onUpdate = (): void => {
+            if (pending) return;
+            pending = true;
+            requestAnimationFrame(() => { pending = false; loadPhotos(); });
+        };
+        storageEventTarget.addEventListener('storage-update', onUpdate);
+        return () => storageEventTarget.removeEventListener('storage-update', onUpdate);
     }, [loadPhotos]);
 
     useEffect(() => {
@@ -731,13 +745,13 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                         <div className="aspect-[3/4] rounded-[1.5rem] overflow-hidden mb-5 shadow-lg relative flex items-center justify-center bg-black">
                             {newImage && !newVideo && (
                                 <>
-                                    <img src={newImage} className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" alt="" aria-hidden="true" />
-                                    <img src={newImage} className="relative w-full h-full object-contain z-[1]" alt="Preview" />
+                                    <img src={newImage} className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+                                    <img src={newImage} className="relative w-full h-full object-contain z-[1]" alt="Preview" decoding="async" />
                                 </>
                             )}
                             {newVideo && (
                                 <>
-                                    {newImage && <img src={newImage} className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-40" alt="" aria-hidden="true" />}
+                                    {newImage && <img src={newImage} className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-40" alt="" aria-hidden="true" loading="lazy" decoding="async" />}
                                     <video src={newVideo} controls className="relative z-10 w-full h-full object-contain" />
                                 </>
                             )}

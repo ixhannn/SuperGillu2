@@ -95,7 +95,7 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
                     <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden -rotate-1">
                         {imageUrl ? (
                             <div className="aspect-[4/3] overflow-hidden">
-                                <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" onError={handleImgError} />
+                                <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" onError={handleImgError} loading="lazy" decoding="async" />
                             </div>
                         ) : (
                             <div className="aspect-[4/3] bg-lior-50 flex items-center justify-center text-lior-200">
@@ -200,7 +200,7 @@ const MemoryCard: React.FC<{
                         onError={handleMediaError}
                     />
                 ) : (
-                    <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} />
+                    <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} loading="lazy" decoding="async" />
                 )
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center" style={{ color: 'var(--color-text-secondary)' }}>
@@ -795,7 +795,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                         ) : mediaSrc ? (
                             mediaKind === 'video'
                                 ? <InlineVideoPlayer src={mediaSrc} onError={handleVideoError} />
-                                : <img src={mediaSrc} alt="Memory" onError={handleMediaError}
+                                : <img src={mediaSrc} alt="Memory" onError={handleMediaError} loading="lazy" decoding="async"
                                     style={{ display: 'block', width: '100%', maxHeight: '55vh', objectFit: 'contain', background: '#000' }} />
                         ) : isAudioOnly ? (
                             /* Audio-only: decorative header */
@@ -949,10 +949,19 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
     const recoveryAttemptedRef = useRef(false);
 
     useEffect(() => {
-        const load = () => setMemories(StorageService.getMemories());
+        const load = (): void => setMemories(StorageService.getMemories());
         load();
-        storageEventTarget.addEventListener('storage-update', load);
-        return () => storageEventTarget.removeEventListener('storage-update', load);
+        // rAF-coalesce: getMemories materializes the full list; running it
+        // once per event instead of once per frame caused stutter during
+        // sync pulls.
+        let pending = false;
+        const onUpdate = (): void => {
+            if (pending) return;
+            pending = true;
+            requestAnimationFrame(() => { pending = false; load(); });
+        };
+        storageEventTarget.addEventListener('storage-update', onUpdate);
+        return () => storageEventTarget.removeEventListener('storage-update', onUpdate);
     }, []);
 
     // Background image recovery: if any images are missing from local IDB,
@@ -1297,9 +1306,15 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                 </div>
                                             </AnimatePresence>
 
-                                            {/* Scrapbook grid — alternating tilts */}
+                                            {/* Scrapbook grid — alternating tilts.
+                                                content-visibility: auto lets the browser skip
+                                                layout+paint for offscreen month blocks, which
+                                                is huge for users with hundreds of memories. */}
                                             {rest.length > 0 && (
-                                                <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-1">
+                                                <div
+                                                    className="grid grid-cols-2 gap-x-3 gap-y-4 px-1"
+                                                    style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' } as React.CSSProperties}
+                                                >
                                                     <AnimatePresence mode="popLayout">
                                                         {rest.map((m, i) => (
                                                             <MemoryCard

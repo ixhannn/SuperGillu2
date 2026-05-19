@@ -74,6 +74,11 @@ const UPGRADE_LOCK   = 8_000;    // ms lock after upgrade
 
 class AnimationEngineClass {
   private readonly subs = new Map<string, AnimationSubscriber>();
+  // Flat array snapshot of `subs` for the hot tick loop — iterating an array
+  // is ~2× faster than iterating a Map's value iterator in modern V8.
+  // Rebuilt only when subscribers are added/removed (rare), not per frame.
+  private subList: AnimationSubscriber[] = [];
+  private subListDirty = false;
   private rafId = 0;
   private lastTs = 0;
   private running = false;
@@ -112,12 +117,22 @@ class AnimationEngineClass {
 
   register(sub: AnimationSubscriber): void {
     this.subs.set(sub.id, sub);
+    this.subListDirty = true;
     if (!this.running) this.start();
   }
 
   unregister(id: string): void {
-    this.subs.delete(id);
+    if (this.subs.delete(id)) {
+      this.subListDirty = true;
+    }
     this.costs.delete(id);
+  }
+
+  private _refreshSubList(): void {
+    // Sort by priority desc so high-priority subscribers run first — when
+    // we shed work under load they're least likely to miss their tick.
+    this.subList = Array.from(this.subs.values()).sort((a, b) => b.priority - a.priority);
+    this.subListDirty = false;
   }
 
   /** Override tier externally (e.g. from settings or debug UI) */
@@ -195,12 +210,31 @@ class AnimationEngineClass {
       this._cssDirty = false;
     }
 
-    for (const sub of this.subs.values()) {
-      if (tierRank < TIER_RANK[sub.minTier]) continue;
+    // Pause the heavy subscribers while a view transition runs — gives the
+    // animation budget back to the compositor for the slide-in.
+    const transitioning = typeof document !== 'undefined'
+      && document.documentElement.dataset.transitioning === '1';
 
-      const t0 = performance.now();
-      sub.tick(delta, ts, this.tier);
-      this.costs.set(sub.id, performance.now() - t0);
+    if (this.subListDirty) this._refreshSubList();
+    const list = this.subList;
+    const n = list.length;
+    // Cost-tracking is dev-only — `performance.now()` calls are otherwise
+    // a measurable share of frame time on cheap mid-range Android GPUs.
+    const trackCosts = import.meta.env.DEV;
+    for (let i = 0; i < n; i++) {
+      const sub = list[i];
+      if (tierRank < TIER_RANK[sub.minTier]) continue;
+      // During a navigation, only highest-priority CSS bus / nav glue tick;
+      // everything else stays paused until the transition lock releases.
+      if (transitioning && sub.priority < 8) continue;
+
+      if (trackCosts) {
+        const t0 = performance.now();
+        sub.tick(delta, ts, this.tier);
+        this.costs.set(sub.id, performance.now() - t0);
+      } else {
+        sub.tick(delta, ts, this.tier);
+      }
 
       // Collect CSS contributions
       if (sub.cssProps) {

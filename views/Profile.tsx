@@ -187,7 +187,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const [audioOn, setAudioOn] = useState(Audio.isEnabled());
     const [showIdentityModal, setShowIdentityModal] = useState(false);
     const [storageInfo, setStorageInfo] = useState<{ used: string, type: string }>({ used: '0 KB', type: 'Checking...' });
-    const [managedStats, setManagedStats] = useState(StorageService.getManagedStorageStats());
+    const [managedStats, setManagedStats] = useState(() => StorageService.getManagedStorageStats());
     const [isInternalAdmin, setIsInternalAdmin] = useState(false);
     const [musicMeta, setMusicMeta] = useState<{ name: string } | null>(null);
     const [musicError, setMusicError] = useState<string | null>(null);
@@ -220,7 +220,17 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         const meta = StorageService.getTogetherMusicMetadata();
         setMusicMeta(meta);
 
-        const handleStorageUpdate = () => refreshStorageStats();
+        // Coalesce burst storage events into one refresh per frame —
+        // refreshStorageStats scans IndexedDB so repeated runs cost real time.
+        let refreshPending = false;
+        const handleStorageUpdate = (): void => {
+            if (refreshPending) return;
+            refreshPending = true;
+            requestAnimationFrame(() => {
+                refreshPending = false;
+                refreshStorageStats();
+            });
+        };
         storageEventTarget.addEventListener('storage-update', handleStorageUpdate);
         refreshStorageStats();
 
@@ -537,7 +547,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                                     boxShadow: `0 0 0 3px ${activeTheme.palette[200]}, 0 8px 24px rgba(0,0,0,0.1)`,
                                 }}>
                                     {profile.photo ? (
-                                        <img src={profile.photo} className="w-full h-full object-cover" alt="Couple" />
+                                        <img src={profile.photo} className="w-full h-full object-cover" alt="Couple" decoding="async" />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${activeTheme.palette[300]}, ${activeTheme.palette[500]})` }}>
                                             <Heart size={28} fill="currentColor" style={{ color: 'rgba(255,255,255,0.85)' }} />

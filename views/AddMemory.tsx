@@ -358,7 +358,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
             >
               {video && image ? (
                 <div className="relative">
-                  <img src={image} alt="Video thumb" className="w-full h-auto object-cover" style={{ maxHeight: 280 }} />
+                  <img src={image} alt="Video thumb" className="w-full h-auto object-cover" style={{ maxHeight: 280 }} decoding="async" />
                   <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.15)' }}>
                     <motion.div
                       whileTap={{ scale: 0.9 }}
@@ -372,7 +372,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
               ) : video ? (
                 <video src={video} controls className="w-full h-auto" style={{ maxHeight: 280 }} />
               ) : image ? (
-                <img src={image} alt="Memory" className="w-full h-auto object-cover" style={{ maxHeight: 280 }} />
+                <img src={image} alt="Memory" className="w-full h-auto object-cover" style={{ maxHeight: 280 }} decoding="async" />
               ) : null}
 
               {/* Remove media button */}

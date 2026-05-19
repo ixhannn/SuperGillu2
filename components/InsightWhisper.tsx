@@ -95,22 +95,45 @@ export const InsightWhisper: React.FC<InsightWhisperProps> = ({ setView }) => {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const initAll = async () => {
       await RelationshipSignals.init();
       await RelationshipModelService.init();
       await InsightEngine.init();
       await PartnerIntelligenceService.init();
+      if (cancelled) return;
       checkAndGenerateDeepInsights();
       checkAndGenerateInsights();
       loadInsight();
     };
-    initAll();
+
+    // Defer the heavy insight init/generation chain to idle time. The whisper
+    // card is a progressive-enhancement element that renders conditionally
+    // once an insight exists — it isn't part of Home's first paint. Running
+    // this chain during the mount frame competed with Home's initial render
+    // and first interactions; deferring to idle removes that startup hitch
+    // with zero change to what's visible (the card appears the same beat it
+    // would have, just without blocking the critical mount frame).
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+    if (typeof win.requestIdleCallback === 'function') {
+      idleHandle = win.requestIdleCallback(() => { void initAll(); }, { timeout: 1500 });
+    } else {
+      timeoutHandle = window.setTimeout(() => { void initAll(); }, 200);
+    }
 
     const handleUpdate = () => loadInsight();
     insightEventTarget.addEventListener('insight-update', handleUpdate);
     partnerIntelligenceEventTarget.addEventListener('insights-update', handleUpdate);
 
     return () => {
+      cancelled = true;
+      if (idleHandle !== null && typeof win.cancelIdleCallback === 'function') win.cancelIdleCallback(idleHandle);
+      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
       insightEventTarget.removeEventListener('insight-update', handleUpdate);
       partnerIntelligenceEventTarget.removeEventListener('insights-update', handleUpdate);
     };

@@ -15,6 +15,9 @@ import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
+import { AnimationEngine } from '../utils/AnimationEngine';
+import { useThrottledReload } from '../hooks/useThrottledReload';
+import { useTileOpen } from '../hooks/useTileOpen';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -80,7 +83,7 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
                         <div className="bg-white p-3 rounded-2xl shadow-soft-xl border border-gray-100/80 -rotate-1">
                             {imageUrl ? (
                                 <div className="aspect-square bg-gray-50 rounded-xl overflow-hidden mb-3">
-                                    <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" />
+                                    <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                 </div>
                             ) : (
                                 <div className="aspect-video bg-lior-50 rounded-xl flex items-center justify-center mb-3 text-lior-200">
@@ -122,25 +125,33 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
     );
 };
 
-// Ripple effect for heartbeat button
-const HeartbeatRipple = ({ active }: { active: boolean }) => {
+// Ripple effect for heartbeat button — subscribes to the global AnimationEngine
+// instead of running its own requestAnimationFrame loop. The single-loop
+// architecture means one RAF callback handles every animated subscriber in
+// the app, avoiding the per-component "wake the browser to schedule another
+// frame" cost which compounded as more effects mounted.
+const HeartbeatRipple = React.memo(({ active }: { active: boolean }) => {
     const rippleRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!active) return;
-        let animationFrameId: number;
-        const animate = () => {
-            animationFrameId = requestAnimationFrame(animate);
-            if (AmbientService.isPlaying && rippleRef.current) {
+        const ID = 'home-heartbeat-ripple';
+        AnimationEngine.register({
+            id: ID,
+            priority: 4,
+            budgetMs: 0.2,
+            minTier: 'low',
+            tick: () => {
+                if (!AmbientService.isPlaying || !rippleRef.current) return;
                 const data = AmbientService.getFrequencyData();
-                let bassSum = 0;
-                for (let i = 0; i < 4; i++) bassSum += data[i] || 0;
-                const scale = 1 + (bassSum / 4 / 255) * 0.4;
-                rippleRef.current.style.transform = `scale(${scale})`;
-            }
-        };
-        animate();
-        return () => cancelAnimationFrame(animationFrameId);
+                // Unrolled — 4 reads, no per-frame array allocation
+                const bass = ((data[0] || 0) + (data[1] || 0) + (data[2] || 0) + (data[3] || 0));
+                const scale = 1 + (bass / 1020) * 0.4;
+                // toFixed avoids triggering full sub-pixel transform recompute on identical scales
+                rippleRef.current.style.transform = `scale(${scale.toFixed(3)})`;
+            },
+        });
+        return () => AnimationEngine.unregister(ID);
     }, [active]);
 
     if (!active) return null;
@@ -151,35 +162,66 @@ const HeartbeatRipple = ({ active }: { active: boolean }) => {
             ))}
         </div>
     );
-};
+});
+HeartbeatRipple.displayName = 'HeartbeatRipple';
 
 // === SCROLL ANIMATION SYSTEM ===
-const scrollVariants = {
-    fadeUp: {
-        hidden: { opacity: 0, y: 40, scale: 0.97 },
-        visible: { opacity: 1, y: 0, scale: 1 }
-    },
-    fadeScale: {
-        hidden: { opacity: 0, scale: 0.88, y: 20 },
-        visible: { opacity: 1, scale: 1, y: 0 }
-    },
-    slideFromLeft: {
-        hidden: { opacity: 0, x: -48 },
-        visible: { opacity: 1, x: 0 }
-    },
-    slideFromRight: {
-        hidden: { opacity: 0, x: 48 },
-        visible: { opacity: 1, x: 0 }
-    },
-    popIn: {
-        hidden: { opacity: 0, scale: 0.7, y: 12 },
-        visible: { opacity: 1, scale: 1, y: 0 }
-    },
-    tiltUp: {
-        hidden: { opacity: 0, y: 48, rotateX: 10, scale: 0.96 },
-        visible: { opacity: 1, y: 0, rotateX: 0, scale: 1 }
-    }
-};
+//
+// Replaced framer-motion's whileInView with a single shared
+// IntersectionObserver that toggles a CSS class. The motion solver was
+// running per-element on the JS main thread; the CSS-class approach hands
+// off to the compositor and frees the main thread for scroll/touch work.
+// Visual output is matched 1:1 by the CSS keyframes in index.css (declared
+// below — kept identical curves to the framer-motion springs).
+type ScrollVariant = 'fadeUp' | 'fadeScale' | 'slideFromLeft' | 'slideFromRight' | 'popIn' | 'tiltUp';
+
+// Module-level singleton observer — one entry per ScrollReveal instance, no
+// per-instance observer cost. Cheaper than mounting N IntersectionObservers.
+let _scrollObserver: IntersectionObserver | null = null;
+const _scrollPending = new Set<Element>();
+function _getScrollObserver(): IntersectionObserver {
+    if (_scrollObserver) return _scrollObserver;
+    _scrollObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('sr-visible');
+                _scrollObserver!.unobserve(entry.target);
+                _scrollPending.delete(entry.target);
+            }
+        }
+    }, { rootMargin: '0px 0px -50px 0px', threshold: 0.01 });
+    return _scrollObserver;
+}
+
+const ScrollReveal: React.FC<{
+    children: React.ReactNode;
+    variant?: ScrollVariant;
+    delay?: number;
+    className?: string;
+}> = React.memo(({ children, variant = 'fadeUp', delay = 0, className = '' }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const obs = _getScrollObserver();
+        obs.observe(el);
+        _scrollPending.add(el);
+        return () => {
+            obs.unobserve(el);
+            _scrollPending.delete(el);
+        };
+    }, []);
+    return (
+        <div
+            ref={ref}
+            className={`sr sr-${variant} ${className}`}
+            style={delay ? { animationDelay: `${delay}s`, transitionDelay: `${delay}s` } : undefined}
+        >
+            {children}
+        </div>
+    );
+});
+ScrollReveal.displayName = 'ScrollReveal';
 
 const gridContainerVariants: Variants = {
     hidden: {},
@@ -194,26 +236,8 @@ const gridItemVariants: Variants = {
     }
 };
 
-const ScrollReveal = ({ children, variant = 'fadeUp', delay = 0, className = '' }: {
-    children: React.ReactNode;
-    variant?: keyof typeof scrollVariants;
-    delay?: number;
-    className?: string;
-}) => (
-    <motion.div
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: "-50px" }}
-        variants={scrollVariants[variant]}
-        transition={{ type: "spring", stiffness: 350, damping: 24, mass: 0.7, delay }}
-        className={className}
-        style={{ transformPerspective: 900 }}
-    >
-        {children}
-    </motion.div>
-);
-
-// Counting number animation hook
+// Counting number animation hook — runs on the shared AnimationEngine so it
+// shares the single RAF heartbeat with the rest of the app. No extra wake.
 const useCountUp = (target: number, inView: boolean, duration = 1800) => {
     const [count, setCount] = useState(0);
     const countRef = useRef(0);
@@ -231,25 +255,33 @@ const useCountUp = (target: number, inView: boolean, duration = 1800) => {
         const delta = target - start;
         if (delta === 0) return;
 
-        let frameId = 0;
-        let startTime: number | null = null;
-        const animate = (time: number) => {
-            if (startTime === null) startTime = time;
-            const progress = Math.min((time - startTime) / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3);
-            const next = Math.round(start + delta * eased);
-            countRef.current = next;
-            setCount(next);
-            if (progress < 1) frameId = requestAnimationFrame(animate);
-        };
-        frameId = requestAnimationFrame(animate);
-        return () => cancelAnimationFrame(frameId);
+        const ID = `home-count-${start}-${target}`;
+        let startTime = 0;
+        AnimationEngine.register({
+            id: ID,
+            priority: 5,
+            budgetMs: 0.05,
+            minTier: 'css-only',
+            tick: (_d, ts) => {
+                if (!startTime) startTime = ts;
+                const progress = Math.min((ts - startTime) / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                const next = Math.round(start + delta * eased);
+                if (next !== countRef.current) {
+                    countRef.current = next;
+                    setCount(next);
+                }
+                if (progress >= 1) AnimationEngine.unregister(ID);
+            },
+        });
+        return () => AnimationEngine.unregister(ID);
     }, [inView, target, duration]);
 
     return count;
 };
 
-export const Home: React.FC<HomeProps> = ({ setView }) => {
+export const Home: React.FC<HomeProps> = React.memo(({ setView }) => {
+    const openTile = useTileOpen();
     const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Ishan', partnerName: 'Tulika', anniversaryDate: new Date().toISOString() });
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
@@ -271,12 +303,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [isDissolving, setIsDissolving] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
-    const [headerScrollTop, setHeaderScrollTop] = useState(0);
     const [premiumOpen, setPremiumOpen] = useState(false);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<HeartbeatParticlesHandle>(null);
+    const headerOverlayRef = useRef<HTMLDivElement>(null);
     const heroInView = useInView(heroRef, { once: true, margin: "-100px" });
     const displayCount = useCountUp(daysTogether, heroInView);
 
@@ -358,10 +390,14 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         if (throwback?.id !== onThisDayMemory?.id) setOnThisDayMemory(throwback || null);
     };
 
+    // Throttle storage reloads to once-per-frame regardless of how many
+    // events fire in the same tick. Sync replays often emit 5–20 events
+    // in a single burst; without coalescing we were doing 5–20 full
+    // loadData() calls back-to-back, blocking the main thread.
+    const handleUpdate = useThrottledReload(loadData);
     useEffect(() => {
         loadData();
         setIsConnected(SyncService.isConnected);
-        const handleUpdate = () => loadData();
         storageEventTarget.addEventListener('storage-update', handleUpdate);
         const handleSyncUpdate = () => setIsConnected(SyncService.isConnected);
         syncEventTarget.addEventListener('sync-update', handleSyncUpdate);
@@ -407,24 +443,51 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         } else setOtdImage(null);
     }, [onThisDayMemory]);
 
-    // Scroll-linked header opacity — transparent at top, solid on scroll
+    // Scroll-linked header opacity — driven entirely by rAF + direct DOM
+    // writes (CSS variables). This bypasses React entirely on every scroll
+    // tick, eliminating the per-frame reconciliation that was costing 1–3ms
+    // of main-thread time on every wheel/touch event.
     useEffect(() => {
         const mainEl = document.querySelector('main');
-        if (!mainEl) return;
-        
-        const handleScroll = (e: Event) => {
-            const y = (e.target as HTMLElement).scrollTop || 0;
-            setHeaderScrollTop(y);
+        const overlay = headerOverlayRef.current;
+        if (!mainEl || !overlay) return;
+
+        let lastY = -1;
+        let rafPending = false;
+
+        const apply = () => {
+            rafPending = false;
+            const y = (mainEl as HTMLElement).scrollTop || 0;
+            // Quantize to 1px steps — visually identical, dodges sub-pixel work
+            const yq = y | 0;
+            if (yq === lastY) return;
+            lastY = yq;
+            const state = getHomeHeaderOverlayState(yq);
+            // Direct style writes — no React reconciliation
+            overlay.style.opacity = String(state.opacity);
+            overlay.style.background = state.background;
+            overlay.style.backdropFilter = state.backdropFilter;
+            // @ts-expect-error vendor prefix
+            overlay.style.webkitBackdropFilter = state.webkitBackdropFilter;
+            overlay.style.borderBottom = state.borderBottom;
+            overlay.style.transitionDuration = `${state.transitionDurationMs}ms`;
         };
-        
+
+        const handleScroll = () => {
+            if (rafPending) return;
+            rafPending = true;
+            requestAnimationFrame(apply);
+        };
+
         mainEl.addEventListener('scroll', handleScroll, { passive: true });
-        // Trigger once to set initial state
-        handleScroll({ target: mainEl } as unknown as Event);
-        
-        return () => mainEl.removeEventListener('scroll', handleScroll);
+        // Initial state — apply synchronously
+        apply();
+
+        return () => {
+            mainEl.removeEventListener('scroll', handleScroll);
+        };
     }, []);
 
-    const headerOverlay = getHomeHeaderOverlayState(headerScrollTop);
     const homeContainerStyle = getHomeContainerStyle();
     const homeHeaderOverlayHeight = getHomeHeaderOverlayHeight();
 
@@ -478,17 +541,18 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
     return (
         <div className="px-4 relative parallax-container" style={homeContainerStyle}>
-            {/* Scroll-linked floating header bar */}
+            {/* Scroll-linked floating header bar — DOM-driven, no React renders */}
             <div
+                ref={headerOverlayRef}
                 className="fixed top-0 left-0 right-0 z-30 pointer-events-none transition-opacity ease-out"
                 style={{
-                    opacity: headerOverlay.opacity,
-                    background: headerOverlay.background,
-                    backdropFilter: headerOverlay.backdropFilter,
-                    WebkitBackdropFilter: headerOverlay.webkitBackdropFilter,
-                    borderBottom: headerOverlay.borderBottom,
-                    transitionDuration: `${headerOverlay.transitionDurationMs}ms`,
+                    opacity: 0,
+                    background: 'transparent',
                     height: homeHeaderOverlayHeight,
+                    // Promote to compositor layer so the opacity/blur transition
+                    // doesn't repaint the underlying content beneath it
+                    willChange: 'opacity, backdrop-filter',
+                    contain: 'layout style paint',
                 }}
             />
 
@@ -538,7 +602,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 }}
                             >
                                 {profile.photo
-                                    ? <img src={profile.photo} className="w-full h-full object-cover" alt="Profile" />
+                                    ? <img src={profile.photo} className="w-full h-full object-cover" alt="Profile" decoding="async" />
                                     : <div className="w-full h-full flex items-center justify-center text-lior-400"><Heart fill="currentColor" size={20} /></div>
                                 }
                             </div>
@@ -607,7 +671,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         glare
                         scale={1.01}
                         onClick={() => setShowDetailedDuration(!showDetailedDuration)}
-                        className="relative overflow-hidden p-6 rounded-[1.75rem] mb-4 aurora-card border border-white/20 cursor-pointer"
+                        className="relative overflow-hidden p-6 rounded-[1.75rem] mb-4 aurora-card border border-white/20 cursor-pointer idle-breathe"
                         style={{
                             background: 'linear-gradient(135deg, #ec4899 0%, #f9a8d4 35%, #ec4899 70%, #f472b6 100%)',
                             boxShadow: '0 8px 32px rgba(251,207,232,0.25), 0 24px 64px rgba(251,207,232,0.10)',
@@ -755,7 +819,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     data-coachmark="countdowns"
                     maxTilt={14}
                     glare
-                    onClick={() => setView('countdowns')}
+                    onClick={(e) => openTile(e, () => setView('countdowns'))}
                     className="relative overflow-hidden p-6 rounded-[1.75rem] mb-5 aurora-card border border-white/10 cursor-pointer"
                     style={{
                         background: 'linear-gradient(140deg, #1c1917 0%, #292524 40%, #3a1520 100%)',
@@ -804,7 +868,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             {onThisDayMemory && (
                 <ScrollReveal variant="tiltUp">
                     <div
-                        onClick={() => setView('timeline')}
+                        onClick={(e) => openTile(e, () => setView('timeline'))}
                         className={`rounded-[1.75rem] mb-5 relative z-10 spring-press cursor-pointer overflow-hidden ${
                             otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-lior-500 to-amber-500 text-white p-6'
                         }`}
@@ -816,6 +880,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                     src={otdImage}
                                     className="absolute inset-0 w-full h-full object-cover"
                                     alt="On this day"
+                                    loading="lazy"
+                                    decoding="async"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                             </>
@@ -851,19 +917,22 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             )}
 
             {/* ── STATUS & FEATURE BENTO GRID ──────────────────────────── */}
+            {/* content-visibility: auto lets the browser skip layout+paint for
+                this entire grid when fully scrolled past — same visual, frees
+                main-thread work during fast scrolls. */}
             <motion.div
                 className="grid grid-cols-2 gap-3 relative z-10 mb-16"
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, margin: "-50px" }}
                 variants={gridContainerVariants}
-                style={{ transformPerspective: 900 }}
+                style={{ transformPerspective: 900, contentVisibility: 'auto', containIntrinsicSize: '720px' } as React.CSSProperties}
             >
-                {/* Open When — bento-card alignment */}
+                {/* Open When — press feedback comes from .spring-press CSS class
+                    (compositor-only). The redundant motion.div whileTap spring
+                    that wrapped each tile has been removed; visual is unchanged. */}
                 <motion.div variants={gridItemVariants}>
-                    <motion.div
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
+                    <div
                         onClick={() => setView('open-when')}
                         className="w-full h-full cursor-pointer"
                     >
@@ -876,14 +945,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Open When</span>
                             <span className="text-xs text-gray-400 mt-1">Letters for any moment</span>
                         </div>
-                    </motion.div>
+                    </div>
                 </motion.div>
 
-                {/* Dinner Decider — bento-card alignment */}
+                {/* Dinner Decider */}
                 <motion.div variants={gridItemVariants}>
-                    <motion.div
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
+                    <div
                         onClick={() => setView('dinner-decider')}
                         className="w-full h-full cursor-pointer"
                     >
@@ -896,16 +963,14 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Dinner?</span>
                             <span className="text-xs text-gray-400 mt-1">Can't decide? We will.</span>
                         </div>
-                    </motion.div>
+                    </div>
                 </motion.div>
 
                 {/* Mood Board */}
                 <motion.div variants={gridItemVariants} className="col-span-1">
-                    <motion.button
+                    <button
                         type="button"
                         aria-label="Open Aura Board"
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
                         onClick={() => setView('mood-calendar')}
                         className="w-full h-full cursor-pointer text-left appearance-none border-0 bg-transparent p-0"
                     >
@@ -918,14 +983,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Aura Board</span>
                             <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
                         </div>
-                    </motion.button>
+                    </button>
                 </motion.div>
 
                 {/* Bonsai Bloom */}
                 <motion.div variants={gridItemVariants} className="col-span-1">
-                    <motion.div
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
+                    <div
                         onClick={() => setView('bonsai-bloom')}
                         className="w-full h-full cursor-pointer"
                     >
@@ -938,14 +1001,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Bonsai</span>
                             <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
                         </div>
-                    </motion.div>
+                    </div>
                 </motion.div>
 
                 {/* Private Space */}
                 <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
-                    <motion.div
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                    <div
                         onClick={() => setView('private-space')}
                         className="w-full cursor-pointer"
                     >
@@ -978,17 +1039,15 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 <ChevronRight size={16} style={{ color: '#b8a4c8' }} />
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
                 </motion.div>
 
                 {/* ── PREMIUM DRAWER ────────────────────────────────────── */}
                 <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
                     {/* Trigger row */}
-                    <motion.button
+                    <button
                         onClick={() => setPremiumOpen(prev => !prev)}
-                        className="w-full"
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                        className="w-full spring-press"
                     >
                         <div
                             className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
@@ -1036,7 +1095,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 </svg>
                             </motion.div>
                         </div>
-                    </motion.button>
+                    </button>
 
                     {/* Expanded cards */}
                     <AnimatePresence>
@@ -1056,7 +1115,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 >
                                     {/* Surprises */}
                                     <motion.div variants={gridItemVariants}>
-                                        <motion.div whileTap={{ scale: 0.92, y: 2 }} transition={{ type: 'spring', stiffness: 600, damping: 26 }} onClick={() => setView('surprises')} className="w-full h-full cursor-pointer">
+                                        <div onClick={() => setView('surprises')} className="w-full h-full cursor-pointer">
                                             <div className="bento-card p-4 flex flex-col items-center text-center h-full relative overflow-hidden spring-press">
                                                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-2.5" style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.2)' }}>
                                                     <Gift size={20} style={{ color: '#8b5cf6' }} />
@@ -1064,12 +1123,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                                 <span className="font-semibold text-[13px] text-gray-800 leading-tight">Surprises</span>
                                                 <span className="text-[10px] text-gray-400 mt-0.5 leading-snug">Plan moments</span>
                                             </div>
-                                        </motion.div>
+                                        </div>
                                     </motion.div>
 
                                     {/* Future Letters */}
                                     <motion.div variants={gridItemVariants}>
-                                        <motion.div whileTap={{ scale: 0.92, y: 2 }} transition={{ type: 'spring', stiffness: 600, damping: 26 }} onClick={() => setView('time-capsule')} className="w-full h-full cursor-pointer">
+                                        <div onClick={() => setView('time-capsule')} className="w-full h-full cursor-pointer">
                                             <div className="bento-card p-4 flex flex-col items-center text-center h-full relative overflow-hidden spring-press">
                                                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-2.5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.18)' }}>
                                                     <Lock size={20} style={{ color: '#d97706' }} />
@@ -1077,12 +1136,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                                 <span className="font-semibold text-[13px] text-gray-800 leading-tight">Future Letters</span>
                                                 <span className="text-[10px] text-gray-400 mt-0.5 leading-snug">Open later</span>
                                             </div>
-                                        </motion.div>
+                                        </div>
                                     </motion.div>
 
                                     {/* Daily Video Moments — hero card */}
                                     <motion.div variants={gridItemVariants} className="col-span-2">
-                                        <motion.div whileTap={{ scale: 0.97, y: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 26 }} onClick={() => setView('daily-video')} className="w-full cursor-pointer">
+                                        <div onClick={(e) => openTile(e, () => setView('daily-video'))} className="w-full cursor-pointer">
                                             <div className="relative overflow-hidden p-5 rounded-[1.75rem] spring-press" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%)', border: '1px solid rgba(168, 85, 247, 0.2)', boxShadow: '0 8px 32px rgba(168, 85, 247, 0.12)' }}>
                                                 <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.18) 0%, transparent 70%)' }} />
                                                 <div className="relative z-10 flex items-center gap-4">
@@ -1098,12 +1157,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                                     </svg>
                                                 </div>
                                             </div>
-                                        </motion.div>
+                                        </div>
                                     </motion.div>
 
                                     {/* Weekly Recap */}
                                     <motion.div variants={gridItemVariants} className="col-span-2">
-                                        <motion.div whileTap={{ scale: 0.97, y: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 26 }} onClick={() => setView('weekly-recap')} className="w-full cursor-pointer">
+                                        <div onClick={(e) => openTile(e, () => setView('weekly-recap'))} className="w-full cursor-pointer">
                                             <div className="relative overflow-hidden p-5 rounded-[1.75rem] spring-press" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: '0 8px 32px rgba(99, 102, 241, 0.12)' }}>
                                                 <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(129,140,248,0.18) 0%, transparent 70%)' }} />
                                                 <div className="relative z-10 flex items-center gap-4">
@@ -1119,12 +1178,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                                     </svg>
                                                 </div>
                                             </div>
-                                        </motion.div>
+                                        </div>
                                     </motion.div>
 
                                     {/* Partner Intelligence */}
                                     <motion.div variants={gridItemVariants} className="col-span-2">
-                                        <motion.div whileTap={{ scale: 0.97, y: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 26 }} onClick={() => setView('partner-intelligence')} className="w-full cursor-pointer">
+                                        <div onClick={(e) => openTile(e, () => setView('partner-intelligence'))} className="w-full cursor-pointer">
                                             <div className="bento-card p-5 flex items-center gap-4 relative overflow-hidden spring-press">
                                                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
                                                     <Brain size={22} style={{ color: '#8b5cf6' }} />
@@ -1137,7 +1196,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                                     <path d="M7.5 5l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                                                 </svg>
                                             </div>
-                                        </motion.div>
+                                        </div>
                                     </motion.div>
                                 </motion.div>
                             </motion.div>
@@ -1147,4 +1206,5 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             </motion.div>
         </div>
     );
-};
+});
+Home.displayName = 'Home';
