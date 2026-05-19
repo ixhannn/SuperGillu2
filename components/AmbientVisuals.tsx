@@ -3,7 +3,7 @@ import { LiveBackground } from './LiveBackground';
 import { SafeRender } from './SafeRender';
 import { isLowPowerDevice } from '../utils/runtimeProfile';
 import { observeDocumentAttributes, observeDocumentVisibility } from '../utils/documentObserverBus';
-import { scheduleIdleTask } from '../utils/scheduler';
+import { hasPendingUserInput, scheduleIdleTask } from '../utils/scheduler';
 
 const LazyLiveBackground3D = React.lazy(() =>
   import('./LiveBackground3D').then((module) => ({ default: module.LiveBackground3D })),
@@ -21,7 +21,7 @@ interface AmbientVisualsProps {
   paused?: boolean;
 }
 
-const AMBIENT_PAUSE_ATTRIBUTES = ['data-ambient-motion-paused', 'data-transitioning'];
+const AMBIENT_PAUSE_ATTRIBUTES = ['data-ambient-motion-paused', 'data-transitioning', 'data-tab-transitioning'];
 type AmbientStage = 'fallback' | 'live-3d' | 'hearts';
 
 const isDocumentAmbientMotionPaused = (): boolean => {
@@ -31,6 +31,7 @@ const isDocumentAmbientMotionPaused = (): boolean => {
     document.visibilityState === 'hidden'
     || Boolean(root.dataset.ambientMotionPaused)
     || Boolean(root.dataset.transitioning)
+    || Boolean(root.dataset.tabTransitioning)
   );
 };
 
@@ -103,7 +104,8 @@ const AmbientMotionFallback: React.FC<{ paused?: boolean }> = ({ paused = false 
         }
 
         :root[data-ambient-motion-paused] [data-lior-ambient-motion],
-        :root[data-transitioning] [data-lior-ambient-motion] {
+        :root[data-transitioning] [data-lior-ambient-motion],
+        :root[data-tab-transitioning] [data-lior-ambient-motion] {
           animation-play-state: paused !important;
         }
 
@@ -163,16 +165,49 @@ export const AmbientVisuals: React.FC<AmbientVisualsProps> = ({ paused = false }
     // device and left only the static gradient.
     if (isLowPowerDevice()) return;
 
+    let cancelled = false;
     const cancelers: Array<() => void> = [];
-    const cancelLive3D = scheduleIdleTask(() => {
+
+    const retryWhenQuiet = (task: () => void) => {
+      cancelers.push(scheduleIdleTask(task, { timeout: 2400, delay: 700 }));
+    };
+
+    const runWhenQuiet = (task: () => void) => {
+      if (cancelled) return;
+      if (isDocumentAmbientMotionPaused() || hasPendingUserInput()) {
+        retryWhenQuiet(() => runWhenQuiet(task));
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (cancelled) return;
+          if (isDocumentAmbientMotionPaused() || hasPendingUserInput()) {
+            retryWhenQuiet(() => runWhenQuiet(task));
+            return;
+          }
+          task();
+        });
+      });
+    };
+
+    const promoteLive3DWhenQuiet = () => runWhenQuiet(() => {
       setAmbientStage('live-3d');
       cancelers.push(scheduleIdleTask(() => {
-        setAmbientStage('hearts');
-      }, { timeout: 2200, delay: 900 }));
-    }, { timeout: 1400, delay: 450 });
+        promoteHeartsWhenQuiet();
+      }, { timeout: 2600, delay: 1200 }));
+    });
+
+    const promoteHeartsWhenQuiet = () => runWhenQuiet(() => {
+      setAmbientStage('hearts');
+    });
+
+    const cancelLive3D = scheduleIdleTask(() => {
+      promoteLive3DWhenQuiet();
+    }, { timeout: 1800, delay: 900 });
     cancelers.push(cancelLive3D);
 
     return () => {
+      cancelled = true;
       cancelers.forEach((cancel) => cancel());
     };
   }, []);

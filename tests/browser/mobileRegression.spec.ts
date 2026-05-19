@@ -62,13 +62,35 @@ const installLongTaskCollector = async (page: Page) => {
 };
 
 const expectNoBadLongTasks = async (page: Page, maxDuration = 220) => {
-  const tasks = await page.evaluate(() => window.__liorLongTasks ?? []);
+  const tasks = await page.evaluate(() => {
+    const pending = window.__liorLongTaskObserver?.takeRecords() ?? [];
+    for (const entry of pending) {
+      window.__liorLongTasks?.push({
+        name: entry.name,
+        duration: entry.duration,
+        startTime: entry.startTime,
+      });
+    }
+    return window.__liorLongTasks ?? [];
+  });
   const bad = tasks.filter((task: { duration: number }) => task.duration > maxDuration);
   expect(bad).toEqual([]);
 };
 
 const resetLongTasks = async (page: Page) => {
   await page.evaluate(() => {
+    window.__liorLongTaskObserver?.takeRecords();
+    window.__liorLongTasks = [];
+  });
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      window.__liorLongTaskObserver?.takeRecords();
+      window.__liorLongTasks = [];
+      resolve();
+    });
+  }));
+  await page.evaluate(() => {
+    window.__liorLongTaskObserver?.takeRecords();
     window.__liorLongTasks = [];
   });
 };

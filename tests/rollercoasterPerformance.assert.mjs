@@ -25,6 +25,7 @@ const cssBusSource = read('services/CSSAnimationBus.ts');
 const floatingHeartsSource = read('components/FloatingHeartsScene.tsx');
 const liveBackground3DSource = read('components/LiveBackground3D.tsx');
 const roomScene3DSource = read('components/room/RoomScene3D.tsx');
+const mediaUtilsSource = read('utils/media.ts');
 
 assert.ok(
   existsSync(new URL('../utils/scheduler.ts', import.meta.url)),
@@ -142,6 +143,18 @@ assert.doesNotMatch(
   dailyMomentsSource,
   /layoutId=\{`photo-\$\{photo\.id\}`\}|viewport=\{\{ once: false/,
   'Daily moment thumbnails should not run shared-layout measurement or replay viewport reveal animations while scrolling.',
+);
+
+assert.doesNotMatch(
+  mediaUtilsSource,
+  /^import imageCompression from 'browser-image-compression';/m,
+  'Image compression should not be parsed during first view navigation; load browser-image-compression only when a file upload needs it.',
+);
+
+assert.match(
+  mediaUtilsSource,
+  /await import\('browser-image-compression'\)/,
+  'Image compression should be dynamically imported from the upload path.',
 );
 
 assert.doesNotMatch(

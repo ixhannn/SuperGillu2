@@ -182,6 +182,19 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           </div>
         </main>
 
+        <div
+          data-lior-motion-veil="true"
+          className="fixed inset-0 pointer-events-none z-[45]"
+          aria-hidden="true"
+          style={{
+            background: [
+              'linear-gradient(104deg, transparent 4%, rgba(255,255,255,0.28) 45%, rgba(249,168,212,0.18) 50%, transparent 74%)',
+              'linear-gradient(104deg, transparent 18%, rgba(255,236,244,0.18) 52%, transparent 82%)',
+            ].join(', '),
+            contain: 'strict',
+          }}
+        />
+
         {/* Global overlays — these sit above the scroll layer */}
         <TogetherMode />
         <OfflineNotice />

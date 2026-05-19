@@ -76,6 +76,8 @@ const SECONDARY_NAV_PRELOADS: ViewState[] = [
   'dinner-decider',
 ];
 
+const T_KEEP_ALIVE_TAB = 240;
+
 /** Inner component — must live inside CoachmarkProvider to access context */
 const CoachmarkTourScheduler: React.FC<{ shouldTrigger: boolean; onTriggered: () => void }> = ({ shouldTrigger, onTriggered }) => {
   const { triggerTour } = useCoachmark();
@@ -172,6 +174,7 @@ const App = () => {
   const scrollPositions = useRef<Record<string, number>>({});
   const pendingScrollRestore = useRef<{ view: ViewState; y: number } | null>(null);
   const transitionLockRef = useRef(false);
+  const tabTransitionTokenRef = useRef(0);
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const pendingNavigationMetricRef = useRef<{ view: ViewState; direction: TransitionDirection; startedAt: number } | null>(null);
   // Tracks current view synchronously for pre-transition direction calculation.
@@ -282,6 +285,11 @@ const App = () => {
   // CSS classes to crossfade between them. This is the path that gives the
   // app its native feel: no flushSync, no JS work, no main-thread block.
   const runTabTransition = useCallback((destination: ViewState, startedAt?: number) => {
+    const root = typeof document !== 'undefined' ? document.documentElement : null;
+    const tabTransitionToken = tabTransitionTokenRef.current + 1;
+    tabTransitionTokenRef.current = tabTransitionToken;
+    if (root) root.dataset.tabTransitioning = '1';
+
     transitionLockRef.current = true;
     pendingNavigationMetricRef.current = {
       view: destination,
@@ -291,13 +299,17 @@ const App = () => {
 
     markTabMounted(destination);
     setCurrentView(destination);
+    transitionLockRef.current = false;
 
-    // Lock window matches the CSS keep-alive-fade-in duration so a rapid
-    // double-tap doesn't try to swap mid-fade. Opacity-only fade is cheap
-    // enough that the lock window doesn't feel laggy.
+    // Keep the metric window aligned with the CSS animation, but do not keep
+    // tab navigation locked: the compositor animation can be interrupted and
+    // restarted cleanly, and rapid taps should never feel swallowed.
     window.setTimeout(() => {
       finalizeNavigation();
-    }, 140);
+      if (root && tabTransitionTokenRef.current === tabTransitionToken) {
+        delete root.dataset.tabTransitioning;
+      }
+    }, T_KEEP_ALIVE_TAB);
   }, [finalizeNavigation, markTabMounted]);
 
   const runNavigation = useCallback((destination: ViewState, dir: TransitionDirection, startedAt?: number) => {
@@ -689,9 +701,9 @@ const App = () => {
 
   // ── Keep-alive tab tree ─────────────────────────────────────────────────
   // Render every visited ROOT_TAB inside its own keep-alive shell. Only the
-  // active one is visible; the others have `display:none` (state preserved,
-  // effects continue, paint cost zero). Non-tab views render in a separate
-  // overlay slot below.
+  // active one is visible; cached tabs sit off-flow and invisible so returning
+  // to a heavy page does not pay the cold display:none layout cost again.
+  // Non-tab views render in a separate overlay slot below.
   const visibleMountedTabs = useMemo(() => {
     const next = new Set(mountedTabs);
     if (ROOT_TABS.includes(currentView)) next.add(currentView);

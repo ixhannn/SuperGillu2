@@ -211,11 +211,6 @@ const scrollVariants = {
     }
 };
 
-const gridContainerVariants: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: 0.08, delayChildren: 0.03 } }
-};
-
 const gridItemVariants: Variants = {
     hidden: { opacity: 0, y: 32, scale: 0.92, rotateX: 4 },
     visible: {
@@ -230,17 +225,12 @@ const ScrollReveal = ({ children, variant = 'fadeUp', delay = 0, className = '' 
     delay?: number;
     className?: string;
 }) => (
-    <motion.div
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: "-50px" }}
-        variants={scrollVariants[variant]}
-        transition={{ type: "spring", stiffness: 350, damping: 24, mass: 0.7, delay }}
-        className={className}
-        style={{ transformPerspective: 900 }}
+    <div
+        className={`home-reveal home-reveal-${variant} ${className}`.trim()}
+        style={{ '--home-reveal-delay': `${Math.round(delay * 1000)}ms` } as React.CSSProperties}
     >
         {children}
-    </motion.div>
+    </div>
 );
 
 // Counting number animation hook
@@ -918,16 +908,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             )}
 
             {/* ── STATUS & FEATURE BENTO GRID ──────────────────────────── */}
-            <motion.div
+            <div
                 className="grid grid-cols-2 gap-3 relative z-10 mb-16"
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-50px" }}
-                variants={gridContainerVariants}
-                style={{ transformPerspective: 900 }}
+                data-home-reveal-grid="true"
             >
                 {/* Open When — bento-card alignment */}
-                <motion.div variants={gridItemVariants}>
+                <div className="home-reveal-item">
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
@@ -944,10 +930,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Letters for any moment</span>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* Dinner Decider — bento-card alignment */}
-                <motion.div variants={gridItemVariants}>
+                <div className="home-reveal-item">
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
@@ -964,10 +950,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Can't decide? We will.</span>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* Mood Board */}
-                <motion.div variants={gridItemVariants} className="col-span-1">
+                <div className="home-reveal-item col-span-1">
                     <motion.button
                         type="button"
                         aria-label="Open Aura Board"
@@ -986,10 +972,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
                         </div>
                     </motion.button>
-                </motion.div>
+                </div>
 
                 {/* Bonsai Bloom */}
-                <motion.div variants={gridItemVariants} className="col-span-1">
+                <div className="home-reveal-item col-span-1">
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
@@ -1006,10 +992,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* Private Space */}
-                <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
+                <div className="home-reveal-item col-span-2 mt-3">
                     <motion.div
                         whileTap={{ scale: 0.98 }}
                         transition={{ type: 'spring', stiffness: 520, damping: 28 }}
@@ -1046,10 +1032,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             </div>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* ── PREMIUM DRAWER ────────────────────────────────────── */}
-                <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
+                <div className="home-reveal-item col-span-2 mt-3">
                     {/* Trigger row */}
                     <motion.button
                         onClick={() => setPremiumOpen(prev => !prev)}
@@ -1210,8 +1196,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             </motion.div>
                         )}
                     </AnimatePresence>
-                </motion.div>
-            </motion.div>
+                </div>
+            </div>
         </div>
     );
 };
