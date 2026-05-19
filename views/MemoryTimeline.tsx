@@ -119,14 +119,14 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
 };
 
 /* ─── Memory card ─── */
-const MemoryCard: React.FC<{
+const MemoryCardBase: React.FC<{
     memory: Memory;
     index: number;
     featured?: boolean;
     tilt?: number;
-    onClick: () => void;
+    onOpen: (memory: Memory) => void;
     onDelete: (id: string) => void;
-}> = ({ memory, index, featured = false, tilt = 0, onClick, onDelete }) => {
+}> = ({ memory, index, featured = false, tilt = 0, onOpen, onDelete }) => {
     const deleteRequestScheduledRef = useRef(false);
     const imageStoragePath = selectImageStoragePath(memory.storagePath, memory.imageMimeType);
     const videoStoragePath = selectVideoStoragePath(memory.videoStoragePath, memory.storagePath, memory.videoMimeType || memory.imageMimeType);
@@ -166,22 +166,25 @@ const MemoryCard: React.FC<{
     const staggerDelay = Math.min(index * 0.035, 0.32);
     return (
         <motion.div
-            layout
-            initial={{ opacity: 0, y: 18, rotate: 0, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, rotate: tilt, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.92, rotate: 0 }}
-            transition={{ duration: 0.55, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
-            onClick={() => { feedback.light(); onClick(); }}
-            whileTap={{ scale: 0.97, rotate: tilt * 0.3 }}
-            whileHover={{ y: -3, rotate: tilt * 0.5 }}
-            className="relative overflow-hidden cursor-pointer group"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
+            onClick={() => { feedback.light(); onOpen(memory); }}
+            data-memory-card="true"
+            data-perf-list-item="true"
+            className="perf-list-item relative overflow-hidden cursor-pointer group"
             style={{
                 borderRadius: featured ? '14px' : '12px',
-                boxShadow: featured
-                    ? '0 14px 28px -14px rgba(120, 53, 15, 0.22), 0 4px 8px rgba(0,0,0,0.06)'
-                    : '0 8px 18px -10px rgba(120, 53, 15, 0.2), 0 2px 4px rgba(0,0,0,0.05)',
+                boxShadow: memory.frame === 'glow'
+                    ? '0 0 0 1px rgba(244,114,182,0.22), 0 14px 28px -10px rgba(244,114,182,0.40), 0 6px 14px rgba(168,85,247,0.22)'
+                    : memory.frame === 'polaroid'
+                        ? '0 14px 28px -12px rgba(120, 53, 15, 0.30), 0 4px 10px rgba(0,0,0,0.08)'
+                        : featured
+                            ? '0 14px 28px -14px rgba(120, 53, 15, 0.22), 0 4px 8px rgba(0,0,0,0.06)'
+                            : '0 8px 18px -10px rgba(120, 53, 15, 0.2), 0 2px 4px rgba(0,0,0,0.05)',
                 aspectRatio: featured ? '4/3' : '3/4',
-                background: '#fffaf2',
+                background: memory.frame === 'polaroid' ? '#fdfaf5' : memory.frame === 'film' ? '#0c0c0c' : '#fffaf2',
                 transformOrigin: 'center',
             }}
         >
@@ -194,13 +197,28 @@ const MemoryCard: React.FC<{
                         className="absolute inset-0 w-full h-full object-cover"
                         muted
                         playsInline
-                        autoPlay
-                        loop
                         preload="metadata"
                         onError={handleMediaError}
+                        style={{
+                            filter: memory.frame === 'film'
+                                ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
+                                : undefined,
+                        }}
                     />
                 ) : (
-                    <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} />
+                    <img
+                        src={mediaUrl}
+                        alt="Memory"
+                        loading="lazy"
+                        decoding="async"
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={handleMediaError}
+                        style={{
+                            filter: memory.frame === 'film'
+                                ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
+                                : undefined,
+                        }}
+                    />
                 )
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center" style={{ color: 'var(--color-text-secondary)' }}>
@@ -283,20 +301,28 @@ const MemoryCard: React.FC<{
                 onMouseDownCapture={openDeleteConfirm}
                 onTouchStartCapture={openDeleteConfirm}
                 onClickCapture={openDeleteConfirm}
-                className="absolute -top-2 -right-2 z-30 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all opacity-95 hover:opacity-100"
+                onClick={openDeleteConfirm}
+                // 56×56 transparent hit zone INSIDE the card (was previously
+                // positioned at -top-2 -right-2 which clipped the hit area
+                // against the card's overflow-hidden boundary, killing taps
+                // on some Android WebViews).
+                className="absolute top-0 right-0 z-30 w-14 h-14 flex items-center justify-center active:scale-95 transition-all"
                 style={{
                     WebkitTapHighlightColor: 'transparent',
                     touchAction: 'manipulation',
+                    pointerEvents: 'auto',
                 }}
             >
                 <span
-                    className="w-9 h-9 rounded-full flex items-center justify-center"
+                    className="w-10 h-10 rounded-full flex items-center justify-center"
                     style={{
                         background: 'rgba(20, 14, 8, 0.78)',
-                        border: '1px solid rgba(255,255,255,0.25)',
+                        border: '1px solid rgba(255,255,255,0.22)',
+                        backdropFilter: 'blur(6px)',
+                        WebkitBackdropFilter: 'blur(6px)',
                     }}
                 >
-                    <Trash2 size={14} className="text-white" />
+                    <Trash2 size={15} strokeWidth={2.2} className="text-white" />
                 </span>
             </button>
 
@@ -336,6 +362,7 @@ const MemoryCard: React.FC<{
         </motion.div>
     );
 };
+const MemoryCard = React.memo(MemoryCardBase);
 
 /* ─── Inline video player — capped height, contained ─── */
 const InlineVideoPlayer = ({ src, onError }: { src: string; onError?: () => void }) => {
@@ -580,13 +607,14 @@ const Avatar: React.FC<{ name: string; size?: number }> = ({ name, size = 28 }) 
     </div>
 );
 
-const CommentBubble: React.FC<{
+const CommentBubbleBase: React.FC<{
     comment: Comment;
     isOwn: boolean;
     isReply?: boolean;
-    onReply: () => void;
-    onDelete: () => void;
-}> = ({ comment, isOwn, isReply, onReply, onDelete }) => (
+    replyTarget?: Comment;
+    onReply: (comment: Comment) => void;
+    onDelete: (id: string) => void;
+}> = ({ comment, isOwn, isReply, replyTarget, onReply, onDelete }) => (
     <div className="flex gap-2.5 items-start">
         <Avatar name={comment.senderName} size={isReply ? 22 : 27} />
         <div className="flex-1 min-w-0">
@@ -607,13 +635,13 @@ const CommentBubble: React.FC<{
             <div className="flex items-center gap-3 mt-1 pl-1">
                 <span className="text-[10px] tabular-nums" style={{ color: 'rgba(255,255,255,0.28)' }}>{timeAgo(comment.createdAt)}</span>
                 <button
-                    onClick={onReply}
+                    onClick={() => onReply(replyTarget ?? comment)}
                     className="text-[11px] font-semibold active:opacity-60"
                     style={{ color: 'rgba(255,255,255,0.38)' }}
                 >Reply</button>
                 {isOwn && (
                     <button
-                        onClick={onDelete}
+                        onClick={() => onDelete(comment.id)}
                         className="text-[11px] font-semibold active:opacity-60"
                         style={{ color: 'rgba(239,68,68,0.5)' }}
                     >Delete</button>
@@ -622,6 +650,7 @@ const CommentBubble: React.FC<{
         </div>
     </div>
 );
+const CommentBubble = React.memo(CommentBubbleBase);
 
 /* ─── Detail modal ─── */
 const MemoryDetailModal = ({ memory, onClose, onDelete }: {
@@ -710,14 +739,14 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 100);
     };
 
-    const startReply = (comment: Comment) => {
+    const startReply = useCallback((comment: Comment) => {
         setReplyingTo(comment);
         inputRef.current?.focus();
-    };
+    }, []);
 
-    const deleteComment = async (id: string) => {
+    const deleteComment = useCallback(async (id: string) => {
         await StorageService.deleteComment(id);
-    };
+    }, []);
     const openMemoryDeleteConfirm = (
         e: React.PointerEvent<HTMLButtonElement>
             | React.MouseEvent<HTMLButtonElement>
@@ -749,101 +778,286 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', stiffness: 340, damping: 34 }}
                 className="w-full max-w-md flex flex-col sm:rounded-[2rem] rounded-t-[2rem] overflow-hidden"
-                style={{ background: '#111214', maxHeight: '92vh', boxShadow: '0 -2px 48px rgba(0,0,0,0.6)' }}
+                style={{
+                    // Warm wine-dark — same family as the Auth sheet, so the
+                    // modal belongs to the app instead of the cold #111214
+                    // grey that read like a different product.
+                    background: 'linear-gradient(180deg, #2a1320 0%, #190b13 100%)',
+                    maxHeight: '92vh',
+                    border: '1px solid rgba(255,255,255,0.07)',
+                    boxShadow: '0 -8px 52px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.07)',
+                }}
                 onClick={e => e.stopPropagation()}
             >
-                {/* ── Header — always visible ── */}
-                <div className="flex items-center justify-between px-4 pt-3 pb-2.5 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <button
-                        onClick={e => { e.stopPropagation(); onClose(); }}
-                        className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform shrink-0"
-                        style={{ background: 'rgba(255,255,255,0.07)', WebkitTapHighlightColor: 'transparent' }}
-                    >
-                        <X size={16} className="text-white/60" />
-                    </button>
-                    <div className="flex-1 flex flex-col items-center mx-3 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-base leading-none">{mood}</span>
-                            <span className="text-[13px] font-semibold truncate" style={{ color: 'rgba(255,255,255,0.85)' }}>{fullDate}</span>
-                        </div>
-                        <span className="text-[10px] mt-0.5 tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>{time}</span>
-                    </div>
-                    <button
-                        type="button"
-                        aria-label="Delete memory"
-                        data-memory-delete="true"
-                        onPointerDownCapture={openMemoryDeleteConfirm}
-                        onMouseDownCapture={openMemoryDeleteConfirm}
-                        onTouchStartCapture={openMemoryDeleteConfirm}
-                        onClickCapture={openMemoryDeleteConfirm}
-                        className="w-12 h-12 -m-1.5 rounded-full flex items-center justify-center active:scale-95 transition-transform shrink-0"
-                        style={{ background: 'rgba(239,68,68,0.1)', WebkitTapHighlightColor: 'transparent' }}
-                    >
-                        <Trash2 size={15} className="text-red-400" />
-                    </button>
+                {/* ── Drag handle ── */}
+                <div className="flex items-center justify-center pt-2.5 pb-2 shrink-0">
+                    <span
+                        aria-hidden
+                        className="h-1.5 w-10 rounded-full"
+                        style={{ background: 'rgba(255,210,228,0.22)' }}
+                    />
                 </div>
 
-                {/* ── Scrollable body: media + caption + comments ── */}
+                {/* ── Scrollable body — editorial scrapbook layout ── */}
                 <div ref={scrollRef} data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto overscroll-contain">
 
-                    {/* Media */}
-                    <div className="w-full" style={{ background: '#000' }}>
-                        {mediaLoading ? (
-                            <div className="flex items-center justify-center" style={{ height: '38vh' }}>
-                                <Skeleton type="image" className="w-full h-full rounded-none" />
-                            </div>
-                        ) : mediaSrc ? (
-                            mediaKind === 'video'
-                                ? <InlineVideoPlayer src={mediaSrc} onError={handleVideoError} />
-                                : <img src={mediaSrc} alt="Memory" onError={handleMediaError}
-                                    style={{ display: 'block', width: '100%', maxHeight: '55vh', objectFit: 'contain', background: '#000' }} />
-                        ) : isAudioOnly ? (
-                            /* Audio-only: decorative header */
-                            <div className="flex flex-col items-center justify-center py-10"
-                                style={{ background: 'linear-gradient(180deg, rgba(244,63,94,0.08) 0%, rgba(17,18,20,1) 100%)' }}>
-                                <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
-                                    style={{ background: 'rgba(244,63,94,0.12)', border: '2px solid rgba(244,63,94,0.2)' }}>
-                                    <Mic size={32} className="text-rose-400" />
+                    {/* HERO — photo is the surface. Floating X over the
+                        photo. Mood as a placed sticker. No bordered header
+                        bar above to make it look like a generic media viewer. */}
+                    <div className="relative">
+                        <div
+                            className="w-full"
+                            style={{
+                                background: memory.frame === 'polaroid' ? '#fdfaf5'
+                                    : memory.frame === 'film' ? 'linear-gradient(180deg, #1a1a1a, #0c0c0c)'
+                                    : 'transparent',
+                                padding: memory.frame === 'polaroid' ? '14px 14px 18px'
+                                    : memory.frame === 'film' ? '6px'
+                                    : 0,
+                                boxShadow: memory.frame === 'glow'
+                                    ? 'inset 0 0 0 1px rgba(244,114,182,0.30), 0 0 56px rgba(244,114,182,0.32) inset'
+                                    : undefined,
+                            }}
+                        >
+                            {mediaLoading ? (
+                                <div className="flex items-center justify-center" style={{ height: '44vh' }}>
+                                    <Skeleton type="image" className="w-full h-full rounded-none" />
                                 </div>
-                                <div className="flex items-center gap-[3px] h-8">
-                                    {Array.from({ length: 24 }, (_, i) => {
-                                        const h = Math.sin((i / 24) * Math.PI) * 28 + 4;
-                                        return <div key={i} className="rounded-full" style={{ width: 3, height: h, background: `rgba(244,63,94,${0.15 + Math.sin((i / 24) * Math.PI) * 0.25})` }} />;
-                                    })}
+                            ) : mediaSrc ? (
+                                mediaKind === 'video'
+                                    ? <InlineVideoPlayer src={mediaSrc} onError={handleVideoError} />
+                                    : <img src={mediaSrc} alt="Memory" onError={handleMediaError}
+                                        style={{
+                                            display: 'block',
+                                            width: '100%',
+                                            maxHeight: '60vh',
+                                            objectFit: 'contain',
+                                            background: 'transparent',
+                                            borderRadius: memory.frame === 'polaroid' ? 4 : memory.frame === 'film' ? 12 : 0,
+                                            filter: memory.frame === 'film'
+                                                ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
+                                                : undefined,
+                                        }} />
+                            ) : isAudioOnly ? (
+                                <div className="flex flex-col items-center justify-center py-12"
+                                    style={{ background: 'linear-gradient(180deg, rgba(244,63,94,0.08) 0%, rgba(28,12,20,1) 100%)' }}>
+                                    <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
+                                        style={{ background: 'rgba(244,63,94,0.12)', border: '2px solid rgba(244,63,94,0.2)' }}>
+                                        <Mic size={32} className="text-rose-400" />
+                                    </div>
+                                    <div className="flex items-center gap-[3px] h-8">
+                                        {Array.from({ length: 24 }, (_, i) => {
+                                            const h = Math.sin((i / 24) * Math.PI) * 28 + 4;
+                                            return <div key={i} className="rounded-full" style={{ width: 3, height: h, background: `rgba(244,63,94,${0.15 + Math.sin((i / 24) * Math.PI) * 0.25})` }} />;
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-center" style={{ height: '36vh' }}>
-                                <ImageIcon size={32} className="text-white/10" />
-                            </div>
+                            ) : (
+                                <div className="flex items-center justify-center" style={{ height: '38vh' }}>
+                                    <ImageIcon size={32} className="text-white/10" />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Floating X — top-right corner, dark scrim. */}
+                        <button
+                            onClick={e => { e.stopPropagation(); onClose(); }}
+                            aria-label="Close"
+                            className="absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center active:scale-92 transition-transform z-10"
+                            style={{
+                                background: 'rgba(20,10,16,0.62)',
+                                border: '1px solid rgba(255,255,255,0.10)',
+                                backdropFilter: 'blur(10px)',
+                                WebkitBackdropFilter: 'blur(10px)',
+                                WebkitTapHighlightColor: 'transparent',
+                            }}
+                        >
+                            <X size={15} style={{ color: 'rgba(255,235,243,0.92)' }} />
+                        </button>
+
+                        {/* Mood as a placed sticker — soft drop-shadow,
+                            slightly rotated, sits over the bottom-left of
+                            the photo like it was tacked on. */}
+                        {mood && (
+                            <span
+                                aria-hidden
+                                className="absolute"
+                                style={{
+                                    bottom: -14,
+                                    left: 18,
+                                    width: 44,
+                                    height: 44,
+                                    borderRadius: '50%',
+                                    background: '#fdfaf5',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.30), 0 0 0 4px rgba(253,250,245,0.18), inset 0 0 0 1px rgba(122,72,90,0.08)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transform: 'rotate(-7deg)',
+                                    zIndex: 5,
+                                }}
+                            >
+                                <span style={{ fontSize: 22, lineHeight: 1 }}>{mood}</span>
+                            </span>
                         )}
                     </div>
 
                     {/* Voice note player */}
                     {hasAudio && <InlineAudioPlayer memory={memory} />}
 
-                    {/* Caption */}
+                    {/* ── EDITORIAL DATE BLOCK ──
+                        Big serif weekday + numeric date in masthead style,
+                        with relationship-time tag ("Day N of us") if the
+                        couple's anniversary is configured. */}
+                    <div className="px-6 pt-7 pb-3">
+                        {(() => {
+                            const memDate = new Date(memory.date);
+                            const weekday = memDate.toLocaleDateString(undefined, { weekday: 'long' });
+                            const numDate = memDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase();
+                            const yr = memDate.toLocaleDateString(undefined, { year: '2-digit' });
+                            const anniversary = profile.anniversaryDate ? new Date(profile.anniversaryDate) : null;
+                            const dayN = anniversary && !isNaN(anniversary.getTime())
+                                ? Math.max(1, Math.floor((memDate.getTime() - anniversary.getTime()) / 86400000) + 1)
+                                : null;
+                            return (
+                                <>
+                                    <div className="flex items-baseline justify-between gap-4">
+                                        <h2
+                                            className="font-serif leading-[0.95]"
+                                            style={{
+                                                fontSize: 30,
+                                                fontWeight: 600,
+                                                color: '#f7e3eb',
+                                                letterSpacing: '-0.018em',
+                                            }}
+                                        >
+                                            {weekday}
+                                        </h2>
+                                        {dayN !== null && (
+                                            <span
+                                                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase"
+                                                style={{
+                                                    color: '#f3d9a5',
+                                                    background: 'rgba(243,217,165,0.10)',
+                                                    border: '1px solid rgba(243,217,165,0.22)',
+                                                    letterSpacing: '0.12em',
+                                                }}
+                                            >
+                                                <Heart size={9} fill="currentColor" />
+                                                Day {dayN} of us
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="mt-1.5 flex items-center gap-2 text-[10.5px] font-semibold uppercase" style={{ color: 'rgba(255,210,230,0.45)', letterSpacing: '0.22em' }}>
+                                        <span>{numDate}</span>
+                                        <span style={{ opacity: 0.5 }}>·</span>
+                                        <span>'{yr}</span>
+                                        <span style={{ opacity: 0.5 }}>·</span>
+                                        <span className="tabular-nums">{time}</span>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+
+                    {/* CAPTION — editorial serif body */}
                     {memory.text && (
-                        <div className="px-5 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                            <p className="font-serif text-[1rem] leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                        <div className="px-6 pb-5">
+                            <p
+                                className="font-serif whitespace-pre-wrap"
+                                style={{
+                                    fontSize: '1.06rem',
+                                    lineHeight: 1.62,
+                                    color: 'rgba(255,232,242,0.88)',
+                                    letterSpacing: '-0.004em',
+                                }}
+                            >
                                 {memory.text}
                             </p>
                         </div>
                     )}
 
-                    {/* Comments header */}
-                    <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-                        <MessageCircle size={13} style={{ color: 'rgba(255,255,255,0.3)' }} />
-                        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                            {topLevel.length + Object.values(repliesMap).flat().length} {topLevel.length + Object.values(repliesMap).flat().length === 1 ? 'comment' : 'comments'}
-                        </span>
+                    {/* Hairline rose-fade divider */}
+                    <div
+                        aria-hidden
+                        className="mx-6 h-px"
+                        style={{ background: 'linear-gradient(90deg, transparent, rgba(244,114,182,0.30), transparent)' }}
+                    />
+
+                    {/* REACTIONS ROW — replaces the "0 COMMENTS" Instagram
+                        header. Small ghost chips on the left; a quiet delete
+                        on the right so destructive action isn't a big red
+                        blob in the title bar. */}
+                    <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <span
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold"
+                                style={{
+                                    color: 'rgba(244,114,182,0.92)',
+                                    background: 'rgba(244,114,182,0.10)',
+                                    border: '1px solid rgba(244,114,182,0.22)',
+                                }}
+                            >
+                                <Heart size={12} strokeWidth={2.2} fill="currentColor" />
+                                Loved
+                            </span>
+                            {(() => {
+                                const total = topLevel.length + Object.values(repliesMap).flat().length;
+                                return (
+                                    <span
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold"
+                                        style={{
+                                            color: 'rgba(255,232,242,0.7)',
+                                            background: 'rgba(255,255,255,0.05)',
+                                            border: '1px solid rgba(255,255,255,0.10)',
+                                        }}
+                                    >
+                                        <MessageCircle size={12} strokeWidth={2.2} />
+                                        {total} {total === 1 ? 'note' : 'notes'}
+                                    </span>
+                                );
+                            })()}
+                        </div>
+                        <button
+                            type="button"
+                            aria-label="Delete memory"
+                            data-memory-delete="true"
+                            onPointerDownCapture={openMemoryDeleteConfirm}
+                            onMouseDownCapture={openMemoryDeleteConfirm}
+                            onTouchStartCapture={openMemoryDeleteConfirm}
+                            onClickCapture={openMemoryDeleteConfirm}
+                            onClick={openMemoryDeleteConfirm}
+                            className="w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform shrink-0"
+                            style={{
+                                WebkitTapHighlightColor: 'transparent',
+                                touchAction: 'manipulation',
+                                pointerEvents: 'auto',
+                            }}
+                        >
+                            <span
+                                className="w-9 h-9 rounded-full flex items-center justify-center"
+                                style={{
+                                    background: 'rgba(239,68,68,0.10)',
+                                    border: '1px solid rgba(239,68,68,0.20)',
+                                }}
+                            >
+                                <Trash2 size={13} className="text-red-400/85" />
+                            </span>
+                        </button>
                     </div>
 
                     {/* Comment list */}
-                    <div className="px-4 pb-4 space-y-4">
+                    <div className="px-5 pb-4 space-y-4">
                         {topLevel.length === 0 && (
-                            <p className="text-center py-4 text-[12px]" style={{ color: 'rgba(255,255,255,0.22)' }}>
-                                No comments yet — say something ✨
+                            <p
+                                className="text-center font-serif italic py-6"
+                                style={{
+                                    color: 'rgba(255,210,230,0.42)',
+                                    fontSize: 13.5,
+                                    letterSpacing: '0.005em',
+                                }}
+                            >
+                                Leave a note for your future selves.
                             </p>
                         )}
                         {topLevel.map(comment => (
@@ -851,8 +1065,8 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                                 <CommentBubble
                                     comment={comment}
                                     isOwn={comment.senderName === myName}
-                                    onReply={() => startReply(comment)}
-                                    onDelete={() => deleteComment(comment.id)}
+                                    onReply={startReply}
+                                    onDelete={deleteComment}
                                 />
                                 {/* Threaded replies */}
                                 {(repliesMap[comment.id] || []).map(reply => (
@@ -863,8 +1077,9 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                                                 comment={reply}
                                                 isOwn={reply.senderName === myName}
                                                 isReply
-                                                onReply={() => startReply(comment)}
-                                                onDelete={() => deleteComment(reply.id)}
+                                                replyTarget={comment}
+                                                onReply={startReply}
+                                                onDelete={deleteComment}
                                             />
                                         </div>
                                     </div>
@@ -875,7 +1090,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                 </div>
 
                 {/* ── Input bar — pinned at bottom ── */}
-                <div className="shrink-0 px-4 pb-4 pt-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', background: '#111214' }}>
+                <div className="shrink-0 px-4 pb-4 pt-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(25,11,19,0.96)' }}>
                     {/* Replying to pill */}
                     <AnimatePresence>
                         {replyingTo && (
@@ -901,17 +1116,17 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                     <div className="flex items-center gap-2.5">
                         <Avatar name={myName} size={30} />
                         <div
-                            className="flex-1 flex items-center gap-2 rounded-full px-4 py-2.5"
-                            style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}
+                            className="flex-1 flex items-center gap-2 rounded-full px-4 py-2.5 transition-colors"
+                            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,210,230,0.14)' }}
                         >
                             <input
                                 ref={inputRef}
                                 value={inputText}
                                 onChange={e => setInputText(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
-                                placeholder={replyingTo ? `Reply to ${replyingTo.senderName}…` : 'Add a comment…'}
-                                className="flex-1 bg-transparent text-[13px] outline-none min-w-0"
-                                style={{ color: 'rgba(255,255,255,0.88)', caretColor: '#ec4899' }}
+                                placeholder={replyingTo ? `Reply to ${replyingTo.senderName}…` : 'Write a note…'}
+                                className="flex-1 bg-transparent font-serif italic text-[14px] outline-none min-w-0 placeholder:opacity-45"
+                                style={{ color: '#f7e3eb', caretColor: '#f472b6' }}
                                 autoComplete="off"
                             />
                             <AnimatePresence>
@@ -985,14 +1200,14 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         setMemories(StorageService.getMemories());
     };
 
-    const requestDelete = (id: string) => {
+    const requestDelete = useCallback((id: string) => {
         setPendingDeleteId(id);
         try {
             feedback.tap();
         } catch {
             // Haptics/audio feedback should never block opening delete confirmation.
         }
-    };
+    }, []);
 
     const confirmDelete = async () => {
         if (!pendingDeleteId) return;
@@ -1024,6 +1239,14 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         const seq = (g + i) % 2 === 0 ? gridTiltSeqA : gridTiltSeqB;
         return seq[(g * 3 + i) % seq.length];
     };
+
+    const handleOpenMemory = useCallback((memory: Memory) => {
+        setSelectedMemory(memory);
+    }, []);
+
+    const handleCloseMemory = useCallback(() => {
+        setSelectedMemory(null);
+    }, []);
 
     const handleSurprise = () => {
         if (memories.length === 0) return;
@@ -1072,7 +1295,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
 
     return (
         <PullToRefresh onRefresh={handleRefresh}>
-            <div className="p-4 pt-6 pb-32 min-h-screen">
+            <div className="memory-timeline-view p-4 pt-6 pb-32 min-h-screen">
                 <ViewHeader title="Our Journey" onBack={() => setView('home')} variant="simple" />
 
                 {memories.length === 0 ? (
@@ -1131,56 +1354,51 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                     </div>
                 ) : (
                     <>
-                        {/* Scrapbook HUD — compact stats strip + tiny surprise chip. No card. */}
+                        {/* Stats strip — refined serif count + mood pill + a
+                            rose-glass "Surprise me" chip. Replaces the rust
+                            handwritten scrapbook HUD that clashed with the
+                            app's rose-glass language. */}
                         {stats && (
                             <motion.div
                                 initial={{ opacity: 0, y: -6 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                                className="flex items-center justify-between gap-3 mb-5 px-1"
+                                className="flex items-center justify-between gap-3 mb-6 px-0.5"
                             >
-                                <div className="flex items-baseline gap-1.5 min-w-0">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span
+                                            className="font-serif tabular-nums leading-none"
+                                            style={{ fontSize: 26, fontWeight: 600, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}
+                                        >
+                                            {stats.count}
+                                        </span>
+                                        <span className="text-[12.5px]" style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }}>
+                                            {stats.count === 1 ? 'moment' : 'moments'}
+                                        </span>
+                                    </div>
                                     <span
-                                        className="tabular-nums leading-none"
+                                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap"
                                         style={{
-                                            fontFamily: '"Gloria Hallelujah", cursive',
-                                            fontSize: 22,
-                                            color: '#9a3412',
-                                            transform: 'rotate(-2deg)',
-                                            display: 'inline-block',
+                                            background: 'rgba(236,72,153,0.08)',
+                                            border: '1px solid rgba(236,72,153,0.16)',
+                                            color: '#be3d72',
                                         }}
                                     >
-                                        {stats.count}
-                                    </span>
-                                    <span
-                                        className="text-[12px] tracking-tight"
-                                        style={{ color: 'var(--color-text-secondary)' }}
-                                    >
-                                        {stats.count === 1 ? 'moment' : 'moments'}
-                                    </span>
-                                    <span
-                                        className="text-[12px] tracking-tight mx-1.5"
-                                        style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}
-                                    >
-                                        ·
-                                    </span>
-                                    <span style={{ fontSize: 14, lineHeight: 1 }}>{stats.topMoodEmoji}</span>
-                                    <span
-                                        className="text-[12px] tracking-tight"
-                                        style={{ color: 'var(--color-text-secondary)' }}
-                                    >
+                                        <span style={{ fontSize: 13, lineHeight: 1 }}>{stats.topMoodEmoji}</span>
                                         most felt
                                     </span>
                                 </div>
                                 <motion.button
                                     onClick={handleSurprise}
-                                    whileTap={{ scale: 0.92 }}
+                                    whileTap={{ scale: 0.94 }}
                                     aria-label="Open a random memory"
-                                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full active:opacity-80"
+                                    className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full"
                                     style={{
-                                        background: 'rgba(254, 215, 170, 0.55)',
-                                        border: '1px dashed rgba(154, 52, 18, 0.35)',
-                                        color: '#9a3412',
+                                        background: 'rgba(255,255,255,0.88)',
+                                        border: '1px solid rgba(236,72,153,0.20)',
+                                        color: '#be3d72',
+                                        boxShadow: '0 3px 10px rgba(236,72,153,0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
                                         WebkitTapHighlightColor: 'transparent',
                                     }}
                                 >
@@ -1189,23 +1407,15 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                         transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut', repeatDelay: 1.6 }}
                                         style={{ display: 'inline-flex' }}
                                     >
-                                        <Sparkles size={12} fill="currentColor" />
+                                        <Sparkles size={13} />
                                     </motion.span>
-                                    <span
-                                        style={{
-                                            fontFamily: '"Gloria Hallelujah", cursive',
-                                            fontSize: 13,
-                                            lineHeight: 1,
-                                        }}
-                                    >
-                                        surprise me
-                                    </span>
+                                    <span className="text-[12px] font-semibold">Surprise me</span>
                                 </motion.button>
                             </motion.div>
                         )}
 
                         <div className="space-y-9">
-                            <AnimatePresence mode="popLayout">
+                            <AnimatePresence initial={false}>
                                 {keys.map((key, groupIdx) => {
                                     const group = grouped[key];
                                     const [featured, ...rest] = group;
@@ -1215,38 +1425,32 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                     return (
                                         <motion.section
                                             key={key}
-                                            layout
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0 }}
                                             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: Math.min(groupIdx * 0.06, 0.24) }}
                                         >
-                                            {/* Inline scrapbook chapter heading — handwritten, NOT sticky */}
-                                            <div className="flex items-end justify-between gap-3 mb-3.5 pl-0.5">
-                                                <div className="flex items-baseline gap-2 min-w-0">
+                                            {/* Chapter heading — refined serif, no rotation hack */}
+                                            <div className="flex items-end justify-between gap-3 mb-2.5 pl-0.5">
+                                                <div className="flex items-baseline gap-1.5 min-w-0">
                                                     <h3
-                                                        className="leading-none truncate"
+                                                        className="font-serif leading-none truncate"
                                                         style={{
-                                                            fontFamily: '"Gloria Hallelujah", cursive',
-                                                            fontSize: 26,
+                                                            fontSize: 23,
+                                                            fontWeight: 600,
                                                             color: 'var(--color-text-primary)',
-                                                            transform: 'rotate(-1.5deg)',
-                                                            display: 'inline-block',
-                                                            letterSpacing: '-0.01em',
+                                                            letterSpacing: '-0.012em',
                                                         }}
                                                     >
                                                         {monthLabel}
                                                     </h3>
                                                     {yearShort && (
                                                         <span
-                                                            className="leading-none"
+                                                            className="font-serif leading-none"
                                                             style={{
-                                                                fontFamily: '"Gloria Hallelujah", cursive',
-                                                                fontSize: 16,
+                                                                fontSize: 15,
                                                                 color: 'var(--color-text-secondary)',
-                                                                opacity: 0.7,
-                                                                transform: 'rotate(-1.5deg)',
-                                                                display: 'inline-block',
+                                                                opacity: 0.55,
                                                             }}
                                                         >
                                                             {yearShort}
@@ -1254,36 +1458,27 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                     )}
                                                 </div>
                                                 <span
-                                                    className="shrink-0 tabular-nums"
+                                                    className="shrink-0 text-[10px] font-semibold uppercase tabular-nums"
                                                     style={{
-                                                        fontFamily: '"Gloria Hallelujah", cursive',
-                                                        fontSize: 13,
                                                         color: 'var(--color-text-secondary)',
-                                                        opacity: 0.65,
+                                                        opacity: 0.5,
+                                                        letterSpacing: '0.14em',
                                                     }}
                                                 >
                                                     {group.length === 1 ? '1 page' : `${group.length} pages`}
                                                 </span>
                                             </div>
-                                            {/* Hand-drawn page rule */}
-                                            <svg
-                                                className="w-full mb-4"
-                                                height="6"
-                                                viewBox="0 0 400 6"
-                                                preserveAspectRatio="none"
-                                                aria-hidden="true"
-                                            >
-                                                <path
-                                                    d="M 2 3 Q 80 1 160 3.2 T 320 2.6 T 398 3.4"
-                                                    fill="none"
-                                                    stroke="rgba(154, 52, 18, 0.28)"
-                                                    strokeWidth="1.2"
-                                                    strokeLinecap="round"
-                                                />
-                                            </svg>
+                                            {/* Clean hairline rule — rose fade, replaces the rust wavy SVG */}
+                                            <div
+                                                aria-hidden
+                                                className="h-px w-full mb-4"
+                                                style={{
+                                                    background: 'linear-gradient(90deg, rgba(236,72,153,0.28), rgba(236,72,153,0.08) 55%, transparent)',
+                                                }}
+                                            />
 
                                             {/* Featured polaroid — chapter centerpiece */}
-                                            <AnimatePresence mode="popLayout">
+                                            <AnimatePresence initial={false}>
                                                 <div className="mb-4 px-1">
                                                     <MemoryCard
                                                         key={featured.id}
@@ -1291,7 +1486,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                         index={groupIdx * 10}
                                                         featured
                                                         tilt={featuredTilt(groupIdx)}
-                                                        onClick={() => setSelectedMemory(featured)}
+                                                        onOpen={handleOpenMemory}
                                                         onDelete={requestDelete}
                                                     />
                                                 </div>
@@ -1300,14 +1495,14 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                             {/* Scrapbook grid — alternating tilts */}
                                             {rest.length > 0 && (
                                                 <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-1">
-                                                    <AnimatePresence mode="popLayout">
+                                                    <AnimatePresence initial={false}>
                                                         {rest.map((m, i) => (
                                                             <MemoryCard
                                                                 key={m.id}
                                                                 memory={m}
                                                                 index={groupIdx * 10 + i + 1}
                                                                 tilt={gridTilt(groupIdx, i)}
-                                                                onClick={() => setSelectedMemory(m)}
+                                                                onOpen={handleOpenMemory}
                                                                 onDelete={requestDelete}
                                                             />
                                                         ))}
@@ -1327,7 +1522,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                         <MemoryDetailModal
                             key={selectedMemory.id}
                             memory={selectedMemory}
-                            onClose={() => setSelectedMemory(null)}
+                            onClose={handleCloseMemory}
                             onDelete={requestDelete}
                         />
                     )}

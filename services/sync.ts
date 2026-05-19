@@ -2,9 +2,11 @@ import { StorageService, storageEventTarget, StorageUpdateDetail, getPendingDele
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 import { MediaMigrationService } from './mediaMigration';
+import { PairingService } from './pairing';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { isDailyMomentExpired } from '../shared/mediaRetention.js';
 import { createDeletionLookup, filterUploadableItems, getRemoteDeletedIdsToPurge, hasRecordedDeletion } from './syncDeletionLedger.js';
+import { runFrameBudgeted, scheduleIdleTask } from '../utils/scheduler';
 
 export const syncEventTarget = new EventTarget();
 
@@ -13,7 +15,6 @@ class SyncServiceClass {
     public isConnected: boolean = false;
     public lastSyncTime: string = '';
     private channel: RealtimeChannel | null = null;
-    private ROOM_ID = 'lior_global_room';
     private presenceInterval: any = null;
     private realtimeChannels: RealtimeChannel[] = [];
     private storageListener: ((e: Event) => void) | null = null;
@@ -22,6 +23,7 @@ class SyncServiceClass {
     private amILeader = false;
     private activeSessionId: string | null = null;
     private reconcileInFlight: Promise<void> | null = null;
+    private cancelInitialReconcile: (() => void) | null = null;
 
     private getMediaFallbackId(table: string, item: any): string {
         if (item?.imageId) return item.imageId;
@@ -56,6 +58,9 @@ class SyncServiceClass {
     }
 
     private cleanupRealtimeState() {
+        this.cancelInitialReconcile?.();
+        this.cancelInitialReconcile = null;
+
         if (this.presenceInterval) {
             clearInterval(this.presenceInterval);
             this.presenceInterval = null;
@@ -75,6 +80,14 @@ class SyncServiceClass {
         });
         this.realtimeChannels = [];
         this.channel = null;
+    }
+
+    private scheduleInitialReconcile() {
+        this.cancelInitialReconcile?.();
+        this.cancelInitialReconcile = scheduleIdleTask(() => {
+            this.cancelInitialReconcile = null;
+            void this.reconcileCloud();
+        }, { timeout: 2400, delay: 650 });
     }
 
     public reset() {
@@ -117,27 +130,48 @@ class SyncServiceClass {
 
         const localProfileBeforeCoupleLookup = StorageService.getCoupleProfile();
         await SupabaseService.upsertUserProfile(localProfileBeforeCoupleLookup.myName);
-        if (localProfileBeforeCoupleLookup.coupleId) {
+        if (localProfileBeforeCoupleLookup.coupleId && localProfileBeforeCoupleLookup.partnerUserId) {
             SupabaseService.setCachedCoupleId(localProfileBeforeCoupleLookup.coupleId);
+        } else {
+            SupabaseService.setCachedCoupleId(null);
         }
 
         // ensure_user_couple must run first so couple_memberships has a row
         // before claimLegacyRows tries to look up the couple_id
-        const coupleId = await SupabaseService.getCurrentCoupleId();
+        let coupleId = await SupabaseService.getCurrentCoupleId();
         if (!coupleId) {
             this.reset();
             this.updateStatus('Offline (Couple Setup Failed)');
             return;
         }
+        const pairingStatus = await PairingService.getStatus();
+        if (pairingStatus?.coupleId) {
+            coupleId = pairingStatus.coupleId;
+            SupabaseService.setCachedCoupleId(coupleId);
+        }
         await SupabaseService.claimLegacyRows();
         await SupabaseService.backfillRowsToCouple(coupleId);
         const profile = StorageService.getCoupleProfile();
-        const linked = await SupabaseService.getLinkedPartner(coupleId);
+        if (
+            pairingStatus?.isLinked
+            && pairingStatus.partnerUserId
+            && (
+                profile.coupleId !== coupleId
+                || profile.partnerUserId !== pairingStatus.partnerUserId
+                || profile.partnerName !== pairingStatus.partnerName
+            )
+        ) {
+            StorageService.forceNewPairing(
+                coupleId,
+                pairingStatus.partnerUserId,
+                pairingStatus.partnerName || undefined,
+            );
+        }
         const nextProfile = {
             ...profile,
             coupleId,
-            partnerUserId: linked?.partnerUserId || profile.partnerUserId,
-            partnerName: linked?.partnerName || profile.partnerName,
+            partnerUserId: pairingStatus?.isLinked ? pairingStatus.partnerUserId || profile.partnerUserId : profile.partnerUserId,
+            partnerName: pairingStatus?.isLinked ? pairingStatus.partnerName || profile.partnerName : profile.partnerName,
         };
         if (
             profile.coupleId !== nextProfile.coupleId
@@ -178,8 +212,8 @@ class SyncServiceClass {
         };
         storageEventTarget.addEventListener('storage-update', this.storageListener);
 
-        // Reconcile cloud with protection
-        this.reconcileCloud();
+        // Reconcile cloud with protection after first paint settles.
+        this.scheduleInitialReconcile();
     }
 
     private triggerSystemNotification(detail: StorageUpdateDetail) {
@@ -191,7 +225,7 @@ class SyncServiceClass {
 
         let title = "Lior";
         let body = "Something new was added!";
-        let icon = "/icon.svg";
+        let icon = "/notification-icon.png";
 
         switch (detail.table) {
             case 'memories':
@@ -232,11 +266,11 @@ class SyncServiceClass {
         if (document.visibilityState === 'visible') return;
 
         try {
-            new Notification(title, { body, icon, badge: "/icon.svg" });
+            new Notification(title, { body, icon, badge: "/notification-icon.png" });
         } catch (e) {
             // Fallback for some mobile browsers
             navigator.serviceWorker.ready.then(registration => {
-                registration.showNotification(title, { body, icon, badge: "/icon.svg" });
+                registration.showNotification(title, { body, icon, badge: "/notification-icon.png" });
             });
         }
     }
@@ -288,7 +322,7 @@ class SyncServiceClass {
                 time_capsules: 'cap', surprises: 'surp', private_space_items: 'priv',
             };
 
-            for (const table of tables) {
+            await runFrameBudgeted(tables, async (table) => {
                 try {
                     const getLocalItems = localCollectionAccessors[table];
                     const localItems = getLocalItems ? getLocalItems() : [];
@@ -300,7 +334,7 @@ class SyncServiceClass {
                         ? await SupabaseService.fetchAllRows(table)
                         : await SupabaseService.fetchAll(table);
                     // Null signifies a fetch error, meaning the table likely doesn't exist
-                    if (cloudItems === null) continue;
+                    if (cloudItems === null) return;
 
                     if (cloudItems.length === 0) {
                         // CLOUD EMPTY PROTECTION: Push local data to cloud instead of pulling
@@ -321,7 +355,7 @@ class SyncServiceClass {
                                     const payload = local.startsWith('data:')
                                         ? local
                                         : await MediaStorageService.downloadMedia(local);
-                                    if (!payload) continue;
+                                    if (!payload) return;
                                     const path = await MediaStorageService.buildCustomPath('singleton', 'together-music', 'track', {
                                         ownerUserId: meta?.ownerUserId,
                                         timestamp: meta?.date,
@@ -375,7 +409,7 @@ class SyncServiceClass {
                 } catch (tableError) {
                     console.warn(`Sync skipped for table ${table}:`, tableError);
                 }
-            }
+            }, { budgetMs: 8, yieldEvery: 1 });
             this.updateStatus('Cloud Synced');
 
             // Ensure Storage bucket exists
@@ -483,9 +517,11 @@ class SyncServiceClass {
     private setupRealtimeSubscription() {
         if (!SupabaseService.client) return;
         const profile = StorageService.getCoupleProfile();
+        const coupleId = profile.coupleId;
+        if (!coupleId) return;
 
         this.channel = SupabaseService.client
-            .channel(this.ROOM_ID)
+            .channel(`lior_room:${coupleId}`)
             .on('presence', { event: 'sync' }, () => {
                 const state = this.channel?.presenceState();
                 this.handlePresenceUpdate(state, profile);
@@ -502,7 +538,7 @@ class SyncServiceClass {
         const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items'];
         tables.forEach(table => {
             const tableChannel = SupabaseService.client?.channel(`public:${table}`)
-                .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+                .on('postgres_changes', { event: '*', schema: 'public', table, filter: `couple_id=eq.${coupleId}` }, (payload) => {
                     if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                         const logicalId = payload.new?.data?.id || payload.new?.id;
                         // Skip if locally tombstoned — the delete is still propagating to cloud
@@ -521,7 +557,7 @@ class SyncServiceClass {
         });
 
         const deletionChannel = SupabaseService.client?.channel('public:sync_deletions')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_deletions' }, (payload) => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_deletions', filter: `couple_id=eq.${coupleId}` }, (payload) => {
                 if (payload.eventType !== 'INSERT' && payload.eventType !== 'UPDATE') return;
                 const table = payload.new?.table_name;
                 const logicalId = payload.new?.logical_id;

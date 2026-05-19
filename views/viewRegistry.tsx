@@ -1,6 +1,7 @@
 import React from 'react';
 import type { NavigationOptions, ViewState } from '../types';
 import { shouldGateHeavyView } from '../utils/runtimeProfile';
+import { yieldToMain } from '../utils/scheduler';
 
 type SetView = (view: ViewState, options?: NavigationOptions) => void;
 
@@ -55,6 +56,7 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   'aura-signal': lazyNamedView(() => import('./AuraSignal'), 'AuraSignal'),
   'presence-room': lazyNamedView(() => import('./PresenceRoom'), 'PresenceRoom'),
   'bonsai-bloom': lazyNamedView(() => import('./BonsaiBloom'), 'BonsaiBloom'),
+  'coco-pet': lazyNamedView(() => import('./CocoPetPage'), 'CocoPetPage'),
   us: lazyNamedView(() => import('./Us'), 'Us'),
   'our-room': lazyNamedView(() => import('./OurRoom'), 'OurRoom'),
   canvas: lazyNamedView(() => import('./Canvas'), 'Canvas'),
@@ -91,4 +93,12 @@ export const filterPreloadableViews = (
 export const preloadViewModules = async (views: ViewState[]): Promise<void> => {
   const uniqueViews = filterPreloadableViews(views);
   await Promise.allSettled(uniqueViews.map((view) => preloadViewModule(view)));
+};
+
+export const preloadViewModulesSequential = async (views: ViewState[]): Promise<void> => {
+  const uniqueViews = filterPreloadableViews(views);
+  for (const view of uniqueViews) {
+    await preloadViewModule(view).catch(() => undefined);
+    await yieldToMain();
+  }
 };

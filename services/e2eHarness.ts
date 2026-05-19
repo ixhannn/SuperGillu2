@@ -1,4 +1,5 @@
 import type { ViewState } from '../types';
+import type { PairingE2EMock } from './pairing';
 
 const E2E_ENABLED = import.meta.env.VITE_E2E === '1';
 
@@ -68,3 +69,9 @@ export const bootstrapE2ELocalState = () => {
   localStorage.setItem('lior_seen_version', 'e2e');
   localStorage.setItem('lior_coachmarks_seen', JSON.stringify(['__all__']));
 };
+
+declare global {
+  interface Window {
+    __liorPairingMock?: PairingE2EMock;
+  }
+}

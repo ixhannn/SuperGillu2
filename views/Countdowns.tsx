@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight } from 'lucide-react';
+import { Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight, Trash2 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { motion } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
-import { countdownDateParts, daysUntilDate, getNextAnnualOccurrence, parseStoredDateOnly, formatStoredDate } from '../shared/dateOnly.js';
+import { countdownDateParts, formatStoredDate } from '../shared/dateOnly.js';
+import { buildCountdownEvents, getCountdownEventStatus } from '../shared/countdowns.js';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 interface CountdownsProps {
     setView: (view: ViewState) => void;
@@ -41,6 +43,7 @@ const LiveCountdown = ({ targetDate }: { targetDate: Date }) => {
 export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
     const [dates, setDates] = useState<SpecialDate[]>([]);
     const [anniversaryDate, setAnniversaryDate] = useState<string>('');
+    const [deleteTarget, setDeleteTarget] = useState<SpecialDate | null>(null);
 
     useEffect(() => {
         const load = () => {
@@ -54,30 +57,28 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
         return () => storageEventTarget.removeEventListener('storage-update', load);
     }, []);
 
-    const calculateNextOccurence = (date: string, type: string) => {
-        if (type === 'anniversary' || type === 'birthday') {
-            return getNextAnnualOccurrence(date) ?? new Date(Number.NaN);
-        }
-        return parseStoredDateOnly(date) ?? new Date(Number.NaN);
-    };
-
-    const allEvents = [
-        ...dates.map(d => ({
-            ...d,
-            nextDate: calculateNextOccurence(d.date, d.type)
-        })),
-        {
-            id: 'anniv_main',
-            title: 'Our Anniversary',
-            date: anniversaryDate,
-            type: 'anniversary' as const,
-            nextDate: calculateNextOccurence(anniversaryDate, 'anniversary')
-        }
-    ].filter((event) => !Number.isNaN(event.nextDate.getTime()))
-        .sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime());
+    const allEvents = buildCountdownEvents({ dates, anniversaryDate });
 
     const nextEvent = allEvents[0];
     const restEvents = allEvents.slice(1);
+    const canDeleteEvent = (event: typeof allEvents[number]) => !event.isGenerated;
+
+    const requestDelete = (event: typeof allEvents[number]) => {
+        if (!canDeleteEvent(event)) return;
+        setDeleteTarget({
+            id: event.id,
+            title: event.title,
+            date: event.date,
+            type: event.type as SpecialDate['type'],
+        });
+    };
+
+    const confirmDelete = () => {
+        if (!deleteTarget) return;
+        StorageService.deleteSpecialDate(deleteTarget.id);
+        setDates(prev => prev.filter(date => date.id !== deleteTarget.id));
+        setDeleteTarget(null);
+    };
 
     const getIcon = (type: string) => {
         switch (type) {
@@ -100,12 +101,27 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                             <div className="flex items-center gap-2 px-3 py-1 bg-lior-500/15 rounded-full text-[10px] font-bold uppercase tracking-widest text-lior-600">
                                 <Clock size={12} /> Next Up
                             </div>
-                            {getIcon(nextEvent.type)}
+                            <div className="flex items-center gap-2">
+                                {canDeleteEvent(nextEvent) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => requestDelete(nextEvent)}
+                                        className="p-2 rounded-full text-red-400 bg-red-500/10 spring-press"
+                                        aria-label={`Delete ${nextEvent.title}`}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                                {getIcon(nextEvent.type)}
+                            </div>
                         </div>
 
                         <h3 className="text-3xl font-serif font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>{nextEvent.title}</h3>
                         <p className="text-sm mb-8 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                             {formatStoredDate(nextEvent.nextDate, { weekday: 'long', month: 'long', day: 'numeric' })}
+                        </p>
+                        <p className="text-xs mb-4 font-bold uppercase tracking-[0.18em] text-lior-400">
+                            {getCountdownEventStatus(nextEvent)}
                         </p>
 
                         <LiveCountdown targetDate={nextEvent.nextDate} />
@@ -138,11 +154,23 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                                     {formatStoredDate(event.nextDate, { month: 'short', day: 'numeric' })}
                                 </p>
                             </div>
-                            <div className="text-right">
-                                <span className="text-2xl font-bold font-mono text-lior-400">
-                                    {daysUntilDate(event.nextDate)}
-                                </span>
-                                <span className="block text-[10px] uppercase font-bold" style={{ color: 'var(--color-text-secondary)' }}>Days To Go</span>
+                            <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                    <span className="block text-xs font-bold text-lior-400">
+                                        {getCountdownEventStatus(event)}
+                                    </span>
+                                    <span className="block text-[10px] uppercase font-bold" style={{ color: 'var(--color-text-secondary)' }}>Countdown</span>
+                                </div>
+                                {canDeleteEvent(event) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => requestDelete(event)}
+                                        className="p-2 rounded-full text-red-400 bg-red-500/10 spring-press"
+                                        aria-label={`Delete ${event.title}`}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
                             </div>
                         </motion.div>
                     ))}
@@ -177,6 +205,16 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                     <Plus size={24} />
                 </button>
             </div>
+
+            <ConfirmModal
+                isOpen={!!deleteTarget}
+                title="Remove Countdown"
+                message={`Remove ${deleteTarget?.title || 'this countdown'} from your countdowns?`}
+                confirmLabel="Remove"
+                variant="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteTarget(null)}
+            />
         </div>
     );
 };

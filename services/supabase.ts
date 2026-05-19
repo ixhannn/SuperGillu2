@@ -18,6 +18,10 @@ const isMissingTableError = (error: unknown, tableName: string) => {
         || Boolean(candidate?.message?.includes(`public.${tableName}`));
 };
 
+const firstRpcRow = <T,>(data: T | T[] | null | undefined): T | null => (
+    Array.isArray(data) ? data[0] ?? null : data ?? null
+);
+
 export interface SupabaseRowEnvelope<T = any> {
     id: string;
     user_id?: string | null;
@@ -36,6 +40,28 @@ export interface SupabaseDeletionLedgerRow {
     deleted_at?: string;
     created_at?: string;
     updated_at?: string;
+}
+
+export interface PairInviteV2Row {
+    code: string;
+    expires_at: string;
+    couple_id: string;
+}
+
+export interface PairingStatusV2Row {
+    is_linked: boolean;
+    couple_id: string | null;
+    partner_user_id: string | null;
+    partner_name: string | null;
+    member_count: number;
+}
+
+export interface ClaimPairInviteV2Row {
+    ok: boolean;
+    error: string | null;
+    couple_id: string | null;
+    partner_user_id: string | null;
+    partner_name: string | null;
 }
 
 export interface MediaAssetUploadInput {
@@ -70,7 +96,20 @@ export const SupabaseService = {
         const { url, anonKey: key } = SupabaseService.getProjectConfig();
         if (url && key && !SupabaseService.client) {
             try {
-                SupabaseService.client = createClient(url, key);
+                SupabaseService.client = createClient(url, key, {
+                    auth: {
+                        // PKCE is the secure modern OAuth flow — returns a
+                        // short-lived ?code= instead of putting access_token
+                        // in the URL fragment. Required for native callbacks
+                        // (Capacitor deep links) and recommended for web.
+                        flowType: 'pkce',
+                        // Supabase auto-detects the auth code in the return
+                        // URL and exchanges it for a session.
+                        detectSessionInUrl: true,
+                        persistSession: true,
+                        autoRefreshToken: true,
+                    },
+                });
                 return true;
             } catch (e) { return false; }
         }
@@ -335,7 +374,7 @@ export const SupabaseService = {
         // existing rows with empty local data.
         if (!coupleId) return null;
 
-        const { data, error } = await SupabaseService.client.from(table).select('*');
+        const { data, error } = await SupabaseService.client.from(table).select('*').eq('couple_id', coupleId);
         if (error) return null; // Return null so we know it failed (e.g. table missing)
         if (!data) return [];
         return data.map((row: any) => row.data);
@@ -346,7 +385,7 @@ export const SupabaseService = {
         const coupleId = await SupabaseService.getCurrentCoupleId();
         if (!coupleId) return null;
 
-        const { data, error } = await SupabaseService.client.from(table).select('*');
+        const { data, error } = await SupabaseService.client.from(table).select('*').eq('couple_id', coupleId);
         if (error) return null;
         return (data ?? []) as SupabaseRowEnvelope[];
     },
@@ -359,6 +398,7 @@ export const SupabaseService = {
         const { data, error } = await SupabaseService.client
             .from(DELETION_LEDGER_TABLE)
             .select('*')
+            .eq('couple_id', coupleId)
             .order('deleted_at', { ascending: false });
         if (error) return null;
         return (data ?? []) as SupabaseDeletionLedgerRow[];
@@ -477,6 +517,57 @@ export const SupabaseService = {
         return data ?? [];
     },
 
+    createPairInviteV2: async (input: { forceRotate?: boolean; displayName?: string | null }): Promise<PairInviteV2Row | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const { data, error } = await SupabaseService.client.rpc('create_pair_invite_v2', {
+                force_rotate: Boolean(input.forceRotate),
+                display_name: input.displayName ?? null,
+            });
+            if (error) {
+                console.warn('Supabase create_pair_invite_v2 failed:', error);
+                return null;
+            }
+            return firstRpcRow<PairInviteV2Row>(data);
+        } catch (e) {
+            console.warn('Supabase create_pair_invite_v2 exception:', e);
+            return null;
+        }
+    },
+
+    claimPairInviteV2: async (input: { code: string; displayName?: string | null }): Promise<ClaimPairInviteV2Row | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const { data, error } = await SupabaseService.client.rpc('claim_pair_invite_v2', {
+                invite_code: input.code,
+                display_name: input.displayName ?? null,
+            });
+            if (error) {
+                console.warn('Supabase claim_pair_invite_v2 failed:', error);
+                return null;
+            }
+            return firstRpcRow<ClaimPairInviteV2Row>(data);
+        } catch (e) {
+            console.warn('Supabase claim_pair_invite_v2 exception:', e);
+            return null;
+        }
+    },
+
+    getPairingStatusV2: async (): Promise<PairingStatusV2Row | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const { data, error } = await SupabaseService.client.rpc('get_pairing_status_v2');
+            if (error) {
+                console.warn('Supabase get_pairing_status_v2 failed:', error);
+                return null;
+            }
+            return firstRpcRow<PairingStatusV2Row>(data);
+        } catch (e) {
+            console.warn('Supabase get_pairing_status_v2 exception:', e);
+            return null;
+        }
+    },
+
     backfillRowsToCouple: async (coupleId: string) => {
         if (!SupabaseService.client || !coupleId) return false;
         try {
@@ -523,6 +614,33 @@ export const SupabaseService = {
             return { partnerUserId, partnerName };
         } catch (e) {
             console.warn('Supabase getLinkedPartner exception:', e);
+            return null;
+        }
+    },
+
+    restorePairFromClaimedInvite: async (): Promise<{ coupleId: string; partnerUserId: string | null; partnerName: string | null } | null> => {
+        if (!SupabaseService.client) return null;
+
+        try {
+            const { data, error } = await SupabaseService.client.rpc('restore_pair_from_claimed_invite');
+            if (error) {
+                const message = error.message || '';
+                if (error.code === 'PGRST202' || isMissingTableError(error, 'restore_pair_from_claimed_invite') || message.includes('restore_pair_from_claimed_invite')) return null;
+                console.warn('Supabase restore_pair_from_claimed_invite failed:', error);
+                return null;
+            }
+
+            const row = Array.isArray(data) ? data[0] : data;
+            const coupleId = row?.couple_id ? String(row.couple_id) : '';
+            if (!coupleId) return null;
+
+            return {
+                coupleId,
+                partnerUserId: row?.partner_user_id ? String(row.partner_user_id) : null,
+                partnerName: row?.partner_name ? String(row.partner_name).trim() || null : null,
+            };
+        } catch (e) {
+            console.warn('Supabase restore_pair_from_claimed_invite exception:', e);
             return null;
         }
     }

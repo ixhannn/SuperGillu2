@@ -20,6 +20,8 @@ export interface Memory {
   text: string;
   date: string; // ISO string
   mood: string;
+  /** Visual frame style chosen in MediaForge — 'none' | 'polaroid' | 'film' | 'glow'. */
+  frame?: string;
 }
 
 export interface SpecialDate {
@@ -647,7 +649,7 @@ export interface SystemMessage {
   seenAt?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'coco-pet' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console';
 
 // ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {

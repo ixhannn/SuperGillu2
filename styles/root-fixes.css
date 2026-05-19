@@ -9,6 +9,83 @@ body,
 html,
 body {
   overscroll-behavior-y: none;
+  /* iOS WKWebView: kill the grey tap-highlight rectangle that flashes
+     under any tappable element the moment a finger lands — even during a
+     scroll gesture. This is the "posts blinking while scrolling" bug. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Capacitor: every element that the user can touch during a scroll
+   should not flash an :active state mid-scroll. We let the dedicated
+   .spring-press ripple system (Layout.handleRipple) handle deliberate taps
+   instead — it only fires on a real click, after iOS' gesture detector
+   has already decided this wasn't a scroll. */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* The scroll wrapper. iOS native momentum scroll only kicks in when
+   overflow-y is scroll/auto AND -webkit-overflow-scrolling: touch is set.
+   We isolate the scroll into its own stacking context (z-index alone is
+   enough) without forcing a transform/will-change layer — those layers
+   were what made the WebGL background reflow on every scroll frame. */
+.lenis-wrapper {
+  -webkit-overflow-scrolling: touch;
+  /* contain: size suggests to the browser that the wrapper's size won't
+     change during scroll, letting it skip layout recalcs on each frame. */
+  contain: layout paint;
+}
+
+/* The soft keyboard overlays the WebView. Do not ask Android to resize the
+   native window: that exposes the grey system surface behind the fixed shell.
+   Instead, keep the app full-height and add enough scroll room above IME. */
+html[data-keyboard-open="true"],
+html[data-keyboard-open="true"] body {
+  height: 100%;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+html[data-keyboard-open="true"] .lenis-wrapper {
+  scroll-padding-bottom: calc(var(--lior-keyboard-height, 0px) + 8rem);
+}
+
+html[data-keyboard-open="true"] .lenis-content {
+  padding-bottom: calc(var(--lior-keyboard-height, 0px) + 8rem) !important;
+}
+
+html[data-keyboard-open="true"] input,
+html[data-keyboard-open="true"] textarea,
+html[data-keyboard-open="true"] select,
+html[data-keyboard-open="true"] [contenteditable="true"] {
+  scroll-margin-top: var(--lior-keyboard-top-guard, 104px);
+  scroll-margin-bottom: calc(var(--lior-keyboard-height, 0px) + 1rem);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Mobile input: remove the 300ms tap delay and the system tap-highlight on
+   interactive form elements. touch-action:manipulation tells the browser
+   "only pan/zoom are native gestures here; skip the double-tap-to-zoom wait."
+   ────────────────────────────────────────────────────────────────────────── */
+input,
+textarea,
+select {
+  touch-action: manipulation;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Prevent iOS / Android WebView from zooming the page when a text input is
+   focused. The browser auto-zooms whenever it detects a font-size < 16px on
+   the focused element. We only enforce this on native Capacitor builds to
+   avoid overriding explicit Tailwind text utilities on web previews.
+   The attribute selector [data-native-shell="native"] is set by nativeShell.ts
+   as soon as Capacitor boots; class-level Tailwind rules (specificity 0,1,0)
+   win over this type selector (0,0,1), so Tailwind overrides still apply.
+   ────────────────────────────────────────────────────────────────────────── */
+[data-native-shell="native"] input:not([type="range"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+[data-native-shell="native"] textarea {
+  font-size: max(16px, 1em);
 }
 
 :root {

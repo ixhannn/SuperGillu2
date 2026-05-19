@@ -11,17 +11,10 @@
             "id": "c5c27494b5ef105a",
             "type": "leaf",
             "state": {
-              "type": "canvas",
-              "state": {
-                "file": "graphify-out/obsidian/graph.canvas",
-                "viewState": {
-                  "x": 7978.323972387481,
-                  "y": 3492.9198144559923,
-                  "zoom": -3.0190880883534748
-                }
-              },
-              "icon": "lucide-layout-dashboard",
-              "title": "graph"
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
             }
           }
         ]
@@ -184,5 +177,8 @@
     }
   },
   "active": "c5c27494b5ef105a",
-  "lastOpenFiles": []
+  "lastOpenFiles": [
+    "Untitled.canvas",
+    "graphify-out/obsidian/graph.canvas"
+  ]
 }

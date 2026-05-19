@@ -45,6 +45,10 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (id.includes('@supabase/supabase-js')) return 'supabase';
+            if (id.includes('framer-motion')) return 'motion';
+            if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('date-fns')) return 'date-fns';
+            if (id.includes('recharts')) return 'charts';
             return undefined;
           },
         },

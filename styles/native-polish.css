@@ -1,0 +1,73 @@
+/* Native touch polish pass. */
+.spring-press,
+[data-press] {
+  transition-duration: 120ms !important;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+.spring-press:active,
+[data-press]:active,
+.bento-card:active,
+.accent-card:active {
+  transform: scale(0.985) !important;
+}
+
+[data-pressing="true"] {
+  transform: scale(0.99) !important;
+  transition: transform 80ms cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+.ripple-ink-circle {
+  width: 36px !important;
+  height: 36px !important;
+  margin-top: -18px !important;
+  margin-left: -18px !important;
+  background: rgba(var(--theme-particle-2-rgb), 0.24) !important;
+  animation: ripple-ink 240ms cubic-bezier(0.2, 0, 0, 1) forwards !important;
+}
+
+.vh-spacer {
+  height: 4.85rem;
+}
+
+[data-native-shell="native"] .vh-spacer {
+  height: 4.35rem;
+}
+
+[data-native-shell="native"] .vh-shell {
+  top: max(calc(env(safe-area-inset-top, 0px) + 0.35rem), 0.35rem);
+  width: min(calc(100vw - 1rem), 26rem);
+}
+
+.us-view .vh-spacer {
+  height: 4.85rem;
+}
+
+[data-native-shell="native"] .us-view .vh-spacer {
+  height: 4.35rem;
+}
+
+[data-native-shell="native"] .lenis-content > [style*="--theme-bg-main"] {
+  background: transparent !important;
+}
+
+[data-native-shell="native"] [data-lior-ambient-stage="true"] {
+  opacity: 1;
+}
+
+[data-native-shell="native"] [data-lior-ambient-motion="wash"] {
+  filter: saturate(122%) contrast(1.02) !important;
+}
+
+[data-native-shell="native"] .memory-timeline-view [data-memory-card="true"] {
+  contain: layout paint style;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+[data-native-shell="native"] .memory-timeline-view [data-memory-card="true"] img,
+[data-native-shell="native"] .memory-timeline-view [data-memory-card="true"] video {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}

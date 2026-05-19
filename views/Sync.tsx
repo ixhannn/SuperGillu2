@@ -12,6 +12,7 @@ import { SyncService, syncEventTarget } from '../services/sync';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SupabaseService } from '../services/supabase';
 import { MediaMigrationService } from '../services/mediaMigration';
+import { NotificationsService } from '../services/notifications';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from '../utils/toast';
 import { PairingService, QR_PREFIX, PairInvite } from '../services/pairing';
@@ -21,6 +22,12 @@ interface SyncProps {
 }
 
 type ScanPhase = 'idle' | 'requesting' | 'scanning' | 'claiming' | 'success' | 'error';
+type PairingPhase = 'checking' | 'unlinked' | 'linked' | 'generating' | 'claiming' | 'error';
+
+type PairingUiState = {
+  phase: PairingPhase;
+  message: string;
+};
 
 export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const getLinkedPartnerLabel = useCallback(() => {
@@ -33,12 +40,11 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [lastSync, setLastSync]             = useState(SyncService.lastSyncTime);
   const [isSyncing, setIsSyncing]           = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showRelinkConfirm, setShowRelinkConfirm] = useState(false);
   const [isRecovering, setIsRecovering]     = useState(false);
   const [isMigrating, setIsMigrating]       = useState(false);
   const [migrationStatus, setMigrationStatus] = useState('');
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
-    'Notification' in window ? Notification.permission : 'denied',
-  );
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
 
   // ── Pairing state ────────────────────────────────────────────────────────────
   const [pairTab, setPairTab]     = useState<'show' | 'scan'>('show');
@@ -51,6 +57,10 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [manualCode, setManualCode] = useState('');
   const [manualClaiming, setManualClaiming] = useState(false);
   const [linkedPartner, setLinkedPartner] = useState(() => getLinkedPartnerLabel());
+  const [pairingUi, setPairingUi] = useState<PairingUiState>({
+    phase: 'checking',
+    message: 'Checking your connection...',
+  });
 
   // ── Refs ─────────────────────────────────────────────────────────────────────
   const videoRef     = useRef<HTMLVideoElement>(null);
@@ -61,9 +71,17 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const lastScanAttemptRef = useRef(0);
   const cdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastExpiredInviteRef = useRef<string>('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const normalizeCode = (value: string) =>
-    value.replace(/^LIOR:/i, '').replace(/\s+/g, '').trim().toUpperCase().slice(0, 8);
+    value.replace(/^LIOR:/i, '').replace(/[^A-Za-z0-9]/g, '').trim().toUpperCase().slice(0, 8);
+
+  const stopPartnerPoll = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
 
   // ── Sync event listener ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -88,18 +106,23 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     };
   }, [getLinkedPartnerLabel]);
 
-  // ── On mount: auto-generate QR if not yet linked ─────────────────────────────
   useEffect(() => {
-    if (!linkedPartner) generateQR(false);
+    let cancelled = false;
+    void NotificationsService.getPermissionStatus()
+      .then((permission) => {
+        if (!cancelled) setNotifPermission(permission);
+      })
+      .catch(() => {
+        if (!cancelled) setNotifPermission('denied');
+      });
     return () => {
-      stopCamera();
-      if (cdIntervalRef.current) clearInterval(cdIntervalRef.current);
+      cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── QR generation ────────────────────────────────────────────────────────────
   const generateQR = useCallback(async (forceRotate: boolean = false) => {
+    setPairingUi({ phase: 'generating', message: 'Creating a private one-time code...' });
     setQrLoading(true);
     if (cdIntervalRef.current) {
       clearInterval(cdIntervalRef.current);
@@ -109,6 +132,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     const result = await PairingService.createInvite({ forceRotate });
     if (!result) {
       setQrLoading(false);
+      setPairingUi({ phase: 'error', message: 'Could not generate a code. Check sign-in and connection.' });
       toast.show('Could not generate QR. Are you signed in?', 'error');
       return;
     }
@@ -123,6 +147,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       });
     } catch {
       setQrLoading(false);
+      setPairingUi({ phase: 'error', message: 'QR generation failed. Try refreshing the code.' });
       toast.show('QR generation failed.', 'error');
       return;
     }
@@ -130,8 +155,10 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     setInvite(result);
     setQrImg(dataUrl);
     setQrLoading(false);
+    setPairingUi({ phase: 'unlinked', message: 'Share this QR or code once. After linking, it stays tied to your accounts.' });
 
     // Countdown timer
+    let intervalId: ReturnType<typeof setInterval> | null = null;
     const tick = () => {
       const secs = Math.max(0, Math.round((result.expiresAt.getTime() - Date.now()) / 1000));
       setCountdown(secs);
@@ -140,6 +167,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
         if (cdIntervalRef.current === intervalId) cdIntervalRef.current = null;
         setQrImg('');
         setInvite(null);
+        setPairingUi({ phase: 'unlinked', message: 'The code expired. Refresh it to create a new one.' });
         if (lastExpiredInviteRef.current !== result.code) {
           lastExpiredInviteRef.current = result.code;
           toast.show('QR expired — tap refresh for a new one.', 'info');
@@ -147,9 +175,68 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       }
     };
     tick();
-    const intervalId = setInterval(tick, 1000);
+    intervalId = setInterval(tick, 1000);
     cdIntervalRef.current = intervalId;
   }, []);
+
+  const applyLinkedStatus = useCallback(async (nextStatus: Awaited<ReturnType<typeof PairingService.getStatus>>) => {
+    if (nextStatus?.isLinked && nextStatus.coupleId && nextStatus.partnerUserId) {
+      StorageService.forceNewPairing(
+        nextStatus.coupleId,
+        nextStatus.partnerUserId,
+        nextStatus.partnerName || undefined,
+      );
+      SupabaseService.setCachedCoupleId(nextStatus.coupleId);
+      const label = nextStatus.partnerName || 'your partner';
+      setLinkedPartner(label);
+      setPairingUi({ phase: 'linked', message: 'Permanent link saved.' });
+      await SyncService.init();
+      return true;
+    }
+
+    setLinkedPartner('');
+    setPairingUi({ phase: 'unlinked', message: 'Create a one-time code to link your accounts.' });
+    return false;
+  }, []);
+
+  const refreshPairingStatus = useCallback(async () => {
+    setPairingUi({ phase: 'checking', message: 'Checking your connection...' });
+    const nextStatus = await PairingService.getStatus();
+    const linked = await applyLinkedStatus(nextStatus);
+    if (!linked) await generateQR(false);
+  }, [applyLinkedStatus, generateQR]);
+
+  // ── On mount: restore permanent link or create a one-time code ───────────────
+  useEffect(() => {
+    void refreshPairingStatus();
+    return () => {
+      stopCamera();
+      stopPartnerPoll();
+      if (cdIntervalRef.current) clearInterval(cdIntervalRef.current);
+    };
+  }, [refreshPairingStatus, stopPartnerPoll]);
+
+  // ── Poll for partner while QR is showing (inviter side) ─────────────────────
+  useEffect(() => {
+    if (linkedPartner || pairTab !== 'show') {
+      stopPartnerPoll();
+      return;
+    }
+
+    const checkForPartner = async () => {
+      try {
+        const nextStatus = await PairingService.getStatus();
+        const linked = await applyLinkedStatus(nextStatus);
+        if (linked) {
+          stopPartnerPoll();
+          toast.show(`${nextStatus?.partnerName || 'Your partner'} just joined your space!`, 'success');
+        }
+      } catch { /* retry on next poll */ }
+    };
+
+    pollRef.current = setInterval(checkForPartner, 8000);
+    return stopPartnerPoll;
+  }, [applyLinkedStatus, linkedPartner, pairTab, stopPartnerPoll]);
 
   // ── Camera helpers ────────────────────────────────────────────────────────────
   const stopCamera = () => {
@@ -260,6 +347,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     stopCamera();
     setScanPhase('claiming');
     setScanMsg('Linking accounts…');
+    setPairingUi({ phase: 'claiming', message: 'Confirming the shared space...' });
 
     let result;
     try {
@@ -267,41 +355,63 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     } catch {
       setScanPhase('error');
       setScanMsg('Could not complete linking. Please check your internet and try again.');
+      setPairingUi({ phase: 'error', message: 'Could not complete linking. Check your internet and try again.' });
       claimingRef.current = false;
       return;
     }
 
     if (result.ok === false) {
+      if (result.error === 'already_linked') {
+        setScanMsg('Your account is already linked in the cloud. Restoring connection...');
+        const restoredStatus = result.coupleId && result.partnerUserId
+          ? {
+              isLinked: true,
+              coupleId: result.coupleId,
+              partnerUserId: result.partnerUserId,
+              partnerName: result.partnerName ?? null,
+              memberCount: 2,
+            }
+          : await PairingService.getStatus();
+        const restored = await applyLinkedStatus(restoredStatus);
+        if (restored) {
+          const partnerLabel = restoredStatus?.partnerName || 'your partner';
+          setManualCode('');
+          setScanPhase('success');
+          setScanMsg(`Reconnected to ${partnerLabel}!`);
+          toast.show(`Reconnected to ${partnerLabel}!`, 'success');
+          claimingRef.current = false;
+          return;
+        }
+      }
+
       const msgs: Record<string, string> = {
         invalid: "QR code not recognised. Ask your partner to refresh.",
         expired: "This QR has expired. Ask your partner to show a fresh one.",
         used:    "This QR was already used. Ask your partner to generate a new one.",
         self:    "That's your own QR code! Ask your partner to show theirs.",
-        already_linked: "This account is already paired. Sign in with the paired account to continue.",
+        already_linked: 'Your account is already linked. Go back and tap "Refresh shared data" to restore your connection.',
         network: "Network error. Check your connection and try again.",
       };
       setScanPhase('error');
       setScanMsg(msgs[result.error] ?? 'Something went wrong. Please try again.');
+      setPairingUi({ phase: 'error', message: msgs[result.error] ?? 'Something went wrong. Please try again.' });
       return;
     }
 
-    // Persist partner
-    const profile = StorageService.getCoupleProfile();
-    const updated = {
-      ...profile,
+    await applyLinkedStatus({
+      isLinked: true,
       coupleId: result.coupleId,
       partnerUserId: result.partnerUserId,
-      partnerName:   result.partnerName || profile.partnerName,
-    };
-    StorageService.saveCoupleProfile(updated);
-    SupabaseService.setCachedCoupleId(result.coupleId);
-    await SyncService.init();
+      partnerName: result.partnerName || StorageService.getCoupleProfile().partnerName || null,
+      memberCount: 2,
+    });
     setManualCode('');
-    setLinkedPartner(result.partnerName || updated.partnerName || 'your partner');
+    const partnerLabel = result.partnerName || StorageService.getCoupleProfile().partnerName || 'your partner';
+    setLinkedPartner(partnerLabel);
 
     setScanPhase('success');
-    setScanMsg(`Linked to ${result.partnerName || 'your partner'}!`);
-    toast.show(`Connected with ${result.partnerName || 'your partner'}! 🎉`, 'success');
+    setScanMsg(`Linked to ${partnerLabel}!`);
+    toast.show(`Connected with ${partnerLabel}! 🎉`, 'success');
   };
 
   const handleManualClaim = async () => {
@@ -339,18 +449,22 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   };
 
   const requestPermission = async () => {
-    if (!('Notification' in window)) {
-      toast.show('This browser does not support notifications.', 'info');
-      return;
-    }
-    const permission = await Notification.requestPermission();
+    const permission = await NotificationsService.requestPermission();
     setNotifPermission(permission);
     if (permission === 'granted') {
-      new Notification('Notifications Enabled!', {
-        body: "You'll now get alerts when your partner shares a moment.",
-        icon: '/icon.svg',
-      });
+      toast.show("Notifications are enabled on this device.", 'success');
+      void NotificationsService.fireImmediate(
+        'Notifications Enabled!',
+        "You'll now get alerts when your partner shares a moment.",
+        'film-ready',
+      ).catch(() => {});
+      return;
     }
+    if (permission === 'denied') {
+      toast.show('Notifications are blocked for this device. Enable them in system settings if needed.', 'info');
+      return;
+    }
+    toast.show('Notification permission is still waiting for confirmation.', 'info');
   };
 
   const migrateToStorage = async () => {
@@ -434,6 +548,13 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       >
         <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
         Refresh shared data
+      </button>
+      <button
+        onClick={() => setShowRelinkConfirm(true)}
+        className="text-[11px] text-center py-1 w-full underline underline-offset-2 active:opacity-60 transition-opacity"
+        style={{ color: 'var(--color-text-secondary)' }}
+      >
+        Link a different partner
       </button>
     </div>
   );
@@ -543,13 +664,13 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           <div className="flex gap-2">
             <input
               id="partner-code-error"
-              aria-label="Partner code"
+              aria-label="Enter partner code"
               value={manualCode}
               onChange={(e) => setManualCode(normalizeCode(e.target.value))}
-              placeholder="8-char code"
+              placeholder="Enter partner code"
               className="flex-1 px-3 py-2 rounded-lg text-xs font-mono tracking-wider uppercase"
               style={{ background: 'rgba(var(--theme-particle-3-rgb),0.10)', color: 'var(--color-text-primary)' }}
-              maxLength={8}
+              maxLength={12}
             />
             <button
               onClick={handleManualClaim}
@@ -557,7 +678,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
               className="liquid-glass-btn liquid-glass-btn--rose px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-60"
               style={{ color: '#fff' }}
             >
-              {manualClaiming ? 'Linking…' : 'Link'}
+              {manualClaiming ? 'Linking…' : 'Link Accounts'}
             </button>
           </div>
         </div>
@@ -631,13 +752,13 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           <div className="flex gap-2">
             <input
               id="partner-code-idle"
-              aria-label="Partner code"
+              aria-label="Enter partner code"
               value={manualCode}
               onChange={(e) => setManualCode(normalizeCode(e.target.value))}
-              placeholder="8-char code"
+              placeholder="Enter partner code"
               className="flex-1 px-3 py-2 rounded-lg text-xs font-mono tracking-wider uppercase"
               style={{ background: 'rgba(var(--theme-particle-3-rgb),0.10)', color: 'var(--color-text-primary)' }}
-              maxLength={8}
+              maxLength={12}
             />
             <button
               onClick={handleManualClaim}
@@ -645,7 +766,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
               className="liquid-glass-btn liquid-glass-btn--rose px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-60"
               style={{ color: '#fff' }}
             >
-              {manualClaiming ? 'Linking…' : 'Link'}
+              {manualClaiming ? 'Linking…' : 'Link Accounts'}
             </button>
           </div>
         </div>
@@ -696,6 +817,27 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
                   <UserCheck size={11} /> Linked
                 </span>
               )}
+            </div>
+
+            <div className="mx-4 mb-3 rounded-2xl px-4 py-3"
+              style={{
+                background: linkedPartner
+                  ? 'linear-gradient(135deg, rgba(34,197,94,0.12), rgba(var(--theme-particle-2-rgb),0.10))'
+                  : 'linear-gradient(135deg, rgba(var(--theme-particle-1-rgb),0.14), rgba(var(--theme-particle-3-rgb),0.10))',
+                border: linkedPartner ? '1px solid rgba(34,197,94,0.18)' : '1px solid rgba(var(--theme-particle-1-rgb),0.18)',
+              }}>
+              <p className="text-[11px] uppercase tracking-[0.18em] font-extrabold"
+                style={{ color: linkedPartner ? '#22c55e' : 'var(--color-nav-active)' }}>
+                {linkedPartner ? 'Permanent connection' : 'One-time private link'}
+              </p>
+              <p className="text-sm mt-1 leading-snug font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                {linkedPartner
+                  ? `You and ${linkedPartner} are sharing one private space.`
+                  : 'Show a QR or send the code. After it works once, you do not need to pair again.'}
+              </p>
+              <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                {pairingUi.message}
+              </p>
             </div>
 
             {linkedPartner && (
@@ -829,6 +971,23 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           variant="danger"
           onConfirm={handleLogout}
           onCancel={() => setShowLogoutConfirm(false)}
+        />
+        <ConfirmModal
+          isOpen={showRelinkConfirm}
+          title="Link a Different Partner"
+          message={`This will unlink your connection to ${linkedPartner} on this device. Your shared memories and data are safe and won't be deleted — you'll just need to scan a new QR code to reconnect.`}
+          confirmLabel="Unlink & Re-link"
+          variant="danger"
+          onConfirm={() => {
+            StorageService.clearPairLock();
+            SupabaseService.setCachedCoupleId(null);
+            setLinkedPartner('');
+            setPairingUi({ phase: 'unlinked', message: 'Create a fresh one-time code for the new partner.' });
+            setShowRelinkConfirm(false);
+            setPairTab('show');
+            generateQR(true);
+          }}
+          onCancel={() => setShowRelinkConfirm(false)}
         />
       </div>
     </div>

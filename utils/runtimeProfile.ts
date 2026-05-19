@@ -1,7 +1,5 @@
 import { Capacitor } from '@capacitor/core';
 
-type NavigatorWithDeviceMemory = Navigator & { deviceMemory?: number };
-
 export const isNativePlatform = (): boolean => {
   try {
     return Capacitor.isNativePlatform();
@@ -16,16 +14,32 @@ export const isCompactViewport = (): boolean => (
   typeof window !== 'undefined' && window.innerWidth <= 480
 );
 
+type NavigatorRuntimeProfile = Navigator & {
+  connection?: {
+    saveData?: boolean;
+    effectiveType?: string;
+  };
+  deviceMemory?: number;
+};
+
 export const isLowPowerDevice = (): boolean => {
   if (typeof navigator === 'undefined') return false;
-  const hardwareConcurrency = navigator.hardwareConcurrency;
-  const deviceMemory = (navigator as NavigatorWithDeviceMemory).deviceMemory;
+
+  const runtimeNavigator = navigator as NavigatorRuntimeProfile;
+  const hardwareConcurrency = runtimeNavigator.hardwareConcurrency ?? 8;
+  const deviceMemory = runtimeNavigator.deviceMemory ?? 8;
+  const connection = runtimeNavigator.connection;
+
   return (
-    (typeof hardwareConcurrency === 'number' && hardwareConcurrency > 0 && hardwareConcurrency <= 6)
-    || (typeof deviceMemory === 'number' && deviceMemory > 0 && deviceMemory <= 4)
+    hardwareConcurrency <= 4
+    || deviceMemory <= 4
+    || connection?.saveData === true
+    || ['slow-2g', '2g', '3g'].includes(connection?.effectiveType ?? '')
   );
 };
 
 export const shouldGateHeavyView = (): boolean => (
-  isNativePlatform() || isCompactViewport() || isLowPowerDevice()
+  isNativePlatform()
+  || isCompactViewport()
+  || isLowPowerDevice()
 );

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Camera, Clock, Plus, Trash2, X, Sparkles, Loader2, RefreshCw, ArrowLeft, Video, PlayCircle, Send, Reply, MessageCircle, Heart } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, DailyPhoto, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useLiorMedia } from '../hooks/useLiorImage';
@@ -23,7 +23,12 @@ interface DailyMomentsProps {
 }
 
 // ─── Thumbnail Card (with blurred bg + object-contain for zero cropping) ─────
-const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo, onClick }) => {
+const PHOTO_GRID_ITEM_VARIANTS: Variants = {
+    hidden: { opacity: 0, y: 16 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const } },
+};
+
+const PhotoCardBase: React.FC<{ photo: DailyPhoto, onOpen: (photo: DailyPhoto) => void }> = ({ photo, onOpen }) => {
     const deleteHandledRef = useRef(false);
     const imageStoragePath = selectImageStoragePath(photo.storagePath, photo.imageMimeType);
     const videoStoragePath = selectVideoStoragePath(photo.videoStoragePath, photo.storagePath, photo.videoMimeType || photo.imageMimeType);
@@ -81,9 +86,9 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
     return (
         <>
         <motion.div
-            layoutId={`photo-${photo.id}`}
-            onClick={onClick}
-            className="relative group overflow-hidden glass-card aspect-[3/4] cursor-pointer spring-press transition-transform"
+            data-daily-photo-card="true"
+            onClick={() => onOpen(photo)}
+            className="perf-list-item relative group overflow-hidden glass-card aspect-[3/4] cursor-pointer spring-press transition-transform"
         >
             {isLoading ? (
                 <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
@@ -96,6 +101,8 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                             className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-60"
                             alt=""
                             aria-hidden="true"
+                            loading="lazy"
+                            decoding="async"
                         />
                     ) : (
                         <div className="absolute inset-0 bg-black" aria-hidden="true" />
@@ -106,7 +113,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                             <motion.video
                                 initial={{ y: -20, scale: 1.15 }}
                                 whileInView={{ y: 0, scale: 1 }}
-                                viewport={{ once: false, margin: "50px 0px" }}
+                                viewport={{ once: true, margin: "50px 0px" }}
                                 transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
                                 src={mediaUrl} 
                                 className="relative w-full h-full object-cover z-[1]" 
@@ -127,11 +134,13 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                         <motion.img 
                             initial={{ y: -20, scale: 1.15 }}
                             whileInView={{ y: 0, scale: 1 }}
-                            viewport={{ once: false, margin: "50px 0px" }}
+                            viewport={{ once: true, margin: "50px 0px" }}
                             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
                             src={mediaUrl} 
                             className="relative w-full h-full object-cover z-[1]" 
                             alt="Daily moment"
+                            loading="lazy"
+                            decoding="async"
                             onError={handleMediaError}
                         />
                     )}
@@ -176,9 +185,22 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
         </>
     );
 };
+const PhotoCard = React.memo(PhotoCardBase);
+
+const PhotoGridItem = React.memo(({
+    photo,
+    onOpen,
+}: {
+    photo: DailyPhoto;
+    onOpen: (photo: DailyPhoto) => void;
+}) => (
+    <motion.div variants={PHOTO_GRID_ITEM_VARIANTS}>
+        <PhotoCard photo={photo} onOpen={onOpen} />
+    </motion.div>
+));
 
 // ─── Comment Bubble ──────────────────────────────────────────────────────────
-const CommentBubble: React.FC<{
+const CommentBubbleBase: React.FC<{
     comment: Comment;
     isReply?: boolean;
     onReply: (comment: Comment) => void;
@@ -233,6 +255,7 @@ const CommentBubble: React.FC<{
         </motion.div>
     );
 };
+const CommentBubble = React.memo(CommentBubbleBase);
 
 // ─── Full-Screen Post Viewer with Comments ───────────────────────────────────
 const PostViewer: React.FC<{
@@ -292,18 +315,28 @@ const PostViewer: React.FC<{
         setIsSubmitting(false);
     };
 
-    const handleReply = (comment: Comment) => {
+    const handleReply = useCallback((comment: Comment) => {
         setReplyTo(comment);
         commentInputRef.current?.focus();
-    };
+    }, []);
 
-    const handleDeleteComment = async (id: string) => {
+    const handleDeleteComment = useCallback(async (id: string) => {
         await StorageService.deleteComment(id);
-    };
+    }, []);
 
     // Organize comments into threads
-    const topLevelComments = comments.filter(c => !c.parentId);
-    const replies = comments.filter(c => !!c.parentId);
+    const topLevelComments = useMemo(
+        () => comments.filter(c => !c.parentId),
+        [comments],
+    );
+    const repliesByParent = useMemo(
+        () => comments.filter(c => !!c.parentId).reduce((acc, reply) => {
+            const parentId = reply.parentId!;
+            acc[parentId] = [...(acc[parentId] || []), reply].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            return acc;
+        }, {} as Record<string, Comment[]>),
+        [comments],
+    );
 
     const postedAt = new Date(photo.createdAt);
     const timeStr = postedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -362,6 +395,8 @@ const PostViewer: React.FC<{
                             className="absolute inset-0 w-full h-full object-cover blur-3xl scale-110 opacity-40"
                             alt=""
                             aria-hidden="true"
+                            loading="lazy"
+                            decoding="async"
                             onError={handleMediaError}
                         />
                         {isVideo ? (
@@ -378,6 +413,8 @@ const PostViewer: React.FC<{
                                 src={mediaSrc}
                                 className="relative z-[1] max-w-full max-h-[50vh] object-contain"
                                 alt="Moment"
+                                loading="lazy"
+                                decoding="async"
                                 onError={handleMediaError}
                             />
                         )}
@@ -417,9 +454,7 @@ const PostViewer: React.FC<{
                                         myDeviceId={myDeviceId}
                                     />
                                     {/* Threaded Replies */}
-                                    {replies
-                                        .filter(r => r.parentId === comment.id)
-                                        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                                    {(repliesByParent[comment.id] || [])
                                         .map(reply => (
                                             <CommentBubble
                                                 key={reply.id}
@@ -461,9 +496,21 @@ const PostViewer: React.FC<{
                         type="text"
                         value={commentText}
                         onChange={e => setCommentText(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSubmitComment(); }}
+                        onKeyDown={e => {
+                            // Android IME fires compositionstart/end instead of keydown for
+                            // the Enter key. Checking isComposing prevents a double-submit
+                            // when the user accepts a suggestion from the keyboard.
+                            if (e.key === 'Enter' && !e.nativeEvent.isComposing && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSubmitComment();
+                            }
+                        }}
                         placeholder={replyTo ? `Reply to ${replyTo.senderName}...` : "Add a comment..."}
-                        className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-lior-500/30 transition-all"
+                        inputMode="text"
+                        enterKeyHint="send"
+                        autoCapitalize="sentences"
+                        autoCorrect="on"
+                        className="flex-1 rounded-full px-4 py-2.5 text-[16px] outline-none focus:ring-2 focus:ring-lior-500/30 transition-all"
                         style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', color: 'var(--color-text-primary)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}
                     />
                     <button
@@ -493,6 +540,35 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoInputRef = useRef<HTMLInputElement>(null);
+    const openPhoto = useCallback((photo: DailyPhoto) => {
+        setSelectedPhoto(photo);
+    }, []);
+    const closePhoto = useCallback(() => {
+        setSelectedPhoto(null);
+    }, []);
+
+    const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => resolve(String(event.target?.result || ''));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
+    const compressImageWithFallback = async (file: File): Promise<string> => {
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        try {
+            return await Promise.race([
+                compressImage(file),
+                new Promise<string>((_, reject) => {
+                    timeoutId = setTimeout(() => reject(new Error('Image compression timed out')), 2500);
+                }),
+            ]);
+        } catch {
+            return readFileAsDataUrl(file);
+        } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+        }
+    };
 
     const loadPhotos = useCallback(() => {
         const data = StorageService.getDailyPhotos();
@@ -553,12 +629,13 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
+            setIsUploading(true);
+            setNewVideo(null);
             try {
-                const compressed = await compressImage(e.target.files[0]);
+                const compressed = await compressImageWithFallback(e.target.files[0]);
                 setNewImage(compressed);
-                setNewVideo(null);
-                setIsUploading(true);
             } catch (err) {
+                setIsUploading(false);
                 toast.show("Could not process image.", 'error');
             }
         }
@@ -678,9 +755,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                         variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
                     >
                         {photos.map(p => (
-                            <motion.div key={p.id} variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}>
-                                <PhotoCard photo={p} onClick={() => setSelectedPhoto(p)} />
-                            </motion.div>
+                            <PhotoGridItem key={p.id} photo={p} onOpen={openPhoto} />
                         ))}
                     </motion.div>
                 ) : (
@@ -747,7 +822,11 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                             value={caption}
                             onChange={e => setCaption(e.target.value)}
                             placeholder="Add a caption..."
-                            className="w-full p-4 rounded-2xl font-medium outline-none focus:ring-2 focus:ring-lior-500/30"
+                            inputMode="text"
+                            enterKeyHint="done"
+                            autoCapitalize="sentences"
+                            autoCorrect="on"
+                            className="w-full p-4 rounded-2xl text-[16px] font-medium outline-none focus:ring-2 focus:ring-lior-500/30"
                             style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.16)', color: 'var(--color-text-primary)' }}
                         />
                         <p className="mt-4 text-[10px] text-center font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>
@@ -778,7 +857,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                 {selectedPhoto && (
                     <PostViewer
                         photo={selectedPhoto}
-                        onClose={() => setSelectedPhoto(null)}
+                        onClose={closePhoto}
                     />
                 )}
             </AnimatePresence>

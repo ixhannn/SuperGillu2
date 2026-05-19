@@ -2,39 +2,47 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import './styles/typography.css';
 import './styles/root-fixes.css';
 import './styles/premium-features.css';
-import { Haptics } from './services/haptics';
+import './styles/native-polish.css';
+import './styles/performance.css';
 import { initGlobalGestures } from './utils/gesture';
-// Boot CSS Animation Bus — registers before any component mounts
-import './services/CSSAnimationBus';
 
-// ── GLOBAL TACTILE INTERCEPTOR ──
-// Fire a lightweight native haptic impact the EXACT millisecond an interactive
-// element is touched. This entirely bypasses React's synthetic event delay and
-// the 100ms+ delay of waiting for an `onClick` (which fires on release).
+// ── GLOBAL PRESS STATE ──
+// Keep visual press feedback central, but leave haptics to explicit product
+// actions. Pointer-down haptics fired during scroll and felt noisy on mobile.
 if (typeof document !== 'undefined') {
   let pressedEl: HTMLElement | null = null;
+  let activePointerId: number | null = null;
+  let startX = 0;
+  let startY = 0;
   const clearPressed = () => {
     if (!pressedEl) return;
     delete pressedEl.dataset.pressing;
     pressedEl = null;
+    activePointerId = null;
   };
 
   document.addEventListener('pointerdown', (e) => {
     const target = e.target as HTMLElement;
-    // Walk up the tree to see if we hit an interactive element
-    const interactive = target.closest('.spring-press, button, a, [role="button"]') as HTMLElement | null;
+    const interactive = target.closest('.spring-press, [data-press]') as HTMLElement | null;
     if (interactive) {
       if (!interactive.hasAttribute('disabled') && interactive.getAttribute('aria-disabled') !== 'true') {
         clearPressed();
         interactive.dataset.pressing = 'true';
         pressedEl = interactive;
+        activePointerId = e.pointerId;
+        startX = e.clientX;
+        startY = e.clientY;
       }
-      Haptics.tap();
     }
   }, { passive: true });
 
+  window.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== activePointerId) return;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) clearPressed();
+  }, { passive: true });
   window.addEventListener('pointerup', clearPressed, { passive: true });
   window.addEventListener('pointercancel', clearPressed, { passive: true });
   window.addEventListener('blur', clearPressed);

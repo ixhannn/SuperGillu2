@@ -6,6 +6,7 @@ import { ViewState, Note } from '../types';
 import { StorageService } from '../services/storage';
 import { RelationshipSignals } from '../services/relationshipSignals';
 import { feedback } from '../utils/feedback';
+import { useNativeShell } from '../hooks/useNativeShell';
 
 const staggerContainer = {
   hidden: {},
@@ -26,6 +27,7 @@ interface NotesProps {
 const COLORS = ['bg-yellow-500/15', 'bg-pink-500/15', 'bg-blue-500/15', 'bg-green-500/15', 'bg-purple-500/15'];
 
 export const Notes: React.FC<NotesProps> = ({ setView }) => {
+  const { keyboardOpen, keyboardHeight } = useNativeShell();
   const [notes, setNotes] = useState<Note[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [currentNote, setCurrentNote] = useState('');
@@ -33,6 +35,15 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
   const [longPressId, setLongPressId] = useState<string | null>(null);
   const [reacted, setReacted] = useState<Set<string>>(new Set());
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Delay focus until the modal spring animation settles, preventing the
+  // keyboard from racing the entrance animation on Android.
+  useEffect(() => {
+    if (!isEditing) return;
+    const t = setTimeout(() => textareaRef.current?.focus(), 300);
+    return () => clearTimeout(t);
+  }, [isEditing]);
 
   const handlePointerDown = useCallback((id: string) => {
     longPressTimer.current = setTimeout(() => {
@@ -108,8 +119,15 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-6"
-            style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+            className="fixed inset-0 z-50 flex items-end justify-center p-6"
+            style={{
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+              // Push the modal up by the keyboard height so it stays visible
+              // when the keyboard opens (keyboard uses overlay mode, not resize).
+              paddingBottom: keyboardOpen ? keyboardHeight + 24 : 24,
+            }}
         >
             <motion.div 
                 initial={{ scale: 0.94, opacity: 0, y: 8 }}
@@ -123,11 +141,16 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
                     <button onClick={() => setIsEditing(false)} aria-label="Close" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={24} /></button>
                 </div>
                 <textarea
-                    autoFocus
+                    ref={textareaRef}
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
-                    className="w-full h-40 p-4 rounded-2xl text-lg resize-none focus:outline-none mb-4 font-serif leading-relaxed focus:ring-2 focus:ring-lior-500/30 shadow-inner"
+                    className="w-full h-40 p-4 rounded-2xl text-[16px] resize-none focus:outline-none mb-4 font-serif leading-relaxed focus:ring-2 focus:ring-lior-500/30 shadow-inner"
                     placeholder="Write something sweet..."
+                    inputMode="text"
+                    enterKeyHint="done"
+                    autoCapitalize="sentences"
+                    autoCorrect="on"
+                    spellCheck
                     style={{ background: 'rgba(var(--theme-particle-2-rgb),0.08)', color: 'var(--color-text-primary)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}
                 />
                 <button

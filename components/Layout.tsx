@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, createContext, useContext, memo, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, createContext, useContext, memo, useCallback } from 'react';
 import { BottomNav } from './BottomNav';
 import { AmbientVisuals } from './AmbientVisuals';
 import { TogetherMode } from './TogetherMode';
@@ -8,7 +8,7 @@ import { DeferredOverlays } from './DeferredOverlays';
 import type { ConfettiHandle } from './PhysicsConfetti';
 import { OfflineNotice } from './OfflineNotice';
 import { ViewState } from '../types';
-import { startBreathingRhythm } from '../utils/BreathingRhythm';
+import { shouldPauseAmbientMotionForView } from '../utils/ambientMotion';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,6 +29,10 @@ interface LayoutProps {
   };
 }
 
+const VIEW_SURFACES: Partial<Record<ViewState, string>> = {
+  'private-space': '#f1edf3',
+};
+
 export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number) => void }>({
   trigger: () => {},
 });
@@ -38,6 +42,20 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   // wrapperRef = overflow:hidden clip container for the app's main scroll root.
   const wrapperRef  = useRef<HTMLElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
+  const viewSurface = VIEW_SURFACES[currentView] ?? 'transparent';
+
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    if (shouldPauseAmbientMotionForView(currentView)) {
+      root.dataset.ambientMotionPaused = '1';
+    } else {
+      delete root.dataset.ambientMotionPaused;
+    }
+    return () => {
+      delete root.dataset.ambientMotionPaused;
+    };
+  }, [currentView]);
 
   // Boot Lenis once both DOM refs are available.
   useEffect(() => {
@@ -53,12 +71,9 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount once only
 
-  useEffect(() => {
-    startBreathingRhythm();
-  }, []);
-
-  // Global ink-ripple on every .spring-press tap
-  const handleRipple = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+  // Global ink-ripple on deliberate .spring-press taps. Click fires after
+  // browser gesture cancellation, so scrolling across buttons will not ripple.
+  const handleRipple = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const target = (e.target as HTMLElement).closest('.spring-press') as HTMLElement | null;
     if (!target) return;
     // ── Read phase first — prevents layout thrash ──────────────────
@@ -88,7 +103,7 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           background: 'var(--theme-bg-main, linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%))',
           color: 'var(--color-text-primary, #2D1F25)',
         }}
-        onPointerDown={handleRipple}
+        onClick={handleRipple}
       >
         {/* No paused prop — AmbientVisuals reads <html data-transitioning>
             directly so toggling it during a navigation no longer breaks
@@ -96,12 +111,24 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
             shell underneath. */}
         <AmbientVisuals />
 
-        {/* Vignette */}
+        {/* Vignette — promoted to its own compositor layer so the scrolling
+            content underneath does not invalidate the painted radial
+            gradients every frame. The vignette never moves, but without a
+            transform hint the browser repaints it during the scroll. */}
         <div
           className="fixed inset-0 pointer-events-none z-[2]"
           aria-hidden="true"
           style={{
             background: 'var(--theme-vignette, radial-gradient(ellipse 120% 80% at 50% -10%, rgba(251,207,232,0.14) 0%, transparent 60%), radial-gradient(ellipse 80% 50% at 30% 50%, rgba(249,168,212,0.08) 0%, transparent 50%), radial-gradient(ellipse 100% 60% at 50% 110%, rgba(251,207,232,0.10) 0%, transparent 50%), radial-gradient(ellipse 60% 40% at 70% 30%, rgba(244,114,182,0.05) 0%, transparent 50%))',
+            transform: 'translateZ(0)',
+            backfaceVisibility: 'hidden',
+            contain: 'strict',
+            // Reserve intrinsic size so the layer is sized at compositor time
+            // without needing layout from the document tree.
+            width: '100vw',
+            height: '100dvh',
+            top: 0,
+            left: 0,
           }}
         />
 
@@ -124,20 +151,31 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           // app targets phones.
           className="lenis-wrapper flex-1 min-h-0 relative z-10 w-full max-w-md mx-auto"
           style={{
-            background: 'transparent',
+            background: viewSurface,
             overflowAnchor: 'none',
             overscrollBehaviorY: 'none',
             scrollPaddingBottom: 'calc(8rem + var(--lior-keyboard-height, 0px))',
-            backfaceVisibility: 'hidden',
-            transform: 'translateZ(0)',
+            // NOTE: do NOT set transform/translateZ/backfaceVisibility here.
+            // On iOS WKWebView those promote the scroll container to a
+            // composited layer that fights with native momentum scrolling —
+            // it's what was causing posts to "blink" the moment a finger
+            // touched them mid-scroll. Native -webkit-overflow-scrolling:touch
+            // already handles GPU scroll without help.
           }}
         >
           <div
             className="lenis-content pt-safe pb-32"
             style={{
               minHeight: '100%',
+              background: viewSurface,
+              // contain:paint limits paint to this box — children that scroll
+              // do NOT invalidate the rest of the viewport's paint tree.
               contain: 'paint',
               isolation: 'isolate',
+              // backface hide → keeps the WebView's compositor from creating a
+              // fresh layer when a child temporarily promotes itself with a
+              // transform (e.g. during transition snapshots).
+              backfaceVisibility: 'hidden',
             }}
           >
             {children}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, Home, Waves, Brush, Moon, Send, Compass, Milestone, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
@@ -59,6 +59,7 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
     // ── Bucket List ──────────────────────────────────────────────────────
     const [bucketItems, setBucketItems] = useState<UsBucketItem[]>(() => StorageService.getUsBucketItems());
     const [bucketInput, setBucketInput] = useState('');
+    const [bucketFocused, setBucketFocused] = useState(false);
     const [showCompleted, setShowCompleted] = useState(false);
     const saveBucket = (items: UsBucketItem[]) => {
         const prev = bucketItems;
@@ -125,130 +126,162 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
     const datedMilestones = milestones.filter(m => m.date);
 
     const TABS = [
-        { id: 'bucket' as Tab, emoji: '🌍', label: 'Bucket List', count: pending.length },
-        { id: 'wishlist' as Tab, emoji: '🎁', label: 'Wishlist', count: wishItems.length },
-        { id: 'milestones' as Tab, emoji: '✨', label: 'Milestones', count: datedMilestones.length },
+        { id: 'bucket' as Tab, Icon: Compass, label: 'Bucket List', count: pending.length },
+        { id: 'wishlist' as Tab, Icon: Gift, label: 'Wishlist', count: wishItems.length },
+        { id: 'milestones' as Tab, Icon: Milestone, label: 'Milestones', count: datedMilestones.length },
     ];
 
     const inputCls = "bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-[0.88rem] text-gray-700 placeholder-gray-300 outline-none focus:border-lior-200 transition-colors w-full";
 
     return (
-        <div className="min-h-screen pb-32" style={{ background: 'var(--theme-bg-main)' }}>
+        <div className="us-view min-h-screen pb-32">
             <ViewHeader title="Us" subtitle="our world together" onBack={() => setView('home')} tone="romance" />
 
             {/* ── Shared Spaces ────────────────────────────────────────── */}
-            <div className="px-5 mb-2">
-                <p className="text-[0.65rem] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-secondary)' }}>Shared Spaces</p>
-                <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="px-5 mb-3">
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--color-text-secondary)', opacity: 0.72 }}>Shared Spaces</p>
+                <div className="grid grid-cols-2 gap-3">
                     {([
-                        {
-                            emoji: '🏠', label: 'Our Room', sub: 'Decorate together',
-                            view: 'our-room' as const,
-                            gradient: 'linear-gradient(145deg, rgba(255,246,249,0.96) 0%, rgba(246,235,255,0.88) 100%)',
-                            border: 'rgba(229,186,210,0.52)', shadow: 'rgba(194,142,179,0.16)', chip: 'rgba(255,236,242,0.92)',
-                        },
-                        {
-                            emoji: '🌿', label: 'Presence', sub: 'Feel each other',
-                            view: 'presence-room' as const,
-                            gradient: 'linear-gradient(145deg, rgba(248,252,245,0.96) 0%, rgba(225,248,234,0.88) 100%)',
-                            border: 'rgba(176,222,194,0.52)', shadow: 'rgba(119,182,149,0.16)', chip: 'rgba(239,251,243,0.92)',
-                        },
-                        {
-                            emoji: '🎨', label: 'Draw Together', sub: 'Shared canvas',
-                            view: 'canvas' as const,
-                            gradient: 'linear-gradient(145deg, rgba(251,246,255,0.96) 0%, rgba(239,236,255,0.88) 100%)',
-                            border: 'rgba(198,184,238,0.54)', shadow: 'rgba(151,132,205,0.16)', chip: 'rgba(245,240,255,0.92)',
-                        },
-                        {
-                            emoji: '🌙', label: 'Quiet Mode', sub: 'Ambient memories',
-                            view: 'quiet-mode' as const,
-                            gradient: 'linear-gradient(145deg, rgba(255,250,245,0.96) 0%, rgba(240,244,250,0.88) 100%)',
-                            border: 'rgba(206,211,222,0.56)', shadow: 'rgba(144,153,170,0.14)', chip: 'rgba(249,246,241,0.92)',
-                        },
-                    ] as const).map((item, i) => (
+                        { Icon: Home,  label: 'Our Room',      sub: 'Decorate together',  view: 'our-room' as const,      accent: '#ec4899' },
+                        { Icon: Waves, label: 'Presence',      sub: 'Feel each other',    view: 'presence-room' as const, accent: '#14b8a6' },
+                        { Icon: Brush, label: 'Draw Together', sub: 'Shared canvas',      view: 'canvas' as const,        accent: '#8b5cf6' },
+                        { Icon: Moon,  label: 'Quiet Mode',    sub: 'Ambient memories',   view: 'quiet-mode' as const,    accent: '#6366f1' },
+                    ]).map((item, i) => (
                         <motion.button
                             key={item.label}
-                            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+                            initial={{ opacity: 0, y: 14, scale: 0.96 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ type: 'spring', stiffness: 340, damping: 24, delay: i * 0.06 }}
-                            whileTap={{ scale: 0.95 }}
+                            transition={{ type: 'spring', stiffness: 340, damping: 24, delay: i * 0.05 }}
+                            whileTap={{ scale: 0.96 }}
                             onClick={() => setView(item.view)}
-                            className="relative overflow-hidden flex flex-col items-start gap-3 p-4 rounded-[1.7rem] text-left backdrop-blur-xl"
+                            className="relative overflow-hidden flex flex-col items-start gap-3 p-4 rounded-[1.4rem] text-left"
                             style={{
-                                background: item.gradient,
-                                border: `1px solid ${item.border}`,
-                                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.92), 0 12px 24px ${item.shadow}, 0 2px 8px rgba(255,255,255,0.28)`,
+                                // Uniform frosted-white glass for ALL four cards —
+                                // each space's identity comes from the accent icon
+                                // badge, not a whole-card tint. This kills the
+                                // chaotic 4-different-colours look.
+                                background: 'rgba(255,255,255,0.74)',
+                                border: '1px solid rgba(255,255,255,0.92)',
+                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95), 0 10px 22px rgba(120,80,100,0.09)',
+                                backdropFilter: 'blur(16px)',
+                                WebkitBackdropFilter: 'blur(16px)',
                             }}
                         >
+                            {/* Soft accent wash bleeding from the top-right corner */}
                             <div
-                                className="absolute inset-x-6 top-0 h-16 rounded-b-[2rem] blur-2xl opacity-70 pointer-events-none"
-                                style={{ background: item.chip }}
+                                aria-hidden
+                                className="absolute -top-10 -right-10 w-28 h-28 rounded-full pointer-events-none"
+                                style={{ background: `radial-gradient(circle, ${item.accent}26, transparent 70%)` }}
                             />
+                            {/* Accent icon badge — the space's identity */}
                             <div
-                                className="w-12 h-12 rounded-[1rem] flex items-center justify-center text-[1.8rem] relative"
+                                className="w-11 h-11 rounded-2xl flex items-center justify-center relative"
                                 style={{
-                                    background: item.chip,
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.92), 0 6px 14px rgba(255,255,255,0.22)',
+                                    background: `${item.accent}14`,
+                                    border: `1px solid ${item.accent}2e`,
                                 }}
                             >
-                                <span className="leading-none">{item.emoji}</span>
+                                <item.Icon size={19} strokeWidth={2} style={{ color: item.accent }} />
                             </div>
                             <div className="relative">
-                                <p className="font-semibold text-[0.96rem] leading-tight" style={{ color: 'var(--color-text-primary)' }}>{item.label}</p>
-                                <p className="text-[0.78rem] mt-1" style={{ color: 'rgba(92,104,126,0.72)' }}>{item.sub}</p>
+                                <p className="font-semibold text-[0.94rem] leading-tight" style={{ color: 'var(--color-text-primary)' }}>{item.label}</p>
+                                <p className="text-[0.74rem] mt-0.5" style={{ color: 'var(--color-text-secondary)', opacity: 0.68 }}>{item.sub}</p>
                             </div>
                         </motion.button>
                     ))}
                 </div>
+            </div>
 
-                {/* Aura Signal — featured full-width CTA */}
+            {/* ── Aura Signal — featured full-width CTA ─────────────────── */}
+            <div className="px-5 mb-5">
                 <motion.button
                     data-coachmark="aura-signal"
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 24, delay: 0.26 }}
-                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 24, delay: 0.24 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setView('aura-signal')}
-                    className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl mb-1"
+                    className="relative w-full flex items-center gap-3.5 px-4 py-4 rounded-[1.4rem] overflow-hidden"
                     style={{
-                        background: 'linear-gradient(135deg,#fffbeb,#fef3c7,#fde68a)',
-                        border: '1.5px solid rgba(245,158,11,0.25)',
-                        boxShadow: '0 4px 20px rgba(245,158,11,0.15)',
+                        // Re-skinned from the jarring yellow to a rich rose
+                        // gradient so it belongs to the rest of the app.
+                        background: 'linear-gradient(135deg, #f9a8d4 0%, #ec4899 52%, #be3d72 100%)',
+                        boxShadow: '0 12px 28px rgba(236,72,153,0.32), inset 0 1px 0 rgba(255,255,255,0.32)',
                     }}
                 >
-                    <span className="text-3xl leading-none flex-shrink-0">✨</span>
-                    <div className="flex-1 text-left">
-                        <p className="font-serif font-bold text-gray-800 text-base leading-tight">Aura Signal</p>
-                        <p className="text-[0.72rem] text-gray-500 mt-0.5">Send a feeling across the distance, wordlessly</p>
+                    <div
+                        aria-hidden
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ background: 'radial-gradient(120% 90% at 12% -20%, rgba(255,255,255,0.40), transparent 58%)' }}
+                    />
+                    <div
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 relative"
+                        style={{ background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.38)' }}
+                    >
+                        <Sparkles size={19} strokeWidth={2} className="text-white" />
                     </div>
-                    <div className="text-xs font-bold px-3 py-1.5 rounded-full flex-shrink-0"
-                        style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}>
-                        Send →
+                    <div className="flex-1 text-left relative">
+                        <p className="font-serif font-bold text-white text-[1.02rem] leading-tight">Aura Signal</p>
+                        <p className="text-[0.72rem] mt-0.5" style={{ color: 'rgba(255,255,255,0.84)' }}>Send a feeling across the distance, wordlessly</p>
+                    </div>
+                    <div
+                        className="relative flex items-center gap-1.5 text-[0.74rem] font-bold px-3.5 py-2 rounded-full flex-shrink-0"
+                        style={{ background: 'rgba(255,255,255,0.96)', color: '#be3d72' }}
+                    >
+                        Send <Send size={12} strokeWidth={2.6} />
                     </div>
                 </motion.button>
             </div>
 
             {/* ── Tabs ─────────────────────────────────────────────────── */}
             <div className="px-5 mb-6">
-                <div className="flex gap-1.5 p-1 rounded-2xl" style={{ background: 'rgba(0,0,0,0.04)' }}>
-                    {TABS.map(tab => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                            className="flex-1 py-2.5 rounded-xl relative flex flex-col items-center gap-0.5 spring-press transition-all duration-200"
-                            style={{
-                                background: activeTab === tab.id ? 'white' : 'transparent',
-                                boxShadow: activeTab === tab.id ? '0 2px 10px rgba(0,0,0,0.08)' : 'none',
-                            }}>
-                            <span className="text-base leading-none">{tab.emoji}</span>
-                            <span className="text-[0.68rem] font-semibold" style={{ color: activeTab === tab.id ? '#374151' : '#b0b7c3' }}>
-                                {tab.label}
-                            </span>
-                            {tab.count > 0 && activeTab !== tab.id && (
-                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-lior-400 text-white text-[0.5rem] font-bold flex items-center justify-center">
-                                    {tab.count > 9 ? '9+' : tab.count}
+                <div
+                    // Solid frosted-white track so the control reads as its
+                    // own distinct surface above the busy ambient background
+                    // — the old near-transparent track let the florals bleed
+                    // through and killed the label contrast.
+                    className="flex gap-1.5 p-1.5 rounded-[1.25rem]"
+                    style={{
+                        background: 'rgba(255,255,255,0.92)',
+                        border: '1px solid rgba(255,255,255,0.95)',
+                        boxShadow: '0 6px 18px rgba(120,80,100,0.12), inset 0 1px 0 rgba(255,255,255,0.95)',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
+                    }}
+                >
+                    {TABS.map(tab => {
+                        const active = activeTab === tab.id;
+                        return (
+                            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                                className="flex-1 py-3 rounded-[0.95rem] relative flex items-center justify-center gap-1.5 spring-press transition-all duration-200"
+                                style={{
+                                    background: active
+                                        ? 'linear-gradient(135deg, #f472b6, #ec4899)'
+                                        : 'rgba(120,80,100,0.05)',
+                                    boxShadow: active
+                                        ? '0 6px 14px rgba(236,72,153,0.34), inset 0 1px 0 rgba(255,255,255,0.3)'
+                                        : 'none',
+                                }}>
+                                <tab.Icon
+                                    size={15}
+                                    strokeWidth={2.3}
+                                    style={{ color: active ? '#ffffff' : '#7d7280' }}
+                                />
+                                <span
+                                    className="text-[0.74rem] font-bold"
+                                    style={{ color: active ? '#ffffff' : '#6b6370' }}
+                                >
+                                    {tab.label}
                                 </span>
-                            )}
-                        </button>
-                    ))}
+                                {tab.count > 0 && !active && (
+                                    <span className="absolute -top-1 right-1.5 min-w-[16px] h-[16px] px-1 rounded-full text-white text-[0.5rem] font-bold flex items-center justify-center"
+                                        style={{ background: '#ec4899', boxShadow: '0 1px 4px rgba(236,72,153,0.4)' }}>
+                                        {tab.count > 9 ? '9+' : tab.count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -273,13 +306,28 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                         )}
 
                         {/* Add input */}
-                        <div className="flex gap-2.5 items-center px-4 py-3.5 rounded-2xl mb-5"
-                            style={{ background: 'white', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.04)' }}>
-                            <MapPin size={14} className="text-lior-300 flex-shrink-0" />
+                        <div className="flex gap-2.5 items-center px-4 py-3.5 rounded-2xl mb-5 transition-all duration-200"
+                            style={{
+                                background: bucketFocused ? 'rgba(253,242,248,0.9)' : 'white',
+                                boxShadow: bucketFocused
+                                    ? '0 0 0 2px rgba(236,72,153,0.25), 0 2px 12px rgba(236,72,153,0.10)'
+                                    : '0 1px 8px rgba(0,0,0,0.05)',
+                                border: bucketFocused
+                                    ? '1px solid rgba(236,72,153,0.35)'
+                                    : '1px solid rgba(0,0,0,0.04)',
+                            }}>
+                            <MapPin size={14} style={{ color: bucketFocused ? '#ec4899' : undefined }}
+                                className={`flex-shrink-0 transition-colors duration-200 ${bucketFocused ? '' : 'text-lior-300'}`} />
                             <input value={bucketInput} onChange={e => setBucketInput(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && addBucketItem()}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) addBucketItem(); }}
+                                onFocus={() => setBucketFocused(true)}
+                                onBlur={() => setBucketFocused(false)}
                                 placeholder="An adventure to add…"
-                                className="flex-1 bg-transparent text-[0.88rem] text-gray-700 placeholder-gray-300 outline-none" />
+                                inputMode="text"
+                                enterKeyHint="done"
+                                autoCapitalize="sentences"
+                                autoCorrect="on"
+                                className="flex-1 bg-transparent text-[16px] text-gray-700 placeholder-gray-300 outline-none" />
                             <button onClick={addBucketItem}
                                 className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 spring-press"
                                 style={{ background: 'linear-gradient(135deg,#f472b6,#ec4899)' }}>
@@ -290,7 +338,10 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                         {/* Empty */}
                         {bucketItems.length === 0 && (
                             <div className="text-center py-16">
-                                <p className="text-5xl mb-3">🌍</p>
+                                <div className="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center"
+                                    style={{ background: 'rgba(236,72,153,0.10)', border: '1px solid rgba(236,72,153,0.18)' }}>
+                                    <Compass size={28} strokeWidth={1.8} style={{ color: '#ec4899' }} />
+                                </div>
                                 <p className="font-serif text-gray-500 text-xl mb-1">The world is yours</p>
                                 <p className="text-[0.75rem] text-gray-300">Add adventures to share together</p>
                             </div>
@@ -301,10 +352,10 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                             <div className="grid grid-cols-2 gap-2.5">
                                 <AnimatePresence>
                                     {pending.map((item, i) => (
-                                        <motion.div key={item.id} layout
+                                        <motion.div key={item.id}
                                             initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
                                             transition={{ delay: i * 0.04 }}
-                                            className="group relative rounded-2xl p-4 flex flex-col justify-between"
+                                            className="perf-card-shell group relative rounded-2xl p-4 flex flex-col justify-between"
                                             style={{ background: 'white', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.04)', minHeight: '5.5rem' }}>
                                             <button onClick={() => deleteBucket(item.id)}
                                                 className="absolute top-2.5 right-2.5 opacity-40 transition-opacity spring-press text-gray-200">
@@ -422,17 +473,20 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
 
                                         {list.length === 0 && (
                                             <div className="text-center py-12">
-                                                <p className="text-3xl mb-2">🎁</p>
+                                                <div className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+                                                    style={{ background: a.light, border: `1px solid ${a.ring}` }}>
+                                                    <Gift size={24} strokeWidth={1.8} style={{ color: a.color }} />
+                                                </div>
                                                 <p className="text-[0.75rem] text-gray-300">No wishes yet</p>
                                             </div>
                                         )}
 
                                         <AnimatePresence>
                                             {list.map((item, i) => (
-                                                <motion.div key={item.id} layout
+                                                <motion.div key={item.id}
                                                     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
                                                     transition={{ delay: i * 0.03 }}
-                                                    className="group relative rounded-2xl px-4 py-3.5"
+                                                    className="perf-card-shell group relative rounded-2xl px-4 py-3.5"
                                                     style={{ background: item.gifted ? 'rgba(34,197,94,0.06)' : a.light, border: `1px solid ${item.gifted ? 'rgba(34,197,94,0.15)' : a.ring}` }}>
                                                     <button onClick={() => deleteWish(item.id)}
                                                         className="absolute top-3 right-3 opacity-40 spring-press text-gray-200">
@@ -495,7 +549,10 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
                                     className="rounded-3xl overflow-hidden mb-5"
                                     style={{ background: 'linear-gradient(145deg,#fdf2f8,#ede9fe)', boxShadow: '0 4px 24px rgba(236,72,153,0.1)' }}>
                                     <div className="px-6 pt-8 pb-6 text-center">
-                                        <p className="text-5xl mb-4">🌟</p>
+                                        <div className="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center"
+                                            style={{ background: 'rgba(236,72,153,0.10)', border: '1px solid rgba(236,72,153,0.20)' }}>
+                                            <Milestone size={28} strokeWidth={1.8} style={{ color: '#ec4899' }} />
+                                        </div>
                                         <p className="font-serif font-bold text-gray-700 text-xl mb-1">Your story starts here</p>
                                         <p className="text-[0.75rem] text-gray-400 mb-6">Every great love has chapters worth remembering</p>
                                         <button onClick={() => setShowMsForm(true)}

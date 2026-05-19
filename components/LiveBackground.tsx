@@ -10,6 +10,7 @@ import React from 'react';
 
 export const LiveBackground: React.FC = () => (
   <div
+    data-testid="ambient-visuals-static-background"
     aria-hidden="true"
     className="fixed inset-0 z-0 pointer-events-none"
     style={{

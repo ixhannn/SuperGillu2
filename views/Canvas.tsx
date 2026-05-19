@@ -253,67 +253,145 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
   // ── Render ────────────────────────────────────────────────────────────────
 
   const activeColor = isEraser ? null : color;
+  const colorName = (value: string) => ({
+    '#f43f5e': 'rose',
+    '#fb923c': 'orange',
+    '#facc15': 'sun',
+    '#4ade80': 'leaf',
+    '#38bdf8': 'sky',
+    '#818cf8': 'periwinkle',
+    '#e879f9': 'orchid',
+    '#292524': 'black',
+  }[value] ?? 'color');
 
   return (
     <div
-      className="flex flex-col h-full min-h-screen relative overflow-hidden touch-none select-none"
-      style={{ background: '#0f0a14' }}
+      className="draw-together-view relative select-none px-4 pt-3"
+      style={{
+        minHeight: '100dvh',
+        paddingBottom: 'calc(7rem + max(env(safe-area-inset-bottom, 0px), 14px))',
+        background: [
+          'radial-gradient(circle at 12% 4%, rgba(255,204,216,0.58), transparent 30%)',
+          'radial-gradient(circle at 92% 10%, rgba(202,218,255,0.48), transparent 28%)',
+          'linear-gradient(180deg, rgba(255,248,251,0.96) 0%, rgba(250,231,241,0.94) 52%, rgba(239,232,255,0.92) 100%)',
+        ].join(', '),
+      }}
     >
-      {/* ── Header ── */}
-      <div
-        className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pt-12 pb-3 pointer-events-none"
-        style={{ background: 'linear-gradient(to bottom, rgba(15,10,20,0.9) 0%, transparent 100%)' }}
+      <header
+        className="relative z-20 flex items-center gap-3 rounded-[1.55rem] px-3 py-3"
+        style={{
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.92), rgba(255,245,250,0.76))',
+          border: '1px solid rgba(255,255,255,0.82)',
+          boxShadow: '0 12px 26px rgba(168,123,148,0.13), inset 0 1px 0 rgba(255,255,255,0.95)',
+        }}
       >
         <button
-          onClick={() => setView('home')}
-          className="pointer-events-auto w-10 h-10 flex items-center justify-center rounded-full"
-          style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+          type="button"
+          aria-label="Back to Us"
+          onClick={() => setView('us')}
+          className="w-11 h-11 flex items-center justify-center rounded-[1.05rem] spring-press"
+          style={{
+            background: 'linear-gradient(145deg, #ffffff, #f8edf5)',
+            border: '1px solid rgba(183,152,174,0.20)',
+            boxShadow: '0 5px 12px rgba(91,65,84,0.08), inset 0 1px 0 rgba(255,255,255,0.92)',
+          }}
         >
-          <ArrowLeft size={18} className="text-white/80" />
+          <ArrowLeft size={19} style={{ color: '#4b3140' }} />
         </button>
 
-        <div className="flex flex-col items-center">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <Heart size={11} className="text-lior-400" fill="currentColor" />
-            <span className="text-white/90 text-[13px] font-semibold tracking-wide">Draw Together</span>
-            <Heart size={11} className="text-lior-400" fill="currentColor" />
-          </div>
-          <div className="flex items-center gap-1.5 mt-0.5">
             <span
-              className="h-1.5 w-1.5 rounded-full"
+              className="text-[0.58rem] font-extrabold uppercase tracking-[0.18em]"
+              style={{ color: '#b06987' }}
+            >
+              Shared canvas
+            </span>
+            <span className="h-1 w-1 rounded-full" style={{ background: '#f0a9bf' }} />
+            <span
+              className="text-[0.58rem] font-extrabold uppercase tracking-[0.18em]"
+              style={{ color: isConnected ? '#3b9f68' : '#c17942' }}
+            >
+              {isConnected ? 'Live' : 'Offline'}
+            </span>
+          </div>
+          <h1
+            className="mt-0.5 truncate font-serif text-[1.22rem] font-bold leading-none"
+            style={{ color: '#2d1f25' }}
+          >
+            Draw Together
+          </h1>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span
+              className="h-1.5 w-1.5 rounded-full flex-shrink-0"
               style={{ background: isConnected ? '#4ade80' : '#fb923c' }}
             />
-            <span className="text-[10px]" style={{ color: isConnected ? 'rgba(74,222,128,0.8)' : 'rgba(251,146,60,0.8)' }}>
+            <span className="truncate text-[0.68rem] font-semibold" style={{ color: '#8f7583' }}>
               {isConnected
-                ? `${profile.partnerName} connected`
-                : 'Offline — your strokes save locally'}
+                ? `${profile.partnerName} is sketching with you`
+                : 'Saves locally until sync'}
             </span>
           </div>
         </div>
 
-        <div className="flex gap-2 pointer-events-auto">
+        <div className="flex gap-2">
           <button
+            type="button"
+            aria-label="Save drawing to memories"
             onClick={() => setShowSaveSheet(true)}
-            className="w-10 h-10 flex items-center justify-center rounded-full"
-            style={{ background: 'rgba(244,63,94,0.18)', border: '1px solid rgba(244,63,94,0.35)' }}
+            className="w-11 h-11 flex items-center justify-center rounded-[1.05rem] spring-press"
+            style={{
+              background: 'linear-gradient(145deg, rgba(255,220,232,0.95), rgba(251,182,207,0.88))',
+              border: '1px solid rgba(232,128,166,0.34)',
+              boxShadow: '0 7px 16px rgba(219,91,139,0.15), inset 0 1px 0 rgba(255,255,255,0.86)',
+            }}
           >
-            <BookmarkPlus size={16} className="text-lior-300" />
+            <BookmarkPlus size={17} style={{ color: '#7b304d' }} />
           </button>
           <button
+            type="button"
+            aria-label="Download drawing"
             onClick={downloadCanvas}
-            className="w-10 h-10 flex items-center justify-center rounded-full"
-            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+            className="w-11 h-11 flex items-center justify-center rounded-[1.05rem] spring-press"
+            style={{
+              background: 'linear-gradient(145deg, #ffffff, #edf5ff)',
+              border: '1px solid rgba(142,161,202,0.22)',
+              boxShadow: '0 5px 12px rgba(91,65,84,0.08), inset 0 1px 0 rgba(255,255,255,0.92)',
+            }}
           >
-            <Download size={16} className="text-white/70" />
+            <Download size={17} style={{ color: '#496180' }} />
           </button>
         </div>
-      </div>
+      </header>
 
       {/* ── Canvas ── */}
-      <div className="flex-1 w-full h-full" style={{ cursor: isEraser ? 'cell' : 'crosshair' }}>
+      <section
+        data-testid="draw-together-stage"
+        className="relative mt-3 overflow-hidden rounded-[1.8rem]"
+        style={{
+          height: 'clamp(250px, calc(100dvh - 22rem), 480px)',
+          cursor: isEraser ? 'cell' : 'crosshair',
+          background: [
+            'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,245,238,0.36))',
+            `linear-gradient(${CANVAS_BG}, ${CANVAS_BG})`,
+          ].join(', '),
+          border: '1px solid rgba(198,155,174,0.24)',
+          boxShadow: '0 18px 38px rgba(137,93,121,0.14), inset 0 1px 0 rgba(255,255,255,0.92)',
+        }}
+      >
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(circle, rgba(99,78,91,0.075) 1px, transparent 1.4px)',
+            backgroundSize: '18px 18px',
+            opacity: 0.42,
+          }}
+        />
         <canvas
           ref={canvasRef}
-          className="w-full h-full touch-none"
+          className="absolute inset-0 z-10 w-full h-full touch-none"
+          aria-label="Shared drawing canvas"
           onMouseDown={startDrawing}
           onMouseMove={handleMove}
           onMouseUp={stopDrawing}
@@ -322,75 +400,72 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
           onTouchMove={handleMove}
           onTouchEnd={stopDrawing}
         />
-      </div>
+        <div
+          aria-hidden="true"
+          className="absolute left-4 top-4 z-20 rounded-full px-3 py-1.5 text-[0.62rem] font-extrabold uppercase tracking-[0.16em]"
+          style={{
+            color: '#987386',
+            background: 'rgba(255,255,255,0.70)',
+            border: '1px solid rgba(255,255,255,0.76)',
+          }}
+        >
+          Paper is live
+        </div>
+        <div
+          aria-hidden="true"
+          className="absolute -right-7 -bottom-7 z-0 h-28 w-28 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(251,182,207,0.32), transparent 70%)' }}
+        />
+      </section>
 
       {/* ── Bottom toolbar ── */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-20 flex flex-col gap-3 px-4 pb-8 pt-4"
-        style={{ background: 'linear-gradient(to top, rgba(15,10,20,0.97) 0%, rgba(15,10,20,0.85) 70%, transparent 100%)' }}
+        data-testid="draw-together-toolbar"
+        className="relative z-20 mt-3 flex flex-col gap-2.5 rounded-[1.55rem] px-3 py-3"
+        style={{
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.94), rgba(252,242,248,0.88))',
+          border: '1px solid rgba(255,255,255,0.78)',
+          boxShadow: '0 18px 38px rgba(98,73,91,0.18), inset 0 1px 0 rgba(255,255,255,0.95)',
+        }}
       >
-        {/* Color palette + actions row */}
-        <div className="flex items-center justify-between">
+        {/* Color palette */}
+        <div className="flex items-center justify-between gap-1">
           {/* Colors */}
-          <div className="flex items-center gap-2.5">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                onClick={() => { setColor(c); setIsEraser(false); }}
-                className="relative flex-shrink-0 transition-transform active:scale-90"
-                style={{
-                  width: activeColor === c ? 28 : 22,
-                  height: activeColor === c ? 28 : 22,
-                  borderRadius: '50%',
-                  background: c,
-                  boxShadow: activeColor === c
-                    ? `0 0 0 2.5px rgba(15,10,20,1), 0 0 0 4.5px ${c}`
-                    : 'none',
-                  transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)',
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-1.5">
+          {COLORS.map((c) => (
             <button
-              onClick={undo}
-              disabled={!canUndo}
-              className="w-9 h-9 flex items-center justify-center rounded-full transition-opacity"
+              key={c}
+              type="button"
+              aria-label={`Use ${colorName(c)} ink`}
+              onClick={() => { setColor(c); setIsEraser(false); }}
+              className="relative flex-shrink-0 transition-transform active:scale-90 spring-press"
               style={{
-                background: 'rgba(255,255,255,0.07)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                opacity: canUndo ? 1 : 0.35,
+                width: activeColor === c ? 34 : 30,
+                height: activeColor === c ? 34 : 30,
+                borderRadius: '50%',
+                background: c,
+                boxShadow: activeColor === c
+                  ? `0 0 0 3px rgba(255,255,255,0.96), 0 0 0 5px ${c}, 0 6px 12px rgba(72,47,62,0.12)`
+                  : 'inset 0 1px 0 rgba(255,255,255,0.42), 0 3px 8px rgba(72,47,62,0.09)',
+                transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)',
               }}
-            >
-              <Undo2 size={15} className="text-white/80" />
-            </button>
-            <button
-              onClick={clearCanvas}
-              className="w-9 h-9 flex items-center justify-center rounded-full"
-              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}
-            >
-              <Trash2 size={15} className="text-white/80" />
-            </button>
-          </div>
+            />
+          ))}
         </div>
 
         {/* Brush size + eraser row */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {BRUSH_SIZES.map((b) => {
             const active = !isEraser && brushSize === b.value;
             return (
               <button
                 key={b.value}
+                type="button"
+                aria-label={`Use ${b.label} brush`}
                 onClick={() => { setBrushSize(b.value); setIsEraser(false); }}
-                className="flex items-center justify-center transition-all active:scale-90"
+                className="flex h-10 min-w-[42px] items-center justify-center rounded-[0.95rem] transition-all active:scale-90 spring-press"
                 style={{
-                  width: 42,
-                  height: 36,
-                  borderRadius: 12,
-                  background: active ? 'rgba(244,63,94,0.15)' : 'rgba(255,255,255,0.06)',
-                  border: active ? '1px solid rgba(244,63,94,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                  background: active ? 'rgba(255,220,232,0.92)' : 'rgba(255,255,255,0.62)',
+                  border: active ? '1px solid rgba(236,72,153,0.28)' : '1px solid rgba(178,154,190,0.16)',
                   transition: 'all 0.15s ease',
                 }}
               >
@@ -399,7 +474,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
                     width: b.value * 1.4,
                     height: b.value * 1.4,
                     borderRadius: '50%',
-                    background: active ? color : 'rgba(255,255,255,0.45)',
+                    background: active ? color : 'rgba(97,78,91,0.36)',
                     maxWidth: 18,
                     maxHeight: 18,
                     minWidth: 4,
@@ -414,17 +489,46 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
           <div className="flex-1" />
 
           <button
-            onClick={() => setIsEraser((v) => !v)}
-            className="flex items-center gap-2 px-3 h-9 rounded-xl transition-all active:scale-95"
+            type="button"
+            aria-label="Undo last stroke"
+            onClick={undo}
+            disabled={!canUndo}
+            className="w-10 h-10 flex items-center justify-center rounded-[0.95rem] transition-opacity spring-press"
             style={{
-              background: isEraser ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.06)',
-              border: isEraser ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
+              background: 'linear-gradient(145deg, #ffffff, #f2edf7)',
+              border: '1px solid rgba(178,154,190,0.20)',
+              opacity: canUndo ? 1 : 0.35,
             }}
           >
-            <Eraser size={14} className={isEraser ? 'text-white' : 'text-white/50'} />
+            <Undo2 size={16} style={{ color: '#6c5875' }} />
+          </button>
+          <button
+            type="button"
+            aria-label="Clear canvas"
+            onClick={clearCanvas}
+            className="w-10 h-10 flex items-center justify-center rounded-[0.95rem] spring-press"
+            style={{
+              background: 'linear-gradient(145deg, #fff7f7, #f7ecf0)',
+              border: '1px solid rgba(214,137,154,0.24)',
+            }}
+          >
+            <Trash2 size={16} style={{ color: '#8b5260' }} />
+          </button>
+
+          <button
+            type="button"
+            aria-label={isEraser ? 'Turn eraser off' : 'Use eraser'}
+            onClick={() => setIsEraser((v) => !v)}
+            className="flex h-10 items-center gap-1.5 rounded-[0.95rem] px-2.5 transition-all active:scale-95 spring-press"
+            style={{
+              background: isEraser ? 'linear-gradient(145deg, #ffffff, #e7f5ff)' : 'rgba(255,255,255,0.64)',
+              border: isEraser ? '1px solid rgba(95,142,191,0.28)' : '1px solid rgba(178,154,190,0.16)',
+            }}
+          >
+            <Eraser size={15} style={{ color: isEraser ? '#40627f' : '#7b6878' }} />
             <span
-              className="text-[11px] font-semibold"
-              style={{ color: isEraser ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)' }}
+              className="text-[0.72rem] font-extrabold"
+              style={{ color: isEraser ? '#40627f' : '#7b6878' }}
             >
               Erase
             </span>
@@ -434,23 +538,27 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
       {/* ── Save to memories sheet ── */}
       {showSaveSheet && (
         <div
-          className="absolute inset-0 z-30 flex items-end"
-          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(12px)' }}
+          className="fixed inset-0 z-[70] flex items-end justify-center px-4"
+          style={{ background: 'rgba(49,31,42,0.42)', backdropFilter: 'blur(12px)' }}
           onClick={() => { if (saveStatus === 'idle') setShowSaveSheet(false); }}
         >
           <div
-            className="w-full px-4 pb-10 pt-6 rounded-t-[2rem]"
-            style={{ background: 'linear-gradient(160deg, #1a0d24 0%, #120820 100%)', border: '1px solid rgba(255,255,255,0.08)' }}
+            className="w-full max-w-md rounded-t-[1.8rem] px-4 pb-10 pt-5"
+            style={{
+              background: 'linear-gradient(160deg, #fffafd 0%, #f8edf5 100%)',
+              border: '1px solid rgba(255,255,255,0.86)',
+              boxShadow: '0 -16px 42px rgba(64,42,58,0.20), inset 0 1px 0 rgba(255,255,255,0.92)',
+            }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
-                <BookmarkPlus size={16} className="text-lior-400" />
-                <span className="text-white/90 font-semibold text-[14px]">Save to Memories</span>
+                <BookmarkPlus size={16} style={{ color: '#c2557c' }} />
+                <span className="font-semibold text-[14px]" style={{ color: '#2d1f25' }}>Save to Memories</span>
               </div>
               {saveStatus === 'idle' && (
-                <button onClick={() => setShowSaveSheet(false)} className="w-7 h-7 flex items-center justify-center rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                  <X size={14} className="text-white/60" />
+                <button type="button" aria-label="Close save sheet" onClick={() => setShowSaveSheet(false)} className="w-8 h-8 flex items-center justify-center rounded-full" style={{ background: 'rgba(94,73,87,0.08)' }}>
+                  <X size={14} style={{ color: '#7b6878' }} />
                 </button>
               )}
             </div>
@@ -462,11 +570,16 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
               placeholder="Add a caption… (optional)"
               maxLength={120}
               disabled={saveStatus !== 'idle'}
-              className="w-full px-4 py-3 rounded-xl text-sm text-white/90 placeholder-white/25 outline-none mb-4"
-              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}
+              className="w-full px-4 py-3 rounded-xl text-[16px] outline-none mb-4"
+              style={{
+                color: '#3b2b34',
+                background: 'rgba(255,255,255,0.82)',
+                border: '1px solid rgba(198,155,174,0.24)',
+              }}
             />
 
             <button
+              type="button"
               onClick={saveToMemory}
               disabled={saveStatus !== 'idle'}
               className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"

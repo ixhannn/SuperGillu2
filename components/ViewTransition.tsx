@@ -19,10 +19,8 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ children }) => {
       data-transition-shell="true"
       className="w-full min-h-full"
       style={{
-        contain:            'paint',
-        isolation:          'isolate',
-        backfaceVisibility: 'hidden',
-        transform:          'translateZ(0)',
+        contain:   'paint',
+        isolation: 'isolate',
       }}
     >
       {children}

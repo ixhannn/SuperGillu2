@@ -54,35 +54,23 @@ export const TapRipple: React.FC = () => {
     /* Object pool for ripples — zero allocation during taps */
     const ripples: Ripple[] = [];
 
-    const onPointerDown = (e: PointerEvent) => {
-      const now = performance.now();
-      /* Two rings per tap — offset by 120ms for layered depth */
-      ripples.push({ x: e.clientX, y: e.clientY, startTime: now, delay: 0 });
-      ripples.push({ x: e.clientX, y: e.clientY, startTime: now, delay: 120 });
-
-      /* Cap pool size */
-      while (ripples.length > MAX_RIPPLES) ripples.shift();
-    };
-
-    /* Capture phase so we get taps even on interactive elements */
-    window.addEventListener('pointerdown', onPointerDown, { passive: true, capture: true });
-
-    let rafId: number;
-    let hasActiveRipples = false;
+    let rafId = 0;
+    let canvasDirty = false;
 
     const animate = () => {
-      rafId = requestAnimationFrame(animate);
-
       if (ripples.length === 0) {
-        if (hasActiveRipples) {
+        // One last clear, then idle. No RAF spinning when nothing on screen.
+        if (canvasDirty) {
           ctx.clearRect(0, 0, w, h);
-          hasActiveRipples = false;
+          canvasDirty = false;
         }
+        rafId = 0;
         return;
       }
 
+      rafId = requestAnimationFrame(animate);
       ctx.clearRect(0, 0, w, h);
-      hasActiveRipples = true;
+      canvasDirty = true;
       const now = performance.now();
 
       for (let i = ripples.length - 1; i >= 0; i--) {
@@ -122,10 +110,24 @@ export const TapRipple: React.FC = () => {
       }
     };
 
-    rafId = requestAnimationFrame(animate);
+    const onPointerDown = (e: PointerEvent) => {
+      const now = performance.now();
+      /* Two rings per tap — offset by 120ms for layered depth */
+      ripples.push({ x: e.clientX, y: e.clientY, startTime: now, delay: 0 });
+      ripples.push({ x: e.clientX, y: e.clientY, startTime: now, delay: 120 });
+
+      /* Cap pool size */
+      while (ripples.length > MAX_RIPPLES) ripples.shift();
+
+      // Wake the RAF only when something is on screen.
+      if (rafId === 0) rafId = requestAnimationFrame(animate);
+    };
+
+    /* Capture phase so we get taps even on interactive elements */
+    window.addEventListener('pointerdown', onPointerDown, { passive: true, capture: true });
 
     return () => {
-      cancelAnimationFrame(rafId);
+      if (rafId !== 0) cancelAnimationFrame(rafId);
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointerdown', onPointerDown, { capture: true } as any);
     };

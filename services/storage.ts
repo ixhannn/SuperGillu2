@@ -135,6 +135,14 @@ const serializeLocalBackupValue = (value: unknown) => (
     typeof value === 'string' ? value : JSON.stringify(value)
 );
 
+const parseLocalBackupValue = (raw: string): unknown => {
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return raw;
+    }
+};
+
 const readLocalStorageJson = <T,>(key: string): T | null => {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
@@ -188,11 +196,22 @@ const restoreAccountScopedFlagsForAccount = (userId: string | null) => {
         CACHE_KEYS.SEEN_RELEASE_VERSION,
         CACHE_KEYS.COACHMARKS_SEEN,
     ].forEach((key) => {
-        const scopedValue = localStorage.getItem(buildAccountScopedStorageKey(key, userId));
+        const scopedKey = buildAccountScopedStorageKey(key, userId);
+        const scopedValue = localStorage.getItem(scopedKey);
         if (scopedValue !== null) {
+            // Scoped owns the truth — mirror to base for legacy readers.
             localStorage.setItem(key, scopedValue);
-        } else {
-            localStorage.removeItem(key);
+            return;
+        }
+        // No scoped backup yet for this user. If base holds a value
+        // (e.g. it was written before the userId became available, or it
+        // survived from a prior session), promote it INTO the scoped key
+        // so future activations restore it cleanly. Do NOT wipe base —
+        // that's what re-triggered onboarding / coachmarks / What's New
+        // on every fresh login.
+        const baseValue = localStorage.getItem(key);
+        if (baseValue !== null) {
+            localStorage.setItem(scopedKey, baseValue);
         }
     });
 };
@@ -233,6 +252,16 @@ const clearBaseProfileForAccountSwitch = () => {
 const cleanString = (value: unknown): string => (
     typeof value === 'string' ? value.trim() : ''
 );
+
+const isGenericPartnerName = (value: unknown): boolean => {
+    const normalized = cleanString(value).toLowerCase();
+    return normalized === 'partner' || normalized === 'your partner';
+};
+
+const cleanPartnerDisplayName = (value: unknown): string => {
+    const cleaned = cleanString(value);
+    return cleaned && !isGenericPartnerName(cleaned) ? cleaned : '';
+};
 
 const PET_TYPE_VALUES = new Set(['dog', 'cat', 'bunny', 'bear']);
 const DEFAULT_PET_STATS: PetStats = {
@@ -301,7 +330,7 @@ const getLockedPairLink = (): LockedPairLink | null => {
         return {
             coupleId,
             partnerUserId,
-            partnerName: cleanString(parsed.partnerName) || undefined,
+            partnerName: cleanPartnerDisplayName(parsed.partnerName) || undefined,
         };
     } catch {
         return null;
@@ -316,7 +345,7 @@ const persistLockedPairLink = (profile: Partial<CoupleProfile>) => {
     const lock: LockedPairLink = {
         coupleId,
         partnerUserId,
-        partnerName: cleanString(profile.partnerName) || undefined,
+        partnerName: cleanPartnerDisplayName(profile.partnerName) || undefined,
     };
     setAccountScopedLocalStorageValue(CACHE_KEYS.LINK_LOCK, JSON.stringify(lock));
 };
@@ -349,7 +378,7 @@ const applyLockedPairLink = <T extends Partial<CoupleProfile>>(profile: T, curre
         ...profile,
         coupleId: activeLock.coupleId,
         partnerUserId: activeLock.partnerUserId,
-        partnerName: cleanString(profile.partnerName) || activeLock.partnerName || profile.partnerName,
+        partnerName: cleanPartnerDisplayName(profile.partnerName) || activeLock.partnerName || profile.partnerName,
     };
 };
 
@@ -405,6 +434,33 @@ const ROOM_WALLPAPERS = new Set(['plain', 'stripes', 'polka', 'hearts', 'stars',
 const ROOM_FLOORS = new Set(['hardwood', 'carpet', 'tiles', 'cloud', 'grass', 'marble']);
 const ROOM_AMBIENTS = new Set(['warm', 'cool', 'rainbow']);
 const COUPLE_ROOM_KEY = 'lior_couple_room_v2';
+const CONTENT_COLLECTION_STORES: Array<{ storageKey: string; cacheKey: keyof typeof DATA_CACHE }> = [
+    { storageKey: CACHE_KEYS.MEMORIES, cacheKey: 'memories' },
+    { storageKey: CACHE_KEYS.NOTES, cacheKey: 'notes' },
+    { storageKey: CACHE_KEYS.DATES, cacheKey: 'specialDates' },
+    { storageKey: CACHE_KEYS.ENVELOPES, cacheKey: 'envelopes' },
+    { storageKey: CACHE_KEYS.DAILY_PHOTOS, cacheKey: 'dailyPhotos' },
+    { storageKey: CACHE_KEYS.DINNER_OPTIONS, cacheKey: 'dinnerOptions' },
+    { storageKey: CACHE_KEYS.KEEPSAKES, cacheKey: 'keepsakes' },
+    { storageKey: CACHE_KEYS.COMMENTS, cacheKey: 'comments' },
+    { storageKey: CACHE_KEYS.MOOD_ENTRIES, cacheKey: 'moodEntries' },
+    { storageKey: CACHE_KEYS.US_BUCKET_ITEMS, cacheKey: 'usBucketItems' },
+    { storageKey: CACHE_KEYS.US_WISHLIST_ITEMS, cacheKey: 'usWishlistItems' },
+    { storageKey: CACHE_KEYS.US_MILESTONES, cacheKey: 'usMilestones' },
+    { storageKey: CACHE_KEYS.TIME_CAPSULES, cacheKey: 'timeCapsules' },
+    { storageKey: CACHE_KEYS.SURPRISES, cacheKey: 'surprises' },
+    { storageKey: CACHE_KEYS.VOICE_NOTES, cacheKey: 'voiceNotes' },
+    { storageKey: CACHE_KEYS.PRIVATE_SPACE_ITEMS, cacheKey: 'privateSpaceItems' },
+];
+const CONTENT_SINGLETON_KEYS = [
+    CACHE_KEYS.PET_STATS,
+    CACHE_KEYS.USER_STATUS,
+    CACHE_KEYS.PARTNER_STATUS,
+    CACHE_KEYS.TOGETHER_MUSIC_META,
+    CACHE_KEYS.OUR_ROOM_STATE,
+    COUPLE_ROOM_KEY,
+];
+const CONTENT_LEGACY_MIRROR_KEYS = ['lior_bucket', 'lior_wishlist', 'lior_milestones', 'lior_room_state'];
 const TULIKA_NAME = 'Tulika';
 const ISHAN_NAME = 'Ishan';
 const LEGACY_RENAMED_PERSON_NAME = 'Lior';
@@ -438,6 +494,92 @@ const toLegacyRoomState = (room: Partial<CoupleRoomState>): RoomState => normali
     floor: ROOM_FLOORS.has(String(room.floor)) ? room.floor as any : 'carpet',
     ambient: ROOM_AMBIENTS.has(String(room.ambient)) ? room.ambient as any : 'warm',
 });
+
+const backupCurrentContentForAccount = (userId: string | null) => {
+    if (!userId) return;
+
+    const collectionSnapshots = CONTENT_COLLECTION_STORES.map(({ storageKey, cacheKey }) => ({
+        storageKey,
+        value: [...(DATA_CACHE[cacheKey] as unknown[])],
+        raw: localStorage.getItem(storageKey),
+    }));
+    const singletonSnapshots = CONTENT_SINGLETON_KEYS.map((storageKey) => ({
+        storageKey,
+        raw: localStorage.getItem(storageKey),
+    }));
+
+    void (async () => {
+        try {
+            for (const { storageKey, value, raw } of collectionSnapshots) {
+                await writeRaw(STORES.DATA, buildAccountScopedStorageKey(storageKey, userId), value);
+                if (raw !== null) localStorage.setItem(buildAccountScopedStorageKey(storageKey, userId), raw);
+            }
+
+            for (const { storageKey, raw } of singletonSnapshots) {
+                if (raw !== null) {
+                    localStorage.setItem(buildAccountScopedStorageKey(storageKey, userId), raw);
+                    await writeRaw(STORES.DATA, buildAccountScopedStorageKey(storageKey, userId), parseLocalBackupValue(raw));
+                }
+            }
+        } catch (error) {
+            console.warn('[privacy] Failed to snapshot account content before switching account:', error);
+        }
+    })();
+};
+
+const clearBaseContentForAccountSwitch = () => {
+    for (const { storageKey, cacheKey } of CONTENT_COLLECTION_STORES) {
+        (DATA_CACHE as Record<string, unknown[]>)[cacheKey] = [];
+        localStorage.removeItem(storageKey);
+        void writeRaw(STORES.DATA, storageKey, []);
+    }
+
+    for (const storageKey of CONTENT_SINGLETON_KEYS) {
+        localStorage.removeItem(storageKey);
+        void deleteRaw(STORES.DATA, storageKey);
+    }
+
+    for (const legacyKey of CONTENT_LEGACY_MIRROR_KEYS) {
+        localStorage.removeItem(legacyKey);
+    }
+
+    MEDIA_MEMORY_CACHE.clear();
+    notifyUpdate({ source: 'sync', action: 'save', table: 'account-scope', id: 'cleared' });
+};
+
+const restoreAccountScopedContent = (userId: string) => {
+    void (async () => {
+        try {
+            for (const { storageKey, cacheKey } of CONTENT_COLLECTION_STORES) {
+                const scopedValue = await readRaw(STORES.DATA, buildAccountScopedStorageKey(storageKey, userId));
+                const value = Array.isArray(scopedValue) ? scopedValue : [];
+                (DATA_CACHE as Record<string, unknown[]>)[cacheKey] = value;
+                await writeRaw(STORES.DATA, storageKey, value);
+            }
+
+            for (const storageKey of CONTENT_SINGLETON_KEYS) {
+                const scopedStorageKey = buildAccountScopedStorageKey(storageKey, userId);
+                const scopedLocalValue = localStorage.getItem(scopedStorageKey);
+                if (scopedLocalValue !== null) {
+                    localStorage.setItem(storageKey, scopedLocalValue);
+                } else {
+                    localStorage.removeItem(storageKey);
+                }
+
+                const scopedRawValue = await readRaw(STORES.DATA, scopedStorageKey);
+                if (scopedRawValue !== undefined) {
+                    await writeRaw(STORES.DATA, storageKey, scopedRawValue);
+                } else {
+                    await deleteRaw(STORES.DATA, storageKey);
+                }
+            }
+
+            notifyUpdate({ source: 'sync', action: 'save', table: 'account-scope', id: userId });
+        } catch (error) {
+            console.warn('[privacy] Failed to restore account-scoped content:', error);
+        }
+    })();
+};
 
 const sanitizeUserString = (value: string) => (
     value
@@ -733,6 +875,22 @@ const resolveOwnerUserId = async (item: any, source: 'user' | 'sync', existingIt
 const filterActiveDailyPhotos = (items: DailyPhoto[], now = Date.now()): DailyPhoto[] =>
     normalizeDailyPhotos(items, now);
 
+/**
+ * Removes coupleId / partnerUserId from a raw JSON blob in localStorage.
+ * Used by forceNewPairing and clearPairLock to prevent applyLockedPairLink
+ * from re-deriving an activeLock from stale stored values.
+ */
+const scrubPairFieldsFromStorageKey = (rawKey: string): void => {
+    const raw = localStorage.getItem(rawKey);
+    if (!raw) return;
+    try {
+        const obj = JSON.parse(raw) as Record<string, unknown>;
+        delete obj.coupleId;
+        delete obj.partnerUserId;
+        localStorage.setItem(rawKey, JSON.stringify(obj));
+    } catch { /* ignore */ }
+};
+
 export const StorageService = {
     isInitialized: false,
     isPersisted: false,
@@ -750,8 +908,12 @@ export const StorageService = {
                 this.isPersisted = await navigator.storage.persist();
             }
 
+            const activeUserIdForInit = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID);
             const load = async (key: string, cacheKey: keyof typeof DATA_CACHE) => {
-                const val = await readRaw(STORES.DATA, key);
+                const scopedVal = activeUserIdForInit
+                    ? await readRaw(STORES.DATA, buildAccountScopedStorageKey(key, activeUserIdForInit))
+                    : undefined;
+                const val = scopedVal ?? await readRaw(STORES.DATA, key);
                 if (val) (DATA_CACHE[cacheKey] as any) = val;
             };
 
@@ -1560,13 +1722,17 @@ export const StorageService = {
                 else if (table === 'keepsakes') msg = 'A new keepsake arrived in your box 🎁';
                 else if (table === 'comments') msg = 'Your partner commented on something 💬';
                 
-                if (msg) new Notification('Lior', { body: msg, icon: '/icon.svg' });
+                if (msg) new Notification('Lior', { body: msg, icon: '/notification-icon.png' });
             }
         } else if (table === 'couple_profile') {
             const local = this.getCoupleProfile();
             if (item && typeof item === 'object') {
                 // Only merge shared fields; each account keeps its own local display identity.
-                const { myName: _m, partnerName: _p, ...sharedFromCloud } = item as any;
+                const { myName: _m, partnerName: _p, __rowMeta: rowMetaFromCloud, data: _nestedData, ...sharedFromCloud } = item as any;
+                const rowCoupleId = cleanString(rowMetaFromCloud?.coupleId);
+                if (rowCoupleId && !cleanString(sharedFromCloud.coupleId)) {
+                    sharedFromCloud.coupleId = rowCoupleId;
+                }
                 const hasSharedFields = Object.keys(sharedFromCloud).some((key) => sharedFromCloud[key] != null && sharedFromCloud[key] !== '');
                 if (!hasSharedFields) return;
                 this.saveCoupleProfile({ ...local, ...sharedFromCloud }, 'sync');
@@ -1775,36 +1941,55 @@ export const StorageService = {
     activateAccount: (userId: string | null) => {
         const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
         const previousUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID);
+        // Only flag a real account switch when there IS a previous account
+        // AND it's different from the incoming one. A null `previousUserId`
+        // simply means "first activation in this session" — base data may
+        // legitimately belong to the user we're about to activate (e.g.
+        // persisted from a prior session that signed-out and cleared
+        // `ACTIVE_USER_ID`). Treating it as a switch was firing the base
+        // wipe on every fresh login and destroying the user's pair link,
+        // onboarded flag, coachmark state, and seen-version state.
+        const accountChanged = Boolean(previousUserId) && previousUserId !== normalizedUserId;
 
         if (!normalizedUserId) {
             if (previousUserId) {
                 backupCurrentProfileForAccount(previousUserId);
+                backupCurrentContentForAccount(previousUserId);
             }
             localStorage.removeItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID);
             clearBaseProfileForAccountSwitch();
+            clearBaseContentForAccountSwitch();
             return;
         }
 
         if (previousUserId && previousUserId !== normalizedUserId) {
             backupCurrentProfileForAccount(previousUserId);
+            backupCurrentContentForAccount(previousUserId);
+        }
+
+        if (accountChanged) {
+            clearBaseProfileForAccountSwitch();
+            clearBaseContentForAccountSwitch();
         }
 
         localStorage.setItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID, normalizedUserId);
         restoreAccountScopedFlagsForAccount(normalizedUserId);
         const restoredScopedProfile = restoreAccountScopedProfile(normalizedUserId);
         if (!restoredScopedProfile) {
-            if (previousUserId && previousUserId !== normalizedUserId) {
-                clearBaseProfileForAccountSwitch();
-                restoreAccountScopedFlagsForAccount(normalizedUserId);
-            } else {
+            restoreAccountScopedFlagsForAccount(normalizedUserId);
+            if (!accountChanged) {
                 backupCurrentProfileForAccount(normalizedUserId);
             }
+        }
+        if (accountChanged) {
+            restoreAccountScopedContent(normalizedUserId);
         }
     },
 
     prepareForSignOut: () => {
         const activeUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID) || SupabaseService.getCachedUserId();
         backupCurrentProfileForAccount(activeUserId);
+        backupCurrentContentForAccount(activeUserId);
     },
 
     hasCompletedOnboarding: (): boolean => {
@@ -1885,6 +2070,57 @@ export const StorageService = {
         writeRaw(STORES.DATA, CACHE_KEYS.SHARED_PROFILE, sharedProfile);
 
         notifyUpdate({ source, action: 'save', table: 'couple_profile', id: 'singleton', item: sanitizedProfile });
+    },
+
+    /**
+     * Force-saves a new pair link, bypassing the lock guard.
+     * Call this after an explicit, server-confirmed pairing action (QR scan / manual code).
+     * The lock guard (applyLockedPairLink) normally blocks partner changes — this clears it
+     * first so the incoming coupleId + partnerUserId are accepted unconditionally.
+     */
+    forceNewPairing: (coupleId: string, partnerUserId: string, partnerName?: string): void => {
+        // 1. Erase the stored lock so applyLockedPairLink can't restore the old pair.
+        clearAccountScopedLocalStorageValue(CACHE_KEYS.LINK_LOCK);
+        localStorage.removeItem(CACHE_KEYS.LINK_LOCK);
+        // 2. Scrub stale pair IDs from the persisted shared profile so that
+        //    getCoupleProfile() returns no coupleId, preventing applyLockedPairLink
+        //    from re-deriving an activeLock from the old values.
+        scrubPairFieldsFromStorageKey(CACHE_KEYS.SHARED_PROFILE);
+        const activeId = getActiveAccountScopeUserId();
+        if (activeId) {
+            scrubPairFieldsFromStorageKey(
+                buildAccountScopedStorageKey(CACHE_KEYS.SHARED_PROFILE, activeId),
+            );
+        }
+        // 3. saveCoupleProfile now sees no existing lock — new credentials go through.
+        const profile = StorageService.getCoupleProfile();
+        StorageService.saveCoupleProfile({
+            ...profile,
+            coupleId,
+            partnerUserId,
+            ...(partnerName ? { partnerName } : {}),
+        });
+    },
+
+    /**
+     * Clears the pair link on this device so the user can re-pair.
+     * Removes the lock key and wipes coupleId / partnerUserId from the stored profile.
+     * Shared data (memories, notes, etc.) is NOT deleted — only the link identifiers.
+     */
+    clearPairLock: (): void => {
+        clearAccountScopedLocalStorageValue(CACHE_KEYS.LINK_LOCK);
+        localStorage.removeItem(CACHE_KEYS.LINK_LOCK);
+        scrubPairFieldsFromStorageKey(CACHE_KEYS.SHARED_PROFILE);
+        const activeId = getActiveAccountScopeUserId();
+        if (activeId) {
+            scrubPairFieldsFromStorageKey(
+                buildAccountScopedStorageKey(CACHE_KEYS.SHARED_PROFILE, activeId),
+            );
+        }
+        // Re-read (now without pair fields) and save through the normal path so
+        // IndexedDB and storage event listeners are updated.
+        const profile = StorageService.getCoupleProfile();
+        StorageService.saveCoupleProfile(profile);
     },
 
     checkInStreak: (): void => {

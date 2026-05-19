@@ -10,7 +10,6 @@ import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
-import { CouplePet } from '../components/CouplePet';
 import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
@@ -30,6 +29,15 @@ interface HomeProps {
 const getDisplayName = (value: string | undefined, fallback: string) => {
     const trimmed = value?.trim();
     return trimmed ? trimmed : fallback;
+};
+
+const DAYS_TOGETHER_LEGACY_FONT_STYLE: React.CSSProperties = {
+    fontFamily: '"Outfit", "Playfair Display", Georgia, serif',
+};
+
+const DAYS_TOGETHER_LEGACY_UNIT_STYLE: React.CSSProperties = {
+    ...DAYS_TOGETHER_LEGACY_FONT_STYLE,
+    fontWeight: 400,
 };
 
 const parseAnniversaryDate = (value: string | undefined) => parseStoredDateOnly(value);
@@ -80,7 +88,7 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
                         <div className="bg-white p-3 rounded-2xl shadow-soft-xl border border-gray-100/80 -rotate-1">
                             {imageUrl ? (
                                 <div className="aspect-square bg-gray-50 rounded-xl overflow-hidden mb-3">
-                                    <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" />
+                                    <img src={imageUrl} alt="Memory" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                 </div>
                             ) : (
                                 <div className="aspect-video bg-lior-50 rounded-xl flex items-center justify-center mb-3 text-lior-200">
@@ -128,19 +136,41 @@ const HeartbeatRipple = ({ active }: { active: boolean }) => {
 
     useEffect(() => {
         if (!active) return;
-        let animationFrameId: number;
-        const animate = () => {
-            animationFrameId = requestAnimationFrame(animate);
-            if (AmbientService.isPlaying && rippleRef.current) {
-                const data = AmbientService.getFrequencyData();
-                let bassSum = 0;
-                for (let i = 0; i < 4; i++) bassSum += data[i] || 0;
-                const scale = 1 + (bassSum / 4 / 255) * 0.4;
-                rippleRef.current.style.transform = `scale(${scale})`;
+        // No-op when ambient music isn't playing — avoid burning a RAF every
+        // frame for nothing. Cheap polling kicks the RAF on/off based on
+        // AmbientService state. When music isn't playing the loop sleeps.
+        let animationFrameId = 0;
+        let pollId = 0;
+
+        const tick = () => {
+            if (!AmbientService.isPlaying || !rippleRef.current) {
+                animationFrameId = 0;
+                return;
+            }
+            const data = AmbientService.getFrequencyData();
+            let bassSum = 0;
+            for (let i = 0; i < 4; i++) bassSum += data[i] || 0;
+            const scale = 1 + (bassSum / 4 / 255) * 0.4;
+            rippleRef.current.style.transform = `scale(${scale})`;
+            animationFrameId = requestAnimationFrame(tick);
+        };
+
+        const ensureRunning = () => {
+            if (animationFrameId === 0 && AmbientService.isPlaying) {
+                animationFrameId = requestAnimationFrame(tick);
             }
         };
-        animate();
-        return () => cancelAnimationFrame(animationFrameId);
+
+        ensureRunning();
+        // Re-check 4×/s — costs nothing vs. RAF, only kicks the loop when
+        // ambient audio actually starts playing.
+        pollId = window.setInterval(ensureRunning, 250);
+
+        return () => {
+            if (animationFrameId !== 0) cancelAnimationFrame(animationFrameId);
+            window.clearInterval(pollId);
+            if (rippleRef.current) rippleRef.current.style.transform = '';
+        };
     }, [active]);
 
     if (!active) return null;
@@ -260,7 +290,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [otdImage, setOtdImage] = useState<string | null>(null);
     const [showSurprise, setShowSurprise] = useState(false);
     const [surpriseContent, setSurpriseContent] = useState<{ type: 'memory' | 'note', item: Memory | Note } | null>(null);
-    const [showPet, setShowPet] = useState(false);
     const [nextEvent, setNextEvent] = useState<{ title: string, days: number } | null>(null);
     const [streak, setStreak] = useState(0);
     const [memories, setMemories] = useState<Memory[]>([]);
@@ -271,12 +300,15 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [isDissolving, setIsDissolving] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
-    const [headerScrollTop, setHeaderScrollTop] = useState(0);
     const [premiumOpen, setPremiumOpen] = useState(false);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<HeartbeatParticlesHandle>(null);
+    const headerOverlayRef = useRef<HTMLDivElement>(null);
+    const scrollRafRef = useRef<number | null>(null);
+    const headerScrollTopRef = useRef(0);
+    const lastOverlayStateRef = useRef<string>('');
     const heroInView = useInView(heroRef, { once: true, margin: "-100px" });
     const displayCount = useCountUp(daysTogether, heroInView);
 
@@ -370,11 +402,11 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             if (detail.signalType === 'HEARTBEAT') {
                 triggerReceivedHeartbeat();
                 if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-                    new Notification(StorageService.getCoupleProfile().partnerName, { body: '❤️ You received a heartbeat!', icon: '/icon.svg' });
+                    new Notification(StorageService.getCoupleProfile().partnerName, { body: '❤️ You received a heartbeat!', icon: '/notification-icon.png' });
                 }
             } else if (detail.signalType === 'PET_NUDGE') {
                 if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-                    new Notification(StorageService.getCoupleProfile().partnerName, { body: `${detail.payload?.partner || 'Your partner'} sent a nudge! 👉`, icon: '/icon.svg' });
+                    new Notification(StorageService.getCoupleProfile().partnerName, { body: `${detail.payload?.partner || 'Your partner'} sent a nudge! 👉`, icon: '/notification-icon.png' });
                 }
             }
         };
@@ -407,24 +439,57 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         } else setOtdImage(null);
     }, [onThisDayMemory]);
 
-    // Scroll-linked header opacity — transparent at top, solid on scroll
+    // Scroll-linked header opacity — write directly to the DOM (no React state)
+    // so scrolling the page does NOT re-render the entire Home tree. The
+    // overlay element keeps its initial markup; we just mutate inline style on
+    // an `headerOverlayRef` element from the scroll listener. This eliminates
+    // the main source of scroll jank on Home.
     useEffect(() => {
         const mainEl = document.querySelector('main');
         if (!mainEl) return;
-        
-        const handleScroll = (e: Event) => {
-            const y = (e.target as HTMLElement).scrollTop || 0;
-            setHeaderScrollTop(y);
+
+        const applyOverlay = (y: number) => {
+            const overlayEl = headerOverlayRef.current;
+            if (!overlayEl) return;
+            const next = getHomeHeaderOverlayState(y);
+            // Cheap signature so we skip writes when nothing changed
+            // (e.g. scrolling between 0–18 keeps overlay fully hidden).
+            const sig = `${next.opacity.toFixed(3)}|${next.backdropFilter}`;
+            if (lastOverlayStateRef.current === sig) return;
+            lastOverlayStateRef.current = sig;
+
+            const style = overlayEl.style;
+            style.opacity = String(next.opacity);
+            style.background = next.background;
+            style.backdropFilter = next.backdropFilter;
+            (style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter = next.webkitBackdropFilter;
+            style.borderBottom = next.borderBottom;
+            style.transitionDuration = `${next.transitionDurationMs}ms`;
         };
-        
+
+        function handleScroll() {
+            if (scrollRafRef.current !== null) return;
+            scrollRafRef.current = requestAnimationFrame(flushScroll);
+        }
+
+        function flushScroll() {
+            scrollRafRef.current = null;
+            const y = mainEl!.scrollTop || 0;
+            if (headerScrollTopRef.current === y) return;
+            headerScrollTopRef.current = y;
+            applyOverlay(y);
+        }
+
         mainEl.addEventListener('scroll', handleScroll, { passive: true });
-        // Trigger once to set initial state
-        handleScroll({ target: mainEl } as unknown as Event);
-        
-        return () => mainEl.removeEventListener('scroll', handleScroll);
+        // Initial paint
+        applyOverlay(mainEl.scrollTop || 0);
+
+        return () => {
+            if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+            mainEl.removeEventListener('scroll', handleScroll);
+        };
     }, []);
 
-    const headerOverlay = getHomeHeaderOverlayState(headerScrollTop);
     const homeContainerStyle = getHomeContainerStyle();
     const homeHeaderOverlayHeight = getHomeHeaderOverlayHeight();
 
@@ -478,33 +543,30 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
     return (
         <div className="px-4 relative parallax-container" style={homeContainerStyle}>
-            {/* Scroll-linked floating header bar */}
+            {/* Scroll-linked floating header bar — style mutated by the scroll
+                listener directly (no React state) so scrolling stays jank-free. */}
             <div
+                ref={headerOverlayRef}
                 className="fixed top-0 left-0 right-0 z-30 pointer-events-none transition-opacity ease-out"
                 style={{
-                    opacity: headerOverlay.opacity,
-                    background: headerOverlay.background,
-                    backdropFilter: headerOverlay.backdropFilter,
-                    WebkitBackdropFilter: headerOverlay.webkitBackdropFilter,
-                    borderBottom: headerOverlay.borderBottom,
-                    transitionDuration: `${headerOverlay.transitionDurationMs}ms`,
+                    opacity: 0,
+                    background: 'transparent',
+                    backdropFilter: 'none',
+                    WebkitBackdropFilter: 'none',
+                    borderBottom: '1px solid rgba(255,255,255,0)',
+                    transitionDuration: '0ms',
                     height: homeHeaderOverlayHeight,
+                    // Pre-promote to compositor so toggling backdrop-filter
+                    // mid-scroll never re-creates a paint layer.
+                    transform: 'translateZ(0)',
+                    willChange: 'opacity, background, backdrop-filter',
+                    contain: 'layout paint style',
                 }}
             />
 
             {/* Particle Heart — triggered on send & receive */}
             <HeartbeatParticles ref={particlesRef} />
             {showSurprise && surpriseContent && <SurpriseModal content={surpriseContent} onClose={() => setShowSurprise(false)} />}
-            {showPet && (
-                <CouplePet
-                    memories={memories}
-                    notes={notes}
-                    status={myStatus}
-                    partnerName={profile.partnerName}
-                    onClose={() => setShowPet(false)}
-                />
-            )}
-
             {/* ── HEADER ──────────────────────────────────────────────── */}
             <div className="flex items-center justify-between mb-2 relative z-10">
                 <motion.div
@@ -630,8 +692,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 <div className={`transition-all duration-500 w-full ${showDetailedDuration ? 'opacity-0 translate-y-4 absolute pointer-events-none' : ''}`}>
                                     <p className="text-white/50 text-micro uppercase tracking-widest mb-3">You've been together for</p>
                                     <div className="flex items-baseline gap-2.5 mb-3">
-                                        <h2 className="text-[5.5rem] font-serif tracking-tighter font-bold text-white leading-none drop-shadow-lg">{displayCount}</h2>
-                                        <span className="text-xl text-white/50 font-serif italic">days</span>
+                                        <h2 className="text-[5.5rem] tracking-tighter font-bold text-white leading-none drop-shadow-lg" style={DAYS_TOGETHER_LEGACY_FONT_STYLE}>{displayCount}</h2>
+                                        <span className="text-xl text-white/50 italic" style={DAYS_TOGETHER_LEGACY_UNIT_STYLE}>days</span>
                                     </div>
                                     <p className="text-white/70 text-xs font-semibold flex items-center gap-1.5">
                                         <Sparkles size={11} fill="currentColor" /> Every day matters
@@ -639,7 +701,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                                 <div className={`transition-all duration-500 w-full ${!showDetailedDuration ? 'opacity-0 -translate-y-4 absolute pointer-events-none' : ''}`}>
                                     <p className="text-white/50 text-micro uppercase tracking-widest mb-3">That is exactly</p>
-                                    <h2 className="text-3xl font-serif font-bold mb-3 leading-tight text-white">{detailedDuration || `${daysTogether} days`}</h2>
+                                    <h2 className="text-3xl font-bold mb-3 leading-tight text-white" style={DAYS_TOGETHER_LEGACY_FONT_STYLE}>{detailedDuration || `${daysTogether} days`}</h2>
                                     <p className="text-white/70 text-xs font-semibold flex items-center gap-1.5">
                                         <Heart size={11} fill="currentColor" /> and counting...
                                     </p>
@@ -669,10 +731,13 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : ''}`}>
                                 <Heart fill="currentColor" size={22} />
                             </div>
-                            <span className="font-bold text-sm tracking-wide">Heartbeat</span>
+                            <span className="flex flex-col leading-tight">
+                                <span className="text-[14px] font-extrabold tracking-wide">Send heartbeat</span>
+                                <span className="mt-0.5 text-[11px] font-semibold text-white/80">A soft pulse to them</span>
+                            </span>
                         </div>
                     </div>
-                    <div onClick={() => setShowPet(true)} className="w-[4.5rem]">
+                    <div onClick={() => setView('coco-pet')} className="w-[4.5rem]">
                         <div className="w-full h-full bento-card text-lior-500 p-5 flex items-center justify-center spring-press">
                             <PawPrint size={22} />
                         </div>
@@ -816,6 +881,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                     src={otdImage}
                                     className="absolute inset-0 w-full h-full object-cover"
                                     alt="On this day"
+                                    loading="lazy"
+                                    decoding="async"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                             </>

@@ -16,6 +16,7 @@
 import React, { useEffect, useRef } from 'react';
 import { AnimationEngine } from '../utils/AnimationEngine';
 import { readThemeRgbTriplet } from '../utils/themeVars';
+import { observeDocumentAttributes } from '../utils/documentObserverBus';
 
 // ─── Tuning ────────────────────────────────────────────────────────────────────
 const STAR_COUNT       = 120;
@@ -148,11 +149,7 @@ export const ConstellationCanvas: React.FC = () => {
     };
     syncThemeColors();
 
-    const themeObserver = new MutationObserver(syncThemeColors);
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['style', 'data-theme'],
-    });
+    const stopThemeObserver = observeDocumentAttributes(['style', 'data-theme'], syncThemeColors);
 
     // ── Main tick ─────────────────────────────────────────────────
     AnimationEngine.register({
@@ -329,7 +326,7 @@ export const ConstellationCanvas: React.FC = () => {
     return () => {
       AnimationEngine.unregister('constellation');
       ro.disconnect();
-      themeObserver.disconnect();
+      stopThemeObserver();
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup',   onPointerUp);

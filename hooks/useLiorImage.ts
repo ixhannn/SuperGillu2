@@ -1,6 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { StorageService, storageEventTarget } from '../services/storage';
 
+const mediaRequestCache = new Map<string, Promise<string | null>>();
+const mediaValueCache = new Map<string, string | null>();
+
+const buildMediaKey = (mediaId?: string, fallbackData?: string, storagePath?: string) => (
+    [mediaId || '', storagePath || '', fallbackData ? `fallback:${fallbackData.length}` : ''].join('|')
+);
+
+const resolveCachedMedia = async (mediaId?: string, fallbackData?: string, storagePath?: string) => {
+    const key = buildMediaKey(mediaId, fallbackData, storagePath);
+    if (mediaValueCache.has(key)) return mediaValueCache.get(key) ?? null;
+
+    const existing = mediaRequestCache.get(key);
+    if (existing) return existing;
+
+    const request = StorageService.getImage(mediaId || '', fallbackData, storagePath)
+        .then((value) => {
+            mediaValueCache.set(key, value ?? null);
+            return value ?? null;
+        })
+        .finally(() => {
+            mediaRequestCache.delete(key);
+        });
+
+    mediaRequestCache.set(key, request);
+    return request;
+};
+
 /**
  * Custom hook to resolve media (Images/Videos) from RAM -> IndexedDB -> Cloud Payload.
  *
@@ -32,7 +59,7 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
             }
 
             try {
-                const data = await StorageService.getImage(mediaId || '', fallbackData, storagePath);
+                const data = await resolveCachedMedia(mediaId, fallbackData, storagePath);
                 if (isMounted) {
                     setSrc(data);
                     setIsLoading(false);
@@ -56,45 +83,28 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
     // If sync fills in missing metadata after first render, retry the full resolver.
     useEffect(() => {
         if (!mediaId && !fallbackData && !storagePath) return;
+        if (src !== null) return;
 
-        const handler = async () => {
-            const cur = srcRef.current;
-            const isLocalData = cur !== null && !cur.startsWith('http');
-            if (isLocalData) return;
-
-            try {
-                const data = await StorageService.getImage(mediaId || '', fallbackData, storagePath);
-                if (data && data !== srcRef.current) setSrc(data);
-            } catch {
-                // Best-effort retry on the next storage update.
-            }
-        };
-
-        storageEventTarget.addEventListener('storage-update', handler);
-        return () => storageEventTarget.removeEventListener('storage-update', handler);
-    }, [mediaId, fallbackData, storagePath]);
-
-    // Retry if sync finishes after mount or the first request races the UI.
-    useEffect(() => {
-        if (!mediaId && !fallbackData && !storagePath) return;
-
-        const delays = [2000, 5000, 12000];
-        const timers: ReturnType<typeof setTimeout>[] = [];
-
-        for (const delay of delays) {
-            timers.push(setTimeout(async () => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const retry = () => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(async () => {
                 if (srcRef.current !== null) return;
                 try {
-                    const data = await StorageService.getImage(mediaId || '', fallbackData, storagePath);
+                    const data = await resolveCachedMedia(mediaId, fallbackData, storagePath);
                     if (data) setSrc(data);
                 } catch {
                     // Best-effort retry only.
                 }
-            }, delay));
-        }
+            }, 900);
+        };
 
-        return () => timers.forEach(t => clearTimeout(t));
-    }, [mediaId, fallbackData, storagePath]);
+        storageEventTarget.addEventListener('storage-update', retry);
+        return () => {
+            if (timer) clearTimeout(timer);
+            storageEventTarget.removeEventListener('storage-update', retry);
+        };
+    }, [mediaId, fallbackData, storagePath, src]);
 
     /**
      * Call this as onError on <img> / <video> elements.
@@ -104,6 +114,7 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
     const handleError = useCallback(async () => {
         if (!src || !src.startsWith('http')) return;
         try {
+            mediaValueCache.delete(buildMediaKey(mediaId, fallbackData, storagePath));
             const localSrc = await StorageService.getImageLocalOnly(mediaId || '', fallbackData, storagePath);
             if (localSrc) {
                 setSrc(localSrc);

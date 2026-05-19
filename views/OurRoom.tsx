@@ -18,6 +18,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
 import { ROOM_SHOP_BY_ID, RoomCatalogItem } from '../components/room/roomCatalog3D';
 import { daysTogetherFrom } from '../shared/dateOnly.js';
+import { shouldGateHeavyView } from '../utils/runtimeProfile';
 import {
   normalizeCoupleRoom,
   placeItem,
@@ -347,10 +348,7 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   const [remoteActivity, setRemoteActivity] = useState('');
   const [knownSelfNames, setKnownSelfNames] = useState<string[]>(() => (profile.myName ? [profile.myName] : []));
   const [knownPartnerNames, setKnownPartnerNames] = useState<string[]>(() => (profile.partnerName ? [profile.partnerName] : []));
-  // Mobile-only app: the 3D room IS the feature on this view, so we always
-  // enable it. The previous gate disabled the scene on phones (the only
-  // target!) leaving an empty placeholder.
-  const [sceneEnabled, setSceneEnabled] = useState(true);
+  const [sceneEnabled, setSceneEnabled] = useState(() => !shouldGateHeavyView());
   const stateRef = useRef(room);
   const presenceSnapshotRef = useRef<any>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -688,13 +686,17 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
             onChange={(event) => setDraftRoomName(event.target.value)}
             onBlur={commitRoomName}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') commitRoomName();
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) commitRoomName();
               if (event.key === 'Escape') {
                 setDraftRoomName(room.roomName);
                 setEditingName(false);
               }
             }}
             autoFocus
+            inputMode="text"
+            enterKeyHint="done"
+            autoCapitalize="words"
+            autoCorrect="off"
             className="px-3 py-1.5 text-sm font-extrabold outline-none"
             style={{
               color: '#5c3d2e',
@@ -969,7 +971,11 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                         placeholder={`A note for ${profile.partnerName}...`}
                         maxLength={200}
                         rows={2}
-                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[0.82rem] outline-none"
+                        inputMode="text"
+                        enterKeyHint="send"
+                        autoCapitalize="sentences"
+                        autoCorrect="on"
+                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[16px] outline-none"
                         style={{ color: strongText, border: '1.5px solid rgba(0,0,0,0.08)' }}
                       />
                       <motion.button
@@ -1060,7 +1066,11 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                         placeholder={`Message for ${profile.partnerName}...`}
                         maxLength={200}
                         rows={2}
-                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[0.82rem] outline-none"
+                        inputMode="text"
+                        enterKeyHint="send"
+                        autoCapitalize="sentences"
+                        autoCorrect="on"
+                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[16px] outline-none"
                         style={{ color: strongText, border: '1.5px solid rgba(0,0,0,0.08)' }}
                       />
                       <motion.button

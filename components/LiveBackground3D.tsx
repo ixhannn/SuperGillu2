@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { AnimationEngine, QualityTier } from '../utils/AnimationEngine';
 import { LiveBackground } from './LiveBackground';
 import { readThemeColorList } from '../utils/themeVars';
+import { observeDocumentAttributes } from '../utils/documentObserverBus';
 
 export type ParticlePreset = 'spark' | 'plasma' | 'ink';
 
@@ -58,10 +59,13 @@ const PRESETS: Record<ParticlePreset, {
 };
 
 // ── Seeded random helper ───────────────────────────────────────────
-const rng = (() => {
-  let s = 42;
-  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
-})();
+const createSeededRandom = (seed: number) => {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+};
 
 interface LiveBackground3DProps {
   preset?: ParticlePreset;
@@ -77,6 +81,7 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
 
   useEffect(() => {
     const activePreset = PRESETS[preset];
+    const rand = createSeededRandom(42);
     let bokehColors = readThemeColorList('--theme-live-3d-bokeh', activePreset.bokehColors).map((c) => new THREE.Color(c));
     let sparkleColors = readThemeColorList('--theme-live-3d-sparkle', activePreset.sparkleColors).map((c) => new THREE.Color(c));
 
@@ -127,61 +132,61 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
 
     // ── Init BOKEH layer ──────────────────────────────────────────
     for (let i = 0; i < BOKEH_COUNT; i++) {
-      orbitRX[i]    = 10 + rng() * 40;
-      orbitRY[i]    = 8  + rng() * 32;
+      orbitRX[i]    = 10 + rand() * 40;
+      orbitRY[i]    = 8  + rand() * 32;
       // Lissajous: slight irrational frequency ratio → organic figure patterns
-      const baseFreq = (0.018 + rng() * 0.04) * activePreset.bokehFreqMult;
+      const baseFreq = (0.018 + rand() * 0.04) * activePreset.bokehFreqMult;
       freqX[i]      = baseFreq;
-      freqY[i]      = baseFreq * (0.85 + rng() * 0.35); // slight mismatch
-      phaseOff[i]   = rng() * Math.PI * 2;
-      centerX[i]    = (rng() - 0.5) * 22;
-      centerY[i]    = (rng() - 0.5) * 18;
-      baseZ[i]      = -25 + rng() * 60;
-      zDriftAmp[i]  = 2 + rng() * 5;
-      zDriftFreq[i] = 0.06 + rng() * 0.12;
-      phases[i]     = rng() * Math.PI * 2;
+      freqY[i]      = baseFreq * (0.85 + rand() * 0.35); // slight mismatch
+      phaseOff[i]   = rand() * Math.PI * 2;
+      centerX[i]    = (rand() - 0.5) * 22;
+      centerY[i]    = (rand() - 0.5) * 18;
+      baseZ[i]      = -25 + rand() * 60;
+      zDriftAmp[i]  = 2 + rand() * 5;
+      zDriftFreq[i] = 0.06 + rand() * 0.12;
+      phases[i]     = rand() * Math.PI * 2;
 
       const angle = phaseOff[i];
       positions[i * 3]     = centerX[i] + Math.cos(angle) * orbitRX[i];
       positions[i * 3 + 1] = centerY[i] + Math.sin(angle) * orbitRY[i];
       positions[i * 3 + 2] = baseZ[i];
 
-      const col = bokehColors[Math.floor(rng() * bokehColors.length)];
+      const col = bokehColors[i % bokehColors.length];
       colors[i * 3]     = col.r;
       colors[i * 3 + 1] = col.g;
       colors[i * 3 + 2] = col.b;
 
       const depth = (baseZ[i] + 25) / 60; // 0=far → 1=near
-      sizes[i] = (3.5 + rng() * 5.5) * (0.4 + depth * 1.0);
+      sizes[i] = (3.5 + rand() * 5.5) * (0.4 + depth * 1.0);
     }
 
     // ── Init SPARKLE layer ────────────────────────────────────────
     for (let i = BOKEH_COUNT; i < TOTAL; i++) {
-      orbitRX[i]    = 4  + rng() * 18;
-      orbitRY[i]    = 3  + rng() * 15;
-      const baseFreq = (0.05 + rng() * 0.10) * activePreset.sparkleFreqMult;
+      orbitRX[i]    = 4  + rand() * 18;
+      orbitRY[i]    = 3  + rand() * 15;
+      const baseFreq = (0.05 + rand() * 0.10) * activePreset.sparkleFreqMult;
       freqX[i]      = baseFreq;
-      freqY[i]      = baseFreq * (0.7 + rng() * 0.6);
-      phaseOff[i]   = rng() * Math.PI * 2;
-      centerX[i]    = (rng() - 0.5) * 28;
-      centerY[i]    = (rng() - 0.5) * 22;
-      baseZ[i]      = -10 + rng() * 30;
-      zDriftAmp[i]  = 1 + rng() * 3;
-      zDriftFreq[i] = 0.12 + rng() * 0.20;
-      phases[i]     = rng() * Math.PI * 2;
+      freqY[i]      = baseFreq * (0.7 + rand() * 0.6);
+      phaseOff[i]   = rand() * Math.PI * 2;
+      centerX[i]    = (rand() - 0.5) * 28;
+      centerY[i]    = (rand() - 0.5) * 22;
+      baseZ[i]      = -10 + rand() * 30;
+      zDriftAmp[i]  = 1 + rand() * 3;
+      zDriftFreq[i] = 0.12 + rand() * 0.20;
+      phases[i]     = rand() * Math.PI * 2;
 
       const angle = phaseOff[i];
       positions[i * 3]     = centerX[i] + Math.cos(angle) * orbitRX[i];
       positions[i * 3 + 1] = centerY[i] + Math.sin(angle) * orbitRY[i];
       positions[i * 3 + 2] = baseZ[i];
 
-      const col = sparkleColors[Math.floor(rng() * sparkleColors.length)];
+      const col = sparkleColors[(i - BOKEH_COUNT) % sparkleColors.length];
       colors[i * 3]     = col.r;
       colors[i * 3 + 1] = col.g;
       colors[i * 3 + 2] = col.b;
 
       const depth = (baseZ[i] + 10) / 30;
-      sizes[i] = (0.8 + rng() * 1.8) * (0.5 + depth * 0.8);
+      sizes[i] = (0.8 + rand() * 1.8) * (0.5 + depth * 0.8);
     }
 
     const rebuildThemePalettes = () => {
@@ -189,14 +194,14 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
       sparkleColors = readThemeColorList('--theme-live-3d-sparkle', activePreset.sparkleColors).map((c) => new THREE.Color(c));
 
       for (let i = 0; i < BOKEH_COUNT; i++) {
-        const col = bokehColors[Math.floor(rng() * bokehColors.length)];
+        const col = bokehColors[i % bokehColors.length];
         colors[i * 3] = col.r;
         colors[i * 3 + 1] = col.g;
         colors[i * 3 + 2] = col.b;
       }
 
       for (let i = BOKEH_COUNT; i < TOTAL; i++) {
-        const col = sparkleColors[Math.floor(rng() * sparkleColors.length)];
+        const col = sparkleColors[(i - BOKEH_COUNT) % sparkleColors.length];
         colors[i * 3] = col.r;
         colors[i * 3 + 1] = col.g;
         colors[i * 3 + 2] = col.b;
@@ -287,13 +292,9 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
     scene.add(particles);
 
     const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute;
-    const themeObserver = new MutationObserver(() => {
+    const stopThemeObserver = observeDocumentAttributes(['style', 'data-theme'], () => {
       rebuildThemePalettes();
       colorAttr.needsUpdate = true;
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['style', 'data-theme'],
     });
 
     // ── Resize ────────────────────────────────────────────────────
@@ -308,9 +309,20 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
     window.addEventListener('resize', resize, { passive: true });
 
     // ── Scroll parallax ───────────────────────────────────────────
+    // The app scrolls inside the fixed mobile shell, not the window.
+    // Reading the real scroll root keeps the ambient parallax alive in the APK.
+    // Single listener (not both scrollRoot + window) — the wrapper owns the
+    // scroll; the window scroll path is never used in the production shell.
     let scrollY = 0;
-    const onScroll = () => { scrollY = window.scrollY || 0; };
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const scrollRoot = document.querySelector<HTMLElement>('.lenis-wrapper');
+    const readScrollY = () => scrollRoot?.scrollTop ?? window.scrollY ?? 0;
+    const onScroll = () => { scrollY = readScrollY(); };
+    onScroll();
+    if (scrollRoot) {
+      scrollRoot.addEventListener('scroll', onScroll, { passive: true });
+    } else {
+      window.addEventListener('scroll', onScroll, { passive: true });
+    }
 
     // ── Animation ─────────────────────────────────────────────────
     const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
@@ -348,18 +360,15 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
       },
     });
 
-    // ── Tier watchdog — fall back if device gets hot ──────────────
-    const tierCheck = setInterval(() => {
-      const tier = AnimationEngine.tier;
-      if (tier === 'low' || tier === 'css-only') setUseFallback(true);
-    }, 3000);
-
     return () => {
-      clearInterval(tierCheck);
-      themeObserver.disconnect();
+      stopThemeObserver();
       AnimationEngine.unregister('live-bg-3d');
       window.removeEventListener('resize', resize);
-      window.removeEventListener('scroll', onScroll);
+      if (scrollRoot) {
+        scrollRoot.removeEventListener('scroll', onScroll);
+      } else {
+        window.removeEventListener('scroll', onScroll);
+      }
       geometry.dispose();
       material.dispose();
       renderer.dispose();

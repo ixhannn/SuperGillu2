@@ -21,6 +21,17 @@ export const NavigationContext = createContext<{
   currentView: 'home',
 });
 export const useNavigation = () => useContext(NavigationContext);
+
+export const NavigationActionsContext = createContext<{
+  navigateTo: (view: ViewState, options?: NavigationOptions) => void;
+  goBack: () => void;
+  canGoBack: boolean;
+}>({
+  navigateTo: () => {},
+  goBack: () => {},
+  canGoBack: false,
+});
+export const useNavigationActions = () => useContext(NavigationActionsContext);
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { ViewTransition } from './components/ViewTransition';
@@ -32,36 +43,37 @@ import { SupabaseService } from './services/supabase';
 import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
 import { DiagnosticsService } from './services/diagnostics';
+import { FrameHealthService } from './services/frameHealth';
 import { NotificationsService } from './services/notifications';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
 import { AppLaunchOverlay } from './components/AppLaunchOverlay';
 import { DevPanel } from './components/DevPanel';
-import { WhatsNew } from './components/WhatsNew';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
 import { InternalAdminService } from './services/internalAdmin';
-import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModules } from './views/viewRegistry';
+import { scheduleIdleTask } from './utils/scheduler';
+import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
 import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
 
 const hasCompletedOnboarding = () => StorageService.hasCompletedOnboarding();
 
-const COMMON_NAV_PRELOADS: ViewState[] = [
+const WhatsNew = React.lazy(() =>
+  import('./components/WhatsNew').then((module) => ({ default: module.WhatsNew })),
+);
+
+const CORE_NAV_PRELOADS: ViewState[] = [
   'add-memory',
   'timeline',
   'daily-moments',
   'us',
+];
+
+const SECONDARY_NAV_PRELOADS: ViewState[] = [
   'profile',
   'sync',
   'countdowns',
   'open-when',
   'dinner-decider',
-  'mood-calendar',
-  'bonsai-bloom',
-  'private-space',
-  'time-capsule',
-  'surprises',
-  'daily-video',
-  'weekly-recap',
 ];
 
 /** Inner component — must live inside CoachmarkProvider to access context */
@@ -118,12 +130,44 @@ const RouteLoader = () => (
 
 const RouteFallback = () => null;
 
+const KeepAliveTabContent = React.memo(({
+  tab,
+  setView,
+}: {
+  tab: ViewState;
+  setView: (view: ViewState, options?: NavigationOptions) => void;
+}) => {
+  const TabView = getViewComponent(tab);
+  return <TabView setView={setView} />;
+});
+KeepAliveTabContent.displayName = 'KeepAliveTabContent';
+
+const KeepAliveTabShell = React.memo(({
+  tab,
+  isActive,
+  setView,
+}: {
+  tab: ViewState;
+  isActive: boolean;
+  setView: (view: ViewState, options?: NavigationOptions) => void;
+}) => {
+  return (
+    <div
+      data-keep-alive-tab={tab}
+      className={`keep-alive-shell ${isActive ? 'is-active' : 'is-cached'}`}
+      aria-hidden={!isActive}
+      inert={isActive ? undefined : true}
+    >
+      <KeepAliveTabContent tab={tab} setView={setView} />
+    </div>
+  );
+});
+KeepAliveTabShell.displayName = 'KeepAliveTabShell';
+
 // Main App Component with Default Export
 const App = () => {
   const e2eMode = isE2EAppMode();
   const [currentView, setCurrentView] = useState<ViewState>('home');
-  const [transitionDir, setTransitionDir] = useState<TransitionDirection>('tab');
-  const [isSwitchingView, setIsSwitchingView] = useState(false);
   const historyStack = useRef<ViewState[]>([]);
   const scrollPositions = useRef<Record<string, number>>({});
   const pendingScrollRestore = useRef<{ view: ViewState; y: number } | null>(null);
@@ -133,6 +177,28 @@ const App = () => {
   // Tracks current view synchronously for pre-transition direction calculation.
   // Must be updated BEFORE state changes so direction is resolved correctly.
   const currentViewRef = useRef<ViewState>('home');
+
+  // ── Keep-alive tab cache ────────────────────────────────────────────────
+  // Every ROOT_TAB visited at least once stays mounted in the DOM. Switching
+  // between cached tabs becomes a CSS visibility flip — no React unmount, no
+  // re-render of the just-mounted tree, no Suspense boundary work, no
+  // fresh useState/useEffect cost. Same React instance survives every
+  // back-and-forth (Home → Us → Home is now genuinely free).
+  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => new Set(['home']));
+  const mountedTabsRef = useRef<Set<ViewState>>(new Set(['home']));
+  const markTabMounted = useCallback((view: ViewState) => {
+    if (!ROOT_TABS.includes(view)) return;
+    setMountedTabs((prev) => {
+      if (prev.has(view)) {
+        mountedTabsRef.current = prev;
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(view);
+      mountedTabsRef.current = next;
+      return next;
+    });
+  }, []);
 
   // Register main scroll container from Layout
   const registerScrollRef = useCallback((el: HTMLElement | null) => {
@@ -167,13 +233,13 @@ const App = () => {
       scrollPositions.current[prev] = getCurrentScroll();
       currentViewRef.current        = destination;
       flushSync(() => {
-        setTransitionDir('pop');
+        markTabMounted(destination);
         setCurrentView(destination);
       });
     };
     window.addEventListener('te:gesture-back', handler);
     return () => window.removeEventListener('te:gesture-back', handler);
-  }, [getCurrentScroll]);
+  }, [getCurrentScroll, markTabMounted]);
 
   // ── Module preload on prefetch ──────────────────────────────────────────
   // Keep-alive tab cache obviates the need to pre-mount React trees, but we
@@ -186,7 +252,7 @@ const App = () => {
         .filter((view): view is ViewState => Boolean(view) && view !== currentViewRef.current)
         .filter((view, index, list) => list.indexOf(view) === index)
         .slice(0, 3);
-      void preloadViewModules(hintedViews);
+      void preloadViewModulesSequential(hintedViews);
     };
     window.addEventListener('te:prefetch', handler);
     return () => window.removeEventListener('te:prefetch', handler);
@@ -200,25 +266,15 @@ const App = () => {
       pendingNavigationMetricRef.current = null;
     }
     transitionLockRef.current = false;
-    setIsSwitchingView(false);
   }, []);
 
-  // ── Keep-alive tab cache ────────────────────────────────────────────────
-  // Every ROOT_TAB visited at least once stays mounted in the DOM. Switching
-  // between cached tabs becomes a CSS visibility flip — no React unmount, no
-  // re-render of the just-mounted tree, no Suspense boundary work, no
-  // fresh useState/useEffect cost. Same React instance survives every
-  // back-and-forth (Home → Us → Home is now genuinely free).
-  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => new Set(['home']));
   useEffect(() => {
-    if (!ROOT_TABS.includes(currentView)) return;
-    setMountedTabs((prev) => {
-      if (prev.has(currentView)) return prev;
-      const next = new Set(prev);
-      next.add(currentView);
-      return next;
-    });
-  }, [currentView]);
+    mountedTabsRef.current = mountedTabs;
+  }, [mountedTabs]);
+
+  useEffect(() => {
+    markTabMounted(currentView);
+  }, [currentView, markTabMounted]);
 
   // ── Fast tab transition (CSS-only crossfade) ────────────────────────────
   // For tab-to-tab switches, we don't need View Transitions API or DOM
@@ -227,31 +283,22 @@ const App = () => {
   // app its native feel: no flushSync, no JS work, no main-thread block.
   const runTabTransition = useCallback((destination: ViewState, startedAt?: number) => {
     transitionLockRef.current = true;
-    setIsSwitchingView(true);
     pendingNavigationMetricRef.current = {
       view: destination,
       direction: 'tab',
       startedAt: startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     };
 
-    // Tag <html> so ambient layers pause for the brief crossfade window.
-    if (typeof document !== 'undefined') {
-      document.documentElement.dataset.transitioning = '1';
-    }
-
-    setTransitionDir('tab');
+    markTabMounted(destination);
     setCurrentView(destination);
 
     // Lock window matches the CSS keep-alive-fade-in duration so a rapid
     // double-tap doesn't try to swap mid-fade. Opacity-only fade is cheap
     // enough that the lock window doesn't feel laggy.
     window.setTimeout(() => {
-      if (typeof document !== 'undefined') {
-        delete document.documentElement.dataset.transitioning;
-      }
       finalizeNavigation();
     }, 140);
-  }, [finalizeNavigation]);
+  }, [finalizeNavigation, markTabMounted]);
 
   const runNavigation = useCallback((destination: ViewState, dir: TransitionDirection, startedAt?: number) => {
     pendingScrollRestore.current = {
@@ -260,13 +307,12 @@ const App = () => {
     };
 
     // Fast path: tab-to-tab between already-cached views.
-    if (dir === 'tab' && mountedTabs.has(destination) && ROOT_TABS.includes(currentViewRef.current)) {
+    if (dir === 'tab' && mountedTabsRef.current.has(destination) && ROOT_TABS.includes(currentViewRef.current)) {
       runTabTransition(destination, startedAt);
       return;
     }
 
     transitionLockRef.current = true;
-    setIsSwitchingView(true);
     pendingNavigationMetricRef.current = {
       view: destination,
       direction: dir,
@@ -277,7 +323,7 @@ const App = () => {
       dir as EngineDirection,
       () => {
         flushSync(() => {
-          setTransitionDir(dir);
+          markTabMounted(destination);
           setCurrentView(destination);
         });
       },
@@ -285,7 +331,7 @@ const App = () => {
         requestAnimationFrame(finalizeNavigation);
       },
     );
-  }, [finalizeNavigation, mountedTabs, runTabTransition]);
+  }, [finalizeNavigation, markTabMounted, runTabTransition]);
 
   const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
@@ -327,9 +373,8 @@ const App = () => {
         y: scrollPositions.current[view] ?? 0,
       };
       flushSync(() => {
-        setTransitionDir(dir);
+        markTabMounted(view);
         setCurrentView(view);
-        setIsSwitchingView(false);
       });
       transitionLockRef.current = false;
       return;
@@ -337,7 +382,6 @@ const App = () => {
 
     if (!isViewModuleLoaded(view)) {
       transitionLockRef.current = true;
-      setIsSwitchingView(true);
       void preloadViewModule(view)
         .catch((error) => {
           DiagnosticsService.recordError('navigation.preload', error, { view });
@@ -365,6 +409,15 @@ const App = () => {
   }, [getCurrentScroll, runNavigation]);
 
   const canGoBack = historyStack.current.length > 0;
+  const navigationActionsValue = useMemo(() => ({
+    navigateTo,
+    goBack,
+    canGoBack,
+  }), [navigateTo, goBack, canGoBack]);
+  const navigationValue = useMemo(() => ({
+    ...navigationActionsValue,
+    currentView,
+  }), [navigationActionsValue, currentView]);
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -382,6 +435,7 @@ const App = () => {
 
   useEffect(() => {
     DiagnosticsService.start();
+    FrameHealthService.start();
   }, []);
 
   useEffect(() => {
@@ -391,26 +445,36 @@ const App = () => {
   }, [isInitialized, launchReady]);
 
   useEffect(() => {
-    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated && SupabaseService.isConfigured())) return;
+    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
     if (typeof window === 'undefined') return;
 
-    const scheduleIdle = window.requestIdleCallback ?? ((cb: IdleRequestCallback) => window.setTimeout(() => cb({
-      didTimeout: false,
-      timeRemaining: () => 0,
-    }), 900));
-    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout;
-    const idleId = scheduleIdle(() => {
-      void preloadViewModules(COMMON_NAV_PRELOADS);
-    }, { timeout: 2400 });
+    const cancelers: Array<() => void> = [];
 
-    return () => cancelIdle(idleId as number);
+    const scheduleIdlePreload = (views: ViewState[], timeout: number, delay: number) => {
+      cancelers.push(scheduleIdleTask(() => {
+        void preloadViewModulesSequential(views);
+      }, { timeout, delay }));
+    };
+
+    scheduleIdlePreload(CORE_NAV_PRELOADS, 1600, 700);
+    scheduleIdlePreload(SECONDARY_NAV_PRELOADS, 3200, 3600);
+
+    return () => {
+      cancelers.forEach((cancel) => cancel());
+    };
   }, [e2eMode, isAuthenticated, isInitialized, showOnboarding]);
 
   useEffect(() => {
-    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated && SupabaseService.isConfigured())) return;
-    void NotificationsService.applySchedule().catch((error) => {
-      DiagnosticsService.recordError('notifications.schedule', error);
-    });
+    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
+    return scheduleIdleTask(() => {
+      void NotificationsService.applySchedule().catch((error) => {
+        DiagnosticsService.recordError('notifications.schedule', error);
+      });
+      // Register this device for push so partner nudges can be delivered.
+      void NotificationsService.registerPushToken().catch((error) => {
+        DiagnosticsService.recordError('notifications.push_register', error);
+      });
+    }, { timeout: 3200, delay: 1200 });
   }, [e2eMode, isAuthenticated, isInitialized, showOnboarding]);
 
   useEffect(() => {
@@ -531,9 +595,10 @@ const App = () => {
             SyncService.reset();
           }
         } else {
-          hasOnboardedAfterBootstrap = hasCompletedOnboarding();
+          hasOnboardedAfterBootstrap = false;
           if (!disposed) {
-            setShowOnboarding(!hasOnboardedAfterBootstrap);
+            setIsAuthenticated(false);
+            setShowOnboarding(false);
           }
           SyncService.reset();
         }
@@ -627,24 +692,22 @@ const App = () => {
   // active one is visible; the others have `display:none` (state preserved,
   // effects continue, paint cost zero). Non-tab views render in a separate
   // overlay slot below.
+  const visibleMountedTabs = useMemo(() => {
+    const next = new Set(mountedTabs);
+    if (ROOT_TABS.includes(currentView)) next.add(currentView);
+    return Array.from(next);
+  }, [currentView, mountedTabs]);
+
   const keepAliveTabs = useMemo(() => {
-    const tabs = Array.from(mountedTabs);
-    return tabs.map((tab) => {
-      const TabView = getViewComponent(tab);
-      const isActive = tab === currentView;
-      return (
-        <div
-          key={tab}
-          data-keep-alive-tab={tab}
-          className={`keep-alive-shell ${isActive ? 'is-active' : 'is-cached'}`}
-          aria-hidden={!isActive}
-          inert={isActive ? undefined : true}
-        >
-          <TabView setView={navigateTo} />
-        </div>
-      );
-    });
-  }, [mountedTabs, currentView, navigateTo]);
+    return visibleMountedTabs.map((tab) => (
+      <KeepAliveTabShell
+        key={tab}
+        tab={tab}
+        isActive={tab === currentView}
+        setView={navigateTo}
+      />
+    ));
+  }, [visibleMountedTabs, currentView, navigateTo]);
 
   // Non-tab view (push/pop destinations like sync, settings, etc.)
   // Mounts/unmounts normally — these are not on the hot path.
@@ -660,7 +723,7 @@ const App = () => {
   }
 
   // Cloud Authentication Check
-  if (!e2eMode && !isAuthenticated && SupabaseService.isConfigured()) {
+  if (!e2eMode && !isAuthenticated) {
     const AuthOverlayView = currentView === 'privacy-policy'
       ? getViewComponent('privacy-policy')
       : getViewComponent('terms-of-service');
@@ -690,46 +753,50 @@ const App = () => {
 
   return (
     <>
-      <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
-        <CoachmarkProvider currentView={currentView} navigateTo={navigateTo}>
-          <ErrorBoundary>
-            <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef} isSwitchingView={isSwitchingView}>
-              <Suspense fallback={<RouteFallback />}>
-                <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
-                  {/* Keep-alive: every visited tab stays mounted forever.
-                      Switching between tabs is a CSS visibility flip — no
-                      React unmount, no Suspense roundtrip, no fresh mount
-                      cost. This is what makes tab nav feel native. */}
-                  {keepAliveTabs}
-                  {/* Non-tab views (push/pop destinations) render on top.
-                      They mount/unmount normally since they're not hot-path. */}
-                  {overlayView && (
-                    <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
-                      {overlayView}
-                    </div>
-                  )}
-                </ViewTransition>
-              </Suspense>
-            </Layout>
-            <AuraSignalReceiver />
-            <AnimatePresence>
-              {showLaunchOverlay && <AppLaunchOverlay />}
-            </AnimatePresence>
-            <AnimatePresence>
-              {showWhatsNew && (
-                <WhatsNew onClose={() => {
-                  setShowWhatsNew(false);
-                  setScheduleTour(true);
-                }} />
-              )}
-            </AnimatePresence>
-            <CoachmarkTourScheduler
-              shouldTrigger={scheduleTour}
-              onTriggered={() => setScheduleTour(false)}
-            />
-          </ErrorBoundary>
-        </CoachmarkProvider>
-      </NavigationContext.Provider>
+      <NavigationActionsContext.Provider value={navigationActionsValue}>
+        <NavigationContext.Provider value={navigationValue}>
+          <CoachmarkProvider currentView={currentView} navigateTo={navigateTo}>
+            <ErrorBoundary>
+              <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef}>
+                <Suspense fallback={<RouteFallback />}>
+                  <ViewTransition viewKey={currentView}>
+                    {/* Keep-alive: every visited tab stays mounted forever.
+                        Switching between tabs is a CSS visibility flip — no
+                        React unmount, no Suspense roundtrip, no fresh mount
+                        cost. This is what makes tab nav feel native. */}
+                    {keepAliveTabs}
+                    {/* Non-tab views (push/pop destinations) render on top.
+                        They mount/unmount normally since they're not hot-path. */}
+                    {overlayView && (
+                      <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
+                        {overlayView}
+                      </div>
+                    )}
+                  </ViewTransition>
+                </Suspense>
+              </Layout>
+              <AuraSignalReceiver />
+              <AnimatePresence>
+                {showLaunchOverlay && <AppLaunchOverlay />}
+              </AnimatePresence>
+              <AnimatePresence>
+                {showWhatsNew && (
+                  <Suspense fallback={null}>
+                    <WhatsNew onClose={() => {
+                      setShowWhatsNew(false);
+                      setScheduleTour(true);
+                    }} />
+                  </Suspense>
+                )}
+              </AnimatePresence>
+              <CoachmarkTourScheduler
+                shouldTrigger={scheduleTour}
+                onTriggered={() => setScheduleTour(false)}
+              />
+            </ErrorBoundary>
+          </CoachmarkProvider>
+        </NavigationContext.Provider>
+      </NavigationActionsContext.Provider>
       <DevPanel actions={[
         {
           label: '▶ Replay splash screen',
@@ -845,7 +912,7 @@ const AuraSignalReceiver = () => {
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
            new Notification('Lior - New Aura', {
                body: detail.payload.title, 
-               icon: '/icon.svg',
+               icon: '/notification-icon.png',
                silent: false
            });
         }

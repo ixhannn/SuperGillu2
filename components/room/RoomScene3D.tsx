@@ -3,6 +3,7 @@ import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber';
 import { ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { RoomState } from '../../types';
+import { AnimationEngine } from '../../utils/AnimationEngine';
 import {
   Idle,
   PropKind,
@@ -35,7 +36,9 @@ const HeartBurst: React.FC<{ position: [number, number, number] }> = ({ position
     group.current.children.forEach((child, i) => {
       const p = particles[i];
       if (state.clock.elapsedTime > p.delay) {
-        child.position.add(p.velocity.clone().multiplyScalar(delta * 2));
+        child.position.x += p.velocity.x * delta * 2;
+        child.position.y += p.velocity.y * delta * 2;
+        child.position.z += p.velocity.z * delta * 2;
         child.scale.multiplyScalar(0.96);
         child.rotation.z += delta * 2;
       }
@@ -583,6 +586,35 @@ const createPropTexture = (kind: PropKind, color: string): THREE.CanvasTexture =
   return texture;
 };
 
+const propTextureCache = new Map<string, { texture: THREE.CanvasTexture; refs: number }>();
+
+const getPropTextureKey = (kind: PropKind, color: string) => `${kind}:${color}`;
+
+const acquirePropTexture = (kind: PropKind, color: string): THREE.CanvasTexture => {
+  const key = getPropTextureKey(kind, color);
+  const cached = propTextureCache.get(key);
+  if (cached) {
+    cached.refs += 1;
+    return cached.texture;
+  }
+
+  const texture = createPropTexture(kind, color);
+  propTextureCache.set(key, { texture, refs: 1 });
+  return texture;
+};
+
+const releasePropTexture = (kind: PropKind, color: string): void => {
+  const key = getPropTextureKey(kind, color);
+  const cached = propTextureCache.get(key);
+  if (!cached) return;
+
+  cached.refs -= 1;
+  if (cached.refs <= 0) {
+    cached.texture.dispose();
+    propTextureCache.delete(key);
+  }
+};
+
 const gridToWorld = (gx: number, gy: number): [number, number, number] => {
   const x = (gx - HALF_GRID) * CELL_SIZE;
   const z = (gy - HALF_GRID) * CELL_SIZE;
@@ -628,6 +660,27 @@ const SceneCameraLock: React.FC = () => {
   return null;
 };
 
+const RoomSceneInvalidator: React.FC = () => {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    AnimationEngine.register({
+      id: 'room-scene-3d-r3f',
+      priority: 4,
+      budgetMs: 0.25,
+      minTier: 'medium',
+      tick() {
+        if (typeof document !== 'undefined' && document.documentElement.dataset.transitioning) return;
+        invalidate();
+      },
+    });
+
+    return () => AnimationEngine.unregister('room-scene-3d-r3f');
+  }, [invalidate]);
+
+  return null;
+};
+
 interface PropActorProps {
   item: RoomCatalogItem;
   gx: number;
@@ -656,13 +709,13 @@ const PropActor: React.FC<PropActorProps> = ({
   id,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
-  const texture = useMemo(() => createPropTexture(item.kind, item.color), [item.kind, item.color]);
+  const texture = useMemo(() => acquirePropTexture(item.kind, item.color), [item.kind, item.color]);
   const [spriteW, spriteH] = defaultSpriteSize(item);
   const isWallMounted = item.mount === 'back-wall';
   const shadowOpacity = dragging ? 0.09 : selected ? 0.12 : 0.17;
   const baseOpacity = dimmed ? 0.5 : 1;
 
-  useEffect(() => () => texture.dispose(), [texture]);
+  useEffect(() => () => releasePropTexture(item.kind, item.color), [item.kind, item.color]);
 
   const baseRotation = THREE.MathUtils.degToRad((item.defaultRotation || 0) + rotationDeg);
   const [floorX, , floorZ] = gridToWorld(gx, gy);
@@ -898,11 +951,13 @@ interface RoomScene3DProps {
     <div data-testid="room-scene-3d" className="absolute inset-0">
       <Canvas
         orthographic
+        frameloop="demand"
         dpr={[1, 1.35]}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
         camera={{ position: [6.02, 5.72, 6.02], zoom: 74, near: 0.1, far: 120 }}
         onPointerMissed={() => onSelect(null)}
       >
+      <RoomSceneInvalidator />
       <SceneCameraLock />
       <color attach="background" args={[ambientPreset.background]} />
       <ambientLight intensity={ambientPreset.ambientIntensity} color={ambientPreset.ambientColor} />

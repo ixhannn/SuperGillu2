@@ -522,7 +522,11 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                         onChange={(event) => setNote(event.target.value.slice(0, MAX_NOTE))}
                         rows={3}
                         placeholder="Optional note"
-                        className="w-full mt-4 rounded-[1.3rem] px-4 py-3 outline-none resize-none focus:ring-2 focus:ring-lior-500/30"
+                        inputMode="text"
+                        enterKeyHint="done"
+                        autoCapitalize="sentences"
+                        autoCorrect="on"
+                        className="w-full mt-4 rounded-[1.3rem] px-4 py-3 text-[16px] outline-none resize-none focus:ring-2 focus:ring-lior-500/30"
                         style={{ background: 'rgba(255,255,255,0.42)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.16)', color: 'var(--color-text-primary)' }}
                     />
 

@@ -1,0 +1,21 @@
+.perf-list-item {
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 320px;
+}
+
+.perf-card-shell {
+  contain: layout paint style;
+}
+
+.perf-media {
+  content-visibility: auto;
+  contain: paint;
+}
+
+@supports not (content-visibility: auto) {
+  .perf-list-item,
+  .perf-media {
+    contain: layout paint style;
+  }
+}

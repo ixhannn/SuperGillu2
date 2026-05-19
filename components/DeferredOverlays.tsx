@@ -21,6 +21,7 @@
 import React, { Suspense, useEffect, useState, useImperativeHandle, forwardRef, useRef } from 'react';
 import type { ConfettiHandle } from './PhysicsConfetti';
 import { shouldGateHeavyView } from '../utils/runtimeProfile';
+import { scheduleIdleTask } from '../utils/scheduler';
 
 const LazyPhysicsConfetti = React.lazy(() =>
   import('./PhysicsConfetti').then((m) => ({ default: m.PhysicsConfetti })),
@@ -29,11 +30,6 @@ const LazyPhysicsConfetti = React.lazy(() =>
 const LazyTouchTrailCanvas = React.lazy(() =>
   import('./TouchTrailCanvas').then((m) => ({ default: m.TouchTrailCanvas })),
 );
-
-type WindowWithIdle = Window & {
-  requestIdleCallback?: (cb: IdleRequestCallback, opts?: IdleRequestOptions) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
 
 const DEFER_MS = 1500;
 
@@ -82,24 +78,10 @@ export const DeferredOverlays = forwardRef<ConfettiHandle, DeferredOverlaysProps
     if (typeof window === 'undefined') return;
     if (shouldGateHeavyView()) return;
 
-    const win = window as WindowWithIdle;
-    let cancelled = false;
-    let timeoutId: number | null = null;
-    let idleId: number | null = null;
-
-    const enable = () => { if (!cancelled) setOverlaysReady(true); };
-
-    if (typeof win.requestIdleCallback === 'function') {
-      idleId = win.requestIdleCallback(enable, { timeout: DEFER_MS });
-    } else {
-      timeoutId = window.setTimeout(enable, DEFER_MS);
-    }
-
-    return () => {
-      cancelled = true;
-      if (idleId !== null && typeof win.cancelIdleCallback === 'function') win.cancelIdleCallback(idleId);
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-    };
+    return scheduleIdleTask(() => setOverlaysReady(true), {
+      timeout: DEFER_MS,
+      delay: 700,
+    });
   }, []);
 
   return (

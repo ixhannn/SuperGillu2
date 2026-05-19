@@ -12,6 +12,7 @@
 import React, { useRef, useEffect } from 'react';
 import { AnimationEngine } from '../utils/AnimationEngine';
 import { readThemeRgbTriplet } from '../utils/themeVars';
+import { observeDocumentAttributes } from '../utils/documentObserverBus';
 
 interface HeartbeatResonanceProps {
   className?: string;
@@ -57,11 +58,7 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
     };
     syncThemeColors();
 
-    const themeObserver = new MutationObserver(syncThemeColors);
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['style', 'data-theme'],
-    });
+    const stopThemeObserver = observeDocumentAttributes(['style', 'data-theme'], syncThemeColors);
 
     // Double-bump heartbeat waveform (lub-dub)
     const hbPulse = (t: number, period: number): number => {
@@ -195,7 +192,7 @@ export const HeartbeatResonance: React.FC<HeartbeatResonanceProps> = ({ classNam
     return () => {
       AnimationEngine.unregister('heartbeat-resonance');
       ro.disconnect();
-      themeObserver.disconnect();
+      stopThemeObserver();
     };
   }, []);
 

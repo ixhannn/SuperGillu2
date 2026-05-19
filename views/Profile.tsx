@@ -524,7 +524,11 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
                 {/* ── PROFILE HEADER ─────────────────────────────────────── */}
                 <div className="px-5">
-                    <div className="rounded-2xl overflow-hidden" style={APPLE_GLASS_STYLE}>
+                    <div className="relative rounded-2xl overflow-hidden" style={APPLE_GLASS_STYLE}>
+                        <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-white/70 bg-white/45 px-2 py-1.5 shadow-[0_8px_22px_rgba(196,104,126,0.10)]">
+                            <img src="/icon-128.png" alt="" aria-hidden="true" className="h-5 w-5 object-cover" style={{ borderRadius: 5 }} />
+                            <span className="text-[9px] font-extrabold tracking-[0.22em]" style={{ color: 'var(--color-text-secondary)' }}>LIOR</span>
+                        </div>
                         <div className="flex items-center gap-4 p-4">
                             {/* Photo */}
                             <button

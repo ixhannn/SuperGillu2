@@ -21,8 +21,8 @@ assert.match(
 
 assert.match(
   storageSource,
-  /activateAccount:\s*\(userId: string \| null\) => \{[\s\S]*restoreAccountScopedProfile\(normalizedUserId\)[\s\S]*clearBaseProfileForAccountSwitch\(\);/,
-  'Expected login to activate the current account profile before onboarding decisions are made',
+  /activateAccount:\s*\(userId: string \| null\) => \{[\s\S]*if \(accountChanged\) \{[\s\S]*clearBaseProfileForAccountSwitch\(\);[\s\S]*clearBaseContentForAccountSwitch\(\);[\s\S]*restoreAccountScopedProfile\(normalizedUserId\)/,
+  'Expected login to clear stale base content before restoring the current account profile and onboarding state',
 );
 
 assert.match(

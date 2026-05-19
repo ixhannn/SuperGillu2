@@ -18,6 +18,7 @@ import { Haptics } from '../services/haptics';
 import { CoachmarkInsights, buildCoachmarkPreloadViews } from '../services/coachmarkInsights.js';
 import { NavigationOptions, ViewState } from '../types';
 import { readThemeRgbTriplet, readThemeVar } from '../utils/themeVars';
+import { observeDocumentAttributes } from '../utils/documentObserverBus';
 
 export type CoachmarkMode = 'spotlight' | 'card';
 type PreviewKind =
@@ -458,16 +459,23 @@ const usePreviewTheme = (accent: string) => {
   const [theme, setTheme] = useState<PreviewTheme>(() => getPreviewTheme(accent));
 
   useEffect(() => {
-    const sync = () => setTheme(getPreviewTheme(accent));
-    sync();
-
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['style', 'data-theme', 'class'],
+    const sync = () => setTheme((prev) => {
+      const next = getPreviewTheme(accent);
+      // Shallow compare to avoid React commits on identical themes (the
+      // global observer fires on every <html> style mutation).
+      const prevAny = prev as unknown as Record<string, unknown>;
+      const nextAny = next as unknown as Record<string, unknown>;
+      let same = true;
+      for (const k in nextAny) {
+        if (prevAny[k] !== nextAny[k]) {
+          same = false;
+          break;
+        }
+      }
+      return same ? prev : next;
     });
-
-    return () => observer.disconnect();
+    sync();
+    return observeDocumentAttributes(['style', 'data-theme', 'class'], sync);
   }, [accent]);
 
   return theme;

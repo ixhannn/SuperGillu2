@@ -13,10 +13,12 @@ import {
 } from '../types';
 import { generateId } from '../utils/ids';
 import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
+import { SupabaseService } from './supabase';
 
 // ── Storage ─────────────────────────────────────────────────────────
 
 const STORE = STORES.DATA;
+
 
 const KEYS = {
   PULSE_CHECKS: 'ri_pulse_checks',
@@ -71,6 +73,77 @@ export const signalEventTarget = new EventTarget();
 const notify = (type: string) => {
   signalEventTarget.dispatchEvent(new CustomEvent('signal-update', { detail: { type } }));
 };
+
+// ── Supabase cloud sync ─────────────────────────────────────────────
+// Fire-and-forget helpers. Never throw — local data is always the source of
+// truth; cloud sync is additive and best-effort.
+
+const SIGNALS_TABLE = 'relationship_signals';
+const SIGNALS_LOOKBACK_DAYS = 90;
+
+async function pushSignalToCloud(signalType: string, entry: { id: string; createdAt: string }): Promise<void> {
+  if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
+  try {
+    const [userId, coupleId] = await Promise.all([
+      SupabaseService.getCurrentUserId(),
+      SupabaseService.getCurrentCoupleId(),
+    ]);
+    if (!userId || !coupleId) return;
+
+    await SupabaseService.client.from(SIGNALS_TABLE).upsert({
+      id: entry.id,
+      user_id: userId,
+      couple_id: coupleId,
+      signal_type: signalType,
+      data: entry,
+      created_at: entry.createdAt,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+  } catch { /* best-effort */ }
+}
+
+async function fetchPartnerSignals(): Promise<void> {
+  if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
+  try {
+    const [userId, coupleId] = await Promise.all([
+      SupabaseService.getCurrentUserId(),
+      SupabaseService.getCurrentCoupleId(),
+    ]);
+    if (!userId || !coupleId) return;
+
+    const since = new Date(Date.now() - SIGNALS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await SupabaseService.client
+      .from(SIGNALS_TABLE)
+      .select('signal_type, data')
+      .eq('couple_id', coupleId)
+      .neq('user_id', userId)
+      .gte('created_at', since);
+
+    if (!data?.length) return;
+
+    for (const row of data) {
+      const entry = row.data as { id: string };
+      if (!entry?.id) continue;
+
+      switch (row.signal_type) {
+        case 'pulse_check':
+          if (!pulseChecks.find(p => p.id === entry.id))
+            pulseChecks.push(entry as PulseCheck);
+          break;
+        case 'micro_gratitude':
+          if (!microGratitudes.find(g => g.id === entry.id))
+            microGratitudes.push(entry as MicroGratitude);
+          break;
+        case 'weekly_reflection':
+          if (!weeklyReflections.find(r => r.id === entry.id))
+            weeklyReflections.push(entry as WeeklyReflection);
+          break;
+      }
+    }
+
+    notify('partner_sync');
+  } catch { /* best-effort */ }
+}
 
 // ── In-memory caches ────────────────────────────────────────────────
 
@@ -133,6 +206,9 @@ export const RelationshipSignals = {
     responseLatencies = rl || [];
     initiations = ini || [];
     meta = m || { lastPulseQuestionIdx: -1, totalSignalCount: 0 };
+
+    // Merge partner's recent signals from the cloud (fire-and-forget).
+    void fetchPartnerSignals();
   },
 
   // ── Pulse Checks ───────────────────────────────────────────────────
@@ -162,6 +238,12 @@ export const RelationshipSignals = {
       write(KEYS.PULSE_CHECKS, pulseChecks),
       write(KEYS.SIGNAL_META, meta),
     ]);
+
+    // Sync to cloud so partner's model can read this signal.
+    void pushSignalToCloud('pulse_check', entry);
+
+    // Trigger partner nudge if they haven't checked in today (server-side check).
+    void import('./notifications').then(m => m.NotificationsService.triggerPartnerNudge()).catch(() => {});
 
     // Also record as initiation
     await this.recordInitiation('pulse_check');
@@ -198,6 +280,7 @@ export const RelationshipSignals = {
       write(KEYS.MICRO_GRATITUDES, microGratitudes),
       write(KEYS.SIGNAL_META, meta),
     ]);
+    void pushSignalToCloud('micro_gratitude', entry);
     notify('micro_gratitude');
     return entry;
   },
@@ -231,6 +314,7 @@ export const RelationshipSignals = {
       write(KEYS.WEEKLY_REFLECTIONS, weeklyReflections),
       write(KEYS.SIGNAL_META, meta),
     ]);
+    void pushSignalToCloud('weekly_reflection', entry);
     notify('weekly_reflection');
     return entry;
   },

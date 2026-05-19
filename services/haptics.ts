@@ -76,29 +76,29 @@ const isAndroid = (): boolean =>
 
 const W: Record<string, VibratePattern> = {
   // Single crisp tap — lightest possible
-  tap:        [7],
+  tap:        [4],
   // Weighted single tap — standard button
-  press:      [12],
+  press:      [6],
   // Deep single thud
-  heavy:      [20],
+  heavy:      [10],
   // Ultra-short — ghost button, back arrow
-  softTap:    [5],
+  softTap:    [3],
   // Hard wall — one firm pulse
-  rigidStop:  [22],
+  rigidStop:  [12],
   // Fine selection tick
-  select:     [4],
+  select:     [2],
   // Two rising pulses: short-pause-long
-  success:    [8, 60, 14],
+  success:    [5, 45, 8],
   // Two flat pulses with drop: long-pause-long
-  warning:    [14, 60, 14],
+  warning:    [8, 50, 8],
   // Three descending pulses
-  error:      [18, 50, 12, 50, 8],
+  error:      [10, 45, 7, 45, 5],
   // Cardiac lub-dub: medium pulse, gap, heavy pulse
-  heartbeat:  [12, 140, 18],
+  heartbeat:  [8, 120, 10],
   // Double heartbeat with breath between
-  doubleBeat: [12, 140, 18, 700, 12, 140, 18],
+  doubleBeat: [8, 120, 10, 520, 8, 120, 10],
   // Rapid escalating cascade
-  celebrate:  [5, 50, 6, 42, 9, 34, 12, 26, 17],
+  celebrate:  [3, 45, 4, 38, 5, 32, 7],
 };
 
 const vibrate = (pattern: VibratePattern) => {
@@ -110,37 +110,97 @@ const vibrate = (pattern: VibratePattern) => {
 // ─── Timing helper ───────────────────────────────────────────────────────────
 
 const wait = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 // ─── Haptics Service ─────────────────────────────────────────────────────────
 
 class HapticsService {
   private enabled = true;
-  /** Tracks last fire time for global 50ms debounce */
+  /** Tracks last fire time for the global interaction debounce. */
   private _lastFiredAt = 0;
-  private readonly _debounceMs = 50;
+  private readonly _debounceMs = 140;
+  private readonly _scrollSuppressMs = 220;
+  private readonly _dragThresholdPx = 8;
+  private _lastScrollLikeAt = 0;
+  private _guardsBound = false;
+  private _pointerStart: { id: number; x: number; y: number } | null = null;
+
+  constructor() {
+    this._bindInteractionGuards();
+  }
+
+  private _bindInteractionGuards() {
+    if (this._guardsBound || typeof window === 'undefined') return;
+    this._guardsBound = true;
+
+    const markScrollLike = () => {
+      this._lastScrollLikeAt = nowMs();
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse') return;
+      this._pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const start = this._pointerStart;
+      if (!start || start.id !== event.pointerId) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (Math.hypot(dx, dy) >= this._dragThresholdPx) markScrollLike();
+    };
+
+    const onPointerEnd = (event: PointerEvent) => {
+      if (this._pointerStart?.id === event.pointerId) this._pointerStart = null;
+    };
+
+    window.addEventListener('touchmove', markScrollLike, { capture: true, passive: true });
+    window.addEventListener('wheel', markScrollLike, { capture: true, passive: true });
+    window.addEventListener('scroll', markScrollLike, { capture: true, passive: true });
+    document.addEventListener('scroll', markScrollLike, { capture: true, passive: true });
+    window.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true });
+    window.addEventListener('pointermove', onPointerMove, { capture: true, passive: true });
+    window.addEventListener('pointerup', onPointerEnd, { capture: true, passive: true });
+    window.addEventListener('pointercancel', onPointerEnd, { capture: true, passive: true });
+  }
 
   loadPrefs() {
+    if (typeof localStorage === 'undefined') return;
     const v = localStorage.getItem('lior_haptics');
     if (v !== null) this.enabled = v === '1';
   }
 
   setEnabled(value: boolean) {
     this.enabled = value;
-    localStorage.setItem('lior_haptics', value ? '1' : '0');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('lior_haptics', value ? '1' : '0');
+    }
   }
 
   isEnabled() { return this.enabled; }
+  markScrollActivity() { this._lastScrollLikeAt = nowMs(); }
 
   /**
-   * Global 50ms gate — returns false if a haptic fired too recently.
+   * Global interaction gate — returns false if a haptic fired too recently
+   * or if the current pointer sequence has become a scroll/drag.
    * Prevents accidental double-fires from synthetic click + pointerdown,
-   * multi-finger taps, or rapid repeat calls.
+   * multi-finger taps, scroll-over-button clicks, or rapid repeat calls.
    * Sequences (heartbeat, celebrate) bypass this internally — only the
    * entry-point call is gated.
    */
-  private _canFire(): boolean {
-    const now = performance.now();
+  private _canFire(options: { allowDuringScroll?: boolean } = {}): boolean {
+    const now = nowMs();
+    if (!options.allowDuringScroll && now - this._lastScrollLikeAt < this._scrollSuppressMs) return false;
     if (now - this._lastFiredAt < this._debounceMs) return false;
+    this._lastFiredAt = now;
+    return true;
+  }
+
+  private _canRunSequence(options: { allowDuringScroll?: boolean; cooldownMs?: number } = {}): boolean {
+    const now = nowMs();
+    const cooldownMs = options.cooldownMs ?? this._debounceMs;
+    if (!options.allowDuringScroll && now - this._lastScrollLikeAt < this._scrollSuppressMs) return false;
+    if (now - this._lastFiredAt < cooldownMs) return false;
     this._lastFiredAt = now;
     return true;
   }
@@ -165,7 +225,7 @@ class HapticsService {
    */
   async press() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Medium }); }
+    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Light }); }
     else vibrate(W.press);
   }
 
@@ -176,7 +236,7 @@ class HapticsService {
    */
   async heavy() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Heavy }); }
+    if (isNative()) { CapHaptics.impact({ style: ImpactStyle.Medium }); }
     else vibrate(W.heavy);
   }
 
@@ -201,7 +261,7 @@ class HapticsService {
    */
   async rigidStop() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Heavy });
+    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Medium });
     else vibrate(W.rigidStop);
   }
 
@@ -212,7 +272,7 @@ class HapticsService {
    */
   async destructive() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Heavy });
+    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Medium });
     else vibrate(W.heavy);
   }
 
@@ -223,7 +283,7 @@ class HapticsService {
    */
   async dragPickup() {
     if (!this.enabled || !this._canFire()) return;
-    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Medium });
+    if (isNative()) await CapHaptics.impact({ style: ImpactStyle.Light });
     else vibrate(W.press);
   }
 
@@ -247,7 +307,7 @@ class HapticsService {
   async milestone() {
     if (!this.enabled || !this._canFire()) return;
     if (isNative()) {
-      await CapHaptics.impact({ style: ImpactStyle.Medium });
+      await CapHaptics.impact({ style: ImpactStyle.Light });
       await wait(50);
       await CapHaptics.impact({ style: ImpactStyle.Light });
       await wait(50);
@@ -332,7 +392,7 @@ class HapticsService {
    * Use for: save, send, confirm, profile update, memory added.
    */
   async success() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 180 })) return;
     if (isNative()) await CapHaptics.notification({ type: NotificationType.Success });
     else vibrate(W.success);
   }
@@ -343,7 +403,7 @@ class HapticsService {
    * Use for: delete confirmation dialog, unsaved changes warning.
    */
   async warning() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 180 })) return;
     if (isNative()) await CapHaptics.notification({ type: NotificationType.Warning });
     else vibrate(W.warning);
   }
@@ -354,7 +414,7 @@ class HapticsService {
    * Use for: form validation fail, network error, wrong input.
    */
   async error() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 220 })) return;
     if (isNative()) await CapHaptics.notification({ type: NotificationType.Error });
     else vibrate(W.error);
   }
@@ -368,7 +428,7 @@ class HapticsService {
    * the Light impact is the knob landing in the on groove.
    */
   async toggleOn() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 160 })) return;
     if (isNative()) {
       await CapHaptics.selectionStart();
       await CapHaptics.selectionChanged();
@@ -386,7 +446,7 @@ class HapticsService {
    * Reversed: the impact is the knob leaving, the tick is it settling off.
    */
   async toggleOff() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 160 })) return;
     if (isNative()) {
       await CapHaptics.impact({ style: ImpactStyle.Light });
       await wait(32);
@@ -415,11 +475,11 @@ class HapticsService {
    * Use for: sending a heart, viewing a romantic memory.
    */
   async heartbeat() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 360 })) return;
     if (isNative()) {
+      await CapHaptics.impact({ style: ImpactStyle.Light });
+      await wait(120);
       await CapHaptics.impact({ style: ImpactStyle.Medium });
-      await wait(140);
-      await CapHaptics.impact({ style: ImpactStyle.Heavy });
     } else {
       vibrate(W.heartbeat);
     }
@@ -431,15 +491,15 @@ class HapticsService {
    * Use for: aura signal received, partner online notification.
    */
   async doubleBeat() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 900 })) return;
     if (isNative()) {
+      await CapHaptics.impact({ style: ImpactStyle.Light });
+      await wait(120);
       await CapHaptics.impact({ style: ImpactStyle.Medium });
-      await wait(140);
-      await CapHaptics.impact({ style: ImpactStyle.Heavy });
-      await wait(700);
+      await wait(520);
+      await CapHaptics.impact({ style: ImpactStyle.Light });
+      await wait(120);
       await CapHaptics.impact({ style: ImpactStyle.Medium });
-      await wait(140);
-      await CapHaptics.impact({ style: ImpactStyle.Heavy });
     } else {
       vibrate(W.doubleBeat);
     }
@@ -452,14 +512,13 @@ class HapticsService {
    * Use for: milestone reached, streak, confetti moment.
    */
   async celebrate() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ cooldownMs: 520 })) return;
     if (isNative()) {
       const beats: Array<[number, ImpactStyle]> = [
         [0,   ImpactStyle.Light],
         [55,  ImpactStyle.Light],
-        [105, ImpactStyle.Medium],
+        [105, ImpactStyle.Light],
         [148, ImpactStyle.Medium],
-        [185, ImpactStyle.Heavy],
       ];
       for (const [ms, style] of beats) {
         setTimeout(() => CapHaptics.impact({ style }), ms);
@@ -480,14 +539,14 @@ class HapticsService {
    *   1.0       → Success (activated)
    */
   async longPressProgress(progress: number) {
-    if (!this.enabled) return;
+    if (!this.enabled || !this._canRunSequence({ allowDuringScroll: true, cooldownMs: 120 })) return;
     if (isNative()) {
       if (progress >= 1.0) {
         await CapHaptics.notification({ type: NotificationType.Success });
       } else if (progress >= 0.66) {
-        await CapHaptics.impact({ style: ImpactStyle.Heavy });
-      } else if (progress >= 0.33) {
         await CapHaptics.impact({ style: ImpactStyle.Medium });
+      } else if (progress >= 0.33) {
+        await CapHaptics.impact({ style: ImpactStyle.Light });
       } else {
         await CapHaptics.impact({ style: ImpactStyle.Light });
       }

@@ -104,8 +104,8 @@ self.addEventListener('push', (event) => {
     event.waitUntil(
       self.registration.showNotification(data.title || 'Lior', {
         body: data.body || 'New update!',
-        icon: '/icon.svg',
-        badge: '/icon.svg',
+        icon: '/notification-icon.png',
+        badge: '/notification-icon.png',
         data: data.url || '/'
       })
     );
@@ -113,7 +113,7 @@ self.addEventListener('push', (event) => {
     event.waitUntil(
       self.registration.showNotification('Lior', {
         body: event.data.text(),
-        icon: '/icon.svg'
+        icon: '/notification-icon.png'
       })
     );
   }

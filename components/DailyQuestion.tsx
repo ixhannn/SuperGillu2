@@ -35,7 +35,7 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     const handleCardClick = () => {
         if (!myAnswer && !expanded) {
             setExpanded(true);
-            setTimeout(() => textareaRef.current?.focus(), 150);
+            setTimeout(() => textareaRef.current?.focus(), 350);
         }
     };
 
@@ -63,7 +63,7 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
 
     return (
         <motion.div
-            layout
+            layout="size"
             onClick={handleCardClick}
             className="w-full rounded-[1.75rem] p-5 mb-5 relative overflow-hidden"
             style={{
@@ -137,7 +137,12 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
                             placeholder="Write your answer..."
                             rows={3}
                             maxLength={300}
-                            className="w-full resize-none rounded-2xl px-4 py-3 text-sm outline-none mb-2.5"
+                            inputMode="text"
+                            enterKeyHint="send"
+                            autoCapitalize="sentences"
+                            autoCorrect="on"
+                            spellCheck
+                            className="w-full resize-none rounded-2xl px-4 py-3 text-[16px] outline-none mb-2.5"
                             style={{
                                 background: 'rgba(0,0,0,0.04)',
                                 border: '1px solid rgba(0,0,0,0.07)',

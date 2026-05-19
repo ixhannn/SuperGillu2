@@ -38,9 +38,15 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         return () => window.removeEventListener('lior:hardware-back', handleBack);
     }, [isOpen, onCancel]);
 
-    return (
+    // IMPORTANT: the portal must be created on the OUTSIDE and AnimatePresence
+    // placed INSIDE it. AnimatePresence filters its children through
+    // React.isValidElement(), and a portal object (REACT_PORTAL_TYPE) fails
+    // that check — so `<AnimatePresence>{createPortal(...)}</AnimatePresence>`
+    // silently renders nothing. With the portal outside, AnimatePresence's
+    // child is a real <motion.div> element and exit animations work.
+    return ReactDOM.createPortal(
         <AnimatePresence>
-            {isOpen && ReactDOM.createPortal(
+            {isOpen && (
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -66,7 +72,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
                         <div className="flex flex-col items-center text-center mb-6">
                             {variant === 'danger' && (
-                                <motion.div 
+                                <motion.div
                                     initial={{ scale: 0 }}
                                     animate={{ scale: 1 }}
                                     transition={{ type: 'spring', delay: 0.1 }}
@@ -100,9 +106,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                             </button>
                         </div>
                     </motion.div>
-                </motion.div>,
-                document.body
+                </motion.div>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
     );
 };

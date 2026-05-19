@@ -37,8 +37,8 @@ assert.match(
 
 assert.match(
   syncSource,
-  /if \(localProfileBeforeCoupleLookup\.coupleId\) \{[\s\S]*SupabaseService\.setCachedCoupleId\(localProfileBeforeCoupleLookup\.coupleId\);[\s\S]*\}[\s\S]*const coupleId = await SupabaseService\.getCurrentCoupleId\(\);/,
-  'Expected sync bootstrap to preserve the existing linked couple id before asking Supabase for a couple id',
+  /if \(localProfileBeforeCoupleLookup\.coupleId && localProfileBeforeCoupleLookup\.partnerUserId\) \{[\s\S]*SupabaseService\.setCachedCoupleId\(localProfileBeforeCoupleLookup\.coupleId\);[\s\S]*\} else \{[\s\S]*SupabaseService\.setCachedCoupleId\(null\);[\s\S]*\}[\s\S]*let coupleId = await SupabaseService\.getCurrentCoupleId\(\);/,
+  'Expected sync bootstrap to preserve only a complete linked couple id before asking Supabase for a couple id',
 );
 
 assert.match(

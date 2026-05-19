@@ -392,6 +392,10 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
                                     value={title}
                                     onChange={e => setTitle(e.target.value)}
                                     placeholder="Title"
+                                    inputMode="text"
+                                    enterKeyHint="next"
+                                    autoCapitalize="sentences"
+                                    autoCorrect="on"
                                     className="w-full px-4 py-3.5 rounded-2xl text-[16px] outline-none"
                                     style={{ background: 'rgba(255,255,255,0.68)', border: '1px solid rgba(155,123,132,0.14)', color: 'var(--color-text-primary)' }}
                                 />
@@ -401,7 +405,12 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
                                     onChange={e => setMessage(e.target.value)}
                                     placeholder="Letter"
                                     rows={7}
-                                    className="w-full px-4 py-3.5 rounded-2xl text-[15px] outline-none resize-none"
+                                    inputMode="text"
+                                    enterKeyHint="done"
+                                    autoCapitalize="sentences"
+                                    autoCorrect="on"
+                                    spellCheck
+                                    className="w-full px-4 py-3.5 rounded-2xl text-[16px] outline-none resize-none"
                                     style={{ background: 'rgba(255,255,255,0.68)', border: '1px solid rgba(155,123,132,0.14)', color: 'var(--color-text-primary)', lineHeight: '24px' }}
                                 />
 

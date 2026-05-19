@@ -5,11 +5,21 @@
  */
 
 import React, { useRef, useMemo, useEffect } from 'react';
-import { Canvas, useFrame, extend } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
 import { shaderMaterial } from '@react-three/drei';
 // Bloom removed — forced second full render pass at 120fps; use CSS glow instead
 import * as THREE from 'three';
 import { readThemeVar } from '../utils/themeVars';
+import { observeDocumentAttributes } from '../utils/documentObserverBus';
+import { AnimationEngine } from '../utils/AnimationEngine';
+
+const createSeededRandom = (seed: number) => {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+};
 
 
 // ── GLSL Noise functions ────────────────────────────────────────────────
@@ -361,19 +371,20 @@ const DustField: React.FC<{ dustColor: string }> = ({ dustColor }) => {
   const count = 12;
 
   const { geometry, material } = useMemo(() => {
+    const rand = createSeededRandom(420);
     const initPos = new Float32Array(count * 3);
     const phases  = new Float32Array(count * 3); // per-axis sinusoidal phase offsets
 
     for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi   = Math.acos(2 * Math.random() - 1);
-      const r     = 1.5 + Math.random() * 2.5;
+      const theta = rand() * Math.PI * 2;
+      const phi   = Math.acos(2 * rand() - 1);
+      const r     = 1.5 + rand() * 2.5;
       initPos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
       initPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       initPos[i * 3 + 2] = r * Math.cos(phi);
-      phases[i * 3]      = Math.random() * Math.PI * 2;
-      phases[i * 3 + 1]  = Math.random() * Math.PI * 2;
-      phases[i * 3 + 2]  = Math.random() * Math.PI * 2;
+      phases[i * 3]      = rand() * Math.PI * 2;
+      phases[i * 3 + 1]  = rand() * Math.PI * 2;
+      phases[i * 3 + 2]  = rand() * Math.PI * 2;
     }
 
     const geo = new THREE.BufferGeometry();
@@ -467,6 +478,29 @@ const Scene: React.FC<{ theme: FloatingThemeColors }> = ({ theme }) => (
   </>
 );
 
+const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused }) => {
+  const invalidate = useThree((state) => state.invalidate);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+
+  useEffect(() => {
+    AnimationEngine.register({
+      id: 'floating-hearts-r3f',
+      priority: 3,
+      budgetMs: 0.2,
+      minTier: 'medium',
+      tick() {
+        if (pausedRef.current) return;
+        invalidate();
+      },
+    });
+
+    return () => AnimationEngine.unregister('floating-hearts-r3f');
+  }, [invalidate]);
+
+  return null;
+};
+
 export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = false }) => {
   const [theme, setTheme] = React.useState<FloatingThemeColors>(() => ({
     rimColor: readThemeVar('--theme-floating-rim', '#fbcfe8'),
@@ -478,22 +512,28 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
 
   useEffect(() => {
     const syncTheme = () => {
-      setTheme({
-        rimColor: readThemeVar('--theme-floating-rim', '#fbcfe8'),
-        accentColor: readThemeVar('--theme-floating-accent', '#fda4af'),
-        dustColor: readThemeVar('--theme-floating-dust', '#d4c5a9'),
-        lightA: readThemeVar('--theme-floating-light-a', '#f5e6d3'),
-        lightB: readThemeVar('--theme-floating-light-b', '#ffffff'),
+      // Skip the React state write when the theme strings actually match —
+      // avoids re-mounting shader uniforms on every <html> style mutation.
+      setTheme((prev) => {
+        const next = {
+          rimColor: readThemeVar('--theme-floating-rim', '#fbcfe8'),
+          accentColor: readThemeVar('--theme-floating-accent', '#fda4af'),
+          dustColor: readThemeVar('--theme-floating-dust', '#d4c5a9'),
+          lightA: readThemeVar('--theme-floating-light-a', '#f5e6d3'),
+          lightB: readThemeVar('--theme-floating-light-b', '#ffffff'),
+        };
+        if (
+          prev.rimColor === next.rimColor
+          && prev.accentColor === next.accentColor
+          && prev.dustColor === next.dustColor
+          && prev.lightA === next.lightA
+          && prev.lightB === next.lightB
+        ) return prev;
+        return next;
       });
     };
 
-    const observer = new MutationObserver(syncTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['style', 'data-theme'],
-    });
-
-    return () => observer.disconnect();
+    return observeDocumentAttributes(['style', 'data-theme'], syncTheme);
   }, []);
 
   // ── Global transition gating ────────────────────────────────────────────
@@ -504,11 +544,12 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
-    const sync = () => setGlobalPause(Boolean(root.dataset.transitioning));
+    const sync = () => {
+      const next = Boolean(root.dataset.transitioning);
+      setGlobalPause((prev) => (prev === next ? prev : next));
+    };
     sync();
-    const obs = new MutationObserver(sync);
-    obs.observe(root, { attributes: true, attributeFilter: ['data-transitioning'] });
-    return () => obs.disconnect();
+    return observeDocumentAttributes(['data-transitioning'], sync);
   }, []);
   const effectivePause = paused || globalPause;
 
@@ -534,7 +575,7 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
       <Canvas
         camera={{ position: [0, 0, 6.4], fov: 52 }}
         dpr={[0.55, 0.85]}
-        frameloop={effectivePause ? 'never' : 'always'}
+        frameloop="demand"
         flat
         performance={{ min: 0.5 }}
         gl={{
@@ -545,6 +586,7 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
           stencil: false,
         }}
       >
+        <AnimationEngineFrameInvalidator paused={effectivePause} />
         <Scene theme={theme} />
       </Canvas>
     </div>
