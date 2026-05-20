@@ -12,6 +12,7 @@ import { SkeletonReveal } from '../components/SkeletonReveal';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { springSmooth } from '../utils/motion';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
@@ -769,10 +770,10 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                     </motion.div>
                 ) : (
                     <div className="flex flex-col items-center justify-center py-24">
-                        <motion.div 
+                        <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                            transition={springSmooth}
                             className="relative mb-10"
                         >
                             <div className="absolute inset-0 bg-lior-200/20 rounded-full blur-3xl animate-breathe-glow" />

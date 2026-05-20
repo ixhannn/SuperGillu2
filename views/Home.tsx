@@ -14,6 +14,7 @@ import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
+import { springSmooth, springSnappy } from '../utils/motion';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -215,7 +216,10 @@ const gridItemVariants: Variants = {
     hidden: { opacity: 0, y: 32, scale: 0.92, rotateX: 4 },
     visible: {
         opacity: 1, y: 0, scale: 1, rotateX: 0,
-        transition: { type: 'spring' as const, stiffness: 380, damping: 22, mass: 0.7 }
+        // Critically-damped silk spring (was stiffness 380/damping 22 → ~0.67
+        // ratio = visible bounce). springSmooth settles without overshoot,
+        // matching the route layer's no-bounce language.
+        transition: springSmooth,
     }
 };
 
@@ -562,7 +566,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 <motion.div
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ type: "spring", stiffness: 250, damping: 22 }}
+                    transition={springSmooth}
                 >
                     <button
                         onClick={() => setView('profile')}
@@ -631,7 +635,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                 <motion.button
                     initial={{ opacity: 0, scale: 0.5 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.2 }}
+                    transition={{ ...springSnappy, delay: 0.2 }}
                     onClick={() => setView('sync')}
                     className={`spring-press transition-all rounded-2xl px-3 py-2 min-w-[7.25rem] flex items-center justify-center gap-2 border ${
                         isConnected

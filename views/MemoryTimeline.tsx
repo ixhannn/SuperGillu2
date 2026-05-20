@@ -8,6 +8,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService } from '../services/sync';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
+import { springSmooth, springSnappy } from '../utils/motion';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
@@ -1135,7 +1136,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                                         initial={{ scale: 0, opacity: 0 }}
                                         animate={{ scale: 1, opacity: 1 }}
                                         exit={{ scale: 0, opacity: 0 }}
-                                        transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                                        transition={springSnappy}
                                         onClick={sendComment}
                                         className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center active:scale-90"
                                         style={{ background: 'linear-gradient(135deg, #ec4899, #be185d)', WebkitTapHighlightColor: 'transparent' }}
@@ -1300,10 +1301,10 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
 
                 {memories.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-24">
-                        <motion.div 
+                        <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                            transition={springSmooth}
                             className="relative mb-8"
                         >
                             <div className="absolute inset-0 bg-lior-200/40 rounded-full blur-3xl animate-breathe-glow" />
