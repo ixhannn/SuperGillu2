@@ -8,6 +8,7 @@ import './styles/premium-features.css';
 import './styles/native-polish.css';
 import './styles/performance.css';
 import { initGlobalGestures } from './utils/gesture';
+import { startRevealSafety } from './utils/revealSafety';
 
 // ── GLOBAL PRESS STATE ──
 // Keep visual press feedback central, but leave haptics to explicit product
@@ -49,6 +50,10 @@ if (typeof document !== 'undefined') {
 
   // Boot the gesture system: [data-press] delegation + CSS injection
   initGlobalGestures();
+
+  // Fail-safe: never let entrance-animated content stay stranded invisible if
+  // its reveal animation is interrupted (background/resume, throttling, etc.).
+  startRevealSafety();
 }
 
 const rootElement = document.getElementById('root');
