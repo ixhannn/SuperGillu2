@@ -67,6 +67,11 @@
     <!-- Push Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Local notifications: exact-time delivery (Android 12+) and survive reboot -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Wake lock for background sync -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 </manifest>

@@ -24,7 +24,43 @@ type LocalNotifications = {
   schedule: (opts: { notifications: unknown[] }) => Promise<unknown>;
   cancel: (opts: { notifications: { id: number }[] }) => Promise<void>;
   getPending: () => Promise<{ notifications: { id: number }[] }>;
+  createChannel?: (channel: {
+    id: string;
+    name: string;
+    description?: string;
+    importance?: 1 | 2 | 3 | 4 | 5;
+    visibility?: -1 | 0 | 1;
+    sound?: string;
+    vibration?: boolean;
+    lights?: boolean;
+    lightColor?: string;
+  }) => Promise<void>;
 };
+
+// High-importance channel so reminders appear as a heads-up banner (Android 8+
+// requires a channel; the plugin's default channel is only IMPORTANCE_DEFAULT,
+// which can land silently in the shade and read as "notifications don't work").
+const ANDROID_CHANNEL_ID = 'lior-reminders';
+let channelEnsured = false;
+
+async function ensureChannel(local: LocalNotifications): Promise<void> {
+  if (channelEnsured || typeof local.createChannel !== 'function') return;
+  try {
+    await local.createChannel({
+      id: ANDROID_CHANNEL_ID,
+      name: 'Lior reminders',
+      description: 'Daily moments, weekly recaps and partner alerts',
+      importance: 5,       // IMPORTANCE_HIGH → heads-up banner + sound
+      visibility: 1,       // VISIBILITY_PUBLIC
+      vibration: true,
+      lights: true,
+      lightColor: '#E91E8C',
+    });
+    channelEnsured = true;
+  } catch {
+    /* createChannel unsupported on this platform — default channel is used */
+  }
+}
 
 type PushNotifications = {
   checkPermissions: () => Promise<{ receive: 'granted' | 'denied' | 'prompt' }>;
@@ -223,10 +259,20 @@ export const NotificationsService = {
 
     const native = await getCapacitorLocalNotifications();
     if (native) {
+      // Make sure we actually hold permission — otherwise the scheduled
+      // notifications are silently dropped. Only prompt when the user hasn't
+      // decided yet (status 'prompt'); never re-nag a denial.
+      const status = await native.checkPermissions().catch(() => ({ display: 'denied' as const }));
+      if (status.display === 'prompt') {
+        await native.requestPermissions().catch(() => undefined);
+      }
+      await ensureChannel(native);
       const payload = queued.map((s) => ({
         id: hashId(s.id),
         title: s.title,
         body: s.body,
+        channelId: ANDROID_CHANNEL_ID,
+        smallIcon: 'ic_notification',
         schedule: { at: new Date(s.fireAt), allowWhileIdle: true },
         extra: { kind: s.kind, ...s.payload },
       }));
@@ -262,11 +308,14 @@ export const NotificationsService = {
 
     const native = await getCapacitorLocalNotifications();
     if (native) {
+      await ensureChannel(native);
       await native.schedule({
         notifications: [{
           id: hashId(`${kind}-${Date.now()}`),
           title,
           body,
+          channelId: ANDROID_CHANNEL_ID,
+          smallIcon: 'ic_notification',
           schedule: { at: new Date(Date.now() + 500) },
         }],
       });
