@@ -329,7 +329,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
             feedback.celebrate();
             resetCompose();
         } catch (error: any) {
-            alert(error?.message || 'Keepsake could not be saved.');
+            toast.show(error?.message || 'Keepsake could not be saved.', 'error');
         }
     };
 

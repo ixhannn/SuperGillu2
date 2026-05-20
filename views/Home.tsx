@@ -15,6 +15,7 @@ import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
 import { springSmooth, springSnappy } from '../utils/motion';
+import { toast } from '../utils/toast';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -532,7 +533,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             const random = allItems[Math.floor(Math.random() * allItems.length)];
             setSurpriseContent(random);
             setShowSurprise(true);
-        } else alert("Add some memories or notes first! 💖");
+        } else toast.show('Add some memories or notes first! 💖', 'info');
     };
 
     return (

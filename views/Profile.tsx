@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users, Volume2, VolumeX, Vibrate, Zap, Sparkles, Mic, Gift, Lock } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { toast } from '../utils/toast';
 import { SectionDivider } from './Home';
 import { ViewState, CoupleProfile } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -192,6 +194,17 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
     const [musicMeta, setMusicMeta] = useState<{ name: string } | null>(null);
     const [musicError, setMusicError] = useState<string | null>(null);
 
+    // Styled confirmation modal — replaces the native window.confirm() popup
+    // (which renders as a dated Android system dialog inside the WebView).
+    const [confirmState, setConfirmState] = useState<{
+        title: string;
+        message: string;
+        confirmLabel?: string;
+        variant?: 'danger' | 'default';
+        onConfirm: () => void;
+    } | null>(null);
+    const askConfirm = (config: NonNullable<typeof confirmState>) => setConfirmState(config);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const backupInputRef = useRef<HTMLInputElement>(null);
     const musicInputRef = useRef<HTMLInputElement>(null);
@@ -306,11 +319,11 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     setProfile(prev => ({ ...prev, photo: dataUrl }));
                 };
                 img.onerror = () => {
-                    alert("We couldn't open that photo. Choose a JPG, PNG, or WebP image.");
+                    toast.show("We couldn't open that photo. Choose a JPG, PNG, or WebP image.", 'error');
                 };
             };
             reader.onerror = () => {
-                alert("We couldn't read that file. Try a different photo.");
+                toast.show("We couldn't read that file. Try a different photo.", 'error');
             };
             reader.readAsDataURL(file);
         }
@@ -335,7 +348,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
 
                 await StorageService.saveTogetherMusic(file);
                 setMusicMeta({ name: file.name });
-                alert("Your shared song is ready. It will play the next time you're both online.");
+                toast.show("Your shared song is ready. It will play the next time you're both online.", 'success');
             } catch (error: unknown) {
                 const message = error instanceof Error ? error.message : "We couldn't upload that song. Please try again.";
                 setMusicError(message);
@@ -345,17 +358,23 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         }
     };
 
-    const handleRemoveMusic = async () => {
-        if (confirm("Remove your shared song? Lior will go back to the default theme music.")) {
-            try {
-                await StorageService.deleteTogetherMusic();
-                setMusicMeta(null);
-                setMusicError(null);
-            } catch (error) {
-                console.error(error);
-                setMusicError("We couldn't remove your shared song. Please try again.");
-            }
-        }
+    const handleRemoveMusic = () => {
+        askConfirm({
+            title: 'Remove shared song',
+            message: 'Remove your shared song? Lior will go back to the default theme music.',
+            confirmLabel: 'Remove',
+            variant: 'danger',
+            onConfirm: async () => {
+                try {
+                    await StorageService.deleteTogetherMusic();
+                    setMusicMeta(null);
+                    setMusicError(null);
+                } catch (error) {
+                    console.error(error);
+                    setMusicError("We couldn't remove your shared song. Please try again.");
+                }
+            },
+        });
     };
 
     const save = () => {
@@ -384,25 +403,31 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         window.location.reload();
     };
 
-    const handleSignOut = async () => {
-        if (confirm("Sign out on this device? You can sign back in anytime.")) {
-            try {
-                StorageService.prepareForSignOut();
-                if (SupabaseService.client) {
-                    const { error } = await SupabaseService.client.auth.signOut();
-                    if (error) {
-                        alert("We couldn't sign you out right now. Please try again.");
-                        return;
+    const handleSignOut = () => {
+        askConfirm({
+            title: 'Sign out',
+            message: 'Sign out on this device? You can sign back in anytime.',
+            confirmLabel: 'Sign Out',
+            variant: 'danger',
+            onConfirm: async () => {
+                try {
+                    StorageService.prepareForSignOut();
+                    if (SupabaseService.client) {
+                        const { error } = await SupabaseService.client.auth.signOut();
+                        if (error) {
+                            toast.show("We couldn't sign you out right now. Please try again.", 'error');
+                            return;
+                        }
                     }
+                    SupabaseService.setCachedUserId(null);
+                    StorageService.activateAccount(null);
+                    window.location.reload();
+                } catch (error) {
+                    console.error(error);
+                    toast.show("We couldn't sign you out right now. Please try again.", 'error');
                 }
-                SupabaseService.setCachedUserId(null);
-                StorageService.activateAccount(null);
-                window.location.reload();
-            } catch (error) {
-                console.error(error);
-                alert("We couldn't sign you out right now. Please try again.");
-            }
-        }
+            },
+        });
     };
 
     const handleDownloadBackup = async () => {
@@ -421,7 +446,7 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
             URL.revokeObjectURL(url);
         } catch (e) {
             console.error(e);
-            alert("We couldn't create your backup file. Try again in a moment.");
+            toast.show("We couldn't create your backup file. Try again in a moment.", 'error');
         }
         setIsBackingUp(false);
     };
@@ -435,22 +460,27 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
             try {
                 const data: unknown = JSON.parse(ev.target?.result as string);
                 if (!isFullBackupPayload(data)) {
-                    alert("That backup file is incomplete. Choose a full Lior backup file.");
+                    toast.show('That backup file is incomplete. Choose a full Lior backup file.', 'error');
                     return;
                 }
                 const normalizedData = await normalizeBackupPayload(data);
-                if (confirm("Restore this backup? Any data included in this file will replace the matching data on this device. Shared song settings only change if this backup includes one.")) {
-                    const success = await StorageService.importData(normalizedData);
-                    if (success) {
-                        alert("Backup restored. Your saved memories and profile details are ready.");
-                        setProfile(StorageService.getCoupleProfile()); // Refresh local state
-                        setMusicMeta(StorageService.getTogetherMusicMetadata());
-                    } else {
-                        alert("We couldn't find anything new to restore from that backup.");
-                    }
-                }
+                askConfirm({
+                    title: 'Restore backup',
+                    message: 'Restore this backup? Any data included in this file will replace the matching data on this device. Shared song settings only change if this backup includes one.',
+                    confirmLabel: 'Restore',
+                    onConfirm: async () => {
+                        const success = await StorageService.importData(normalizedData);
+                        if (success) {
+                            toast.show('Backup restored. Your saved memories and profile details are ready.', 'success');
+                            setProfile(StorageService.getCoupleProfile()); // Refresh local state
+                            setMusicMeta(StorageService.getTogetherMusicMetadata());
+                        } else {
+                            toast.show("We couldn't find anything new to restore from that backup.", 'info');
+                        }
+                    },
+                });
             } catch (e) {
-                alert("That backup file couldn't be read. Choose a Lior backup JSON file.");
+                toast.show("That backup file couldn't be read. Choose a Lior backup JSON file.", 'error');
             }
         };
         reader.readAsText(file);
@@ -1024,6 +1054,20 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
                     </div>
                 </div>
             )}
+
+            <ConfirmModal
+                isOpen={!!confirmState}
+                title={confirmState?.title}
+                message={confirmState?.message ?? ''}
+                confirmLabel={confirmState?.confirmLabel}
+                variant={confirmState?.variant}
+                onConfirm={() => {
+                    const action = confirmState?.onConfirm;
+                    setConfirmState(null);
+                    action?.();
+                }}
+                onCancel={() => setConfirmState(null)}
+            />
         </div>
     );
 };

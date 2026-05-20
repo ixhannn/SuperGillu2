@@ -372,7 +372,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       await StorageService.saveMemory(newMemory);
     } catch (e: any) {
       setIsSaving(false);
-      alert(e?.message || 'Memory could not be saved.');
+      toast.show(e?.message || 'Memory could not be saved.', 'error');
       return;
     }
     feedback.celebrate();
