@@ -42,14 +42,16 @@ The legacy server key is gone, so the Edge Function needs a **service account**:
    ```bash
    supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)"
    ```
-3. The function must exchange that service account for an OAuth2 access token and
-   POST to:
+3. The function already exchanges that service account for an OAuth2 access token
+   and POSTs to the v1 endpoint
    `https://fcm.googleapis.com/v1/projects/<PROJECT_ID>/messages:send`
+   (the `project_id` is read from the service-account JSON automatically).
 
-> ⚠️ `supabase/functions/send-partner-nudge/index.ts` currently calls the dead
-> legacy endpoint. It needs a ~30-line rewrite to FCM v1. I can do this rewrite —
-> it just can't be *tested* without your Firebase project, so it's a follow-up
-> once Step 1 is done.
+> ✅ `supabase/functions/send-partner-nudge/index.ts` has been **migrated to FCM
+> HTTP v1** — it signs a JWT with the service-account key, gets an OAuth2 token,
+> and sends via the v1 API. You only need to (a) set the `FCM_SERVICE_ACCOUNT`
+> secret and (b) deploy the function. It can't be end-to-end tested until your
+> Firebase project exists, but the code is in place.
 
 ## Step 3 — Rebuild & deploy
 

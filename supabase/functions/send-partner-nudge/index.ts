@@ -6,11 +6,16 @@
  * them a push notification via FCM (native Android/iOS) or VAPID (web PWA).
  *
  * Required Supabase Edge Function secrets:
- *   FCM_SERVER_KEY   — Firebase Cloud Messaging server key (Android/iOS)
- *   VAPID_PRIVATE_KEY — VAPID private key (web PWA)
- *   VAPID_CONTACT     — Contact URL/email for VAPID (e.g. mailto:you@example.com)
+ *   FCM_SERVICE_ACCOUNT — Firebase service-account JSON (FCM HTTP v1). Set with:
+ *                         supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)"
+ *   VAPID_PRIVATE_KEY   — VAPID private key (web PWA)
+ *   VAPID_CONTACT       — Contact URL/email for VAPID (e.g. mailto:you@example.com)
  *
  * The Supabase service role key is automatically available as SUPABASE_SERVICE_ROLE_KEY.
+ *
+ * Note: the legacy FCM HTTP API (server key + /fcm/send) was decommissioned by
+ * Google in June 2024, so this uses the FCM HTTP v1 API (OAuth2 + service
+ * account). See docs/PUSH_NOTIFICATIONS_SETUP.md.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -113,29 +118,109 @@ Deno.serve(async (req: Request) => {
   return json({ ok: true, results });
 });
 
-// ── FCM (Firebase Cloud Messaging) legacy HTTP API ───────────────────────────
+// ── FCM (Firebase Cloud Messaging) HTTP v1 API ──────────────────────────────
+interface ServiceAccount { client_email: string; private_key: string; project_id: string }
+
+// Access tokens live ~1h; cache within the (warm) isolate to avoid re-minting
+// for every device token in the send loop.
+let cachedAccessToken: { token: string; exp: number } | null = null;
+
+async function getFcmAccessToken(sa: ServiceAccount): Promise<string | null> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedAccessToken && cachedAccessToken.exp > now + 60) return cachedAccessToken.token;
+
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claims = b64url(JSON.stringify({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  }));
+  const unsigned = `${header}.${claims}`;
+  const signature = await signRS256(unsigned, sa.private_key);
+  const assertion = `${unsigned}.${signature}`;
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json() as { access_token?: string; expires_in?: number };
+  if (!data.access_token) return null;
+  cachedAccessToken = { token: data.access_token, exp: now + (data.expires_in ?? 3600) };
+  return data.access_token;
+}
+
 async function sendFcm(token: string, title: string, body: string): Promise<string> {
-  const serverKey = Deno.env.get('FCM_SERVER_KEY');
-  if (!serverKey) return 'fcm_no_key';
+  const raw = Deno.env.get('FCM_SERVICE_ACCOUNT');
+  if (!raw) return 'fcm_no_service_account';
+
+  let sa: ServiceAccount;
+  try {
+    sa = JSON.parse(raw) as ServiceAccount;
+  } catch {
+    return 'fcm_bad_service_account';
+  }
+  if (!sa.project_id || !sa.client_email || !sa.private_key) return 'fcm_incomplete_service_account';
+
+  const accessToken = await getFcmAccessToken(sa);
+  if (!accessToken) return 'fcm_no_access_token';
 
   try {
-    const res = await fetch('https://fcm.googleapis.com/fcm/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `key=${serverKey}`,
-        'Content-Type': 'application/json',
+    const res = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: {
+            token,
+            notification: { title, body },
+            android: {
+              priority: 'high',
+              notification: { channel_id: 'lior-reminders', sound: 'default' },
+            },
+            apns: { payload: { aps: { alert: { title, body }, sound: 'default', badge: 1 } } },
+          },
+        }),
       },
-      body: JSON.stringify({
-        to: token,
-        notification: { title, body, sound: 'default' },
-        android: { priority: 'high', notification: { channel_id: 'lior_partner_nudge' } },
-        apns: { payload: { aps: { alert: { title, body }, sound: 'default', badge: 1 } } },
-      }),
-    });
+    );
     return res.ok ? 'fcm_sent' : `fcm_error_${res.status}`;
   } catch {
     return 'fcm_exception';
   }
+}
+
+// RS256 sign using the service account's PKCS8 PEM private key.
+async function signRS256(message: string, pemPrivateKey: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(pemPrivateKey),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(message));
+  return b64urlBuffer(sig);
+}
+
+function pemToArrayBuffer(pem: string): ArrayBuffer {
+  const b64 = pem
+    .replace(/-----BEGIN [^-]+-----/, '')
+    .replace(/-----END [^-]+-----/, '')
+    .replace(/\s+/g, '');
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 // ── VAPID web push ────────────────────────────────────────────────────────────
