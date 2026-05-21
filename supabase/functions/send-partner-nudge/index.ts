@@ -52,6 +52,13 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: authError } = await callerClient.auth.getUser();
   if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
+  // ── Notification type ────────────────────────────────────────────────────
+  // 'pulse_check' (default) — nudge the partner if they haven't checked in.
+  // 'heartbeat'             — partner tapped the heartbeat button.
+  const reqBody = await req.json().catch(() => ({})) as { type?: string; senderName?: string };
+  const type = reqBody.type === 'heartbeat' ? 'heartbeat' : 'pulse_check';
+  const senderName = (reqBody.senderName || '').toString().trim().slice(0, 40);
+
   // Service-role client for privileged reads
   const admin = createClient(supabaseUrl, serviceKey);
 
@@ -78,19 +85,21 @@ Deno.serve(async (req: Request) => {
   if (!partnerRow) return json({ ok: false, reason: 'no_partner' });
   const partnerId = partnerRow.user_id as string;
 
-  // ── Check if partner has already recorded today ──────────────────────────
-  const today = TODAY();
-  const { data: partnerSignal } = await admin
-    .from('relationship_signals')
-    .select('id')
-    .eq('user_id', partnerId)
-    .eq('couple_id', coupleId)
-    .eq('signal_type', 'pulse_check')
-    .gte('created_at', `${today}T00:00:00Z`)
-    .limit(1)
-    .maybeSingle();
+  // ── Pulse-check only: skip if partner already recorded today ──────────────
+  if (type === 'pulse_check') {
+    const today = TODAY();
+    const { data: partnerSignal } = await admin
+      .from('relationship_signals')
+      .select('id')
+      .eq('user_id', partnerId)
+      .eq('couple_id', coupleId)
+      .eq('signal_type', 'pulse_check')
+      .gte('created_at', `${today}T00:00:00Z`)
+      .limit(1)
+      .maybeSingle();
 
-  if (partnerSignal) return json({ ok: true, reason: 'partner_already_recorded' });
+    if (partnerSignal) return json({ ok: true, reason: 'partner_already_recorded' });
+  }
 
   // ── Fetch partner's push tokens ──────────────────────────────────────────
   const { data: tokens } = await admin
@@ -102,8 +111,17 @@ Deno.serve(async (req: Request) => {
   if (!tokens?.length) return json({ ok: false, reason: 'no_push_token' });
 
   // ── Build notification payload ───────────────────────────────────────────
-  const title = '\u{1F495} Your partner is thinking of you';
-  const body  = "They just checked in \u2014 take a moment to share how you're feeling too.";
+  const who = senderName || 'Your partner';
+  let title: string;
+  let body: string;
+  if (type === 'heartbeat') {
+    // Short & playful.
+    title = `\u{1F497} Heartbeat from ${who}`;
+    body  = '\u{1F49E} Tap to send one back';
+  } else {
+    title = '\u{1F495} Your partner is thinking of you';
+    body  = "They just checked in \u2014 take a moment to share how you're feeling too.";
+  }
 
   const results: string[] = [];
 

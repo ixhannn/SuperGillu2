@@ -16,6 +16,7 @@ import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/home
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
 import { springSmooth, springSnappy } from '../utils/motion';
 import { toast } from '../utils/toast';
+import { NotificationsService } from '../services/notifications';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -510,6 +511,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         particlesRef.current?.triggerButtonDissolve(rect, () => {
             setIsDissolving(false);
             SyncService.sendSignal('HEARTBEAT');
+            // Push so the partner feels it even if their app is closed.
+            void NotificationsService.triggerHeartbeatPush(getDisplayName(profile.myName, 'Your partner'));
         });
     };
 

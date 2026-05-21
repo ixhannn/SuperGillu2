@@ -396,6 +396,30 @@ export const NotificationsService = {
       });
     } catch { /* fire-and-forget */ }
   },
+
+  /**
+   * Send the partner a push when the heartbeat button is tapped, so it lands
+   * even if their app is closed. Fire-and-forget — never blocks the UI.
+   * `senderName` is the current user's display name (the partner sees it).
+   */
+  async triggerHeartbeatPush(senderName: string): Promise<void> {
+    if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
+    try {
+      const token = await SupabaseService.getAccessToken();
+      if (!token) return;
+      const { url } = SupabaseService.getProjectConfig();
+      if (!url) return;
+
+      await fetch(`${url}/functions/v1/send-partner-nudge`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'heartbeat', senderName }),
+      });
+    } catch { /* fire-and-forget */ }
+  },
 };
 
 async function savePushToken(token: string, platform: 'fcm' | 'web', deviceId: string): Promise<void> {
