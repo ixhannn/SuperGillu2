@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "372560896422",
+    "project_id": "lior-bf6e6",
+    "storage_bucket": "lior-bf6e6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:372560896422:android:2b4473a67b59efb8f62f67",
+        "android_client_info": {
+          "package_name": "com.lior.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMY1YnDL0JVKXRc1QMbD0-H78kst5sRvg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
