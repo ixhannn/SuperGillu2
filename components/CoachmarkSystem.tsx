@@ -187,6 +187,19 @@ export const COACHMARKS: CoachmarkDef[] = [
   },
 ];
 
+// Short, playful one-liners — the whole pitch for a feature in a single breath.
+const TAGLINES: Record<string, string> = {
+  'center-fab': 'Tap the ➕ to save a photo, note, or feeling in seconds. ✨',
+  'daily-moments': 'Drop a little photo story that quietly disappears by midnight. 🌙',
+  'countdowns': 'Pin your next big day in sight and savour the build-up together. ⏳',
+  'open-when': 'Write letters now that unlock on the exact day they’re needed. 💌',
+  'bonsai': 'Your shared little tree grows with every memory you add. 🌱',
+  'aura-signal': 'Send a wordless “thinking of you” that lands on their phone instantly. 💫',
+  'theme-picker': 'Repaint your whole shared space with a handcrafted theme. 🎨',
+  'together-music': 'Pick the one song that belongs to just the two of you. 🎶',
+};
+const taglineFor = (def: CoachmarkDef): string => TAGLINES[def.key] ?? def.whatIs;
+
 interface CoachmarkCtx {
   triggerCoachmark: (key: string) => void;
   triggerTour: () => void;
@@ -357,23 +370,29 @@ const chooseSpotlightLayout = (rect: DOMRect, preferred?: 'above' | 'below' | 'a
   };
 };
 
-const ProgressBar: React.FC<{ step: number; total: number; accent?: string }> = ({ step, total, accent }) => (
-  <div style={{ height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 100, overflow: 'hidden' }}>
-    <motion.div
-      key={step}
-      initial={{ width: `${(step / total) * 100}%` }}
-      animate={{ width: `${((step + 1) / total) * 100}%` }}
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      style={{
-        height: '100%',
-        borderRadius: 100,
-        background: accent
-          ? `linear-gradient(90deg, ${accent}88, ${accent})`
-          : 'linear-gradient(90deg, #e879f9, #a855f7)',
-      }}
-    />
-  </div>
-);
+// Playful stretch-dots — the active step elongates into a pill.
+const ProgressBar: React.FC<{ step: number; total: number; accent?: string }> = ({ step, total, accent }) => {
+  const a = accent || '#e879f9';
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      {Array.from({ length: total }).map((_, i) => (
+        <motion.span
+          key={i}
+          initial={false}
+          animate={{ width: i === step ? 20 : 6, opacity: i <= step ? 1 : 0.32 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+          style={{
+            height: 6,
+            borderRadius: 100,
+            display: 'block',
+            background: i <= step ? a : 'rgba(0,0,0,0.16)',
+            boxShadow: i === step ? `0 0 8px ${a}88` : 'none',
+          }}
+        />
+      ))}
+    </div>
+  );
+};
 
 const STEP_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
@@ -481,7 +500,72 @@ const usePreviewTheme = (accent: string) => {
   return theme;
 };
 
-const FeaturePreview: React.FC<{ kind: PreviewKind; accent: string; large?: boolean }> = ({ kind, accent, large = false }) => {
+// Refined feature emblem — a frosted tile wrapped in a colored gradient ring,
+// with the glyph crisp on near-white, a glossy sheen, an accent wash and a soft
+// glow. Floats calmly (no wobble). GPU-only motion, flicker-free.
+const HeroPreview: React.FC<{ accent: string; gradient?: string; emoji?: string; large?: boolean }> = ({ accent, gradient, emoji, large = false }) => {
+  const wrap = large ? 152 : 78;
+  const tile = large ? 110 : 62;
+  const glyph = large ? 56 : 32;
+  const radius = large ? 32 : 19;
+  const ring = large ? 3 : 2;
+  const grad = gradient ?? `linear-gradient(145deg, ${accent} 0%, ${accent}bf 100%)`;
+  const dots = [
+    { top: '2%', left: '18%', s: 9 },
+    { top: '14%', left: '82%', s: 6 },
+    { top: '70%', left: '6%', s: 7 },
+    { top: '80%', left: '85%', s: 10 },
+  ];
+  return (
+    <div style={{ position: 'relative', width: '100%', height: wrap, display: 'grid', placeItems: 'center' }}>
+      {/* layered ambient glow */}
+      <div style={{ position: 'absolute', width: large ? 168 : 100, height: large ? 168 : 100, borderRadius: '50%', background: `radial-gradient(circle, ${accent}33 0%, transparent 68%)`, pointerEvents: 'none' }} />
+      {/* floating confetti (large only) */}
+      {large && dots.map((d, i) => (
+        <motion.span
+          key={i}
+          animate={{ y: [0, -7, 0], opacity: [0.4, 0.95, 0.4] }}
+          transition={{ duration: 2.8 + i * 0.45, repeat: Infinity, ease: 'easeInOut', delay: i * 0.35 }}
+          style={{ position: 'absolute', top: d.top, left: d.left, width: d.s, height: d.s, borderRadius: '50%', background: i % 2 ? accent : `${accent}80`, pointerEvents: 'none' }}
+        />
+      ))}
+      {/* gradient-ring frosted tile (padding-box trick) */}
+      <motion.div
+        animate={{ y: [0, -4, 0] }}
+        transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          position: 'relative',
+          width: tile, height: tile, borderRadius: radius, padding: ring,
+          background: grad,
+          boxShadow: `0 22px 44px ${accent}55, 0 6px 14px ${accent}38`,
+        }}
+      >
+        {/* inner frosted face */}
+        <div
+          style={{
+            position: 'relative',
+            width: '100%', height: '100%',
+            borderRadius: radius - ring,
+            background: 'linear-gradient(160deg, #ffffff 0%, #fdf4f8 100%)',
+            display: 'grid', placeItems: 'center', overflow: 'hidden',
+            boxShadow: 'inset 0 1px 0 #fff',
+          }}
+        >
+          {/* accent tint wash */}
+          <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(120% 100% at 50% 0%, ${accent}22 0%, transparent 62%)`, pointerEvents: 'none' }} />
+          {/* glossy sheen */}
+          <div style={{ position: 'absolute', insetInline: 0, top: 0, height: '46%', background: 'linear-gradient(180deg, rgba(255,255,255,0.75) 0%, transparent 100%)', pointerEvents: 'none' }} />
+          <span style={{ position: 'relative', fontSize: glyph, lineHeight: 1, filter: `drop-shadow(0 3px 6px ${accent}55)` }}>{emoji ?? '✨'}</span>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const FeaturePreview: React.FC<{ kind: PreviewKind; accent: string; large?: boolean; emoji?: string; gradient?: string }> = ({ kind, accent, large = false, emoji, gradient }) => {
+  return <HeroPreview accent={accent} gradient={gradient} emoji={emoji} large={large} />;
+
+  // ── Legacy per-kind previews (superseded by HeroPreview above) ──────────
   const theme = usePreviewTheme(accent);
   const frameHeight = large ? 172 : 118;
   const shellRadius = large ? 24 : 18;
@@ -794,11 +878,12 @@ const FeaturePreview: React.FC<{ kind: PreviewKind; accent: string; large?: bool
 };
 
 const CopyBlock: React.FC<{ label: string; text: string; accent: string }> = ({ label, text, accent }) => (
-  <div>
-    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: `${accent}c9`, marginBottom: 3 }}>
+  <div style={{ position: 'relative', paddingLeft: 12 }}>
+    <span style={{ position: 'absolute', left: 0, top: 3, bottom: 3, width: 3, borderRadius: 100, background: `linear-gradient(180deg, ${accent}, ${accent}44)` }} />
+    <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: accent, marginBottom: 3 }}>
       {label}
     </p>
-    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.66)', lineHeight: 1.55 }}>
+    <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.55, margin: 0 }}>
       {text}
     </p>
   </div>
@@ -815,11 +900,11 @@ const StepChrome: React.FC<{
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'monospace', color: `${accent}cc` }}>
-          {stepIndex + 1} / {total}
+        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: accent }}>
+          {String(stepIndex + 1).padStart(2, '0')} · {String(total).padStart(2, '0')}
         </span>
-        <button onClick={onSkip} style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'monospace', padding: 0 }}>
-          skip tour
+        <button onClick={onSkip} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', opacity: 0.75, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          Skip tour
         </button>
       </div>
       <ProgressBar step={stepIndex} total={total} accent={accent} />
@@ -872,7 +957,7 @@ const SpotlightStep: React.FC<{
             <rect x={sL} y={sT} width={sW} height={sH} rx={sR} ry={sR} fill="black" />
           </mask>
         </defs>
-        <rect width="100%" height="100%" fill="rgba(5,2,8,0.84)" mask={`url(#cm-mask-${def.key})`} />
+        <rect width="100%" height="100%" fill="rgba(28,15,26,0.52)" mask={`url(#cm-mask-${def.key})`} />
       </svg>
 
       <motion.div
@@ -892,8 +977,6 @@ const SpotlightStep: React.FC<{
       />
 
       <motion.div
-        layout
-        layoutId="coachmark-panel"
         initial={bubbleMotion.initial}
         animate={bubbleMotion.animate}
         exit={bubbleMotion.exit}
@@ -903,13 +986,11 @@ const SpotlightStep: React.FC<{
           left: bubbleLeft,
           width: bubbleWidth,
           ...(placement === 'below' ? { top: bubbleTop } : { bottom: bubbleBottom }),
-          background: 'linear-gradient(180deg, rgba(12,8,18,0.98) 0%, rgba(8,5,12,0.98) 100%)',
-          backdropFilter: 'blur(32px)',
-          WebkitBackdropFilter: 'blur(32px)',
+          background: 'linear-gradient(172deg, rgba(255,255,255,0.985) 0%, rgba(255,249,251,0.965) 100%)',
           borderRadius: 24,
-          padding: compact ? '14px 14px 15px' : '15px 16px 16px',
-          border: '1px solid rgba(255,255,255,0.1)',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+          padding: compact ? '15px 15px 16px' : '16px 17px 17px',
+          border: '1px solid rgba(255,255,255,0.85)',
+          boxShadow: `0 26px 64px rgba(45,18,42,0.4), 0 0 0 1px ${accent}1f, inset 0 1px 0 rgba(255,255,255,0.95)`,
         }}
       >
         <div
@@ -927,8 +1008,8 @@ const SpotlightStep: React.FC<{
               position: 'absolute',
               width: 10,
               height: 10,
-              background: 'rgba(12,8,18,0.98)',
-              border: '1px solid rgba(255,255,255,0.09)',
+              background: 'rgba(255,250,252,0.98)',
+              border: '1px solid rgba(0,0,0,0.05)',
               ...(placement === 'above'
                 ? { bottom: 1, transform: 'rotate(45deg)', transformOrigin: 'bottom center' }
                 : { top: 1, transform: 'rotate(45deg)', transformOrigin: 'top center' }),
@@ -936,78 +1017,69 @@ const SpotlightStep: React.FC<{
           />
         </div>
 
-        <StepChrome def={def} stepIndex={stepIndex} total={total} onSkip={onSkip}>
-          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: compact ? '1fr' : '108px 1fr', gap: 12, alignItems: 'start' }}>
-            <motion.div layout="position" layoutId="coachmark-preview-shell">
-              <FeaturePreview kind={def.preview} accent={accent} />
-            </motion.div>
-            <div>
-              <motion.div layout="position" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 22, lineHeight: 1 }}>{def.emoji}</span>
-                <div>
-                  <p style={{ fontSize: 15, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>{def.title}</p>
-                  {def.where && (
-                    <p style={{ fontSize: 11, color: `${accent}dd`, fontFamily: 'monospace', marginTop: 2 }}>{def.where}</p>
-                  )}
-                </div>
-              </motion.div>
-              <div style={{ display: 'grid', gap: 8 }}>
-                <CopyBlock label="What it is" text={def.whatIs} accent={accent} />
-                <CopyBlock label="Why it matters" text={def.whyItMatters} accent={accent} />
-                <CopyBlock label="Do now" text={def.doThisNow} accent={accent} />
-              </div>
-            </div>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <ProgressBar step={stepIndex} total={total} accent={accent} />
+          <button onClick={onSkip} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', opacity: 0.7, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            Skip
+          </button>
+        </div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            <button
-              disabled={controlsDisabled}
-              onClick={onAction}
-              onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.985)'}
-              onPointerUp={(event) => event.currentTarget.style.transform = ''}
-              onPointerLeave={(event) => event.currentTarget.style.transform = ''}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                borderRadius: 12,
-                background: def.gradient ?? `linear-gradient(135deg, ${accent} 0%, #a855f7 100%)`,
-                border: 'none',
-                color: '#fff',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: controlsDisabled ? 'progress' : 'pointer',
-                letterSpacing: '0.02em',
-                boxShadow: `0 3px 14px ${accent}55`,
-                opacity: controlsDisabled && !actionBusy ? 0.72 : 1,
-                transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease',
-              }}
-            >
-              {actionBusy ? 'Opening...' : def.actionLabel}
-            </button>
-            <button
-              disabled={controlsDisabled}
-              onClick={onNext}
-              onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.985)'}
-              onPointerUp={(event) => event.currentTarget.style.transform = ''}
-              onPointerLeave={(event) => event.currentTarget.style.transform = ''}
-              style={{
-                padding: '10px 12px',
-                minWidth: 92,
-                borderRadius: 12,
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.84)',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: controlsDisabled ? 'progress' : 'pointer',
-                opacity: controlsDisabled && !nextBusy ? 0.64 : 1,
-                transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease',
-              }}
-            >
-              {nextBusy ? 'Moving...' : 'Next'}
-            </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 72, flexShrink: 0 }}>
+            <FeaturePreview kind={def.preview} accent={accent} emoji={def.emoji} gradient={def.gradient} />
           </div>
-        </StepChrome>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.15, margin: 0 }}>{def.title}</p>
+            <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '5px 0 0' }}>{taglineFor(def)}</p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+          <button
+            disabled={controlsDisabled}
+            onClick={onAction}
+            onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.97)'}
+            onPointerUp={(event) => event.currentTarget.style.transform = ''}
+            onPointerLeave={(event) => event.currentTarget.style.transform = ''}
+            style={{
+              flex: 1,
+              padding: '12px 14px',
+              borderRadius: 14,
+              background: def.gradient ?? `linear-gradient(135deg, ${accent} 0%, #a855f7 100%)`,
+              border: 'none',
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 800,
+              cursor: controlsDisabled ? 'progress' : 'pointer',
+              boxShadow: `0 8px 22px ${accent}55, inset 0 1px 0 rgba(255,255,255,0.35)`,
+              opacity: controlsDisabled && !actionBusy ? 0.72 : 1,
+              transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease',
+            }}
+          >
+            {actionBusy ? 'Opening…' : def.actionLabel}
+          </button>
+          <button
+            disabled={controlsDisabled}
+            onClick={onNext}
+            onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.97)'}
+            onPointerUp={(event) => event.currentTarget.style.transform = ''}
+            onPointerLeave={(event) => event.currentTarget.style.transform = ''}
+            style={{
+              padding: '12px 16px',
+              borderRadius: 14,
+              background: 'rgba(0,0,0,0.045)',
+              border: '1px solid rgba(0,0,0,0.08)',
+              color: 'var(--color-text-secondary)',
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: controlsDisabled ? 'progress' : 'pointer',
+              opacity: controlsDisabled && !nextBusy ? 0.64 : 1,
+              transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease',
+            }}
+          >
+            {nextBusy ? '…' : 'Next'}
+          </button>
+        </div>
       </motion.div>
     </motion.div>,
     document.body,
@@ -1045,104 +1117,99 @@ const CardStep: React.FC<{
         alignItems: 'center',
         justifyContent: 'center',
         padding: '24px',
-        background: 'rgba(5,2,8,0.88)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        background: 'radial-gradient(circle at 50% 30%, rgba(38,24,44,0.86) 0%, rgba(10,6,14,0.92) 72%)',
       }}
     >
       <motion.div
-        layout
-        layoutId="coachmark-panel"
         initial={panelMotion.initial}
         animate={panelMotion.animate}
         exit={panelMotion.exit}
         transition={panelMotion.transition}
         style={{
           width: '100%',
-          maxWidth: 352,
-          borderRadius: 28,
+          maxWidth: 360,
+          borderRadius: 30,
           overflow: 'hidden',
-          background: '#0d080f',
-          boxShadow: `0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08), 0 0 48px ${accent}18`,
+          background: 'linear-gradient(172deg, rgba(255,255,255,0.985) 0%, rgba(255,248,251,0.965) 100%)',
+          boxShadow: `0 44px 100px rgba(45,18,42,0.45), 0 0 0 1px rgba(255,255,255,0.8), 0 22px 60px ${accent}33`,
         }}
       >
-        <div
-          style={{
-            padding: '16px 16px 18px',
-            background: def.gradient ?? 'linear-gradient(140deg,#2d1b4e,#a855f7)',
-          }}
-        >
-          <StepChrome def={def} stepIndex={stepIndex} total={total} onSkip={onSkip}>
-            <motion.div layout="position" layoutId="coachmark-preview-shell" style={{ marginTop: 12 }}>
-              <FeaturePreview kind={def.preview} accent={accent} large />
-            </motion.div>
-          </StepChrome>
-        </div>
-
-        <div style={{ padding: '16px 18px 18px' }}>
-          <motion.div layout="position" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 24, lineHeight: 1 }}>{def.emoji}</span>
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: '#fff', lineHeight: 1.15, letterSpacing: '-0.01em', margin: 0 }}>{def.title}</h2>
-              {def.where && (
-                <p style={{ fontSize: 11, color: `${accent}cc`, fontFamily: 'monospace', marginTop: 4 }}>{def.where}</p>
-              )}
-            </div>
-          </motion.div>
-
-          <div style={{ display: 'grid', gap: 10 }}>
-            <CopyBlock label="What it is" text={def.whatIs} accent={accent} />
-            <CopyBlock label="Why it matters" text={def.whyItMatters} accent={accent} />
-            <CopyBlock label="Do now" text={def.doThisNow} accent={accent} />
+        <div style={{ padding: '16px 22px 22px' }}>
+          {/* top: playful dots + skip */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <ProgressBar step={stepIndex} total={total} accent={accent} />
+            <button onClick={onSkip} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', opacity: 0.7, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              Skip
+            </button>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+          {/* emblem */}
+          <div style={{ marginTop: 6 }}>
+            <FeaturePreview kind={def.preview} accent={accent} emoji={def.emoji} gradient={def.gradient} large />
+          </div>
+
+          {/* title + playful one-liner */}
+          <div style={{ textAlign: 'center', marginTop: 4 }}>
+            <h2 style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 26, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.1, letterSpacing: '-0.01em', margin: 0 }}>{def.title}</h2>
+            <p style={{ fontSize: 15.5, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '9px auto 0', maxWidth: '17.5rem' }}>{taglineFor(def)}</p>
+          </div>
+
+          {/* where pill */}
+          {def.where && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: accent, background: `${accent}14`, border: `1px solid ${accent}2e`, borderRadius: 999, padding: '6px 13px' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: accent }} />
+                {def.where}
+              </span>
+            </div>
+          )}
+
+          {/* actions */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
             <button
               disabled={controlsDisabled}
               onClick={onAction}
-              onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.985)'}
+              onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.97)'}
               onPointerUp={(event) => event.currentTarget.style.transform = ''}
               onPointerLeave={(event) => event.currentTarget.style.transform = ''}
               style={{
                 flex: 1,
-                padding: '13px',
-                borderRadius: 14,
+                padding: '14px',
+                borderRadius: 16,
                 background: def.gradient ?? `linear-gradient(135deg, ${accent}, #a855f7)`,
                 border: 'none',
                 color: '#fff',
-                fontSize: 14,
+                fontSize: 14.5,
                 fontWeight: 800,
                 cursor: controlsDisabled ? 'progress' : 'pointer',
-                letterSpacing: '0.01em',
-                boxShadow: `0 6px 24px ${accent}44`,
-                textShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                boxShadow: `0 10px 26px ${accent}59, inset 0 1px 0 rgba(255,255,255,0.4)`,
                 opacity: controlsDisabled && !actionBusy ? 0.72 : 1,
                 transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease',
               }}
             >
-              {actionBusy ? 'Opening...' : def.actionLabel}
+              {actionBusy ? 'Opening…' : def.actionLabel}
             </button>
             <button
               disabled={controlsDisabled}
               onClick={onNext}
-              onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.985)'}
+              onPointerDown={(event) => event.currentTarget.style.transform = 'scale(0.97)'}
               onPointerUp={(event) => event.currentTarget.style.transform = ''}
               onPointerLeave={(event) => event.currentTarget.style.transform = ''}
               style={{
-                minWidth: 96,
-                padding: '13px',
-                borderRadius: 14,
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: 'rgba(255,255,255,0.82)',
-                fontSize: 14,
+                minWidth: 92,
+                padding: '14px',
+                borderRadius: 16,
+                background: 'rgba(0,0,0,0.045)',
+                border: '1px solid rgba(0,0,0,0.08)',
+                color: 'var(--color-text-secondary)',
+                fontSize: 14.5,
                 fontWeight: 700,
                 cursor: controlsDisabled ? 'progress' : 'pointer',
                 opacity: controlsDisabled && !nextBusy ? 0.64 : 1,
                 transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease',
               }}
             >
-              {nextBusy ? 'Moving...' : 'Next'}
+              {nextBusy ? '…' : 'Next'}
             </button>
           </div>
         </div>
@@ -1170,37 +1237,57 @@ const CelebrationStep: React.FC<{ onDone: () => void }> = ({ onDone }) => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(5,2,8,0.88)',
-        backdropFilter: 'blur(18px)',
-        WebkitBackdropFilter: 'blur(18px)',
+        background: 'var(--theme-bg-main)',
+        backdropFilter: 'blur(3px)',
+        WebkitBackdropFilter: 'blur(3px)',
       }}
     >
       <motion.div
-        initial={{ scale: 0.7, opacity: 0 }}
+        initial={{ scale: 0.82, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', damping: 18, stiffness: 280 }}
-        style={{ textAlign: 'center', padding: '0 40px' }}
+        transition={{ type: 'spring', damping: 18, stiffness: 240 }}
+        style={{ position: 'relative', textAlign: 'center', padding: '0 40px' }}
       >
+        {/* floating hearts rising once */}
+        {Array.from({ length: 7 }).map((_, i) => (
+          <motion.span
+            key={i}
+            initial={{ opacity: 0, y: 30, x: -120 + i * 40 }}
+            animate={{ opacity: [0, 0.9, 0], y: -130 }}
+            transition={{ delay: 0.2 + i * 0.12, duration: 2.2, ease: 'easeOut' }}
+            style={{ position: 'absolute', left: '50%', top: '38%', fontSize: 13 + (i % 3) * 6, pointerEvents: 'none' }}
+          >
+            💗
+          </motion.span>
+        ))}
+        {/* glowing medallion */}
         <motion.div
-          animate={{ rotate: [0, -8, 8, -5, 5, 0] }}
-          transition={{ delay: 0.3, duration: 0.7 }}
-          style={{ fontSize: 72, marginBottom: 20, display: 'block', lineHeight: 1 }}
+          initial={{ scale: 0, rotate: -16 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', damping: 12, stiffness: 220, delay: 0.05 }}
+          style={{
+            width: 104, height: 104, borderRadius: '50%', margin: '0 auto 24px',
+            display: 'grid', placeItems: 'center', position: 'relative',
+            background: 'linear-gradient(150deg, #ff8fb1 0%, #c4687e 100%)',
+            boxShadow: '0 0 50px rgba(196,104,126,0.6), 0 18px 44px rgba(0,0,0,0.4), inset 0 2px 0 rgba(255,255,255,0.4)',
+            fontSize: 46, lineHeight: 1,
+          }}
         >
-          🎉
+          ✨
         </motion.div>
         <motion.h2
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          style={{ fontSize: 26, fontWeight: 800, color: '#fff', marginBottom: 10, letterSpacing: '-0.02em' }}
+          transition={{ delay: 0.25 }}
+          style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 30, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 12, letterSpacing: '-0.01em' }}
         >
           You&apos;re all set
         </motion.h2>
         <motion.p
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          style={{ fontSize: 15, color: 'rgba(255,255,255,0.54)', lineHeight: 1.6 }}
+          transition={{ delay: 0.4 }}
+          style={{ fontSize: 15, color: 'var(--color-text-secondary)', lineHeight: 1.65, maxWidth: 300, margin: '0 auto' }}
         >
           You know the shape of the app now. The rest is yours to fill together.
         </motion.p>
@@ -1269,14 +1356,9 @@ export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, 
     enterMode: ActiveStep['enterMode'],
   ): ActiveStep => {
     const shownAt = Date.now();
-
-    if ((def.mode ?? 'spotlight') === 'spotlight' && (!def.route || def.route === currentViewRef.current)) {
-      const spotlight = measureSpotlight(def);
-      if (spotlight) {
-        return { def, queue, stepIndex, total, renderMode: 'spotlight', spotlight, shownAt, enterMode };
-      }
-    }
-
+    // The tour now presents polished full cards only. Spotlights revealed the
+    // live (busy) screen behind a scrim, which felt jarring — the "where" pill
+    // and the action button still guide the user to each feature.
     return { def, queue, stepIndex, total, renderMode: 'card', spotlight: null, shownAt, enterMode };
   }, []);
 
@@ -1319,8 +1401,7 @@ export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, 
       setCelebrating(false);
       setActive(step);
     });
-    enhanceStep(step);
-  }, [createImmediateStep, enhanceStep]);
+  }, [createImmediateStep]);
 
   const closeCurrentStep = useCallback((def: CoachmarkDef, reason?: 'step_skipped' | 'step_action_clicked') => {
     FeatureDiscovery.markCoachmarkSeen(def.key);

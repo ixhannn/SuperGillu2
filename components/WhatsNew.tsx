@@ -1,11 +1,14 @@
 /**
- * WhatsNew - refined release highlights surface.
+ * WhatsNew — luminous release-highlights showcase.
  *
- * Goals:
- * - only surface meaningful feature drops, not every build
- * - feel premium on small screens instead of cramped
- * - show data-shaped previews instead of decorative placeholders
- * - keep transitions immediate and easy to scan
+ * Design language (shared with the guided tour): a layered glass medallion
+ * floating over a glowing accent field, editorial serif display type, segmented
+ * progress, and an accent-tinted CTA.
+ *
+ * Performance: the background (theme + two static blurred orbs) is painted ONCE
+ * and never swapped between slides — no full-screen repaint, no flicker. Every
+ * transition animates transform + opacity only. The single ambient motion (the
+ * medallion float) is GPU-only and disabled under reduced-motion.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -13,9 +16,11 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeft,
   ArrowRight,
+  Check,
   Clapperboard,
   Gift,
   Hourglass,
+  MapPin,
   Mic,
   Sparkles,
   X,
@@ -32,10 +37,8 @@ interface Feature {
   title: string;
   what: string;
   where: string;
-  metricA: string;
-  metricB: string;
   accent: string;
-  tint: string;
+  accentDeep: string;
 }
 
 const FEATURES: Feature[] = [
@@ -44,132 +47,94 @@ const FEATURES: Feature[] = [
     icon: Clapperboard,
     eyebrow: 'Premium',
     title: 'Video Memories',
-    what: 'Save short clips beside your photos and keepsakes.',
-    where: 'Timeline, Daily Moments, Keepsakes',
-    metricA: '12s clip',
-    metricB: 'HD keepsake',
-    accent: '#b66f86',
-    tint: '#f7e8ee',
+    what: 'Save short clips right beside your photos and keepsakes — the little moments a still frame could never hold.',
+    where: 'Timeline · Daily Moments · Keepsakes',
+    accent: '#d4637a',
+    accentDeep: '#a83f5c',
   },
   {
     key: 'timecapsule',
     icon: Hourglass,
     eyebrow: 'New',
     title: 'Time Capsule',
-    what: 'Lock a note and reopen it on a future date.',
-    where: 'Us, milestone rituals',
-    metricA: '1 locked note',
-    metricB: 'Opens Jun 14',
-    accent: '#8177b8',
-    tint: '#ece9f8',
+    what: 'Lock a note today and let it reopen on a future date — a message from your past self, waiting for you both.',
+    where: 'Us · milestone rituals',
+    accent: '#7c72bf',
+    accentDeep: '#564b9b',
   },
   {
     key: 'surprises',
     icon: Gift,
     eyebrow: 'New',
     title: 'Surprises',
-    what: 'Hide a plan or note until the reveal day.',
-    where: 'Future plans, little reveals',
-    metricA: '1 hidden plan',
-    metricB: 'Reveal Friday',
-    accent: '#b98745',
-    tint: '#f7edda',
+    what: 'Hide a plan or a sweet note and keep it sealed until the reveal day arrives. Anticipation is half the joy.',
+    where: 'Us · future plans',
+    accent: '#c0883e',
+    accentDeep: '#94621f',
   },
   {
     key: 'voicenotes',
     icon: Mic,
     eyebrow: 'New',
     title: 'Voice Notes',
-    what: 'Send a short note they can hear again later.',
+    what: 'Send a few seconds of your voice they can play back any time — a goodnight, a laugh, an "I miss you".',
     where: 'Voice Notes',
-    metricA: '0:28 note',
-    metricB: 'Played 3x',
-    accent: '#4d8fa5',
-    tint: '#e2f1f4',
+    accent: '#3f93ab',
+    accentDeep: '#256d83',
   },
   {
     key: 'yearinreview',
     icon: Sparkles,
     eyebrow: 'New',
     title: 'Year in Review',
-    what: 'Review the moments and rituals that shaped the year.',
-    where: 'Reflection and recap surfaces',
-    metricA: '84 memories',
-    metricB: '92% sync',
-    accent: '#5f9b82',
-    tint: '#e3f2eb',
+    what: 'A cinematic look back at the memories, moods and rituals that shaped your year together.',
+    where: 'Reflection · recap surfaces',
+    accent: '#4f9b7f',
+    accentDeep: '#2f7459',
   },
 ];
 
+const SLIDE_SPRING = { type: 'spring' as const, stiffness: 300, damping: 32, mass: 0.85 };
+
 const slideVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? 36 : -36,
-    opacity: 0,
-    scale: 0.985,
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-    scale: 1,
-    transition: {
-      type: 'spring' as const,
-      damping: 24,
-      stiffness: 260,
-      mass: 0.82,
-    },
-  },
-  exit: (direction: number) => ({
-    x: direction > 0 ? -32 : 32,
-    opacity: 0,
-    scale: 0.985,
-    transition: { duration: 0.16, ease: [0.32, 0, 0.67, 0] as const },
-  }),
+  enter: (dir: number) => ({ x: dir > 0 ? 46 : -46, opacity: 0 }),
+  center: { x: 0, opacity: 1, transition: SLIDE_SPRING },
+  exit: (dir: number) => ({ x: dir > 0 ? -46 : 46, opacity: 0, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] as const } }),
 };
 
-const DetailLine: React.FC<{ label: string; body: string; accent: string }> = ({ label, body, accent }) => (
-  <div
-    className="flex gap-2 rounded-[0.75rem] px-2.5 py-2"
-    style={{ background: `linear-gradient(135deg, ${accent}10, rgba(255,255,255,0.64))` }}
-  >
-    <p className="w-11 shrink-0 text-[10px] font-medium" style={{ color: accent }}>{label}</p>
-    <p className="text-[12px] leading-5" style={{ color: '#374151' }}>{body}</p>
-  </div>
-);
-
-const TinyPreview: React.FC<{ feature: Feature; reducedMotion: boolean }> = ({ feature, reducedMotion }) => (
-  <motion.div
-    className="rounded-[0.85rem] p-2.5"
-    initial={reducedMotion ? false : { opacity: 0, y: 6 }}
-    animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
-    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-    style={{
-      background: `linear-gradient(135deg, ${feature.accent}14, ${feature.tint})`,
-      border: `1px solid ${feature.accent}22`,
-    }}
-  >
-    <div className="flex items-center gap-2">
+// ── Layered glass medallion ──────────────────────────────────────────────────
+const Medallion: React.FC<{ feature: Feature; reduced: boolean }> = ({ feature, reduced }) => {
+  const Icon = feature.icon;
+  return (
+    <div style={{ position: 'relative', width: 184, height: 184, display: 'grid', placeItems: 'center' }}>
+      {/* soft outer glow */}
+      <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: `radial-gradient(circle, ${feature.accent}3d 0%, transparent 64%)` }} />
+      {/* concentric rings */}
+      <div style={{ position: 'absolute', width: 178, height: 178, borderRadius: '50%', border: `1px solid ${feature.accent}26` }} />
+      <div style={{ position: 'absolute', width: 150, height: 150, borderRadius: '50%', border: `1px solid ${feature.accent}33` }} />
+      {/* floating gradient disc */}
       <motion.div
-        className="flex h-8 w-8 items-center justify-center rounded-[0.65rem]"
-        animate={reducedMotion ? undefined : { rotate: [0, -3, 0, 3, 0], scale: [1, 1.04, 1] }}
-        transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
-        style={{ background: 'rgba(255,255,255,0.58)' }}
+        animate={reduced ? undefined : { y: [0, -8, 0] }}
+        transition={{ duration: 5.4, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          position: 'relative',
+          width: 116, height: 116, borderRadius: '50%',
+          background: `linear-gradient(150deg, ${feature.accent} 0%, ${feature.accentDeep} 100%)`,
+          display: 'grid', placeItems: 'center',
+          boxShadow: `0 22px 50px ${feature.accent}66, 0 0 0 8px rgba(255,255,255,0.5), inset 0 2px 0 rgba(255,255,255,0.45)`,
+        }}
       >
-        <feature.icon size={15} color={feature.accent} />
+        {/* sheen */}
+        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, transparent 46%)' }} />
+        <Icon size={50} color="#fff" strokeWidth={1.7} style={{ position: 'relative' }} />
       </motion.div>
-      <p className="text-[11px] font-medium" style={{ color: '#334155' }}>{feature.metricA} / {feature.metricB}</p>
+      {/* sparkle accent */}
+      <div style={{ position: 'absolute', top: 26, right: 30, width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.95)', display: 'grid', placeItems: 'center', boxShadow: `0 6px 16px ${feature.accent}55` }}>
+        <Sparkles size={15} style={{ color: feature.accent }} />
+      </div>
     </div>
-    <div className="mt-2.5 space-y-1.5">
-      <div className="h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.76)' }} />
-      <motion.div
-        animate={reducedMotion ? undefined : { scaleX: [0.58, 0.74, 0.58] }}
-        transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-        className="h-1.5 w-full origin-left rounded-full"
-        style={{ background: feature.accent }}
-      />
-      <div className="h-1.5 w-2/3 rounded-full" style={{ background: 'rgba(255,255,255,0.62)' }} />
-    </div>
-  </motion.div>
-);
+  );
+};
 
 interface WhatsNewProps {
   onClose: () => void;
@@ -178,52 +143,48 @@ interface WhatsNewProps {
 export const WhatsNew: React.FC<WhatsNewProps> = ({ onClose }) => {
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState(1);
-  const reducedMotion = useReducedMotion();
+  const reduced = !!useReducedMotion();
 
   const feature = FEATURES[index];
+  const total = FEATURES.length;
   const isFirst = index === 0;
-  const isLast = index === FEATURES.length - 1;
+  const isLast = index === total - 1;
 
-  const progressLabel = useMemo(
-    () => `${String(index + 1).padStart(2, '0')} / ${String(FEATURES.length).padStart(2, '0')}`,
-    [index],
+  const counter = useMemo(
+    () => `${String(index + 1).padStart(2, '0')} · ${String(total).padStart(2, '0')}`,
+    [index, total],
   );
 
-  const progressScale = useMemo(
-    () => (index + 1) / FEATURES.length,
-    [index],
-  );
-
-  const markSeenAndClose = useCallback(() => {
+  const finish = useCallback(() => {
     FeatureDiscovery.markCurrentVersionSeen();
+    void Haptics.success();
     onClose();
-    void Haptics.softTap();
   }, [onClose]);
 
-  const jumpTo = useCallback((nextIndex: number) => {
-    if (nextIndex === index) return;
-    setDirection(nextIndex > index ? 1 : -1);
-    setIndex(nextIndex);
+  const skip = useCallback(() => {
+    FeatureDiscovery.markCurrentVersionSeen();
+    void Haptics.softTap();
+    onClose();
+  }, [onClose]);
+
+  const goTo = useCallback((next: number) => {
+    if (next < 0 || next > total - 1 || next === index) return;
+    setDirection(next > index ? 1 : -1);
+    setIndex(next);
     void Haptics.select();
-  }, [index]);
+  }, [index, total]);
 
   const goNext = useCallback(() => {
-    if (isLast) {
-      FeatureDiscovery.markCurrentVersionSeen();
-      onClose();
-      void Haptics.success();
-      return;
-    }
-
+    if (isLast) { finish(); return; }
     setDirection(1);
-    setIndex((current) => Math.min(current + 1, FEATURES.length - 1));
+    setIndex((c) => Math.min(c + 1, total - 1));
     void Haptics.select();
-  }, [isLast, onClose]);
+  }, [isLast, total, finish]);
 
   const goPrev = useCallback(() => {
     if (isFirst) return;
     setDirection(-1);
-    setIndex((current) => Math.max(current - 1, 0));
+    setIndex((c) => Math.max(c - 1, 0));
     void Haptics.select();
   }, [isFirst]);
 
@@ -232,187 +193,161 @@ export const WhatsNew: React.FC<WhatsNewProps> = ({ onClose }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[500] overflow-y-auto"
-      style={{
-        background: `linear-gradient(135deg, ${feature.tint} 0%, #f4efe8 46%, #e8f3f2 100%)`,
-        overscrollBehavior: 'contain',
-      }}
+      transition={{ duration: 0.28, ease: 'easeOut' }}
+      className="fixed inset-0 z-[500] flex flex-col overflow-hidden"
+      style={{ background: 'var(--theme-bg-main)', color: 'var(--color-text-primary)' }}
     >
+      {/* ── Ambient depth — static blurred orbs (painted once) ── */}
+      <div aria-hidden className="pointer-events-none absolute -top-[16%] -right-[14%] h-[44vh] w-[44vh] rounded-full" style={{ background: 'var(--theme-orb-1)', filter: 'blur(95px)', opacity: 0.6 }} />
+      <div aria-hidden className="pointer-events-none absolute -bottom-[15%] -left-[16%] h-[42vh] w-[42vh] rounded-full" style={{ background: 'var(--theme-orb-2)', filter: 'blur(95px)', opacity: 0.5 }} />
+
       <div
-        className="relative z-10 mx-auto flex min-h-screen w-full max-w-[430px] flex-col px-4"
-        style={{
-          paddingTop: 'max(env(safe-area-inset-top), 16px)',
-          paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
-        }}
+        className="relative z-10 mx-auto flex h-full w-full max-w-[440px] flex-col px-6"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 18px)', paddingBottom: 'max(env(safe-area-inset-bottom), 18px)' }}
       >
-        <div
-          className="relative my-auto overflow-hidden rounded-[0.9rem] border"
-          style={{
-            borderColor: 'rgba(136,145,160,0.22)',
-            background: `linear-gradient(150deg, ${feature.tint}b8, rgba(255,255,255,0.8))`,
-            boxShadow: `0 12px 32px ${feature.accent}1f`,
-            backdropFilter: 'blur(18px)',
-          }}
-        >
-          <div
-            className="pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full"
-            style={{ background: `radial-gradient(circle, ${feature.accent}40 0%, transparent 70%)` }}
-          />
-          <div className="border-b px-3 py-2.5" style={{ borderColor: 'rgba(136,145,160,0.16)', background: 'rgba(255,255,255,0.26)' }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border px-2.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em]" style={{ borderColor: `${feature.accent}40`, color: '#475569', background: 'rgba(255,255,255,0.58)' }}>
-                    What&apos;s new
-                  </span>
-                  <span className="rounded-full px-2.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em]" style={{ background: `${feature.accent}1f`, color: '#475569' }}>
-                    v{APP_VERSION}
-                  </span>
-                </div>
-                <div className="mt-1.5 flex items-center gap-1.5">
-                  <motion.span
-                    className="h-2 w-2 rounded-full"
-                    animate={reducedMotion ? undefined : { scale: [1, 1.35, 1], opacity: [0.65, 1, 0.65] }}
-                    transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{ background: feature.accent }}
-                  />
-                  <h1 className="font-serif text-[1.05rem] leading-[1.1]" style={{ color: '#1f2937' }}>
-                  New features
-                  </h1>
-                </div>
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-2.5">
+            <span className="text-[12px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--color-text-secondary)' }}>
+              What's New
+            </span>
+            <span
+              className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+              style={{ background: `${feature.accent}1f`, color: feature.accent, transition: 'background 0.32s, color 0.32s' }}
+            >
+              v{APP_VERSION}
+            </span>
+          </div>
+          <motion.button
+            type="button"
+            onClick={skip}
+            whileTap={reduced ? undefined : { scale: 0.9 }}
+            className="flex h-11 w-11 items-center justify-center rounded-full"
+            style={{ background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.78)', color: 'var(--color-text-secondary)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+            aria-label="Close"
+          >
+            <X size={17} strokeWidth={2.4} />
+          </motion.button>
+        </div>
+
+        {/* ── Stage ── */}
+        <div className="relative flex flex-1 items-center">
+          <AnimatePresence custom={direction} initial={false} mode="wait">
+            <motion.div
+              key={feature.key}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              drag={reduced ? false : 'x'}
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.16}
+              onDragEnd={(_, info) => {
+                if (info.offset.x < -70) goNext();
+                else if (info.offset.x > 70) goPrev();
+              }}
+              className="w-full"
+              style={{ willChange: 'transform, opacity', touchAction: 'pan-y' }}
+            >
+              <div className="flex justify-center">
+                <Medallion feature={feature} reduced={reduced} />
               </div>
 
-              <motion.button
-                type="button"
-                onClick={markSeenAndClose}
-                whileTap={reducedMotion ? undefined : { scale: 0.94 }}
-                whileHover={reducedMotion ? undefined : { y: -1 }}
-                className="flex min-h-11 min-w-11 flex-shrink-0 items-center justify-center rounded-full border"
-                style={{ borderColor: 'rgba(136,145,160,0.2)', color: '#64748b', background: 'rgba(255,255,255,0.46)' }}
-                aria-label="Close what's new"
-              >
-                <X size={15} strokeWidth={2.2} />
-              </motion.button>
-            </div>
-
-            <div className="mt-2.5 flex items-center gap-2">
-              <div className="relative h-[3px] flex-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.56)' }}>
-                <motion.div
-                  animate={{ scaleX: progressScale }}
-                  transition={{ duration: 0.22, ease: 'easeOut' }}
-                  className="absolute inset-y-0 left-0 w-full origin-left rounded-full"
-                  style={{ background: feature.accent }}
-                />
-              </div>
-              <span className="text-[10px] font-semibold" style={{ color: feature.accent }}>{progressLabel}</span>
-            </div>
-
-            <div className="mt-2 flex justify-center gap-1">
-              {FEATURES.map((item, itemIndex) => {
-                const active = itemIndex === index;
-                return (
-                  <motion.button
-                    key={item.key}
-                    type="button"
-                    onClick={() => jumpTo(itemIndex)}
-                    whileTap={reducedMotion ? undefined : { scale: 0.9 }}
-                    className="flex min-h-11 min-w-11 items-center justify-center rounded-full"
-                    aria-label={`Show ${item.title}`}
-                    aria-current={active ? 'step' : undefined}
-                  >
-                    <motion.span
-                      className="block rounded-full transition"
-                      animate={active && !reducedMotion ? { scale: [1, 1.18, 1] } : undefined}
-                      transition={{ duration: 0.3 }}
-                      style={{
-                        width: active ? 18 : 6,
-                        height: 6,
-                        background: active ? item.accent : 'rgba(105,115,134,0.28)',
-                      }}
-                    />
-                    </motion.button>
-                  );
-                })}
-            </div>
-          </div>
-
-          <div className="p-3">
-            <AnimatePresence custom={direction} initial={false} mode="wait">
-              <motion.div
-                key={feature.key}
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                className="grid gap-2.5"
-              >
-                <motion.div
-                  className="rounded-[0.85rem] p-2.5"
-                  whileHover={reducedMotion ? undefined : { y: -1 }}
-                  style={{
-                    background: `linear-gradient(135deg, ${feature.accent}12, ${feature.tint}, rgba(255,255,255,0.34))`,
-                    border: `1px solid ${feature.accent}22`,
-                  }}
-                >
-                  <span
-                    className="inline-flex rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em]"
-                    style={{ background: 'rgba(255,255,255,0.62)', color: feature.accent }}
-                  >
-                    {feature.eyebrow}
-                  </span>
-                  <h2 className="mt-1.5 font-serif text-[1.1rem] leading-[1.1]" style={{ color: '#1f2937' }}>
-                    {feature.title}
-                  </h2>
-                  <div className="mt-2 grid gap-1.5">
-                    <DetailLine label="New" body={feature.what} accent={feature.accent} />
-                  </div>
-                  <div className="mt-2 rounded-[0.75rem] px-2.5 py-2" style={{ background: `linear-gradient(135deg, ${feature.accent}0f, rgba(255,255,255,0.56))` }}>
-                    <p className="text-[10px] font-medium" style={{ color: '#64748b' }}>Open</p>
-                    <p className="mt-0.5 text-[12px] font-medium" style={{ color: '#1f2937' }}>{feature.where}</p>
-                  </div>
-                </motion.div>
-                <TinyPreview feature={feature} reducedMotion={!!reducedMotion} />
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          <div className="border-t px-3 py-2.5" style={{ borderColor: 'rgba(136,145,160,0.16)', background: 'rgba(255,255,255,0.32)' }}>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px]" style={{ color: '#475569' }}>
-                {isLast ? 'All set.' : 'Quick tour.'}
+              <p className="mt-7 text-center text-[12px] font-bold uppercase tracking-[0.2em]" style={{ color: feature.accent }}>
+                {feature.eyebrow}
               </p>
-              <div className="flex items-center gap-2">
-                <motion.button
-                  type="button"
-                  onClick={goPrev}
-                  disabled={isFirst}
-                  whileTap={reducedMotion || isFirst ? undefined : { scale: 0.96 }}
-                  whileHover={reducedMotion || isFirst ? undefined : { y: -1 }}
-                  className="inline-flex min-h-11 min-w-[74px] items-center justify-center gap-1 rounded-[0.75rem] border px-2 text-[12px] font-medium transition disabled:cursor-default disabled:opacity-35"
-                  style={{ borderColor: 'rgba(136,145,160,0.22)', color: '#475569', background: 'rgba(255,255,255,0.48)' }}
+
+              <h1 className="mt-2 text-center font-serif leading-[1.06]" style={{ fontSize: '2.5rem', color: 'var(--color-text-primary)' }}>
+                {feature.title}
+              </h1>
+
+              <p className="mx-auto mt-4 max-w-[19.5rem] text-center text-[15.5px] leading-[1.6]" style={{ color: 'var(--color-text-secondary)' }}>
+                {feature.what}
+              </p>
+
+              <div className="mt-7 flex justify-center">
+                <div
+                  className="flex items-center gap-2 rounded-2xl px-4 py-2.5"
+                  style={{ background: `linear-gradient(135deg, ${feature.accent}1f, rgba(255,255,255,0.5))`, border: `1px solid ${feature.accent}33` }}
                 >
-                  <ArrowLeft size={13} strokeWidth={2.2} />
-                  Back
-                </motion.button>
-                <motion.button
-                  type="button"
-                  onClick={goNext}
-                  whileTap={reducedMotion ? undefined : { scale: 0.96 }}
-                  whileHover={reducedMotion ? undefined : { y: -1 }}
-                  className="inline-flex min-h-11 min-w-[90px] items-center justify-center gap-1 rounded-[0.75rem] px-3 text-[12px] font-medium"
-                  style={{
-                    color: '#29313d',
-                    background: `linear-gradient(135deg, ${feature.tint}, rgba(255,255,255,0.54))`,
-                    border: `1px solid ${feature.accent}55`,
-                    boxShadow: `0 4px 14px ${feature.accent}24`,
-                  }}
-                >
-                  {isLast ? 'Done' : 'Next'}
-                  <ArrowRight size={13} strokeWidth={2.4} />
-                </motion.button>
+                  <MapPin size={15} style={{ color: feature.accent, flexShrink: 0 }} />
+                  <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    {feature.where}
+                  </span>
+                </div>
               </div>
-            </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="flex-shrink-0">
+          {/* Segmented progress */}
+          <div className="mb-5 flex items-center gap-1.5">
+            {FEATURES.map((item, i) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => goTo(i)}
+                className="flex-1 py-2"
+                aria-label={`Go to ${item.title}`}
+                aria-current={i === index ? 'step' : undefined}
+              >
+                <span className="block h-[5px] w-full overflow-hidden rounded-full" style={{ background: 'rgba(120,120,135,0.22)' }}>
+                  <span
+                    className="block h-full rounded-full"
+                    style={{
+                      width: i <= index ? '100%' : '0%',
+                      background: `linear-gradient(90deg, ${feature.accent}cc, ${feature.accent})`,
+                      transition: 'width 0.4s cubic-bezier(0.16,1,0.3,1)',
+                    }}
+                  />
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Nav */}
+          <div className="flex items-center gap-3">
+            <motion.button
+              type="button"
+              onClick={goPrev}
+              disabled={isFirst}
+              whileTap={reduced || isFirst ? undefined : { scale: 0.96 }}
+              className="flex h-[54px] w-[54px] flex-shrink-0 items-center justify-center rounded-2xl disabled:opacity-30"
+              style={{ background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.78)', color: 'var(--color-text-secondary)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+              aria-label="Previous"
+            >
+              <ArrowLeft size={20} strokeWidth={2.4} />
+            </motion.button>
+
+            <motion.button
+              type="button"
+              onClick={goNext}
+              whileTap={reduced ? undefined : { scale: 0.97 }}
+              className="relative flex h-[54px] flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl text-[16px] font-bold text-white"
+              style={{
+                background: `linear-gradient(135deg, ${feature.accent} 0%, ${feature.accentDeep} 100%)`,
+                boxShadow: `0 12px 30px ${feature.accent}59, inset 0 1px 0 rgba(255,255,255,0.35)`,
+                transition: 'background 0.32s ease, box-shadow 0.32s ease',
+              }}
+            >
+              {isLast ? 'Start exploring' : 'Next'}
+              {isLast ? <Check size={19} strokeWidth={2.6} /> : <ArrowRight size={19} strokeWidth={2.6} />}
+            </motion.button>
+          </div>
+
+          {/* Counter / skip */}
+          <div className="mt-4 flex items-center justify-between">
+            <span className="text-[12px] font-bold tracking-[0.1em]" style={{ color: 'var(--color-text-secondary)' }}>
+              {counter}
+            </span>
+            {!isLast && (
+              <button type="button" onClick={skip} className="text-[13px] font-semibold" style={{ color: 'var(--color-text-secondary)', background: 'none', border: 'none' }}>
+                Skip
+              </button>
+            )}
           </div>
         </div>
       </div>

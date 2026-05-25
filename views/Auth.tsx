@@ -886,11 +886,11 @@ const DarkField: React.FC<DarkFieldProps> = ({ label, invalid, hint, leadingIcon
                     htmlFor={inputId}
                     initial={false}
                     animate={{
-                        y: lifted ? -10 : 1,
-                        scale: lifted ? 0.74 : 1,
+                        top: lifted ? 6 : 22,
+                        scale: lifted ? 0.7 : 1,
                     }}
                     transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none origin-left"
+                    className="absolute left-4 pointer-events-none origin-left"
                     style={{
                         color: invalid
                             ? 'rgba(255,170,200,0.78)'

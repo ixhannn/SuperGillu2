@@ -129,7 +129,20 @@ class SyncServiceClass {
         }
 
         const localProfileBeforeCoupleLookup = StorageService.getCoupleProfile();
-        await SupabaseService.upsertUserProfile(localProfileBeforeCoupleLookup.myName);
+        // Restore the user's own identity (myName) on a fresh device. The name is
+        // stored per-account in the cloud (user_profiles) but never synced via
+        // couple_profile, so without this an existing account re-shows onboarding.
+        if (!localProfileBeforeCoupleLookup.myName?.trim()) {
+            const cloudName = await SupabaseService.fetchOwnDisplayName();
+            if (cloudName) {
+                StorageService.saveCoupleProfile(
+                    { ...localProfileBeforeCoupleLookup, myName: cloudName },
+                    'sync',
+                );
+            }
+        } else {
+            await SupabaseService.upsertUserProfile(localProfileBeforeCoupleLookup.myName);
+        }
         if (localProfileBeforeCoupleLookup.coupleId && localProfileBeforeCoupleLookup.partnerUserId) {
             SupabaseService.setCachedCoupleId(localProfileBeforeCoupleLookup.coupleId);
         } else {
@@ -212,8 +225,23 @@ class SyncServiceClass {
         };
         storageEventTarget.addEventListener('storage-update', this.storageListener);
 
-        // Reconcile cloud with protection after first paint settles.
-        this.scheduleInitialReconcile();
+        // On a fresh device (empty local store) the partner's existing data,
+        // media, pet levels and room live only in the cloud. Pull it down
+        // immediately so logging into an existing account shows everything
+        // right away. On a device that already has content, keep the deferred
+        // reconcile so first paint isn't blocked.
+        const hasLocalContent =
+            StorageService.getMemories().length > 0
+            || StorageService.getNotes().length > 0
+            || StorageService.getKeepsakes().length > 0
+            || StorageService.getDailyPhotos().length > 0
+            || StorageService.getSpecialDates().length > 0;
+        if (hasLocalContent) {
+            // Reconcile cloud with protection after first paint settles.
+            this.scheduleInitialReconcile();
+        } else {
+            void this.reconcileCloud();
+        }
     }
 
     private triggerSystemNotification(detail: StorageUpdateDetail) {

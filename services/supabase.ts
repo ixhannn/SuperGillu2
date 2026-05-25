@@ -302,6 +302,35 @@ export const SupabaseService = {
         }
     },
 
+    // Fetch the signed-in user's OWN display name from the cloud.
+    // Used on login to restore identity (myName) onto a fresh device where the
+    // name was never stored locally — couple_profile sync strips myName/partnerName,
+    // so this user_profiles read is the only way to recover one's own name.
+    fetchOwnDisplayName: async (): Promise<string | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const userId = await SupabaseService.getCurrentUserId();
+            if (!userId) return null;
+
+            const { data, error } = await SupabaseService.client
+                .from('user_profiles')
+                .select('display_name')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (error) {
+                if (isMissingTableError(error, 'user_profiles')) return null;
+                console.warn('Supabase fetchOwnDisplayName failed:', error);
+                return null;
+            }
+            const name = data?.display_name ? String(data.display_name).trim() : '';
+            return name || null;
+        } catch (e) {
+            console.warn('Supabase fetchOwnDisplayName exception:', e);
+            return null;
+        }
+    },
+
     upsertItem: async (table: string, item: any) => {
         if (!SupabaseService.client) return;
         try {
