@@ -130,6 +130,7 @@ export interface CoupleProfile {
   photo?: string; // Base64 data URI
   theme?: string; // 'rose', 'blue', 'green', 'orange', 'purple', 'dark'
   isPremium?: boolean; // Premium status for unlocking features like video uploads
+  premiumSince?: string; // ISO timestamp of when premium was first unlocked
   coupleId?: string; // Shared couple tenant ID used for cloud sync
   partnerUserId?: string; // Set after QR pairing — real Supabase user ID of partner
   missedAuras?: any[];
@@ -647,7 +648,7 @@ export interface SystemMessage {
   seenAt?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium';
 
 // ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {

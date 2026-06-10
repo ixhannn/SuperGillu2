@@ -619,7 +619,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
             onConfirm={confirmHide}
             onCancel={() => setHideTarget(null)}
         />
-        <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+        <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} featureContext="video" />
         </div>
     );
 };

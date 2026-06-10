@@ -4,6 +4,7 @@ import App from './App';
 import './index.css';
 import './styles/root-fixes.css';
 import './styles/premium-features.css';
+import './styles/premium-hub.css';
 import { Haptics } from './services/haptics';
 import { initGlobalGestures } from './utils/gesture';
 // Boot CSS Animation Bus — registers before any component mounts

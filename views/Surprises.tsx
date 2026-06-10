@@ -352,7 +352,7 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
                 )}
             </AnimatePresence>
 
-            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} featureContext="surprise" />
         </motion.div>
     );
 };

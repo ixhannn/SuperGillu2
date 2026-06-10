@@ -38,9 +38,11 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         return () => window.removeEventListener('lior:hardware-back', handleBack);
     }, [isOpen, onCancel]);
 
-    return (
+    // Portal OUTSIDE AnimatePresence: React 19 portals are not valid elements,
+    // so AnimatePresence would silently drop a portal child and render nothing.
+    return ReactDOM.createPortal(
         <AnimatePresence>
-            {isOpen && ReactDOM.createPortal(
+            {isOpen && (
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -57,6 +59,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                         animate={{ scale: 1, opacity: 1, y: 0 }}
                         exit={{ scale: 1.02, opacity: 0, y: 8 }}
                         transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={title}
                         className="bg-white/95 w-full max-w-[340px] p-8 shadow-float relative overflow-hidden"
                         style={{ borderRadius: 'var(--radius-xl)' }}
                         onClick={(e) => e.stopPropagation()}
@@ -100,9 +105,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                             </button>
                         </div>
                     </motion.div>
-                </motion.div>,
-                document.body
+                </motion.div>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
     );
 };

@@ -68,6 +68,7 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   'daily-video': lazyNamedView(() => import('./DailyVideoView'), 'DailyVideoView'),
   'weekly-recap': lazyNamedView(() => import('./WeeklyRecapView'), 'WeeklyRecapView'),
   'storage-console': lazyNamedView(() => import('./StorageConsole'), 'StorageConsoleView'),
+  premium: lazyNamedView(() => import('./Premium'), 'PremiumView'),
 };
 
 export const getViewComponent = (view: ViewState): PreloadableViewComponent =>

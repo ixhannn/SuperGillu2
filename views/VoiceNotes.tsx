@@ -630,7 +630,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                 )}
             </AnimatePresence>
 
-            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} featureContext="voice" />
         </motion.div>
     );
 };

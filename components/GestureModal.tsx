@@ -27,9 +27,11 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
         return () => window.removeEventListener('lior:hardware-back', handleBack);
     }, [isOpen, onClose]);
 
-    return (
+    // Portal OUTSIDE AnimatePresence: React 19 portals are not valid elements,
+    // so AnimatePresence would silently drop a portal child and render nothing.
+    return ReactDOM.createPortal(
         <AnimatePresence>
-            {isOpen && ReactDOM.createPortal(
+            {isOpen && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 pointer-events-none">
                     {/* Reactive Background Backdrop */}
                     <motion.div
@@ -59,9 +61,9 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
                     >
                         {children}
                     </motion.div>
-                </div>,
-                document.body
+                </div>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
     );
 };

@@ -463,7 +463,7 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
                 onCancel={() => setDeleteTarget(null)}
             />
 
-            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} featureContext="capsule" />
         </div>
     );
 };
