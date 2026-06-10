@@ -43,6 +43,7 @@ import { SupabaseService } from './services/supabase';
 import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
 import { DiagnosticsService } from './services/diagnostics';
+import { remoteErrorSink } from './services/errorSink';
 import { FrameHealthService } from './services/frameHealth';
 import { NotificationsService } from './services/notifications';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
@@ -446,6 +447,7 @@ const App = () => {
   }, [e2eMode]);
 
   useEffect(() => {
+    DiagnosticsService.setRemoteSink(remoteErrorSink);
     DiagnosticsService.start();
     FrameHealthService.start();
   }, []);
