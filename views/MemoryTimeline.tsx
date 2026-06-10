@@ -942,7 +942,9 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
 };
 
 /* ─── Main view ─── */
-export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
+// Memoized below as `MemoryTimeline` — setView is referentially stable, so
+// tab switches and other App-level renders bail out of this whole tree.
+const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
     const [memories, setMemories] = useState<Memory[]>([]);
     const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
     const [surpriseMemory, setSurpriseMemory] = useState<Memory | null>(null);
@@ -1356,3 +1358,5 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         </PullToRefresh>
     );
 };
+
+export const MemoryTimeline = React.memo(MemoryTimelineView);

@@ -487,7 +487,9 @@ const PostViewer: React.FC<{
 };
 
 
-export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
+// Memoized below as `DailyMoments` — setView is referentially stable, so
+// tab switches and other App-level renders bail out of this whole tree.
+const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     const [photos, setPhotos] = useState<DailyPhoto[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -793,3 +795,5 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
         </PullToRefresh>
     );
 };
+
+export const DailyMoments = React.memo(DailyMomentsView);
