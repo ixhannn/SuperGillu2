@@ -64,6 +64,16 @@ export interface ClaimPairInviteV2Row {
     partner_name: string | null;
 }
 
+export interface MyRelationship {
+    coupleId: string;
+    status: string;
+    role: string;
+    partnerUserId: string | null;
+    partnerName: string | null;
+    onboardingDone: boolean;
+    memberCount: number;
+}
+
 export interface MediaAssetUploadInput {
     sourceTable: string;
     logicalRowId: string;
@@ -134,6 +144,13 @@ export const SupabaseService = {
         }
         cachedUserId = normalizedUserId;
         if (!normalizedUserId) cachedCoupleId = null;
+        // Persist so lower-level modules (storage) can key per-user data (e.g.
+        // user_status) by a STABLE id instead of the mutable display name,
+        // without importing this module and creating a circular dependency.
+        try {
+            if (normalizedUserId) localStorage.setItem('lior_my_user_id', normalizedUserId);
+            else localStorage.removeItem('lior_my_user_id');
+        } catch { /* localStorage unavailable */ }
     },
 
     getSession: async (): Promise<Session | null> => {
@@ -182,9 +199,64 @@ export const SupabaseService = {
         }
     },
 
+    /**
+     * Authoritative relationship read (server-owned).
+     * Requires the 20260604_relationship_integrity migration. Throws if the RPC
+     * is not present yet, so callers can fall back to legacy resolution — the
+     * client is therefore safe to ship ahead of the migration.
+     */
+    getMyRelationship: async (): Promise<MyRelationship | null> => {
+        if (!SupabaseService.client) return null;
+        const { data, error } = await SupabaseService.client.rpc('get_my_relationship');
+        if (error) throw error; // RPC missing / not migrated → caller falls back
+        const row = firstRpcRow<any>(data);
+        if (!row?.couple_id) return null;
+        return {
+            coupleId: String(row.couple_id),
+            status: row.status ?? 'active',
+            role: row.role ?? 'partner',
+            partnerUserId: row.partner_user_id ? String(row.partner_user_id) : null,
+            partnerName: (row.partner_name ?? '').trim() || null,
+            onboardingDone: Boolean(row.onboarding_done),
+            memberCount: Number(row.member_count ?? 0),
+        };
+    },
+
+    /**
+     * Persists onboarding completion to the server (relationship_facts), so a
+     * reinstall / new device / relogin never re-triggers onboarding. Safe no-op
+     * if the relationship_integrity migration is not applied yet.
+     */
+    markOnboardingComplete: async (): Promise<void> => {
+        if (!SupabaseService.client) return;
+        try {
+            const coupleId = await SupabaseService.getCurrentCoupleId();
+            if (!coupleId) return;
+            await SupabaseService.client
+                .from('relationship_facts')
+                .upsert({ couple_id: coupleId, onboarding_done: true }, { onConflict: 'couple_id' });
+        } catch {
+            // Table not migrated yet — the device-local flag still governs.
+        }
+    },
+
     getCurrentCoupleId: async (): Promise<string | null> => {
         if (cachedCoupleId) return cachedCoupleId;
         if (!SupabaseService.client) return null;
+
+        // Authoritative path first — eliminates the client-side heuristic that
+        // let a device attach to the wrong/solo couple ("linked profiles
+        // unlink"). Silently falls back to legacy resolution if the
+        // get_my_relationship() migration has not been applied yet.
+        try {
+            const rel = await SupabaseService.getMyRelationship();
+            if (rel?.coupleId) {
+                cachedCoupleId = rel.coupleId;
+                return cachedCoupleId;
+            }
+        } catch {
+            // RPC not present yet — fall through to the legacy resolution below.
+        }
 
         try {
             const userId = await SupabaseService.getCurrentUserId();
@@ -331,12 +403,15 @@ export const SupabaseService = {
         }
     },
 
-    upsertItem: async (table: string, item: any) => {
-        if (!SupabaseService.client) return;
+    // Returns true on success, false on any failure. Existing callers that
+    // ignore the return value are unaffected; the sync outbox uses it to decide
+    // whether a queued write must be retried.
+    upsertItem: async (table: string, item: any): Promise<boolean> => {
+        if (!SupabaseService.client) return false;
         try {
             const userId = await SupabaseService.getCurrentUserId();
             const coupleId = await SupabaseService.getCurrentCoupleId();
-            if (!userId || !coupleId) return;
+            if (!userId || !coupleId) return false;
 
             const { error } = await SupabaseService.client.from(table).upsert({
                 id: buildTenantRowId(coupleId, item.id),
@@ -344,9 +419,14 @@ export const SupabaseService = {
                 couple_id: coupleId,
                 data: item
             });
-            if (error) console.warn(`Supabase upsert failed for ${table}:`, error);
+            if (error) {
+                console.warn(`Supabase upsert failed for ${table}:`, error);
+                return false;
+            }
+            return true;
         } catch (e) {
             console.warn(`Supabase upsert exception for ${table}:`, e);
+            return false;
         }
     },
 

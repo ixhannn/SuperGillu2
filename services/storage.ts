@@ -1361,6 +1361,15 @@ export const StorageService = {
                 && (!metadata.videoStoragePath || !(await MediaStorageService.isScopedToCurrentUser(metadata.videoStoragePath)));
             if (!needsImage && !needsVideo) {
                 removePendingUpload(listKey, metadata.id);
+            } else if (SupabaseService.init()) {
+                addPendingUpload({
+                    listKey,
+                    storageKey,
+                    prefix,
+                    itemId: metadata.id,
+                    hasImage: needsImage,
+                    hasVideo: needsVideo,
+                });
             }
         } catch (e) {
             console.warn('Background storage upload failed — queued for retry:', e);
@@ -1744,22 +1753,58 @@ export const StorageService = {
                 if (rowCoupleId && !cleanString(sharedFromCloud.coupleId)) {
                     sharedFromCloud.coupleId = rowCoupleId;
                 }
-                const hasSharedFields = Object.keys(sharedFromCloud).some((key) => sharedFromCloud[key] != null && sharedFromCloud[key] !== '');
-                if (!hasSharedFields) return;
-                this.saveCoupleProfile({ ...local, ...sharedFromCloud }, 'sync');
+                // ── Field-level merge (NOT a blind clobber) ─────────────────────────
+                // Root cause of "anniversary disappears / couple info inconsistent":
+                // the previous `{ ...local, ...sharedFromCloud }` spread let a stale or
+                // empty cloud snapshot overwrite a good local value (e.g. cloud sends
+                // anniversaryDate:'' while we hold a real date). We now overlay ONLY the
+                // cloud fields that carry a real value, so an empty/missing remote field
+                // can never wipe locally-held relationship data. Fields the cloud does
+                // provide (the shared source of truth) still win — last-writer semantics
+                // are preserved for meaningful values only.
+                const meaningfulFromCloud: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(sharedFromCloud)) {
+                    if (value == null) continue;                                   // never overwrite with null/undefined
+                    if (typeof value === 'string' && value.trim() === '') continue; // nor with an empty string
+                    if (Array.isArray(value) && value.length === 0) continue;       // nor with an empty array
+                    meaningfulFromCloud[key] = value;
+                }
+                if (Object.keys(meaningfulFromCloud).length === 0) return;
+                this.saveCoupleProfile({ ...local, ...meaningfulFromCloud } as CoupleProfile, 'sync');
             }
         } else if (table === 'pet_stats') {
             this.savePetStats(item, 'sync');
         } else if (table === 'user_status') {
             const profile = this.getCoupleProfile();
-            if (item.id === profile.partnerName) {
+            const myId = this.getMyUserId();
+            const incomingId = item?.id;
+            // Match by stable user id first; fall back to display name so rows
+            // written by older (name-keyed) clients still route correctly.
+            const isMine = (!!myId && incomingId === myId) || (!!profile.myName && incomingId === profile.myName);
+            const isPartner = (!!profile.partnerUserId && incomingId === profile.partnerUserId)
+                || (!!profile.partnerName && incomingId === profile.partnerName);
+
+            // Ignore a status that is older than what we already hold for that
+            // slot — prevents a stale legacy (name-keyed) row from clobbering a
+            // newer (id-keyed) one during reconcile.
+            const isNewer = (slotKey: string): boolean => {
+                try {
+                    const existing = JSON.parse(localStorage.getItem(slotKey) || 'null');
+                    if (!existing?.timestamp || !item?.timestamp) return true;
+                    return new Date(item.timestamp).getTime() >= new Date(existing.timestamp).getTime();
+                } catch { return true; }
+            };
+
+            if (isPartner && !isMine) {
+                if (!isNewer(CACHE_KEYS.PARTNER_STATUS)) return;
                 localStorage.setItem(CACHE_KEYS.PARTNER_STATUS, JSON.stringify(item));
                 writeRaw(STORES.DATA, CACHE_KEYS.PARTNER_STATUS, item);
-                notifyUpdate({ source: 'sync', action: 'save', table, id: item.id });
-            } else if (item.id === profile.myName) {
+                notifyUpdate({ source: 'sync', action: 'save', table, id: incomingId });
+            } else if (isMine) {
+                if (!isNewer(CACHE_KEYS.USER_STATUS)) return;
                 localStorage.setItem(CACHE_KEYS.USER_STATUS, JSON.stringify(item));
                 writeRaw(STORES.DATA, CACHE_KEYS.USER_STATUS, item);
-                notifyUpdate({ source: 'sync', action: 'save', table, id: item.id });
+                notifyUpdate({ source: 'sync', action: 'save', table, id: incomingId });
             }
         } else if (table === 'together_music') {
             const musicData = item.music_url || item.music_base64;
@@ -2366,11 +2411,19 @@ export const StorageService = {
     },
 
     getStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.USER_STATUS) || '{"state":"awake","timestamp":"' + new Date().toISOString() + '"}'),
+    // The Supabase user id is the only stable identity for a person. Display
+    // names change; keying status by name made a rename silently break partner
+    // status. Falls back to null when not yet signed in.
+    getMyUserId: (): string | null => {
+        try { return localStorage.getItem('lior_my_user_id'); } catch { return null; }
+    },
     saveStatus: (s: UserStatus) => {
         localStorage.setItem(CACHE_KEYS.USER_STATUS, JSON.stringify(s));
         writeRaw(STORES.DATA, CACHE_KEYS.USER_STATUS, s);
         const profile = StorageService.getCoupleProfile();
-        notifyUpdate({ source: 'user', action: 'save', table: 'user_status', id: profile.myName, item: { id: profile.myName, ...s } });
+        // Key by stable user id; fall back to name only when signed-out/legacy.
+        const myId = StorageService.getMyUserId() || profile.myName;
+        notifyUpdate({ source: 'user', action: 'save', table: 'user_status', id: myId, item: { id: myId, ...s } });
     },
     getPartnerStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.PARTNER_STATUS) || '{"state":"awake","timestamp":""}'),
 

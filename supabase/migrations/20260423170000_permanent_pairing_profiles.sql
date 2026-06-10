@@ -1,6 +1,27 @@
 -- Persist account display names so a couple link survives invite expiry,
 -- device changes, and relogin without asking users to pair again.
 
+do $$
+begin
+  if to_regclass('public.voice_notes') is not null and exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'voice_notes'
+      and column_name = 'couple_id'
+      and data_type <> 'uuid'
+  ) then
+    alter table public.voice_notes
+      alter column couple_id type uuid
+      using case
+        when nullif(couple_id::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        then nullif(couple_id::text, '')::uuid
+        else null
+      end;
+  end if;
+end
+$$;
+
 create table if not exists public.user_profiles (
   user_id uuid primary key,
   display_name text not null default '',

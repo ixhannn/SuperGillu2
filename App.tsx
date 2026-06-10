@@ -506,6 +506,25 @@ const App = () => {
       }
     };
 
+    // Onboarding gate: trust the SERVER as source of truth, with the device-local
+    // flag as a fast path. This is what stops a reinstall / new device / relogin
+    // from re-triggering onboarding when the couple has already onboarded — the
+    // local profile is empty on a fresh device until sync rehydrates, but
+    // relationship_facts.onboarding_done (via get_my_relationship) already knows.
+    const resolveOnboarded = async (): Promise<boolean> => {
+      if (hasCompletedOnboarding()) return true;
+      try {
+        const rel = await SupabaseService.getMyRelationship();
+        if (rel?.onboardingDone) {
+          StorageService.markOnboardingComplete();
+          return true;
+        }
+      } catch {
+        // Server truth unavailable (offline / pre-migration) — fall back to local gate.
+      }
+      return false;
+    };
+
     const initializeApp = async () => {
       let hasOnboardedAfterBootstrap = false;
       try {
@@ -570,8 +589,9 @@ const App = () => {
 
                 if (session) {
                   await initializeSync();
+                  const onboarded = await resolveOnboarded();
                   if (!disposed) {
-                    setShowOnboarding(!hasCompletedOnboarding());
+                    setShowOnboarding(!onboarded);
                   }
                 } else {
                   if (!disposed) {
@@ -585,7 +605,7 @@ const App = () => {
 
             if (session) {
               await initializeSync();
-              hasOnboardedAfterBootstrap = hasCompletedOnboarding();
+              hasOnboardedAfterBootstrap = await resolveOnboarded();
               if (!disposed) {
                 setShowOnboarding(!hasOnboardedAfterBootstrap);
               }
@@ -662,15 +682,21 @@ const App = () => {
       },
     });
 
+    // On resume (app foregrounded) and on network recovery, ask SyncService to
+    // RECONNECT — not just reconcile. The realtime socket dies silently while
+    // backgrounded, and the old `&& SyncService.isConnected` guard made these a
+    // no-op precisely when the socket was dead (isConnected never flipped false).
+    // resume() rebuilds the subscription if needed, then reconciles + flushes
+    // the offline outbox. This is what keeps the app feeling live after reopen.
     removeResumeListener = NativeShellService.onResume(() => {
       const shell = NativeShellService.getState();
-      if (shell.isOnline && SyncService.isConnected) {
-        void SyncService.refreshFromCloud();
+      if (shell.isOnline) {
+        void SyncService.resume();
       }
     });
     removeShellListener = NativeShellService.subscribe((shell) => {
-      if (!wasOnline && shell.isOnline && SyncService.isConnected) {
-        void SyncService.refreshFromCloud();
+      if (!wasOnline && shell.isOnline) {
+        void SyncService.resume();
       }
       wasOnline = shell.isOnline;
     });
@@ -689,7 +715,10 @@ const App = () => {
 
 
   const handleOnboardingSelect = (_me: string, _partner: string) => {
-    // Profile + lior_onboarded flag are saved inside the Onboarding component
+    // Profile + lior_onboarded flag are saved inside the Onboarding component.
+    // Also record completion on the SERVER so a future reinstall / new device
+    // never re-triggers onboarding (fire-and-forget; safe no-op pre-migration).
+    void SupabaseService.markOnboardingComplete();
     setShowOnboarding(false);
     // Schedule the coachmark tour for brand-new users
     setScheduleTour(true);
@@ -845,11 +874,11 @@ const App = () => {
           action: () => {
             const mems = StorageService.getMemories();
             if (mems.length === 0) {
-              console.warn('[MediaDebug] No memories found');
+              DiagnosticsService.recordInfo('media-debug', 'No memories found');
               return;
             }
             mems.slice(0, 3).forEach((m: any, i: number) => {
-              console.log(`[MediaDebug] Memory ${i} (${m.id}):`, {
+              DiagnosticsService.recordInfo('media-debug', `Memory ${i} (${m.id})`, {
                 imageId: m.imageId || null,
                 storagePath: m.storagePath || null,
                 hasInlineImage: !!(m.image && m.image.length > 0),
@@ -859,18 +888,18 @@ const App = () => {
                 hasInlineVideo: !!(m.video && m.video.length > 0),
               });
             });
-            console.log(`[MediaDebug] Total memories: ${mems.length}`);
+            DiagnosticsService.recordInfo('media-debug', `Total memories: ${mems.length}`);
           },
         },
         {
           label: '🔄 Recover images from cloud',
           action: async () => {
-            console.log('[MediaDebug] Starting cloud image recovery...');
+            DiagnosticsService.recordInfo('media-debug', 'Starting cloud image recovery');
             try {
               await StorageService.recoverImagesFromCloud();
-              console.log('[MediaDebug] Recovery complete');
+              DiagnosticsService.recordInfo('media-debug', 'Recovery complete');
             } catch (e) {
-              console.error('[MediaDebug] Recovery failed', e);
+              DiagnosticsService.recordError('media-debug', e);
             }
           },
         },
@@ -883,7 +912,7 @@ const App = () => {
           action: () => {
             const next = !InternalAdminService.isOverrideEnabled();
             InternalAdminService.setOverride(next);
-            console.log(`[Admin] Internal admin override ${next ? 'enabled' : 'disabled'}`);
+            DiagnosticsService.recordInfo('admin', `Internal admin override ${next ? 'enabled' : 'disabled'}`);
           },
         },
       ]} />

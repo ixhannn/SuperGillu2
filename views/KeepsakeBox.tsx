@@ -35,7 +35,7 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
     const displaySender = normalizedSender === 'Tulika' ? 'Tulika' : (normalizedSender === 'Ishan' ? 'Ishan' : (isMine ? 'Me' : partnerName));
 
     return (
-        <div className={`flex w-full mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}>
+        <div className={`perf-list-item flex w-full mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}>
             <motion.div
                 layoutId={`keepsake-${keepsake.id}`}
                 onClick={() => { feedback.light(); onClick(); }}

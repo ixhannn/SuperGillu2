@@ -31,6 +31,13 @@ const seedStableState = async (page: Page) => {
       partnerName: profile.partnerName,
     }));
     localStorage.setItem('lior_shared_profile', JSON.stringify(profile));
+    // Seed a CONFIRMED partner link so the baseline represents a linked couple
+    // (the screenshots show a partner). Solo-mode UI is gated on this being absent.
+    localStorage.setItem('lior_link_lock', JSON.stringify({
+      coupleId: '00000000-0000-4000-8000-000000000001',
+      partnerUserId: '00000000-0000-4000-8000-000000000002',
+      partnerName: profile.partnerName,
+    }));
     localStorage.setItem('lior_onboarded', '1');
     localStorage.setItem('lior_memories', JSON.stringify([
       {
@@ -100,3 +107,21 @@ for (const view of ['home', 'us', 'timeline', 'daily-moments', 'private-space', 
     });
   });
 }
+
+// Solo mode: an UNLINKED user must never see a phantom partner or a
+// heartbeat-to-nobody. Same seed, but with the partner link removed.
+test('visual parity: home (unlinked / solo mode)', async ({ page }) => {
+  await seedStableState(page);
+  await page.addInitScript(() => localStorage.removeItem('lior_link_lock'));
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto('/?e2e=1&view=home');
+  await page.locator('[data-tour-occluder="bottom-nav"]').waitFor({ state: 'visible' });
+  await waitForStableViewContent(page, 'home');
+  await freezeVisualMotion(page);
+  await page.waitForTimeout(250);
+  await expect(page).toHaveScreenshot('home-unlinked-393.png', {
+    fullPage: false,
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.006,
+  });
+});

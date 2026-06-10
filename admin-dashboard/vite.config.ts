@@ -48,7 +48,7 @@ export default defineConfig({
     },
   },
   css: {
-    postcss: resolve(repoRoot, 'postcss.config.cjs'),
+    postcss: resolve(dashboardRoot, 'postcss.config.cjs'),
   },
   resolve: {
     alias: {

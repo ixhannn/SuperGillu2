@@ -201,6 +201,25 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
   will-change: transform, opacity;
 }
 
+/* ── PERF: skip paint + backdrop-blur of far-offscreen Home sections ────────
+ * Each `.home-reveal` wraps a full-width, vertically-stacked section. When a
+ * section is well outside the viewport, content-visibility:auto lets the
+ * browser skip its layout/paint entirely — including the costly 52px
+ * backdrop-filter of any glass card inside it. On-screen sections are wholly
+ * unaffected, so the rendered pixels are byte-identical (zero visual change).
+ *
+ * `contain-intrinsic-size: auto …` reserves height while skipped: the browser
+ * uses each section's last-rendered size once known, falling back to 320px
+ * before first paint, so scroll geometry stays stable.
+ *
+ * Scoped to `.home-reveal` ONLY — never `.home-reveal-item`, whose grid cells
+ * lay out horizontally where a fixed intrinsic height would distort the row.
+ * ──────────────────────────────────────────────────────────────────────── */
+.home-reveal {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
 .home-reveal-fadeScale {
   transform: translate3d(0, 12px, 0) scale(0.965);
 }

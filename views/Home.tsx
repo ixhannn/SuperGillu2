@@ -17,6 +17,7 @@ import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parse
 import { springSmooth, springSnappy } from '../utils/motion';
 import { toast } from '../utils/toast';
 import { NotificationsService } from '../services/notifications';
+import { useRelationship } from '../hooks/useRelationship';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -276,7 +277,13 @@ const useCountUp = (target: number, inView: boolean, duration = 1800) => {
 };
 
 export const Home: React.FC<HomeProps> = ({ setView }) => {
-    const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Ishan', partnerName: 'Tulika', anniversaryDate: new Date().toISOString() });
+    // Neutral placeholder until the real profile loads in the effect below.
+    // (Was hardcoded to 'Ishan'/'Tulika', which could flash a phantom couple
+    // for a brand-new user before their stored profile hydrated.)
+    const [profile, setProfile] = useState<CoupleProfile>({ myName: '', partnerName: '', anniversaryDate: new Date().toISOString() });
+    // Authoritative "do I actually have a partner?" signal. Drives solo-mode UI
+    // so an unlinked user never sees a phantom partner or a heartbeat-to-nobody.
+    const { isLinked } = useRelationship();
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [daysTogether, setDaysTogether] = useState(0);
@@ -615,7 +622,11 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 className="font-serif truncate text-gray-800 leading-none"
                                 style={{ fontSize: isTogether ? '1.22rem' : '1.625rem' }}
                             >
-                                {getDisplayName(profile.myName, 'You')} <span className="text-lior-500">&</span> {getDisplayName(profile.partnerName, 'Partner')}
+                                {isLinked ? (
+                                    <>{getDisplayName(profile.myName, 'You')} <span className="text-lior-500">&</span> {getDisplayName(profile.partnerName, 'Partner')}</>
+                                ) : (
+                                    getDisplayName(profile.myName, 'You')
+                                )}
                             </h1>
                             {isTogether ? (
                                 <p className="mt-1 truncate text-[10px] font-extrabold leading-none tracking-[0.02em] text-[#386b4f]">
@@ -713,7 +724,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
             <ScrollReveal variant="popIn">
                 <div className="mb-5 flex gap-3 relative z-10">
-                    <div onClick={sendHeartbeat} className="flex-1">
+                    <div onClick={isLinked ? sendHeartbeat : () => setView('sync')} className="flex-1">
                         <div
                             ref={heartbeatBtnRef}
                             className={`w-full h-full group relative text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 ${receivedHeartbeat ? 'ring-2 ring-lior-300/60 animate-glow-pulse' : ''} ${isDissolving ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
@@ -725,13 +736,22 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                     : 'inset 0 1px 0 rgba(255,255,255,0.22), 0 8px 22px rgba(244,63,94,0.28), 0 16px 36px rgba(225,29,72,0.14)',
                             }}
                         >
-                            <HeartbeatRipple active={showHeartbeat} />
-                            <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : ''}`}>
+                            <HeartbeatRipple active={showHeartbeat && isLinked} />
+                            <div className={`transition-transform duration-300 ${showHeartbeat && isLinked ? 'scale-125 animate-wiggle-spring' : ''}`}>
                                 <Heart fill="currentColor" size={22} />
                             </div>
                             <span className="flex flex-col leading-tight">
-                                <span className="text-[14px] font-extrabold tracking-wide">Send heartbeat</span>
-                                <span className="mt-0.5 text-[11px] font-semibold text-white/80">A soft pulse to them</span>
+                                {isLinked ? (
+                                    <>
+                                        <span className="text-[14px] font-extrabold tracking-wide">Send heartbeat</span>
+                                        <span className="mt-0.5 text-[11px] font-semibold text-white/80">A soft pulse to them</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="text-[14px] font-extrabold tracking-wide">Invite your partner</span>
+                                        <span className="mt-0.5 text-[11px] font-semibold text-white/80">Link up to send heartbeats</span>
+                                    </>
+                                )}
                             </span>
                         </div>
                     </div>
@@ -745,7 +765,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
             {/* ── STATUS PILLS ─────────────────────────────────────────── */}
             <div className="flex gap-3 mb-5 relative z-10">
-                {/* Partner status pill */}
+                {/* Partner status pill — hidden when not linked (solo mode) */}
+                {isLinked && (
                 <div
                     className="flex-1 flex items-center gap-2.5 px-4 py-4"
                     style={partnerStatus.state === 'sleeping' ? {
@@ -777,6 +798,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         </span>
                     </div>
                 </div>
+                )}
                 {/* My status pill */}
                 <div
                     onClick={toggleMyStatus}

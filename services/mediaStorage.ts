@@ -8,10 +8,10 @@ import {
     normalizeMimeType,
     parseManagedMediaKey,
 } from '../shared/mediaPolicy.js';
+import { isE2EAppMode } from './e2eHarness';
 
 const WORKER_URL = (import.meta.env.VITE_R2_WORKER_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-const UPLOAD_KEY = (import.meta.env.VITE_R2_UPLOAD_KEY as string | undefined)?.trim() ?? '';
 const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'] as const;
 const R2_EXISTENCE_CACHE = new Map<string, boolean>();
 const MISSING_READ_REPORT_CACHE = new Map<string, number>();
@@ -87,20 +87,7 @@ const authHeaders = async (): Promise<Record<string, string> | null> => {
     };
 };
 
-const managedWriteHeaders = async (): Promise<Record<string, string> | null> => {
-    const supabaseHeaders = await authHeaders();
-    if (supabaseHeaders) {
-        return supabaseHeaders;
-    }
-
-    if (UPLOAD_KEY) {
-        return {
-            'X-Upload-Key': UPLOAD_KEY,
-        };
-    }
-
-    return null;
-};
+const managedWriteHeaders = async (): Promise<Record<string, string> | null> => authHeaders();
 
 /** Convert a base64 data URI to an ArrayBuffer + MIME type. */
 function base64ToBuffer(dataUri: string): { buffer: ArrayBuffer; mimeType: string } {
@@ -215,6 +202,10 @@ const shouldReportMissingRead = (key: string) => {
     MISSING_READ_REPORT_CACHE.set(key, now);
     return true;
 };
+
+const shouldWarnForManagedWriteSkip = (): boolean => (
+    !isE2EAppMode() && SupabaseService.isConfigured()
+);
 
 const reportMissingRead = async (storagePath: string, reason: string) => {
     const key = extractCandidateR2Key(storagePath);
@@ -465,8 +456,11 @@ export const MediaStorageService = {
 
     async uploadMedia(base64DataUri: string, storagePath: string, options: UploadMediaOptions = {}): Promise<string | null> {
         if (!base64DataUri) return null;
+        if (isE2EAppMode()) return null;
         if (!WORKER_URL) {
-            console.warn('[R2] VITE_R2_WORKER_URL not configured - upload skipped.');
+            if (shouldWarnForManagedWriteSkip()) {
+                console.warn('[R2] VITE_R2_WORKER_URL not configured - upload skipped.');
+            }
             return null;
         }
 
@@ -533,7 +527,9 @@ export const MediaStorageService = {
             if (!url) return null;
             const workerAuthHeaders = await managedWriteHeaders();
             if (!workerAuthHeaders) {
-                console.warn('[R2] Missing managed worker credentials - upload skipped.');
+                if (shouldWarnForManagedWriteSkip()) {
+                    console.warn('[R2] Missing managed worker credentials - upload skipped.');
+                }
                 return null;
             }
 
@@ -690,6 +686,7 @@ export const MediaStorageService = {
 
     async deleteMedia(storagePath: string): Promise<boolean> {
         if (!storagePath) return true;
+        if (isE2EAppMode()) return false;
 
         const key = extractR2Key(storagePath);
         if (key && isManagedUploadKey(key)) {
@@ -699,7 +696,9 @@ export const MediaStorageService = {
                 try {
                     const workerAuthHeaders = await managedWriteHeaders();
                     if (!workerAuthHeaders) {
-                        console.warn('[R2] Missing managed worker credentials - delete skipped.');
+                        if (shouldWarnForManagedWriteSkip()) {
+                            console.warn('[R2] Missing managed worker credentials - delete skipped.');
+                        }
                         return false;
                     }
                     const res = await fetch(url, {

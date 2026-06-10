@@ -54,20 +54,43 @@ export const getE2EInitialView = (): ViewState | null => {
   return E2E_VIEW_SET.has(requested as ViewState) ? requested as ViewState : null;
 };
 
+const readE2EJson = (key: string): Record<string, unknown> => {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const setE2EDefaultJson = (key: string, defaults: Record<string, unknown>) => {
+  localStorage.setItem(key, JSON.stringify({
+    ...defaults,
+    ...readE2EJson(key),
+  }));
+};
+
+const setE2EDefaultValue = (key: string, value: string) => {
+  if (!localStorage.getItem(key)) {
+    localStorage.setItem(key, value);
+  }
+};
+
 export const bootstrapE2ELocalState = () => {
   if (!isE2EAppMode() || typeof window === 'undefined') return;
 
-  localStorage.setItem('lior_identity', JSON.stringify({
+  setE2EDefaultJson('lior_identity', {
     myName: 'Alex',
     partnerName: 'Sam',
-  }));
-  localStorage.setItem('lior_shared_profile', JSON.stringify({
+  });
+  setE2EDefaultJson('lior_shared_profile', {
     anniversaryDate: '2024-02-14',
     theme: 'rose',
-  }));
-  localStorage.setItem('lior_onboarded', 'true');
-  localStorage.setItem('lior_seen_version', 'e2e');
-  localStorage.setItem('lior_coachmarks_seen', JSON.stringify(['__all__']));
+  });
+  setE2EDefaultValue('lior_onboarded', 'true');
+  setE2EDefaultValue('lior_seen_version', 'e2e');
+  setE2EDefaultValue('lior_coachmarks_seen', JSON.stringify(['__all__']));
 };
 
 declare global {

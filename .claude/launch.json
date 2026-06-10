@@ -2,16 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Tulika Dev Server",
+      "name": "Lior Dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 3002
-    },
-    {
-      "name": "Tulika Preview Server",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "preview"],
-      "port": 4173
+      "port": 5173
     }
   ]
 }

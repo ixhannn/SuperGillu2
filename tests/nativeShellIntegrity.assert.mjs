@@ -59,8 +59,8 @@ assert.match(
 
 assert.match(
   appSource,
-  /NativeShellService\.onResume\([\s\S]*SyncService\.refreshFromCloud\(\)/,
-  'Expected app resume to refresh cloud state when online.',
+  /NativeShellService\.onResume\([\s\S]*SyncService\.resume\(\)/,
+  'Expected app resume to reconnect + reconcile cloud state when online.',
 );
 
 assert.match(

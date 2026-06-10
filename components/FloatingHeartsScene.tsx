@@ -12,6 +12,9 @@ import * as THREE from 'three';
 import { readThemeVar } from '../utils/themeVars';
 import { observeDocumentAttributes } from '../utils/documentObserverBus';
 import { AnimationEngine } from '../utils/AnimationEngine';
+import { installThreeWarningFilter } from '../utils/threeConsole';
+
+installThreeWarningFilter();
 
 const createSeededRandom = (seed: number) => {
   let s = seed;

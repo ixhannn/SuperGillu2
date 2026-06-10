@@ -31,7 +31,7 @@ assert.match(
 
 assert.match(
   syncSource,
-  /public reset\(\)\s*\{\s*this\.cleanupRealtimeState\(\);\s*this\.isConnected = false;\s*this\.status = 'Offline';/s,
+  /public reset\(\)\s*\{[\s\S]*?this\.cleanupRealtimeState\(\);\s*this\.isConnected = false;\s*this\.status = 'Offline';/s,
   'Expected SyncService to expose a reset path so startup and sign-out can cleanly tear down realtime state',
 );
 

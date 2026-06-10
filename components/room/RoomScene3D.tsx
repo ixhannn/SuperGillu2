@@ -4,6 +4,7 @@ import { ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { RoomState } from '../../types';
 import { AnimationEngine } from '../../utils/AnimationEngine';
+import { installThreeWarningFilter } from '../../utils/threeConsole';
 import {
   Idle,
   PropKind,
@@ -11,6 +12,8 @@ import {
   ROOM_GRID_SIZE,
   percentToGrid,
 } from './roomCatalog3D';
+
+installThreeWarningFilter();
 
 const HEART_COLORS = ['#fb7185', '#ec4899', '#f472b6', '#fbcfe8'];
 
