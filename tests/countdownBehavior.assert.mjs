@@ -13,6 +13,9 @@ const events = buildCountdownEvents({
   dates: savedDates,
   anniversaryDate: '2020-05-10',
   now: new Date(2026, 4, 9, 9, 0, 0),
+  // This case verifies saved-date filtering/rolling; generated milestones are
+  // covered separately in tests/unit/countdowns.test.ts.
+  includeMilestones: false,
 });
 
 assert.deepEqual(

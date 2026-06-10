@@ -14,6 +14,7 @@ import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
+import { buildRelationshipMilestones } from '../shared/countdowns.js';
 import { springSmooth, springSnappy } from '../utils/motion';
 import { toast } from '../utils/toast';
 import { NotificationsService } from '../services/notifications';
@@ -350,6 +351,12 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         if (anniv) {
             events.push({ title: 'Our Anniversary', date: anniv });
         }
+        // Derived milestones (100/500/1000 days, next monthsary) give a brand-new
+        // couple something near and motivating to count down to before they've
+        // added any of their own special dates.
+        buildRelationshipMilestones(anniversaryDate, now).forEach((m) => {
+            events.push({ title: m.title, date: m.nextDate });
+        });
         events.sort((a, b) => a.date.getTime() - b.date.getTime());
         return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
     };
@@ -765,7 +772,34 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
             {/* ── STATUS PILLS ─────────────────────────────────────────── */}
             <div className="flex gap-3 mb-5 relative z-10">
-                {/* Partner status pill — hidden when not linked (solo mode) */}
+                {/* Partner status pill — ghost placeholder until someone joins */}
+                {!isLinked && (
+                <button
+                    onClick={() => setView('sync')}
+                    className="flex-1 flex items-center gap-2.5 px-4 py-4 text-left spring-press"
+                    style={{
+                        borderRadius: '100px',
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.35) 100%)',
+                        backdropFilter: 'blur(20px) saturate(140%)',
+                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        border: '1.5px dashed rgba(225,29,72,0.28)',
+                        boxShadow: '0 2px 10px rgba(232,160,176,0.06)',
+                    }}
+                    aria-label="Your partner hasn't joined yet — tap to invite"
+                >
+                    <div className="relative flex-shrink-0">
+                        <Heart size={14} className="text-lior-300" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-semibold leading-tight text-gray-500">
+                            Partner · not linked yet
+                        </span>
+                        <span className="text-[10px] mt-0.5 leading-tight text-gray-400">
+                            their status appears here
+                        </span>
+                    </div>
+                </button>
+                )}
                 {isLinked && (
                 <div
                     className="flex-1 flex items-center gap-2.5 px-4 py-4"
