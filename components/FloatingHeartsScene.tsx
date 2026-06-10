@@ -496,19 +496,27 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
     return () => observer.disconnect();
   }, []);
 
-  // ── Global transition gating ────────────────────────────────────────────
+  // ── Global transition + visibility gating ──────────────────────────────
   // R3F runs its own rAF; we toggle it to 'never' during view switches so the
   // GPU is fully available for the slide-in animation. Avoids the "blob jitters
   // mid-transition" + "FPS dips into 50s on tab change" symptoms.
+  // Also fully stops the frameloop while the app is backgrounded — R3F's
+  // 'always' loop otherwise keeps rendering a hidden WebGL scene.
   const [globalPause, setGlobalPause] = React.useState<boolean>(false);
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
-    const sync = () => setGlobalPause(Boolean(root.dataset.transitioning));
+    const sync = () => setGlobalPause(
+      Boolean(root.dataset.transitioning) || document.visibilityState === 'hidden',
+    );
     sync();
     const obs = new MutationObserver(sync);
     obs.observe(root, { attributes: true, attributeFilter: ['data-transitioning'] });
-    return () => obs.disconnect();
+    document.addEventListener('visibilitychange', sync);
+    return () => {
+      obs.disconnect();
+      document.removeEventListener('visibilitychange', sync);
+    };
   }, []);
   const effectivePause = paused || globalPause;
 

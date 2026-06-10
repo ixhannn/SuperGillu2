@@ -19,7 +19,21 @@ const lazyNamedView = (
   let loadedModule: ViewModule | null = null;
   let loadPromise: Promise<ViewModule> | null = null;
   const loader: ViewLoader = () => {
-    if (loadedModule) return Promise.resolve(loadedModule);
+    if (loadedModule) {
+      // Synchronous thenable: React.lazy calls then() during initialization,
+      // and a synchronous resolve marks the payload Resolved BEFORE React
+      // checks it — so an already-preloaded view mounts in the same render
+      // pass with NO Suspense round-trip. A plain Promise.resolve() here
+      // still suspends for one microtask, which used to flash the null
+      // fallback (a blank frame) on every first mount of a preloaded view.
+      const resolved = loadedModule;
+      return {
+        then: (onFulfilled?: (value: ViewModule) => unknown) => {
+          onFulfilled?.(resolved);
+          return resolved as unknown as Promise<ViewModule>;
+        },
+      } as Promise<ViewModule>;
+    }
     if (!loadPromise) {
       loadPromise = loadModule().then((module) => {
         loadedModule = { default: module[exportName] };

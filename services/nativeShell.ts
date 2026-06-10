@@ -66,6 +66,13 @@ const applyDocumentState = () => {
 };
 
 const emit = (patch: Partial<NativeShellState> = {}) => {
+  // No-op bailout: storage/sync events fire refreshPendingCounts constantly,
+  // and unconditional emits re-rendered every subscriber (BottomNav included)
+  // even when nothing changed — including in bursts overlapping tab switches.
+  // A patch with zero keys (bare emit()) is an explicit re-broadcast and
+  // always goes through.
+  const keys = Object.keys(patch) as Array<keyof NativeShellState>;
+  if (keys.length > 0 && keys.every((key) => state[key] === patch[key])) return;
   state = { ...state, ...patch };
   applyDocumentState();
   const snapshot = { ...state };

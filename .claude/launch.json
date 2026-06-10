@@ -4,14 +4,24 @@
     {
       "name": "Tulika Dev Server",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3004
     },
     {
-      "name": "Tulika Preview Server",
+      "name": "Worktree Dev Server",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "preview"],
-      "port": 4173
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3021",
+        "--strictPort"
+      ],
+      "port": 3021
     }
   ]
 }

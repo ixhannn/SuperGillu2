@@ -28,6 +28,15 @@ html[data-transitioning="1"] *::after {
   animation-play-state: paused !important;
 }
 
+/* The keep-alive crossfade IS the transition — it must keep running while
+   data-transitioning is set (runTabTransition sets the flag for the same
+   140ms window the fade plays in). Without this exemption the incoming tab
+   sits frozen at opacity:0 for the whole window, reading as a blank flash
+   on every tab switch. */
+html[data-transitioning="1"] .keep-alive-shell.is-active {
+  animation-play-state: running !important;
+}
+
 /* Skip backdrop-filter compositing during the transition window — it's the
    single most expensive per-frame GPU op on mobile. */
 html[data-transitioning="1"] .skip-blur-on-transition,
@@ -66,22 +75,29 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
 }
 .keep-alive-shell.is-active {
   display: block;
-  /* Opacity-only fade. Critical that this is opacity (and ONLY opacity) —
-     transform/scale would force every nested compositor layer (TiltCards,
-     motion-divs with will-change, the particle canvases) to re-composite
-     for the whole keyframe duration, which is what made the previous
-     fade feel jittery. Opacity is a single blend pass on the shell layer
-     — the descendants are untouched.
+  /* Liquid float-in: opacity starts at 0.55 — content is visible from the
+     very first frame (starting at 0 read as a blank "hole" on every switch)
+     — plus a small translateY settle. Translate is safe where the earlier
+     scale attempt was jittery: scaling re-rasterizes every nested layer's
+     texture each frame, a translation just moves them. The main thread is
+     idle during switches now (stable element identities mean React
+     reconciles ~nothing), so the compositor owns the whole animation.
 
-     `forwards` is intentional: we set the final state on the shell itself
-     so there's no flash to opacity:0 if the animation is interrupted. */
-  animation: keep-alive-fade-in 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: opacity;
+     `both` is intentional: the final state is pinned on the shell itself so
+     there's no flash if the animation is interrupted by a rapid re-tap. */
+  animation: keep-alive-fade-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
 }
 
 @keyframes keep-alive-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0.55;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 /* Reduced motion: instant snap, no fade */
@@ -119,85 +135,24 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
 
 /* ──────────────────────────────────────────────────────────────────────────
    Native View Transitions API styling.
-   The browser captures snapshots of ::view-transition-old(root) and
-   ::view-transition-new(root) on the compositor thread. These keyframes
-   re-create our iOS-style slide + scale per-direction without ever cloning
-   the DOM into a fixed layer.
+   The directional slide keyframes live in index.css and target the NAMED
+   layer ::view-transition-*(main-view) (set via view-transition-name on the
+   viewport-clipped <main> in Layout.tsx). The root snapshots are frozen
+   there with `animation: none !important` so nav/ambient layers stay
+   rock-solid — only the content layer moves.
    ────────────────────────────────────────────────────────────────────────── */
-@keyframes lior-vt-tab-out {
-  from { opacity: 1; transform: translateZ(0) scale(1); }
-  to   { opacity: 0; transform: translateZ(0) scale(1.03); }
-}
-@keyframes lior-vt-tab-in {
-  from { opacity: 0.72; transform: translateZ(0) scale(0.97); }
-  to   { opacity: 1;    transform: translateZ(0) scale(1); }
-}
-@keyframes lior-vt-push-out {
-  from { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
-  to   { opacity: 0;    transform: translate3d(-12vw,0,0) scale(0.97); }
-}
-@keyframes lior-vt-push-in {
-  from { opacity: 0.84; transform: translate3d(30vw,0,0) scale(0.97); }
-  to   { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
-}
-@keyframes lior-vt-pop-out {
-  from { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
-  to   { opacity: 0;    transform: translate3d(30vw,0,0) scale(0.97); }
-}
-@keyframes lior-vt-pop-in {
-  from { opacity: 0.84; transform: translate3d(-12vw,0,0) scale(0.97); }
-  to   { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
-}
-@keyframes lior-vt-modal-out {
-  from { opacity: 1;    transform: scale(1); }
-  to   { opacity: 0.88; transform: scale(0.96); }
-}
-@keyframes lior-vt-modal-in {
-  from { opacity: 0.80; transform: translate3d(0,6%,0) scale(0.97); }
-  to   { opacity: 1;    transform: translate3d(0,0,0) scale(1); }
-}
-
-/* iOS-spring easing — same curve the JS engine uses */
 ::view-transition-old(root),
-::view-transition-new(root) {
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-  animation-fill-mode: both;
-  /* Important: don't let the snapshots eat pointer events */
+::view-transition-new(root),
+::view-transition-old(main-view),
+::view-transition-new(main-view) {
+  /* Don't let the snapshots eat pointer events */
   pointer-events: none;
-}
-
-html[data-vt-dir="tab"]::view-transition-old(root) {
-  animation: 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94) lior-vt-tab-out;
-}
-html[data-vt-dir="tab"]::view-transition-new(root) {
-  animation: 220ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-tab-in;
-}
-
-html[data-vt-dir="push"]::view-transition-old(root) {
-  animation: 280ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-push-out;
-}
-html[data-vt-dir="push"]::view-transition-new(root) {
-  animation: 280ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-push-in;
-}
-
-html[data-vt-dir="pop"]::view-transition-old(root) {
-  animation: 200ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-pop-out;
-}
-html[data-vt-dir="pop"]::view-transition-new(root) {
-  animation: 200ms cubic-bezier(0.22, 1, 0.36, 1) lior-vt-pop-in;
-}
-
-html[data-vt-dir="modal"]::view-transition-old(root) {
-  animation: 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94) lior-vt-modal-out;
-}
-html[data-vt-dir="modal"]::view-transition-new(root) {
-  animation: 300ms cubic-bezier(0.34, 1.56, 0.64, 1) lior-vt-modal-in;
 }
 
 /* Reduced motion — instant snap */
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
+  ::view-transition-old(main-view),
+  ::view-transition-new(main-view) {
     animation-duration: 0.001ms !important;
   }
 }

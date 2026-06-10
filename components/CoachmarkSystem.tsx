@@ -9,7 +9,7 @@
  * - prefer action-led CTAs instead of passive "Next" buttons
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { flushSync } from 'react-dom';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
@@ -1491,8 +1491,16 @@ export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, 
     };
   }, [active?.def, active?.renderMode]);
 
+  // Stable context value — the callbacks are already useCallback-stable, so
+  // memoizing the wrapper object stops every consumer from re-rendering on
+  // each tab switch (CoachmarkProvider re-renders whenever currentView moves).
+  const coachmarkContextValue = useMemo(
+    () => ({ triggerCoachmark, triggerTour, dismissAll }),
+    [triggerCoachmark, triggerTour, dismissAll],
+  );
+
   return (
-    <CoachmarkContext.Provider value={{ triggerCoachmark, triggerTour, dismissAll }}>
+    <CoachmarkContext.Provider value={coachmarkContextValue}>
       {children}
       <LayoutGroup id="coachmark-flow">
         <AnimatePresence initial={false}>

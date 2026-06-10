@@ -410,6 +410,22 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
       const ctx = canvas.getContext('2d');
       if (!ctx)   { rafRef.current = 0; return; }
 
+      // App backgrounded mid-effect: drop the transient flourish instead of
+      // burning frames on an invisible canvas. Pending dissolve callbacks
+      // still fire so the heartbeat button is restored on return.
+      if (document.visibilityState === 'hidden') {
+        if (dissolveOnDone && !dissolveFired) {
+          dissolveFired = true;
+          const cb = dissolveOnDone;
+          dissolveOnDone = null;
+          cb();
+        }
+        for (let i = 0; i < POOL; i++) pool[i].active = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        rafRef.current = 0;
+        return;
+      }
+
       const dt = Math.min(ts - lastTs.current, 50);
       lastTs.current = ts;
 

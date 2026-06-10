@@ -122,8 +122,7 @@ const RouteFallback = () => null;
 const App = () => {
   const e2eMode = isE2EAppMode();
   const [currentView, setCurrentView] = useState<ViewState>('home');
-  const [transitionDir, setTransitionDir] = useState<TransitionDirection>('tab');
-  const [isSwitchingView, setIsSwitchingView] = useState(false);
+  const [, setTransitionDir] = useState<TransitionDirection>('tab');
   const historyStack = useRef<ViewState[]>([]);
   const scrollPositions = useRef<Record<string, number>>({});
   const pendingScrollRestore = useRef<{ view: ViewState; y: number } | null>(null);
@@ -133,6 +132,24 @@ const App = () => {
   // Tracks current view synchronously for pre-transition direction calculation.
   // Must be updated BEFORE state changes so direction is resolved correctly.
   const currentViewRef = useRef<ViewState>('home');
+
+  // ── Keep-alive tab registry ─────────────────────────────────────────────
+  // The REF is the source of truth so navigation callbacks never close over
+  // state — that keeps navigateTo/runNavigation referentially stable for the
+  // app's lifetime. (Previously runNavigation depended on the mountedTabs
+  // STATE, so its identity churned when a tab mounted, which re-ran the giant
+  // bootstrap effect — re-fetching the Supabase session, re-subscribing auth,
+  // restarting the native shell — on the FIRST visit to every tab. That was
+  // the single biggest tab-switch stall in the app.)
+  const mountedTabsRef = useRef<Set<ViewState>>(new Set(['home']));
+  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => mountedTabsRef.current);
+  const mountTab = useCallback((tab: ViewState) => {
+    if (!ROOT_TABS.includes(tab) || mountedTabsRef.current.has(tab)) return;
+    const next = new Set(mountedTabsRef.current);
+    next.add(tab);
+    mountedTabsRef.current = next;
+    setMountedTabs(next);
+  }, []);
 
   // Register main scroll container from Layout
   const registerScrollRef = useCallback((el: HTMLElement | null) => {
@@ -175,10 +192,10 @@ const App = () => {
     return () => window.removeEventListener('te:gesture-back', handler);
   }, [getCurrentScroll]);
 
-  // ── Module preload on prefetch ──────────────────────────────────────────
-  // Keep-alive tab cache obviates the need to pre-mount React trees, but we
-  // still preload the JS modules for non-tab destinations on pointerdown so
-  // their lazy chunks are parsed by the time the user lifts their finger.
+  // ── Module preload + shell pre-mount on prefetch ────────────────────────
+  // Fired on pointerdown. For ROOT_TABS we also pre-mount the keep-alive
+  // shell (hidden) so the lazy mount and first render happen during the
+  // finger-down window — by pointerup the switch is a pure CSS class flip.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ view?: string; views?: string[] }>).detail;
@@ -186,11 +203,14 @@ const App = () => {
         .filter((view): view is ViewState => Boolean(view) && view !== currentViewRef.current)
         .filter((view, index, list) => list.indexOf(view) === index)
         .slice(0, 3);
+      for (const view of hintedViews) {
+        if (ROOT_TABS.includes(view) && isViewModuleLoaded(view)) mountTab(view);
+      }
       void preloadViewModules(hintedViews);
     };
     window.addEventListener('te:prefetch', handler);
     return () => window.removeEventListener('te:prefetch', handler);
-  }, []);
+  }, [mountTab]);
 
   const finalizeNavigation = useCallback(() => {
     const metric = pendingNavigationMetricRef.current;
@@ -200,57 +220,22 @@ const App = () => {
       pendingNavigationMetricRef.current = null;
     }
     transitionLockRef.current = false;
-    setIsSwitchingView(false);
   }, []);
 
-  // ── Keep-alive tab cache ────────────────────────────────────────────────
-  // Every ROOT_TAB visited at least once stays mounted in the DOM. Switching
-  // between cached tabs becomes a CSS visibility flip — no React unmount, no
-  // re-render of the just-mounted tree, no Suspense boundary work, no
-  // fresh useState/useEffect cost. Same React instance survives every
-  // back-and-forth (Home → Us → Home is now genuinely free).
-  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => new Set(['home']));
-  useEffect(() => {
-    if (!ROOT_TABS.includes(currentView)) return;
-    setMountedTabs((prev) => {
-      if (prev.has(currentView)) return prev;
-      const next = new Set(prev);
-      next.add(currentView);
-      return next;
-    });
-  }, [currentView]);
-
-  // ── Fast tab transition (CSS-only crossfade) ────────────────────────────
-  // For tab-to-tab switches, we don't need View Transitions API or DOM
-  // cloning — both views are already mounted side-by-side. We just toggle
-  // CSS classes to crossfade between them. This is the path that gives the
-  // app its native feel: no flushSync, no JS work, no main-thread block.
+  // ── Fast tab transition ─────────────────────────────────────────────────
+  // Tab-to-tab is a single state commit; the shells' class flip happens in a
+  // layout effect and the cached element identities mean React reconciles
+  // essentially nothing. No flushSync, no View Transition, no lock window —
+  // this is what makes tab taps land on the very next frame, iOS-style.
   const runTabTransition = useCallback((destination: ViewState, startedAt?: number) => {
-    transitionLockRef.current = true;
-    setIsSwitchingView(true);
     pendingNavigationMetricRef.current = {
       view: destination,
       direction: 'tab',
       startedAt: startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     };
-
-    // Tag <html> so ambient layers pause for the brief crossfade window.
-    if (typeof document !== 'undefined') {
-      document.documentElement.dataset.transitioning = '1';
-    }
-
     setTransitionDir('tab');
     setCurrentView(destination);
-
-    // Lock window matches the CSS keep-alive-fade-in duration so a rapid
-    // double-tap doesn't try to swap mid-fade. Opacity-only fade is cheap
-    // enough that the lock window doesn't feel laggy.
-    window.setTimeout(() => {
-      if (typeof document !== 'undefined') {
-        delete document.documentElement.dataset.transitioning;
-      }
-      finalizeNavigation();
-    }, 140);
+    requestAnimationFrame(finalizeNavigation);
   }, [finalizeNavigation]);
 
   const runNavigation = useCallback((destination: ViewState, dir: TransitionDirection, startedAt?: number) => {
@@ -259,19 +244,27 @@ const App = () => {
       y: scrollPositions.current[destination] ?? 0,
     };
 
-    // Fast path: tab-to-tab between already-cached views.
-    if (dir === 'tab' && mountedTabs.has(destination) && ROOT_TABS.includes(currentViewRef.current)) {
+    // Tab-to-tab ALWAYS takes the keep-alive fast path — including first
+    // visits (the shell mounts in the same commit; the module is preloaded
+    // by navigateTo before we get here, and the registry's synchronous
+    // thenable means no Suspense round-trip).
+    if (dir === 'tab' && ROOT_TABS.includes(destination) && ROOT_TABS.includes(currentViewRef.current)) {
+      mountTab(destination);
       runTabTransition(destination, startedAt);
       return;
     }
 
     transitionLockRef.current = true;
-    setIsSwitchingView(true);
     pendingNavigationMetricRef.current = {
       view: destination,
       direction: dir,
       startedAt: startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     };
+
+    // Pop/push INTO a tab: mount its shell before the transition snapshot so
+    // the commit renders real content (the pending state update is flushed
+    // by the flushSync inside commit).
+    if (ROOT_TABS.includes(destination)) mountTab(destination);
 
     TransitionEngine.navigate(
       dir as EngineDirection,
@@ -285,7 +278,7 @@ const App = () => {
         requestAnimationFrame(finalizeNavigation);
       },
     );
-  }, [finalizeNavigation, mountedTabs, runTabTransition]);
+  }, [finalizeNavigation, mountTab, runTabTransition]);
 
   const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
@@ -326,10 +319,10 @@ const App = () => {
         view,
         y: scrollPositions.current[view] ?? 0,
       };
+      if (ROOT_TABS.includes(view)) mountTab(view);
       flushSync(() => {
         setTransitionDir(dir);
         setCurrentView(view);
-        setIsSwitchingView(false);
       });
       transitionLockRef.current = false;
       return;
@@ -337,22 +330,22 @@ const App = () => {
 
     if (!isViewModuleLoaded(view)) {
       transitionLockRef.current = true;
-      setIsSwitchingView(true);
       void preloadViewModule(view)
         .catch((error) => {
           DiagnosticsService.recordError('navigation.preload', error, { view });
         })
         .finally(() => {
-          requestAnimationFrame(() => {
-            transitionLockRef.current = false;
-            commitNavigation();
-          });
+          // Commit immediately — the synchronous-thenable registry mounts the
+          // freshly parsed module without a Suspense round-trip, so there is
+          // nothing to wait a frame for.
+          transitionLockRef.current = false;
+          commitNavigation();
         });
       return;
     }
 
     commitNavigation();
-  }, [getCurrentScroll, runNavigation]);
+  }, [getCurrentScroll, mountTab, runNavigation]);
 
   const goBack = useCallback(() => {
     if (transitionLockRef.current) return;
@@ -625,26 +618,58 @@ const App = () => {
   // ── Keep-alive tab tree ─────────────────────────────────────────────────
   // Render every visited ROOT_TAB inside its own keep-alive shell. Only the
   // active one is visible; the others have `display:none` (state preserved,
-  // effects continue, paint cost zero). Non-tab views render in a separate
-  // overlay slot below.
+  // effects continue, paint cost zero).
+  //
+  // Two invariants make tab switches near-free:
+  //  1. The tab's React ELEMENT is created exactly once and cached — stable
+  //     element identity lets React bail out of the entire subtree, so a
+  //     switch reconciles ~nothing. (Previously every switch recreated all
+  //     elements and synchronously re-rendered EVERY mounted view.)
+  //  2. is-active/is-cached + inert/aria-hidden are applied imperatively in
+  //     a layout effect, so the shells' JSX doesn't depend on currentView.
+  // Safe because navigateTo is referentially stable for the app's lifetime.
+  const tabElementCache = useRef(new Map<ViewState, React.ReactElement>());
   const keepAliveTabs = useMemo(() => {
-    const tabs = Array.from(mountedTabs);
-    return tabs.map((tab) => {
-      const TabView = getViewComponent(tab);
-      const isActive = tab === currentView;
+    return Array.from(mountedTabs).map((tab) => {
+      let element = tabElementCache.current.get(tab);
+      if (!element) {
+        const TabView = getViewComponent(tab);
+        element = <TabView setView={navigateTo} />;
+        tabElementCache.current.set(tab, element);
+      }
+      const isActive = tab === currentViewRef.current;
       return (
         <div
           key={tab}
           data-keep-alive-tab={tab}
           className={`keep-alive-shell ${isActive ? 'is-active' : 'is-cached'}`}
-          aria-hidden={!isActive}
-          inert={isActive ? undefined : true}
         >
-          <TabView setView={navigateTo} />
+          {/* Per-shell boundary: a (pre-)mounting tab that suspends only
+              blanks its own hidden shell, never the visible tree. */}
+          <Suspense fallback={null}>{element}</Suspense>
         </div>
       );
     });
-  }, [mountedTabs, currentView, navigateTo]);
+  }, [mountedTabs, navigateTo]);
+
+  // Imperative shell activation — runs before paint within the same commit
+  // (and inside flushSync for View Transition snapshots).
+  useLayoutEffect(() => {
+    const shells = document.querySelectorAll<HTMLElement>('[data-keep-alive-tab]');
+    shells.forEach((el) => {
+      const tab = el.dataset.keepAliveTab;
+      if (!tab || tab === '__overlay__') return;
+      const isActive = tab === currentView;
+      el.classList.toggle('is-active', isActive);
+      el.classList.toggle('is-cached', !isActive);
+      el.toggleAttribute('inert', !isActive);
+      if (isActive) {
+        el.removeAttribute('aria-hidden');
+      } else {
+        el.setAttribute('aria-hidden', 'true');
+      }
+    });
+  }, [currentView, mountedTabs]);
 
   // Non-tab view (push/pop destinations like sync, settings, etc.)
   // Mounts/unmounts normally — these are not on the hot path.
@@ -653,6 +678,13 @@ const App = () => {
     const ActiveView = getViewComponent(currentView);
     return <ActiveView setView={navigateTo} />;
   }, [currentView, navigateTo]);
+
+  // Stable context value — navigateTo/goBack never change identity; the
+  // object itself only changes when currentView/canGoBack actually change.
+  const navigationContextValue = useMemo(
+    () => ({ navigateTo, goBack, canGoBack, currentView }),
+    [navigateTo, goBack, canGoBack, currentView],
+  );
 
   // Global Loading State
   if (!isInitialized) {
@@ -690,12 +722,12 @@ const App = () => {
 
   return (
     <>
-      <NavigationContext.Provider value={{ navigateTo, goBack, canGoBack, currentView }}>
+      <NavigationContext.Provider value={navigationContextValue}>
         <CoachmarkProvider currentView={currentView} navigateTo={navigateTo}>
           <ErrorBoundary>
-            <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef} isSwitchingView={isSwitchingView}>
+            <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef}>
               <Suspense fallback={<RouteFallback />}>
-                <ViewTransition viewKey={currentView} transitionDirection={transitionDir}>
+                <ViewTransition viewKey={currentView}>
                   {/* Keep-alive: every visited tab stays mounted forever.
                       Switching between tabs is a CSS visibility flip — no
                       React unmount, no Suspense roundtrip, no fresh mount
@@ -705,7 +737,7 @@ const App = () => {
                       They mount/unmount normally since they're not hot-path. */}
                   {overlayView && (
                     <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
-                      {overlayView}
+                      <Suspense fallback={null}>{overlayView}</Suspense>
                     </div>
                   )}
                 </ViewTransition>
@@ -730,7 +762,7 @@ const App = () => {
           </ErrorBoundary>
         </CoachmarkProvider>
       </NavigationContext.Provider>
-      <DevPanel actions={[
+      {import.meta.env.DEV && <DevPanel actions={[
         {
           label: '▶ Replay splash screen',
           action: () => {
@@ -807,7 +839,7 @@ const App = () => {
             console.log(`[Admin] Internal admin override ${next ? 'enabled' : 'disabled'}`);
           },
         },
-      ]} />
+      ]} />}
     </>
   );
 };

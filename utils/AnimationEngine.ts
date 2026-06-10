@@ -220,10 +220,14 @@ class AnimationEngineClass {
 
   start(): void {
     if (this.running) return;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
 
+    // Bind BEFORE the hidden check. If the app boots while backgrounded the
+    // engine must still wake on the next visibilitychange — previously the
+    // early return skipped binding and the engine stayed dead until a new
+    // subscriber happened to register.
     this._bindVisibility();
     this._publishTier(this.tier);
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     this.running = true;
     this.lastTs = performance.now();
     this.rafId = requestAnimationFrame(this.loop);

@@ -37,7 +37,9 @@ const relativeTime = (dateStr: string) => {
     return rem > 0 ? `${years}y ${rem}mo ago` : `${years}y ago`;
 };
 
-export const Us: React.FC<UsProps> = ({ setView }) => {
+// Memoized below as `Us` — setView is referentially stable, so tab switches
+// and other App-level renders bail out of this whole tree.
+const UsView: React.FC<UsProps> = ({ setView }) => {
     const profile = StorageService.getCoupleProfile();
     const [activeTab, setActiveTab] = useState<Tab>('bucket');
 
@@ -556,3 +558,5 @@ export const Us: React.FC<UsProps> = ({ setView }) => {
         </div>
     );
 };
+
+export const Us = React.memo(UsView);

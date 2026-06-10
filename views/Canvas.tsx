@@ -346,7 +346,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
                   boxShadow: activeColor === c
                     ? `0 0 0 2.5px rgba(15,10,20,1), 0 0 0 4.5px ${c}`
                     : 'none',
-                  transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)',
+                  transition: 'width 0.18s cubic-bezier(0.34,1.56,0.64,1), height 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s cubic-bezier(0.34,1.56,0.64,1)',
                 }}
               />
             ))}
@@ -391,7 +391,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
                   borderRadius: 12,
                   background: active ? 'rgba(244,63,94,0.15)' : 'rgba(255,255,255,0.06)',
                   border: active ? '1px solid rgba(244,63,94,0.4)' : '1px solid rgba(255,255,255,0.08)',
-                  transition: 'all 0.15s ease',
+                  transition: 'background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease',
                 }}
               >
                 <div

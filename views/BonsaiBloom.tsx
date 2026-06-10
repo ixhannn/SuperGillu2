@@ -1177,7 +1177,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
                                             ? 'linear-gradient(90deg, #f472b6, #a78bfa)'
                                             : 'rgba(244,114,182,0.35)'
                                         : 'rgba(0,0,0,0.06)',
-                                    transition: 'all 0.5s ease',
+                                    transition: 'width 0.5s ease, background 0.5s ease',
                                 }}
                             />
                         ))}

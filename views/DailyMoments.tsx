@@ -23,7 +23,9 @@ interface DailyMomentsProps {
 }
 
 // ─── Thumbnail Card (with blurred bg + object-contain for zero cropping) ─────
-const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo, onClick }) => {
+// Memoized: grid siblings no longer re-render when one card's media resolves
+// or when unrelated view state (modals, comments, timers) changes.
+const PhotoCard = React.memo<{ photo: DailyPhoto, onSelect: (photo: DailyPhoto) => void }>(({ photo, onSelect }) => {
     const deleteHandledRef = useRef(false);
     const imageStoragePath = selectImageStoragePath(photo.storagePath, photo.imageMimeType);
     const videoStoragePath = selectVideoStoragePath(photo.videoStoragePath, photo.storagePath, photo.videoMimeType || photo.imageMimeType);
@@ -82,7 +84,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
         <>
         <motion.div
             layoutId={`photo-${photo.id}`}
-            onClick={onClick}
+            onClick={() => onSelect(photo)}
             className="relative group overflow-hidden glass-card aspect-[3/4] cursor-pointer spring-press transition-transform"
         >
             {isLoading ? (
@@ -93,6 +95,8 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                     {mediaKind === 'image' ? (
                         <img
                             src={mediaUrl}
+                            loading="lazy"
+                            decoding="async"
                             className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-60"
                             alt=""
                             aria-hidden="true"
@@ -124,13 +128,15 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
                             </div>
                         </>
                     ) : (
-                        <motion.img 
+                        <motion.img
                             initial={{ y: -20, scale: 1.15 }}
                             whileInView={{ y: 0, scale: 1 }}
                             viewport={{ once: false, margin: "50px 0px" }}
                             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-                            src={mediaUrl} 
-                            className="relative w-full h-full object-cover z-[1]" 
+                            src={mediaUrl}
+                            loading="lazy"
+                            decoding="async"
+                            className="relative w-full h-full object-cover z-[1]"
                             alt="Daily moment"
                             onError={handleMediaError}
                         />
@@ -175,7 +181,7 @@ const PhotoCard: React.FC<{ photo: DailyPhoto, onClick: () => void }> = ({ photo
         />
         </>
     );
-};
+});
 
 // ─── Comment Bubble ──────────────────────────────────────────────────────────
 const CommentBubble: React.FC<{
@@ -679,7 +685,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
                     >
                         {photos.map(p => (
                             <motion.div key={p.id} variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}>
-                                <PhotoCard photo={p} onClick={() => setSelectedPhoto(p)} />
+                                <PhotoCard photo={p} onSelect={setSelectedPhoto} />
                             </motion.div>
                         ))}
                     </motion.div>

@@ -27,10 +27,15 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose }) =
     }, [isOpen, onClose]);
 
     const handleUpgrade = () => {
-        const profile = StorageService.getCoupleProfile();
-        StorageService.saveCoupleProfile({ ...profile, isPremium: true });
+        // Visual response first — the close animation starts this frame.
         feedback.celebrate();
         onClose();
+        // Storage write deferred past the next paint so the synchronous
+        // profile read/serialize can't stall the exit spring.
+        requestAnimationFrame(() => {
+            const profile = StorageService.getCoupleProfile();
+            StorageService.saveCoupleProfile({ ...profile, isPremium: true });
+        });
     };
 
     return (

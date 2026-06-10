@@ -14,6 +14,7 @@ import { InsightCard } from '../components/InsightCard';
 import { PulseCheckSheet } from '../components/PulseCheckSheet';
 import { WeeklyReflectionSheet } from '../components/WeeklyReflection';
 import { feedback } from '../utils/feedback';
+import { shouldGateHeavyView } from '../utils/runtimeProfile';
 
 interface PartnerIntelligenceViewProps {
   setView: (view: ViewState) => void;
@@ -308,9 +309,10 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
   const [showPulse, setShowPulse] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  // Mobile-only app: the visuals are part of the experience, always on.
-  // Previous gate hid them on the only target platform.
-  const [visualsEnabled, setVisualsEnabled] = useState(true);
+  // Charts (recharts — the app's single largest chunk at ~330KB) stay
+  // deferred behind a tap on mobile-class devices so opening this view never
+  // stalls on chunk parse + chart layout. Desktop-class devices load eagerly.
+  const [visualsEnabled, setVisualsEnabled] = useState(() => !shouldGateHeavyView());
 
   const names = getProfileNames();
 

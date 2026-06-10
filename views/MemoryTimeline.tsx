@@ -119,14 +119,17 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
 };
 
 /* ─── Memory card ─── */
-const MemoryCard: React.FC<{
+// Memoized: with stable onSelect/onDelete callbacks, modal open/close and
+// other view-level state changes no longer re-reconcile (and FLIP-remeasure)
+// every polaroid in the scrapbook.
+const MemoryCard = React.memo<{
     memory: Memory;
     index: number;
     featured?: boolean;
     tilt?: number;
-    onClick: () => void;
+    onSelect: (memory: Memory) => void;
     onDelete: (id: string) => void;
-}> = ({ memory, index, featured = false, tilt = 0, onClick, onDelete }) => {
+}>(({ memory, index, featured = false, tilt = 0, onSelect, onDelete }) => {
     const deleteRequestScheduledRef = useRef(false);
     const imageStoragePath = selectImageStoragePath(memory.storagePath, memory.imageMimeType);
     const videoStoragePath = selectVideoStoragePath(memory.videoStoragePath, memory.storagePath, memory.videoMimeType || memory.imageMimeType);
@@ -171,7 +174,7 @@ const MemoryCard: React.FC<{
             animate={{ opacity: 1, y: 0, rotate: tilt, scale: 1 }}
             exit={{ opacity: 0, scale: 0.92, rotate: 0 }}
             transition={{ duration: 0.55, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
-            onClick={() => { feedback.light(); onClick(); }}
+            onClick={() => { feedback.light(); onSelect(memory); }}
             whileTap={{ scale: 0.97, rotate: tilt * 0.3 }}
             whileHover={{ y: -3, rotate: tilt * 0.5 }}
             className="relative overflow-hidden cursor-pointer group"
@@ -200,7 +203,7 @@ const MemoryCard: React.FC<{
                         onError={handleMediaError}
                     />
                 ) : (
-                    <img src={mediaUrl} alt="Memory" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} />
+                    <img src={mediaUrl} alt="Memory" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" onError={handleMediaError} />
                 )
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center" style={{ color: 'var(--color-text-secondary)' }}>
@@ -335,7 +338,7 @@ const MemoryCard: React.FC<{
             </div>
         </motion.div>
     );
-};
+});
 
 /* ─── Inline video player — capped height, contained ─── */
 const InlineVideoPlayer = ({ src, onError }: { src: string; onError?: () => void }) => {
@@ -985,14 +988,14 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
         setMemories(StorageService.getMemories());
     };
 
-    const requestDelete = (id: string) => {
+    const requestDelete = useCallback((id: string) => {
         setPendingDeleteId(id);
         try {
             feedback.tap();
         } catch {
             // Haptics/audio feedback should never block opening delete confirmation.
         }
-    };
+    }, []);
 
     const confirmDelete = async () => {
         if (!pendingDeleteId) return;
@@ -1184,13 +1187,9 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                         WebkitTapHighlightColor: 'transparent',
                                     }}
                                 >
-                                    <motion.span
-                                        animate={{ rotate: [0, 18, -12, 0] }}
-                                        transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut', repeatDelay: 1.6 }}
-                                        style={{ display: 'inline-flex' }}
-                                    >
+                                    <span className="animate-sparkle-wiggle" style={{ display: 'inline-flex' }}>
                                         <Sparkles size={12} fill="currentColor" />
-                                    </motion.span>
+                                    </span>
                                     <span
                                         style={{
                                             fontFamily: '"Gloria Hallelujah", cursive',
@@ -1291,7 +1290,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                         index={groupIdx * 10}
                                                         featured
                                                         tilt={featuredTilt(groupIdx)}
-                                                        onClick={() => setSelectedMemory(featured)}
+                                                        onSelect={setSelectedMemory}
                                                         onDelete={requestDelete}
                                                     />
                                                 </div>
@@ -1307,7 +1306,7 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                                 memory={m}
                                                                 index={groupIdx * 10 + i + 1}
                                                                 tilt={gridTilt(groupIdx, i)}
-                                                                onClick={() => setSelectedMemory(m)}
+                                                                onSelect={setSelectedMemory}
                                                                 onDelete={requestDelete}
                                                             />
                                                         ))}

@@ -32,11 +32,11 @@ export const AppLaunchOverlay: React.FC = () => {
         }}
       />
 
-      <motion.div
-        className="absolute inset-0"
-        animate={{ opacity: [0.38, 0.58, 0.42] }}
-        transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-      >
+      {/* Ambient loops below are pure CSS (compositor thread) — the launch
+          window is exactly when the main thread is busiest (storage init,
+          auth, module parsing), so framer's per-frame JS was the most
+          expensive place to run decorative loops. */}
+      <div className="absolute inset-0 animate-launch-orbs">
         <div
           className="absolute top-[18%] left-1/2 -translate-x-1/2 w-72 h-72 rounded-full blur-3xl"
           style={{ background: 'var(--theme-orb-1)' }}
@@ -49,43 +49,30 @@ export const AppLaunchOverlay: React.FC = () => {
           className="absolute bottom-[12%] right-[18%] w-52 h-52 rounded-full blur-3xl"
           style={{ background: 'var(--theme-orb-3)' }}
         />
-      </motion.div>
+      </div>
 
       <div className="relative z-10 flex flex-col items-center text-center">
         <div className="relative">
           {PARTICLES.map((particle, index) => (
-            <motion.span
+            <span
               key={index}
-              className="absolute left-1/2 top-1/2 w-2.5 h-2.5 rounded-full"
+              className="absolute left-1/2 top-1/2 w-2.5 h-2.5 rounded-full animate-launch-particle"
               style={{
                 background: 'rgba(var(--theme-particle-2-rgb), 0.9)',
                 boxShadow: '0 0 20px rgba(var(--theme-particle-2-rgb), 0.28)',
-              }}
-              initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
-              animate={{
-                opacity: [0, 0.95, 0],
-                scale: [0, 1.15, 0.35],
-                x: [0, particle.x],
-                y: [0, particle.y],
-              }}
-              transition={{
-                duration: 1.25,
-                delay: particle.delay,
-                repeat: Infinity,
-                repeatDelay: 1.4,
-                ease: [0.16, 1, 0.3, 1],
-              }}
+                '--lp-x': particle.x,
+                '--lp-y': particle.y,
+                animationDelay: `${particle.delay}s`,
+              } as React.CSSProperties}
             />
           ))}
 
-          <motion.div
-            className="absolute inset-0 rounded-[2rem]"
+          <div
+            className="absolute inset-0 rounded-[2rem] animate-launch-glow"
             style={{
               background: 'radial-gradient(circle, rgba(var(--theme-particle-2-rgb),0.28) 0%, transparent 65%)',
               filter: 'blur(14px)',
             }}
-            animate={{ scale: [0.88, 1.12, 0.96], opacity: [0.45, 0.8, 0.55] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
           />
 
           <motion.div
@@ -95,13 +82,11 @@ export const AppLaunchOverlay: React.FC = () => {
             exit={{ scale: 0.94, opacity: 0 }}
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           >
-            <motion.div
-              className="absolute inset-0"
+            <div
+              className="absolute inset-0 animate-launch-specular"
               style={{
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.34), transparent 55%)',
               }}
-              animate={{ opacity: [0.35, 0.7, 0.4] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
             />
             <motion.div
               initial={{ scale: 0.3, opacity: 0, rotate: -18 }}

@@ -85,14 +85,17 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
         style={{ height: pullHeight, zIndex: 0 }}
       >
         <motion.div
-            animate={{ 
-                rotate: isRefreshing ? 360 : 0,
-                scale: isRefreshing ? [1, 1.2, 1] : 1
-            }}
-            transition={{ 
-                rotate: { repeat: Infinity, duration: 1, ease: 'linear' },
-                scale: { repeat: Infinity, duration: 1 }
-            }}
+            animate={isRefreshing
+                ? { rotate: 360, scale: [1, 1.2, 1] }
+                : { rotate: 0, scale: 1 }}
+            transition={isRefreshing
+                ? {
+                    rotate: { repeat: Infinity, duration: 1, ease: 'linear' },
+                    scale: { repeat: Infinity, duration: 1 },
+                  }
+                // Idle: settle once and stop — an Infinity transition here kept
+                // a framer animation loop alive in every keep-alive tab.
+                : { duration: 0.2 }}
         >
           <Heart 
             size={24} 

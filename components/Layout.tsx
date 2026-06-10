@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, createContext, useContext, memo, useCallback } from 'react';
+import React, { useRef, useEffect, createContext, useContext, memo, useCallback, useMemo } from 'react';
 import { BottomNav } from './BottomNav';
 import { AmbientVisuals } from './AmbientVisuals';
 import { TogetherMode } from './TogetherMode';
@@ -74,8 +74,15 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
     circle.addEventListener('animationend', () => circle.remove(), { once: true });
   }, []);
 
+  // Stable context value — an inline literal here invalidated every
+  // useConfetti consumer on each Layout render.
+  const confettiContextValue = useMemo(
+    () => ({ trigger: (x?: number, y?: number) => confettiRef.current?.trigger(x, y) }),
+    [],
+  );
+
   return (
-    <ConfettiContext.Provider value={{ trigger: (x, y) => confettiRef.current?.trigger(x, y) }}>
+    <ConfettiContext.Provider value={confettiContextValue}>
       <div
         className="fixed inset-0 text-gray-800 overflow-hidden flex flex-col"
         style={{
@@ -130,7 +137,14 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
             scrollPaddingBottom: 'calc(8rem + var(--lior-keyboard-height, 0px))',
             backfaceVisibility: 'hidden',
             transform: 'translateZ(0)',
-          }}
+            // Named View-Transition layer. Lives HERE (the viewport-clipped
+            // scroll container) rather than on the inner content wrapper so
+            // push/pop snapshots rasterize one viewport-sized texture instead
+            // of the full multi-thousand-px content height — the difference
+            // between a fluid 120fps slide and a multi-frame raster stall on
+            // phones. Nav + ambient layers sit outside and stay live.
+            viewTransitionName: 'main-view',
+          } as React.CSSProperties}
         >
           <div
             className="lenis-content pt-safe pb-32"

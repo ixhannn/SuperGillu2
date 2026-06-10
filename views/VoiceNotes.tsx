@@ -109,7 +109,7 @@ const VoiceNoteCard: React.FC<{
                     boxShadow: isPlaying
                         ? '0 8px 32px rgba(244,114,182,0.12), 0 2px 8px rgba(0,0,0,0.04)'
                         : '0 2px 8px rgba(0,0,0,0.03)',
-                    transition: 'all 0.3s ease',
+                    transition: 'background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease',
                 }}
             >
                 {/* Playing glow accent */}
@@ -137,7 +137,7 @@ const VoiceNoteCard: React.FC<{
                             boxShadow: isPlaying
                                 ? '0 4px 16px rgba(244,114,182,0.35)'
                                 : 'none',
-                            transition: 'all 0.3s ease',
+                            transition: 'background 0.3s ease, box-shadow 0.3s ease',
                         }}
                     >
                         {isPlaying

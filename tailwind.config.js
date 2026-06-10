@@ -157,23 +157,32 @@ export default {
                     '0%': { opacity: '0', transform: 'perspective(600px) rotateX(8deg) translate3d(0, 30px, -20px)' },
                     '100%': { opacity: '1', transform: 'perspective(600px) rotateX(0deg) translate3d(0, 0, 0)' },
                 },
+                // Compositor-safe: transform/opacity only. The old versions
+                // animated background-position / box-shadow which force a full
+                // repaint every frame on mobile. index.css carries matching
+                // overrides; these keep any un-overridden usage safe too.
                 shimmerSweep: {
-                    '0%': { backgroundPosition: '-200% center' },
-                    '100%': { backgroundPosition: '200% center' },
+                    '0%': { transform: 'translateX(-120%) skewX(-15deg)', opacity: '0' },
+                    '10%': { opacity: '1' },
+                    '90%': { opacity: '1' },
+                    '100%': { transform: 'translateX(220%) skewX(-15deg)', opacity: '0' },
                 },
                 glowPulse: {
-                    '0%, 100%': { boxShadow: '0 0 20px rgba(244,63,94,0.15), 0 0 60px rgba(244,63,94,0.05)' },
-                    '50%': { boxShadow: '0 0 30px rgba(244,63,94,0.3), 0 0 80px rgba(244,63,94,0.1)' },
+                    '0%, 100%': { opacity: '0.55' },
+                    '50%': { opacity: '1' },
                 },
                 breatheGlow: {
                     '0%, 100%': { transform: 'scale(1)', opacity: '0.7' },
                     '50%': { transform: 'scale(1.04)', opacity: '1' },
                 },
+                // Transform-only morph: border-radius interpolation forced a
+                // repaint per frame; under the heavy blur these blobs carry the
+                // drift/rotate alone reads identically.
                 morphBlob: {
-                    '0%, 100%': { borderRadius: '40% 60% 70% 30% / 40% 50% 60% 50%', transform: 'translate3d(0,0,0) rotate(0deg)' },
-                    '25%': { borderRadius: '60% 40% 30% 70% / 50% 60% 40% 60%', transform: 'translate3d(5%,3%,0) rotate(3deg)' },
-                    '50%': { borderRadius: '50% 60% 50% 40% / 60% 30% 70% 40%', transform: 'translate3d(-3%,6%,0) rotate(-2deg)' },
-                    '75%': { borderRadius: '30% 60% 40% 70% / 50% 40% 60% 50%', transform: 'translate3d(4%,-2%,0) rotate(1deg)' },
+                    '0%, 100%': { transform: 'translate3d(0,0,0) scale(1) rotate(0deg)' },
+                    '25%': { transform: 'translate3d(5%,3%,0) scale(1.04) rotate(3deg)' },
+                    '50%': { transform: 'translate3d(-3%,6%,0) scale(0.97) rotate(-2deg)' },
+                    '75%': { transform: 'translate3d(4%,-2%,0) scale(1.03) rotate(1deg)' },
                 },
                 numberRoll: {
                     '0%': { transform: 'translate3d(0, 100%, 0)', opacity: '0' },

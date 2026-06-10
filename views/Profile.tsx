@@ -174,7 +174,9 @@ const normalizeBackupPayload = async (value: Record<string, unknown>) => {
     };
 };
 
-export const Profile: React.FC<ProfileProps> = ({ setView }) => {
+// Memoized below as `Profile` — setView is referentially stable, so tab
+// switches and other App-level renders bail out of this whole tree.
+const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
     const [profile, setProfile] = useState<CoupleProfile>({
         myName: '',
         partnerName: '',
@@ -1013,3 +1015,5 @@ export const Profile: React.FC<ProfileProps> = ({ setView }) => {
         </div>
     );
 };
+
+export const Profile = React.memo(ProfileView);

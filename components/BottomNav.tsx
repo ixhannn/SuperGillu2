@@ -18,10 +18,10 @@ const IND   = 56;   // indicator size
 const BTN   = 60;   // button slot
 const NAV_H = 76;   // bar height
 
-// Smooth deceleration without overshoot; keep nav movement calm and predictable.
+// Liquid spring: a soft ~5% overshoot that settles, like the iOS tab pill.
 // This runs inside WAAPI on the compositor thread — immune to JS jank.
-const SPRING_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
-const SPRING_MS   = 420;
+const SPRING_EASE = 'cubic-bezier(0.34, 1.26, 0.44, 1)';
+const SPRING_MS   = 460;
 
 export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView, notifications }) => {
   const navRef  = useRef<HTMLDivElement>(null);
@@ -129,7 +129,14 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { movePill(currentView); }, [currentView, movePill]);
+  // rAF-deferred: getX() reads getBoundingClientRect, which would force
+  // layout inside the tap's render task. One frame later the layout is
+  // already clean and the read is free; WAAPI then animates on the
+  // compositor regardless of main-thread load.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => movePill(currentView));
+    return () => cancelAnimationFrame(id);
+  }, [currentView, movePill]);
 
   const handleNavTap = useCallback((id: string) => {
     Audio.play(id === 'add-memory' ? 'press' : 'navSwitch');

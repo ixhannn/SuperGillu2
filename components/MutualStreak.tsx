@@ -9,7 +9,9 @@ interface MutualStreakProps {
     onCheckIn: () => void;
 }
 
-// Flickering flame made from layered blurred divs
+// Flickering flame made from layered blurred divs.
+// All flicker loops are pure CSS keyframes (compositor thread) — they cost
+// zero main-thread time and auto-pause when the host tab is display:none.
 const Flame: React.FC<{ count: number }> = ({ count }) => {
     const intensity = Math.min(count / 30, 1); // scales 0→1 over 30 days
     const size = 18 + intensity * 10; // 18px → 28px
@@ -17,17 +19,13 @@ const Flame: React.FC<{ count: number }> = ({ count }) => {
     return (
         <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: size, height: size }}>
             {/* Outer glow */}
-            <motion.div
-                animate={{ scale: [1, 1.3, 1], opacity: [0.4, 0.7, 0.4] }}
-                transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute inset-0 rounded-full blur-sm"
+            <div
+                className="absolute inset-0 rounded-full blur-sm animate-flame-glow"
                 style={{ background: 'radial-gradient(circle, rgba(251,146,60,0.6) 0%, transparent 70%)' }}
             />
             {/* Core flame body */}
-            <motion.div
-                animate={{ scaleY: [1, 1.15, 0.95, 1.1, 1], scaleX: [1, 0.9, 1.05, 0.95, 1] }}
-                transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute rounded-full"
+            <div
+                className="absolute rounded-full animate-flame-body"
                 style={{
                     width: '55%', height: '70%',
                     bottom: '5%',
@@ -37,10 +35,8 @@ const Flame: React.FC<{ count: number }> = ({ count }) => {
                 }}
             />
             {/* Inner bright core */}
-            <motion.div
-                animate={{ scaleY: [1, 1.2, 0.9, 1], opacity: [0.9, 1, 0.8, 0.9] }}
-                transition={{ duration: 0.7, repeat: Infinity, ease: 'easeInOut', delay: 0.1 }}
-                className="absolute rounded-full"
+            <div
+                className="absolute rounded-full animate-flame-core"
                 style={{
                     width: '30%', height: '45%',
                     bottom: '10%',
@@ -50,10 +46,8 @@ const Flame: React.FC<{ count: number }> = ({ count }) => {
                 }}
             />
             {/* Tip flicker */}
-            <motion.div
-                animate={{ scaleY: [1, 1.4, 0.7, 1.2, 1], x: [0, 1, -1, 0.5, 0] }}
-                transition={{ duration: 0.6, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
-                className="absolute rounded-full"
+            <div
+                className="absolute rounded-full animate-flame-tip"
                 style={{
                     width: '18%', height: '35%',
                     top: '5%',
@@ -69,10 +63,8 @@ const Flame: React.FC<{ count: number }> = ({ count }) => {
 // Broken flame — grey, cracked look
 const BrokenFlame: React.FC = () => (
     <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 18, height: 18 }}>
-        <motion.div
-            animate={{ opacity: [0.3, 0.5, 0.3] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute inset-0 rounded-full"
+        <div
+            className="absolute inset-0 rounded-full animate-soft-fade-pulse"
             style={{ background: 'radial-gradient(circle, rgba(156,163,175,0.4) 0%, transparent 70%)' }}
         />
         <div className="absolute rounded-full" style={{
@@ -172,11 +164,9 @@ export const MutualStreak: React.FC<MutualStreakProps> = ({ profile, onCheckIn }
                             exit={{ opacity: 0 }} className="flex items-center gap-1.5">
                             <div className="flex gap-[3px] items-center">
                                 {[0, 1, 2].map(i => (
-                                    <motion.div key={i}
-                                        animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }}
-                                        transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.18 }}
-                                        className="w-1.5 h-1.5 rounded-full"
-                                        style={{ background: '#fb923c' }}
+                                    <div key={i}
+                                        className="w-1.5 h-1.5 rounded-full animate-waiting-dot"
+                                        style={{ background: '#fb923c', animationDelay: `${i * 0.18}s` }}
                                     />
                                 ))}
                             </div>

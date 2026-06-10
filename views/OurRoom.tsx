@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { CoupleRoomState, ViewState } from '../types';
+import { shouldGateHeavyView } from '../utils/runtimeProfile';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
 import { ROOM_SHOP_BY_ID, RoomCatalogItem } from '../components/room/roomCatalog3D';
@@ -347,10 +348,10 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   const [remoteActivity, setRemoteActivity] = useState('');
   const [knownSelfNames, setKnownSelfNames] = useState<string[]>(() => (profile.myName ? [profile.myName] : []));
   const [knownPartnerNames, setKnownPartnerNames] = useState<string[]>(() => (profile.partnerName ? [profile.partnerName] : []));
-  // Mobile-only app: the 3D room IS the feature on this view, so we always
-  // enable it. The previous gate disabled the scene on phones (the only
-  // target!) leaving an empty placeholder.
-  const [sceneEnabled, setSceneEnabled] = useState(true);
+  // The WebGL room is the app's heaviest scene (three.js + live canvas). On
+  // mobile-class devices it stays behind the one-tap Room Lobby so the view
+  // itself opens instantly; desktop-class devices load it eagerly.
+  const [sceneEnabled, setSceneEnabled] = useState(() => !shouldGateHeavyView());
   const stateRef = useRef(room);
   const presenceSnapshotRef = useRef<any>(null);
   const toastTimer = useRef<number | undefined>(undefined);

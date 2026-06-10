@@ -249,7 +249,9 @@ const useCountUp = (target: number, inView: boolean, duration = 1800) => {
     return count;
 };
 
-export const Home: React.FC<HomeProps> = ({ setView }) => {
+// Memoized below as `Home` — setView is referentially stable, so tab
+// switches and other App-level renders bail out of this whole tree.
+const HomeView: React.FC<HomeProps> = ({ setView }) => {
     const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Ishan', partnerName: 'Tulika', anniversaryDate: new Date().toISOString() });
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
@@ -271,9 +273,9 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [isDissolving, setIsDissolving] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
-    const [headerScrollTop, setHeaderScrollTop] = useState(0);
     const [premiumOpen, setPremiumOpen] = useState(false);
 
+    const headerOverlayRef = useRef<HTMLDivElement>(null);
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<HeartbeatParticlesHandle>(null);
@@ -407,24 +409,44 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         } else setOtdImage(null);
     }, [onThisDayMemory]);
 
-    // Scroll-linked header opacity — transparent at top, solid on scroll
+    // Scroll-linked header opacity — transparent at top, solid on scroll.
+    // Styles are written straight to the DOM (rAF-coalesced) so scrolling
+    // never re-renders the Home tree. setState here used to reconcile the
+    // entire view (TiltCards, bento grid, motion divs) on every scroll frame.
     useEffect(() => {
         const mainEl = document.querySelector('main');
-        if (!mainEl) return;
-        
-        const handleScroll = (e: Event) => {
-            const y = (e.target as HTMLElement).scrollTop || 0;
-            setHeaderScrollTop(y);
+        const el = headerOverlayRef.current;
+        if (!mainEl || !el) return;
+
+        let rafId = 0;
+        let lastOpacity = -1;
+
+        const apply = () => {
+            rafId = 0;
+            const overlay = getHomeHeaderOverlayState(mainEl.scrollTop || 0);
+            if (overlay.opacity === lastOpacity) return;
+            lastOpacity = overlay.opacity;
+            el.style.opacity = String(overlay.opacity);
+            el.style.background = overlay.background;
+            el.style.backdropFilter = overlay.backdropFilter;
+            el.style.setProperty('-webkit-backdrop-filter', overlay.webkitBackdropFilter);
+            el.style.borderBottom = overlay.borderBottom;
+            el.style.transitionDuration = `${overlay.transitionDurationMs}ms`;
         };
-        
+
+        const handleScroll = () => {
+            if (rafId === 0) rafId = requestAnimationFrame(apply);
+        };
+
         mainEl.addEventListener('scroll', handleScroll, { passive: true });
-        // Trigger once to set initial state
-        handleScroll({ target: mainEl } as unknown as Event);
-        
-        return () => mainEl.removeEventListener('scroll', handleScroll);
+        apply();
+
+        return () => {
+            mainEl.removeEventListener('scroll', handleScroll);
+            if (rafId) cancelAnimationFrame(rafId);
+        };
     }, []);
 
-    const headerOverlay = getHomeHeaderOverlayState(headerScrollTop);
     const homeContainerStyle = getHomeContainerStyle();
     const homeHeaderOverlayHeight = getHomeHeaderOverlayHeight();
 
@@ -478,16 +500,18 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
     return (
         <div className="px-4 relative parallax-container" style={homeContainerStyle}>
-            {/* Scroll-linked floating header bar */}
+            {/* Scroll-linked floating header bar — styles driven directly by
+                the scroll effect above; React only sets the resting state. */}
             <div
+                ref={headerOverlayRef}
                 className="fixed top-0 left-0 right-0 z-30 pointer-events-none transition-opacity ease-out"
                 style={{
-                    opacity: headerOverlay.opacity,
-                    background: headerOverlay.background,
-                    backdropFilter: headerOverlay.backdropFilter,
-                    WebkitBackdropFilter: headerOverlay.webkitBackdropFilter,
-                    borderBottom: headerOverlay.borderBottom,
-                    transitionDuration: `${headerOverlay.transitionDurationMs}ms`,
+                    opacity: 0,
+                    background: 'transparent',
+                    backdropFilter: 'none',
+                    WebkitBackdropFilter: 'none',
+                    borderBottom: '1px solid rgba(255,255,255,0)',
+                    transitionDuration: '0ms',
                     height: homeHeaderOverlayHeight,
                 }}
             />
@@ -543,10 +567,8 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 }
                             </div>
                             {isTogether && (
-                                <motion.span
-                                    className="absolute -right-0.5 bottom-0 h-3 w-3 rounded-full border-2 border-[#f7d6bf] bg-emerald-500"
-                                    animate={{ scale: [1, 1.13, 1], opacity: [0.78, 1, 0.78] }}
-                                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                                <span
+                                    className="absolute -right-0.5 bottom-0 h-3 w-3 rounded-full border-2 border-[#f7d6bf] bg-emerald-500 animate-presence-dot"
                                 />
                             )}
                         </div>
@@ -958,17 +980,15 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                             }}
                         >
                             <div className="relative flex items-center gap-3.5">
-                                <motion.div
-                                    animate={{ scale: [1, 1.04, 1], opacity: [0.92, 1, 0.92] }}
-                                    transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                                <div
+                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl animate-lock-breathe"
                                     style={{
                                         background: 'linear-gradient(145deg, #ffffff, #f3eef7)',
                                         boxShadow: '0 4px 10px rgba(90,82,102,0.08), inset 0 1px 0 rgba(255,255,255,0.96), inset 0 -1px 0 rgba(174,154,194,0.08)',
                                     }}
                                 >
                                     <Lock size={17} strokeWidth={2.2} style={{ color: '#8e78a2' }} />
-                                </motion.div>
+                                </div>
                                 <div className="flex-1 min-w-0 text-left">
                                     <p className="font-serif text-[1.02rem] font-semibold leading-tight" style={{ color: '#5a5266' }}>Private Space</p>
                                     <p className="mt-0.5 text-[0.72rem]" style={{ color: '#867b94' }}>
@@ -1002,7 +1022,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                 boxShadow: premiumOpen
                                     ? '0 4px 16px rgba(0,0,0,0.2)'
                                     : 'inset 0 1px 0 rgba(255,255,255,0.9), 0 2px 8px rgba(245,158,11,0.06)',
-                                transition: 'all 0.3s ease',
+                                transition: 'background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease',
                             }}
                         >
                             <div className="flex items-center gap-2.5">
@@ -1148,3 +1168,5 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         </div>
     );
 };
+
+export const Home = React.memo(HomeView);
