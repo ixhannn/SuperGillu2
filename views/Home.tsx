@@ -8,7 +8,7 @@ import { SyncService, syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
 import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
-import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
+import { HeartbeatParticles, HeartbeatParticlesHandle, DISSOLVE_VIBRATION } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
 import { CouplePet } from '../components/CouplePet';
 import { InsightWhisper } from '../components/InsightWhisper';
@@ -445,7 +445,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         
         const rect = heartbeatBtnRef.current.getBoundingClientRect();
         setIsDissolving(true);
-        if (navigator.vibrate) navigator.vibrate(50);
+        if (navigator.vibrate) navigator.vibrate(DISSOLVE_VIBRATION);
         
         particlesRef.current?.triggerButtonDissolve(rect, () => {
             setIsDissolving(false);

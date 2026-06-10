@@ -5,7 +5,8 @@
       "name": "Tulika Dev Server",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 3004
+      "port": 3004,
+      "autoPort": true
     },
     {
       "name": "Tulika Preview Server",

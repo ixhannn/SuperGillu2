@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
   loadEnv(mode, '.', '');
   return {
     server: {
-      port: 3002,
+      port: Number(process.env.PORT) || 3002,
       host: '0.0.0.0',
       watch: {
         ignored: ['**/android/**', '**/graphify-out/**', '**/.claude/**', '**/dist/**'],
