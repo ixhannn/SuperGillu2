@@ -1,6 +1,13 @@
 import { SupabaseService } from './supabase';
 
-const ADMIN_OVERRIDE_KEY = 'lior_internal_admin_override';
+// UI gating for internal-only screens (storage console, profile admin row).
+//
+// SECURITY NOTE: this check runs in the browser, so it can only ever hide UI —
+// it must never be the sole guard for a privileged operation. Every privileged
+// action must also be enforced server-side (Supabase RLS / worker admin token).
+// The previous implementation had two client-side bypasses (a blanket
+// `import.meta.env.DEV` allow and a localStorage override toggle); both were
+// removed because either one let any user unlock the admin UI from DevTools.
 const ADMIN_EMAILS = String(import.meta.env.VITE_INTERNAL_ADMIN_EMAILS || '')
     .split(',')
     .map((value) => value.trim().toLowerCase())
@@ -12,22 +19,13 @@ const ADMIN_USER_IDS = String(import.meta.env.VITE_INTERNAL_ADMIN_USER_IDS || ''
 
 let cachedDecision: boolean | null = null;
 
-const hasOverride = () => localStorage.getItem(ADMIN_OVERRIDE_KEY) === 'true';
-
 export const InternalAdminService = {
-    isOverrideEnabled(): boolean {
-        return hasOverride();
-    },
-
-    setOverride(enabled: boolean) {
-        if (enabled) localStorage.setItem(ADMIN_OVERRIDE_KEY, 'true');
-        else localStorage.removeItem(ADMIN_OVERRIDE_KEY);
-        cachedDecision = null;
-    },
-
     async isAllowed(): Promise<boolean> {
-        if (import.meta.env.DEV || hasOverride()) return true;
         if (cachedDecision !== null) return cachedDecision;
+        if (ADMIN_EMAILS.length === 0 && ADMIN_USER_IDS.length === 0) {
+            cachedDecision = false;
+            return false;
+        }
         if (!SupabaseService.init() || !SupabaseService.client) {
             cachedDecision = false;
             return false;

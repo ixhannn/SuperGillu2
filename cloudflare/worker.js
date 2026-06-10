@@ -98,17 +98,39 @@ function isMimeAllowed(contentType) {
   return ALLOWED_MIME_PREFIXES.some((prefix) => base.startsWith(prefix));
 }
 
-function corsHeaders(origin) {
-  const allowed = !origin
-    ? '*'
-    : /^(https?:\/\/|capacitor:\/\/)/i.test(origin)
-      ? origin
-      : null;
+// Browser origins allowed to call this worker cross-origin. Extend with the
+// ALLOWED_ORIGINS env var (comma-separated exact origins) for new deployments.
+const ALLOWED_ORIGINS_EXACT = [
+  'capacitor://localhost', // iOS Capacitor WebView
+  'http://localhost',      // Android Capacitor WebView (androidScheme http)
+  'https://localhost',     // Android Capacitor WebView (androidScheme https)
+];
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^http:\/\/localhost:\d+$/i,
+  /^http:\/\/127\.0\.0\.1(:\d+)?$/i,
+  /^https:\/\/(?:[a-z0-9-]+\.)?joinlior\.com$/i,
+  /^https:\/\/[a-z0-9-]+\.joinlior\.workers\.dev$/i,
+  /^https:\/\/[a-z0-9-]+\.pages\.dev$/i,
+];
+
+function isOriginAllowed(origin, env) {
+  if (!origin) return false;
+  const configured = String(env?.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  if (configured.includes(origin)) return true;
+  if (ALLOWED_ORIGINS_EXACT.includes(origin)) return true;
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+}
+
+function corsHeaders(origin, env) {
+  const allowed = isOriginAllowed(origin, env) ? origin : null;
 
   return {
     'Access-Control-Allow-Origin': allowed ?? 'null',
     'Access-Control-Allow-Methods': 'GET, HEAD, PUT, DELETE, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, X-Cleanup-Token, X-Admin-Token, X-Upload-Key, Range',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, X-Cleanup-Token, X-Admin-Token, Range',
     'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, ETag',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
@@ -321,16 +343,13 @@ function requireAdminToken(request, env) {
   return !!token && !!env.ADMIN_DASHBOARD_TOKEN && token === env.ADMIN_DASHBOARD_TOKEN;
 }
 
-function hasUploadKeyFallback(request, env) {
-  const token = request.headers.get('X-Upload-Key') || '';
-  return !!token && !!env.UPLOAD_KEY && token === env.UPLOAD_KEY;
-}
-
 async function getAuthenticatedUser(request, env) {
   const accessToken = readBearerToken(request.headers.get('Authorization'));
   if (!accessToken || !env.SUPABASE_URL) return null;
 
-  const projectApiKey = request.headers.get('apikey') || env.SUPABASE_SERVICE_ROLE_KEY || '';
+  // Token verification must use the worker's own key — never one supplied by
+  // the caller, which would let a client influence server-side auth checks.
+  const projectApiKey = env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (!projectApiKey) return null;
 
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/user`, {
@@ -2511,7 +2530,7 @@ async function runCleanup(env, source = 'manual') {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') ?? '';
-    const cors = corsHeaders(origin);
+    const cors = corsHeaders(origin, env);
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -2684,39 +2703,33 @@ export default {
       return new Response('Managed uploads must target a valid v2 key', { status: 400, headers: cors });
     }
 
-    const usingUploadKeyFallback = hasUploadKeyFallback(request, env);
     const canUseFullAuthFlow = hasSupabaseAdmin(env);
-    let user = null;
     let asset = null;
 
-    if (usingUploadKeyFallback) {
-      user = { id: 'upload-key' };
-    } else {
-      user = await getAuthenticatedUser(request, env);
-      if (!user) {
-        return new Response('Unauthorized', { status: 401, headers: cors });
-      }
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return new Response('Unauthorized', { status: 401, headers: cors });
+    }
 
-      if (canUseFullAuthFlow) {
-        const memberOfCouple = await isUserInCouple(env, user.id, parsedKey.coupleId);
-        if (!memberOfCouple) {
-          return new Response('Forbidden', { status: 403, headers: cors });
-        }
-
-        asset = await fetchMediaAssetByKey(env, key);
-        if (asset?.couple_id && asset.couple_id !== parsedKey.coupleId) {
-          return new Response('media_assets couple mismatch', { status: 409, headers: cors });
-        }
-      } else if (parsedKey.ownerUserId && parsedKey.ownerUserId !== user.id) {
+    if (canUseFullAuthFlow) {
+      const memberOfCouple = await isUserInCouple(env, user.id, parsedKey.coupleId);
+      if (!memberOfCouple) {
         return new Response('Forbidden', { status: 403, headers: cors });
       }
+
+      asset = await fetchMediaAssetByKey(env, key);
+      if (asset?.couple_id && asset.couple_id !== parsedKey.coupleId) {
+        return new Response('media_assets couple mismatch', { status: 409, headers: cors });
+      }
+    } else if (parsedKey.ownerUserId && parsedKey.ownerUserId !== user.id) {
+      return new Response('Forbidden', { status: 403, headers: cors });
     }
 
     if (request.method === 'PUT') {
-      if (!usingUploadKeyFallback && asset?.owner_user_id && asset.owner_user_id !== user.id) {
+      if (asset?.owner_user_id && asset.owner_user_id !== user.id) {
         return new Response('Upload reservation belongs to another user', { status: 403, headers: cors });
       }
-      if (!usingUploadKeyFallback && !asset?.id) {
+      if (!asset?.id) {
         return new Response('Upload was not reserved in media_assets', { status: 409, headers: cors });
       }
 
@@ -2760,13 +2773,13 @@ export default {
       }
       const checksumSha256 = await sha256Hex(combined.buffer);
 
-      if (!usingUploadKeyFallback && Number(asset.byte_size || 0) !== total) {
+      if (Number(asset.byte_size || 0) !== total) {
         return new Response('media_assets byte size mismatch', { status: 409, headers: cors });
       }
-      if (!usingUploadKeyFallback && normalizeMimeType(asset.mime_type) !== normalizedContentType) {
+      if (normalizeMimeType(asset.mime_type) !== normalizedContentType) {
         return new Response('media_assets MIME mismatch', { status: 409, headers: cors });
       }
-      if (!usingUploadKeyFallback && String(asset.checksum_sha256 || '') !== checksumSha256) {
+      if (String(asset.checksum_sha256 || '') !== checksumSha256) {
         return new Response('media_assets checksum mismatch', { status: 409, headers: cors });
       }
 
@@ -2803,7 +2816,7 @@ export default {
           couple_id: parsedKey.coupleId ?? null,
           feature: parsedKey.feature,
           severity: 'info',
-          event_type: usingUploadKeyFallback ? 'media.upload_legacy_verified' : 'media.upload_verified',
+          event_type: 'media.upload_verified',
           r2_key: key,
           source_table: null,
           logical_row_id: parsedKey.itemId,
@@ -2845,7 +2858,7 @@ export default {
           couple_id: parsedKey.coupleId ?? null,
           feature: parsedKey.feature,
           severity: 'info',
-          event_type: usingUploadKeyFallback ? 'media.deleted_legacy' : 'media.deleted',
+          event_type: 'media.deleted',
           r2_key: key,
           source_table: asset?.source_table ?? null,
           logical_row_id: asset?.logical_row_id ?? parsedKey.itemId,

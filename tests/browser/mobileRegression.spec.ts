@@ -152,10 +152,8 @@ test('heavy views stay gated on mobile until requested', async ({ page }) => {
   await loadVisuals.click();
   await expect(page.getByText('Love Languages')).toBeVisible({ timeout: 10_000 });
 
+  // OurRoom intentionally does NOT gate: the 3D room IS the feature on this
+  // view (see views/OurRoom.tsx sceneEnabled), so it must load directly.
   await page.goto('/?e2e=1&view=our-room');
-
-  const openScene = page.getByRole('button', { name: /open room scene/i });
-  await expect(openScene).toBeVisible();
-  await openScene.click();
-  await expect(page.locator('[data-testid="room-scene-3d"] canvas')).toBeVisible();
+  await expect(page.locator('[data-testid="room-scene-3d"] canvas')).toBeVisible({ timeout: 15_000 });
 });

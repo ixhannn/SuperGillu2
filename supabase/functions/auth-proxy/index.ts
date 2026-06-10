@@ -12,24 +12,22 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from '../_shared/cors.ts';
 
 const RATE_LIMIT_MAX        = 5;
 const RATE_LIMIT_WINDOW_MS  = 10 * 60 * 1000; // 10 minutes
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-function json(body: unknown, status = 200, extra: Record<string, string> = {}) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json', ...extra },
-  });
-}
+const makeJson = (cors: Record<string, string>) =>
+  (body: unknown, status = 200, extra: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json', ...extra },
+    });
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const cors = corsHeaders(req);
+  const json = makeJson(cors);
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   // Admin client — service role bypasses RLS so we can write to auth_rate_limits
   const supabase = createClient(
@@ -67,9 +65,15 @@ Deno.serve(async (req) => {
       .gte('attempted_at', windowStart);
 
     if (countErr) {
-      // Fail open on DB error — don't lock out legitimate users due to infra issues
+      // Fail CLOSED: if the rate-limit table cannot be read we refuse the
+      // attempt rather than silently disabling brute-force protection. An
+      // attacker who can degrade the DB must not gain unlimited login tries.
       console.error('Rate limit check error:', countErr.message);
-      continue;
+      return json(
+        { error: 'Authentication is temporarily unavailable. Please try again shortly.' },
+        503,
+        { 'Retry-After': '30' },
+      );
     }
 
     if ((count ?? 0) >= RATE_LIMIT_MAX) {

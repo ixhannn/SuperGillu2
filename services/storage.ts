@@ -851,13 +851,15 @@ export const StorageService = {
                 localStorage.setItem(CACHE_KEYS.TOGETHER_MUSIC_META, JSON.stringify(metaWithOwner));
                 await writeRaw(STORES.DATA, CACHE_KEYS.TOGETHER_MUSIC_META, metaWithOwner);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.warn('[Storage] Failed to apply cloud Together Music source:', e);
+        }
     },
 
     getDeviceId: () => {
         let id = localStorage.getItem(CACHE_KEYS.DEVICE_ID);
         if (!id) {
-            id = Math.random().toString(36).substring(2, 9).toUpperCase();
+            id = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
             localStorage.setItem(CACHE_KEYS.DEVICE_ID, id);
         }
         return id;
@@ -1396,10 +1398,20 @@ export const StorageService = {
             MEDIA_MEMORY_CACHE.delete(item.imageId);
         }
         if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
-        if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
-        if (item?.videoStoragePath) MediaStorageService.deleteMedia(item.videoStoragePath);
+        // Same pattern as deleteMemory: await the remote deletes so a failed R2
+        // cleanup is at least surfaced instead of silently orphaning media.
+        const remoteMediaDeletes: Promise<boolean>[] = [];
+        if (item?.storagePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.storagePath));
+        if (item?.videoStoragePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.videoStoragePath));
         DATA_CACHE.dailyPhotos = DATA_CACHE.dailyPhotos.filter(p => p.id !== id);
         await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_PHOTOS, DATA_CACHE.dailyPhotos);
+        if (remoteMediaDeletes.length > 0) {
+            const results = await Promise.allSettled(remoteMediaDeletes);
+            const failed = results.filter((r) => r.status === 'rejected' || r.value !== true);
+            if (failed.length > 0) {
+                console.warn(`[Storage] ${failed.length} remote media delete(s) failed for daily photo ${id}; cleanup worker will retire orphans.`);
+            }
+        }
         notifyUpdate({ source: 'user', action: 'delete', table: 'daily_photos', id });
     },
 
@@ -1644,11 +1656,19 @@ export const StorageService = {
             }
             if (item?.videoId) await deleteRaw(STORES.IMAGES, item.videoId);
             if (item?.audioId) await deleteRaw(STORES.IMAGES, item.audioId);
-            if (item?.storagePath) MediaStorageService.deleteMedia(item.storagePath);
-            if (item?.videoStoragePath) MediaStorageService.deleteMedia(item.videoStoragePath);
-            if (item?.audioStoragePath) MediaStorageService.deleteMedia(item.audioStoragePath);
+            const remoteMediaDeletes: Promise<boolean>[] = [];
+            if (item?.storagePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.storagePath));
+            if (item?.videoStoragePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.videoStoragePath));
+            if (item?.audioStoragePath) remoteMediaDeletes.push(MediaStorageService.deleteMedia(item.audioStoragePath));
             DATA_CACHE[cfg.cache] = list.filter(i => i.id !== id);
             await writeRaw(STORES.DATA, cfg.key, DATA_CACHE[cfg.cache]);
+            if (remoteMediaDeletes.length > 0) {
+                const results = await Promise.allSettled(remoteMediaDeletes);
+                const failed = results.filter((r) => r.status === 'rejected' || r.value !== true);
+                if (failed.length > 0) {
+                    console.warn(`[Storage] ${failed.length} remote media delete(s) failed during cloud delete of ${table}/${id}; cleanup worker will retire orphans.`);
+                }
+            }
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
         } else if (table === 'together_music') {
             await deleteRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY);
@@ -1740,10 +1760,8 @@ export const StorageService = {
         if (stored.startsWith('data:')) return stored;
         return await MediaStorageService.getAccessibleUrl(stored) || stored;
     },
-    getTogetherMusicMetadata: (): TogetherMusicMetadata | null => {
-        const str = localStorage.getItem(CACHE_KEYS.TOGETHER_MUSIC_META);
-        return str ? JSON.parse(str) : null;
-    },
+    getTogetherMusicMetadata: (): TogetherMusicMetadata | null =>
+        readLocalStorageJson<TogetherMusicMetadata>(CACHE_KEYS.TOGETHER_MUSIC_META),
 
     deleteTogetherMusic: async () => {
         const storedSource = await readRaw(STORES.IMAGES, TOGETHER_MUSIC_SOURCE_KEY) as string | null;
@@ -1758,18 +1776,19 @@ export const StorageService = {
     },
 
     getCoupleProfile: (): CoupleProfile => {
-        const idStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
-        const sharedStr = localStorage.getItem(CACHE_KEYS.SHARED_PROFILE);
-
-        const rawIdentity = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
+        // readLocalStorageJson swallows corrupt JSON — this is the most-called
+        // accessor in the app, so a bad value must degrade, never throw.
+        const rawIdentity = readLocalStorageJson<Record<string, unknown>>(CACHE_KEYS.IDENTITY)
+            ?? { myName: '', partnerName: '' };
         const id = normalizeIdentityPair(rawIdentity);
         if (id.myName !== rawIdentity.myName || id.partnerName !== rawIdentity.partnerName) {
             localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: id.myName, partnerName: id.partnerName }));
         }
 
-        const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: '', theme: 'rose' };
+        const shared = readLocalStorageJson<Partial<CoupleProfile>>(CACHE_KEYS.SHARED_PROFILE)
+            ?? { anniversaryDate: '', theme: 'rose' };
 
-        return applyLockedPairLink({ ...id, ...shared });
+        return applyLockedPairLink({ anniversaryDate: '', ...id, ...shared } as CoupleProfile);
     },
 
     activateAccount: (userId: string | null) => {
@@ -2102,14 +2121,18 @@ export const StorageService = {
         notifyUpdate({ source, action: 'save', table: 'pet_stats', id: 'singleton', item: sanitizedStats });
     },
 
-    getStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.USER_STATUS) || '{"state":"awake","timestamp":"' + new Date().toISOString() + '"}'),
+    getStatus: (): UserStatus =>
+        readLocalStorageJson<UserStatus>(CACHE_KEYS.USER_STATUS)
+        ?? { state: 'awake', timestamp: new Date().toISOString() } as UserStatus,
     saveStatus: (s: UserStatus) => {
         localStorage.setItem(CACHE_KEYS.USER_STATUS, JSON.stringify(s));
         writeRaw(STORES.DATA, CACHE_KEYS.USER_STATUS, s);
         const profile = StorageService.getCoupleProfile();
         notifyUpdate({ source: 'user', action: 'save', table: 'user_status', id: profile.myName, item: { id: profile.myName, ...s } });
     },
-    getPartnerStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.PARTNER_STATUS) || '{"state":"awake","timestamp":""}'),
+    getPartnerStatus: (): UserStatus =>
+        readLocalStorageJson<UserStatus>(CACHE_KEYS.PARTNER_STATUS)
+        ?? { state: 'awake', timestamp: '' } as UserStatus,
 
     getBonsaiState: (): any => {
         const profile = StorageService.getCoupleProfile();
@@ -2208,7 +2231,9 @@ export const StorageService = {
                 writeRaw(STORES.DATA, COUPLE_ROOM_KEY, migrated);
                 return migrated;
             }
-        } catch {}
+        } catch (e) {
+            console.warn('[Storage] Failed to read couple room state; falling back to defaults:', e);
+        }
         return normalizeCoupleRoom();
     },
 

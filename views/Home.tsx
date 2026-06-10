@@ -250,7 +250,9 @@ const useCountUp = (target: number, inView: boolean, duration = 1800) => {
 };
 
 export const Home: React.FC<HomeProps> = ({ setView }) => {
-    const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Ishan', partnerName: 'Tulika', anniversaryDate: new Date().toISOString() });
+    // Neutral placeholders only — real names load from storage in loadData().
+    // Never hardcode user names here: they flash on screen for every account.
+    const [profile, setProfile] = useState<CoupleProfile>({ myName: 'You', partnerName: 'Partner', anniversaryDate: new Date().toISOString() });
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [daysTogether, setDaysTogether] = useState(0);
@@ -319,7 +321,22 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
     };
 
-    const loadData = () => {
+    const receivedHeartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const triggerReceivedHeartbeat = useCallback(() => {
+        setReceivedHeartbeat(true);
+        if (heartbeatBtnRef.current) {
+            const rect = heartbeatBtnRef.current.getBoundingClientRect();
+            particlesRef.current?.triggerReceive(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        } else {
+            particlesRef.current?.triggerReceive(window.innerWidth / 2, window.innerHeight / 2);
+        }
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
+        if (receivedHeartbeatTimerRef.current) clearTimeout(receivedHeartbeatTimerRef.current);
+        receivedHeartbeatTimerRef.current = setTimeout(() => setReceivedHeartbeat(false), 2000);
+    }, []);
+
+    const loadData = useCallback(() => {
         const prof = StorageService.getCoupleProfile();
         const safeProfile = {
             ...prof,
@@ -355,8 +372,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             const d = new Date(m.date);
             return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() !== now.getFullYear();
         });
-        if (throwback?.id !== onThisDayMemory?.id) setOnThisDayMemory(throwback || null);
-    };
+        // Functional update: comparing against `prev` (not captured state) keeps
+        // this callback stable so the mount-once event listeners never go stale.
+        setOnThisDayMemory(prev => (throwback?.id !== prev?.id ? throwback || null : prev));
+    }, []);
 
     useEffect(() => {
         loadData();
@@ -397,8 +416,9 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
             syncEventTarget.removeEventListener('sync-update', handleSyncUpdate);
             syncEventTarget.removeEventListener('signal-received', handleSignal);
             syncEventTarget.removeEventListener('presence-update', handlePresence);
+            if (receivedHeartbeatTimerRef.current) clearTimeout(receivedHeartbeatTimerRef.current);
         };
-    }, []);
+    }, [loadData, triggerReceivedHeartbeat]);
 
     useEffect(() => {
         if (onThisDayMemory) {
@@ -427,18 +447,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const headerOverlay = getHomeHeaderOverlayState(headerScrollTop);
     const homeContainerStyle = getHomeContainerStyle();
     const homeHeaderOverlayHeight = getHomeHeaderOverlayHeight();
-
-    const triggerReceivedHeartbeat = () => {
-        setReceivedHeartbeat(true);
-        if (heartbeatBtnRef.current) {
-            const rect = heartbeatBtnRef.current.getBoundingClientRect();
-            particlesRef.current?.triggerReceive(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        } else {
-            particlesRef.current?.triggerReceive(window.innerWidth / 2, window.innerHeight / 2);
-        }
-        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
-        setTimeout(() => setReceivedHeartbeat(false), 2000);
-    };
 
     const sendHeartbeat = () => {
         if (!heartbeatBtnRef.current || isDissolving) return;

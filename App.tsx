@@ -39,7 +39,6 @@ import { DevPanel } from './components/DevPanel';
 import { WhatsNew } from './components/WhatsNew';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
-import { InternalAdminService } from './services/internalAdmin';
 import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModules } from './views/viewRegistry';
 import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
 
@@ -769,7 +768,7 @@ const App = () => {
               console.warn('[MediaDebug] No memories found');
               return;
             }
-            mems.slice(0, 3).forEach((m: any, i: number) => {
+            mems.slice(0, 3).forEach((m, i) => {
               console.log(`[MediaDebug] Memory ${i} (${m.id}):`, {
                 imageId: m.imageId || null,
                 storagePath: m.storagePath || null,
@@ -799,14 +798,6 @@ const App = () => {
           label: 'Open storage console',
           action: () => navigateTo('storage-console'),
         },
-        {
-          label: InternalAdminService.isOverrideEnabled() ? 'Disable admin override' : 'Enable admin override',
-          action: () => {
-            const next = !InternalAdminService.isOverrideEnabled();
-            InternalAdminService.setOverride(next);
-            console.log(`[Admin] Internal admin override ${next ? 'enabled' : 'disabled'}`);
-          },
-        },
       ]} />
     </>
   );
@@ -835,6 +826,7 @@ const AuraSignalReceiver = () => {
 
   // Handle Realtime incoming signals
   useEffect(() => {
+    let dismissTimer: ReturnType<typeof setTimeout> | undefined;
     const handleSignal = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail.signalType === 'AURA_SIGNAL' && detail.payload) {
@@ -844,17 +836,21 @@ const AuraSignalReceiver = () => {
 
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
            new Notification('Lior - New Aura', {
-               body: detail.payload.title, 
+               body: detail.payload.title,
                icon: '/icon.svg',
                silent: false
            });
         }
-        
-        setTimeout(() => setIncoming(null), 6000); // Auto-dismiss
+
+        if (dismissTimer) clearTimeout(dismissTimer);
+        dismissTimer = setTimeout(() => setIncoming(null), 6000); // Auto-dismiss
       }
     };
     syncEventTarget.addEventListener('signal-received', handleSignal);
-    return () => syncEventTarget.removeEventListener('signal-received', handleSignal);
+    return () => {
+      if (dismissTimer) clearTimeout(dismissTimer);
+      syncEventTarget.removeEventListener('signal-received', handleSignal);
+    };
   }, []);
 
   const dismiss = () => {

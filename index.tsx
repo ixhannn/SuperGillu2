@@ -41,6 +41,11 @@ if (typeof document !== 'undefined') {
 
   // Boot the gesture system: [data-press] delegation + CSS injection
   initGlobalGestures();
+
+  // iOS Safari only applies :active styles when a touchstart listener exists.
+  // This used to be an inline ontouchstart="" on <body>, which the strict
+  // production CSP (script-src 'self') would block.
+  document.body.addEventListener('touchstart', () => {}, { passive: true });
 }
 
 const rootElement = document.getElementById('root');

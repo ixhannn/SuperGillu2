@@ -20,7 +20,8 @@
       "Bash(findstr \":300\")",
       "Bash(findstr LISTENING)",
       "Bash(ping -n 5 127.0.0.1)",
-      "Bash(ping -n 3 127.0.0.1)"
+      "Bash(ping -n 3 127.0.0.1)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1)"
     ]
   },
   "hooks": {

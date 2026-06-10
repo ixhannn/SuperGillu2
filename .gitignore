@@ -9,9 +9,17 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-admin
 dist-ssr
 *.local
 android/local.properties
+
+# Test/compiler scratch output
+test-results/
+playwright-report/
+tsc_*.txt
+__emails.txt
+**/build_out.txt
 
 # Editor directories and files
 .vscode/*

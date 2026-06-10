@@ -11,7 +11,6 @@ import {
 
 const WORKER_URL = (import.meta.env.VITE_R2_WORKER_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-const UPLOAD_KEY = (import.meta.env.VITE_R2_UPLOAD_KEY as string | undefined)?.trim() ?? '';
 const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'] as const;
 const R2_EXISTENCE_CACHE = new Map<string, boolean>();
 const MISSING_READ_REPORT_CACHE = new Map<string, number>();
@@ -88,18 +87,10 @@ const authHeaders = async (): Promise<Record<string, string> | null> => {
 };
 
 const managedWriteHeaders = async (): Promise<Record<string, string> | null> => {
-    const supabaseHeaders = await authHeaders();
-    if (supabaseHeaders) {
-        return supabaseHeaders;
-    }
-
-    if (UPLOAD_KEY) {
-        return {
-            'X-Upload-Key': UPLOAD_KEY,
-        };
-    }
-
-    return null;
+    // Writes always require a real Supabase session. The legacy X-Upload-Key
+    // fallback was removed: it bypassed couple-membership checks on the worker
+    // and shipped a shared secret inside the browser bundle.
+    return authHeaders();
 };
 
 /** Convert a base64 data URI to an ArrayBuffer + MIME type. */

@@ -16,8 +16,13 @@ assert.ok(
 );
 
 assert.ok(
-  workerSource.includes('X-Upload-Key'),
-  'Expected worker CORS headers to allow X-Upload-Key for browser fallback uploads',
+  !workerSource.includes('X-Upload-Key'),
+  'The legacy X-Upload-Key fallback must stay removed: it bypassed couple-membership checks',
+);
+
+assert.ok(
+  !workerSource.includes("request.headers.get('apikey')"),
+  'Worker auth must never trust a client-supplied apikey header for token verification',
 );
 
 assert.ok(

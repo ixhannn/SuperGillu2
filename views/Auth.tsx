@@ -5,8 +5,10 @@ import { SupabaseService } from '../services/supabase';
 import { feedback } from '../utils/feedback';
 
 const getSupabaseAuthConfig = () => {
-    const url = import.meta.env.VITE_SUPABASE_URL?.trim() || localStorage.getItem('lior_sb_url')?.trim() || '';
-    const key = import.meta.env.VITE_SUPABASE_KEY?.trim() || localStorage.getItem('lior_sb_key')?.trim() || '';
+    // Credentials are POSTed to this URL, so it must come from the validated
+    // config path (env var, or a localStorage value verified to be a real
+    // *.supabase.co host) — never from a raw localStorage read.
+    const { url, anonKey: key } = SupabaseService.getProjectConfig();
     return {
         url,
         key,

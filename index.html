@@ -14,7 +14,7 @@
   <meta name="theme-color" content="#F8E7EC" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1A0F14" media="(prefers-color-scheme: dark)">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esm.sh https://fonts.googleapis.com https://fonts.gstatic.com https://lior-media.joinlior.workers.dev; media-src 'self' data: blob: https://*.supabase.co https://lior-media.joinlior.workers.dev; worker-src 'self' blob:;">
+    content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com https://lior-media.joinlior.workers.dev; media-src 'self' data: blob: https://*.supabase.co https://lior-media.joinlior.workers.dev; worker-src 'self' blob:;">
   <link rel="manifest" href="/manifest.json">
 
   <!-- iOS Specific PWA config -->
@@ -101,24 +101,10 @@
       transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
     }
   </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "date-fns": "https://esm.sh/date-fns@^4.1.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.89.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "framer-motion": "https://esm.sh/framer-motion@11.16.1",
-    "three": "https://esm.sh/three@0.172.0"
-  }
-}
-</script>
   <link rel="stylesheet" href="/index.css">
 </head>
 
-<body ontouchstart="">
+<body>
   <!-- Gooey SVG Filters -->
   <svg width="0" height="0" class="absolute pointer-events-none">
     <filter id="goo">

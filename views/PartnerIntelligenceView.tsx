@@ -14,6 +14,7 @@ import { InsightCard } from '../components/InsightCard';
 import { PulseCheckSheet } from '../components/PulseCheckSheet';
 import { WeeklyReflectionSheet } from '../components/WeeklyReflection';
 import { feedback } from '../utils/feedback';
+import { shouldGateHeavyView } from '../utils/runtimeProfile';
 
 interface PartnerIntelligenceViewProps {
   setView: (view: ViewState) => void;
@@ -310,7 +311,9 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
   const [isReady, setIsReady] = useState(false);
   // Mobile-only app: the visuals are part of the experience, always on.
   // Previous gate hid them on the only target platform.
-  const [visualsEnabled, setVisualsEnabled] = useState(true);
+  // Heavy chart bundle stays deferred on mobile-class devices until the user
+  // taps the gate (see VisualAnalyticsGate). Desktop loads it immediately.
+  const [visualsEnabled, setVisualsEnabled] = useState(() => !shouldGateHeavyView());
 
   const names = getProfileNames();
 
