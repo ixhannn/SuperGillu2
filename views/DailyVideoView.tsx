@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Video, Film, Flame, Calendar } from 'lucide-react';
 import { ViewState, BiweeklyFilm, VideoMomentDay, VideoMomentSettings } from '../types';
@@ -31,6 +31,7 @@ export function DailyVideoView({ setView }: DailyVideoViewProps) {
   const [sheet, setSheet] = useState<Sheet>('none');
   const [activeFilm, setActiveFilm] = useState<BiweeklyFilm | null>(null);
   const [loading, setLoading] = useState(true);
+  const filmRetryNoticeShownRef = useRef(false);
 
   const refresh = useCallback(async () => {
     const [cycleDays, allFilms, s, already] = await Promise.all([
@@ -45,8 +46,13 @@ export function DailyVideoView({ setView }: DailyVideoViewProps) {
     setRecordedToday(already);
     setLoading(false);
 
-    void VideoMomentsService.ensureFilmsUpToDate().catch((err) => {
-      console.error('Failed to generate missing biweekly films', err);
+    void VideoMomentsService.ensureFilmsUpToDate().catch(() => {
+      // Non-blocking: film compilation re-runs on the next refresh,
+      // so a quiet notice (once per visit) is enough.
+      if (!filmRetryNoticeShownRef.current) {
+        filmRetryNoticeShownRef.current = true;
+        toast.show('Film compilation will retry later', 'info');
+      }
     });
   }, [cycle.cycleStart]);
 
@@ -62,16 +68,19 @@ export function DailyVideoView({ setView }: DailyVideoViewProps) {
     [films, cycle.cycleStart],
   );
 
+  // Save failures propagate to DailyVideoRecorder, which keeps the take
+  // and shows a persistent retry card. Concurrent saves are prevented by
+  // the recorder's `saving` state (Keep/Retake disabled while in flight).
   const handleSave = async (result: { blob: Blob; durationMs: number }) => {
+    await VideoMomentsService.recordClip(result.blob, result.durationMs);
+    feedback.success();
+    toast.show('Today’s clip saved', 'success');
+    setSheet('none');
     try {
-      await VideoMomentsService.recordClip(result.blob, result.durationMs);
-      feedback.success();
-      toast.show('Today’s clip saved', 'success');
-      setSheet('none');
       await refresh();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save clip';
-      toast.show(msg, 'error');
+    } catch {
+      // The clip is saved — a refresh hiccup must not read as a save failure.
+      // The next 'video-moments-update' event re-runs refresh anyway.
     }
   };
 

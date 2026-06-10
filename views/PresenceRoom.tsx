@@ -6,6 +6,8 @@ import { NightlightEntry, PresenceTrace, ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { feedback } from '../utils/feedback';
+import { requestMediaStream, stopStream, MediaFailureReason } from '../utils/mediaPermissions';
+import { PermissionBanner } from '../components/PermissionBanner';
 
 interface PresenceRoomProps {
     setView: (view: ViewState) => void;
@@ -30,6 +32,7 @@ interface LiveSignal {
 
 const MAX_NOTE = 120;
 const MAX_RECORD_SECONDS = 18;
+const MAX_WHISPER_BYTES = 25 * 1024 * 1024;
 const MAX_NIGHTLIGHTS = 18;
 const KEEP_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -121,6 +124,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
     const [recordSeconds, setRecordSeconds] = useState(0);
     const [micLoading, setMicLoading] = useState(false);
     const [recordError, setRecordError] = useState('');
+    const [micFailure, setMicFailure] = useState<MediaFailureReason | null>(null);
     const intent = useMemo(() => findIntent(selectedIntentId), [selectedIntentId]);
     const partnerIntent = useMemo(() => findIntent(partnerIntentId), [partnerIntentId]);
     const pulseAtRef = useRef(0);
@@ -185,7 +189,7 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
     const cleanupRecorder = useCallback(() => {
         if (timerRef.current) window.clearInterval(timerRef.current);
         timerRef.current = null;
-        if (streamRef.current) streamRef.current.getTracks().forEach((track) => track.stop());
+        stopStream(streamRef.current);
         streamRef.current = null;
         mediaRecorderRef.current = null;
         startedAtRef.current = null;
@@ -198,15 +202,26 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
 
     const startRecording = useCallback(async () => {
         if (recording || micLoading) return;
-        if (typeof window === 'undefined' || !window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
-            setRecordError('Voice not supported here.');
+        if (typeof window === 'undefined' || !window.MediaRecorder) {
+            setMicFailure('unsupported');
             return;
         }
 
+        setMicLoading(true);
+        setRecordError('');
+
+        // Acquire the stream first (15s default timeout) — recording UI only
+        // engages once granted.
+        const result = await requestMediaStream({ audio: true });
+        if (!result.ok) {
+            setMicLoading(false);
+            setMicFailure(result.reason);
+            return;
+        }
+
+        const stream = result.stream;
         try {
-            setMicLoading(true);
-            setRecordError('');
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            setMicFailure(null);
             const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((value) => MediaRecorder.isTypeSupported(value));
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
             streamRef.current = stream;
@@ -231,6 +246,10 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                 setRecording(false);
                 setRecordSeconds(0);
                 if (!blob.size) return setRecordError('That whisper came through empty.');
+                if (blob.size > MAX_WHISPER_BYTES) {
+                    setRecordError('That whisper is too large to keep. Try a shorter clip.');
+                    return;
+                }
                 try {
                     setDraftAudio(await blobToDataUrl(blob));
                     setDraftAudioSeconds(elapsed);
@@ -247,10 +266,12 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                 if (elapsed >= MAX_RECORD_SECONDS) stopRecording();
             }, 150);
         } catch {
+            // Stream was granted but recorder setup failed — release everything.
+            stopStream(stream);
             cleanupRecorder();
             setRecording(false);
             setMicLoading(false);
-            setRecordError('Mic access blocked.');
+            setMicFailure('unknown');
         }
     }, [cleanupRecorder, micLoading, recording, stopRecording]);
 
@@ -559,7 +580,21 @@ export const PresenceRoom: React.FC<PresenceRoomProps> = ({ setView }) => {
                         </div>
                     )}
 
-                    {recordError && (
+                    <AnimatePresence>
+                        {micFailure && (
+                            <PermissionBanner
+                                key="mic-permission"
+                                kind="microphone"
+                                reason={micFailure}
+                                tone="light"
+                                className="mt-3"
+                                onRetry={startRecording}
+                                onDismiss={() => setMicFailure(null)}
+                            />
+                        )}
+                    </AnimatePresence>
+
+                    {recordError && !micFailure && (
                         <p className="text-xs mt-3" style={{ color: 'var(--color-text-secondary)' }}>
                             {recordError}
                         </p>

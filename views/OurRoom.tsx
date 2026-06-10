@@ -16,6 +16,7 @@ import {
 import { CoupleRoomState, ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
+import { toast as appToast } from '../utils/toast';
 import { ROOM_SHOP_BY_ID, RoomCatalogItem } from '../components/room/roomCatalog3D';
 import { daysTogetherFrom } from '../shared/dateOnly.js';
 import {
@@ -351,6 +352,10 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   // enable it. The previous gate disabled the scene on phones (the only
   // target!) leaving an empty placeholder.
   const [sceneEnabled, setSceneEnabled] = useState(true);
+  // Deferred-commit deletes: items/notes hidden while their undo toast is
+  // open. Nothing is persisted (or synced to the partner) until onExpire.
+  const [pendingItemDeletes, setPendingItemDeletes] = useState<Set<string>>(new Set());
+  const [pendingNoteDeletes, setPendingNoteDeletes] = useState<Set<string>>(new Set());
   const stateRef = useRef(room);
   const presenceSnapshotRef = useRef<any>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -389,6 +394,9 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   }, [editingName, room]);
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  // Leaving the room commits any pending deferred delete right away.
+  useEffect(() => () => appToast.hide(), []);
 
   useEffect(() => {
     if (activeModal && !sceneEnabled) {
@@ -493,13 +501,18 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   );
   const shopItems = useMemo(() => getShopItems(room, category), [room, category]);
   const roomSceneState = useMemo(() => ({
-    placedItems: room.placedItems,
+    placedItems: room.placedItems.filter((item) => !pendingItemDeletes.has(item.uid)),
     coins: 0,
     roomName: room.roomName,
     wallpaper: room.wallpaper as any,
     floor: room.floor as any,
     ambient: room.ambient as any,
-  }), [room]);
+  }), [room, pendingItemDeletes]);
+
+  const visibleRoomNotes = useMemo(
+    () => room.notes.filter((note) => !pendingNoteDeletes.has(note.id)),
+    [room.notes, pendingNoteDeletes],
+  );
 
   const upcomingMilestones = useMemo(
     () =>
@@ -531,10 +544,67 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
     setActiveModal(null);
   };
 
+  const clearPendingItemDelete = (uid: string) => setPendingItemDeletes((prev) => {
+    const next = new Set(prev);
+    next.delete(uid);
+    return next;
+  });
+
+  const clearPendingNoteDelete = (id: string) => setPendingNoteDeletes((prev) => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  });
+
   const handleRemove = () => {
-    if (!selectedId) return;
-    persist(removeItem(stateRef.current, selectedId), `removed ${selectedItemName || 'an item'}`);
+    if (!selectedId || !selectedItem) return;
+    const uid = selectedId;
+    if (pendingItemDeletes.has(uid)) return;
+    // Capture the full item now — the commit/undo closures must not rely on
+    // component state read after the delete was scheduled.
+    const item = selectedItem;
+    const itemName = selectedItemName || 'an item';
     setSelectedId(null);
+    setPendingItemDeletes((prev) => new Set([...prev, uid]));
+    appToast.showUndo(`Deleted "${itemName}"`, {
+      onUndo: () => {
+        clearPendingItemDelete(uid);
+        // The item normally still lives in room state (it was only hidden).
+        // If a sync replaced the state meanwhile, restore the exact item.
+        const current = stateRef.current;
+        if (!current.placedItems.some((placed) => placed.uid === item.uid)) {
+          const restored = normalizeCoupleRoom({ ...current, placedItems: [...current.placedItems, item] });
+          stateRef.current = restored;
+          setRoom(restored);
+        }
+      },
+      onExpire: () => {
+        try {
+          persist(removeItem(stateRef.current, uid), `removed ${itemName}`);
+          clearPendingItemDelete(uid);
+        } catch {
+          clearPendingItemDelete(uid);
+          appToast.show("Couldn't delete — it's back", 'error');
+        }
+      },
+    });
+  };
+
+  const handleRemoveNote = (noteId: string) => {
+    if (pendingNoteDeletes.has(noteId)) return;
+    setPendingNoteDeletes((prev) => new Set([...prev, noteId]));
+    appToast.showUndo('Deleted note', {
+      onUndo: () => clearPendingNoteDelete(noteId),
+      onExpire: () => {
+        try {
+          persist(removeNote(stateRef.current, noteId), 'cleared a note');
+          clearPendingNoteDelete(noteId);
+        } catch {
+          clearPendingNoteDelete(noteId);
+          appToast.show("Couldn't delete — it's back", 'error');
+        }
+      },
+    });
   };
 
   const handleRotate = () => {
@@ -983,13 +1053,13 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                       </motion.button>
                     </div>
 
-                    {room.notes.length === 0 && (
+                    {visibleRoomNotes.length === 0 && (
                       <p className="px-1 text-[0.72rem]" style={{ color: softText }}>
                         Notes appear here. Leave something warm.
                       </p>
                     )}
 
-                    {room.notes.map((note) => (
+                    {visibleRoomNotes.map((note) => (
                       <div key={note.id} className="rounded-xl px-3 py-2.5" style={{ background: note.color || '#fff5e6', border: '1.5px solid rgba(0,0,0,0.05)' }}>
                         <p className="text-[0.78rem] leading-relaxed" style={{ color: strongText }}>{note.text}</p>
                         <div className="mt-1.5 flex items-center justify-between">
@@ -997,7 +1067,7 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                             {note.author} • {formatRelativeTime(note.createdAt)}
                           </span>
                           <button
-                            onClick={() => persist(removeNote(stateRef.current, note.id), 'cleared a note')}
+                            onClick={() => handleRemoveNote(note.id)}
                             className="p-1 opacity-40 hover:opacity-100"
                           >
                             <X size={11} color={softText} />

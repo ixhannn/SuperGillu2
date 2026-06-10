@@ -88,6 +88,15 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
     const [scheduledFor, setScheduledFor] = useState('');
     const [selectedEmoji, setSelectedEmoji] = useState('🎁');
     const [isSaving, setIsSaving] = useState(false);
+    // Surprises hidden optimistically while their undo toast is open. The real
+    // delete only happens in the toast's onExpire (deferred commit).
+    const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
+
+    const clearPendingDelete = (id: string) => setPendingDeleteIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+    });
 
     const loadAndCheck = useCallback(() => {
         const all = StorageService.getSurprises();
@@ -103,11 +112,14 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
 
     useEffect(() => { loadAndCheck(); }, [loadAndCheck]);
 
+    // Leaving the view commits any pending deferred delete right away.
+    useEffect(() => () => toast.hide(), []);
+
     const handleSave = async () => {
         if (!title.trim() || !message.trim() || !scheduledFor) return;
 
         const profile = StorageService.getCoupleProfile();
-        const pending = surprises.filter(s => !s.delivered);
+        const pending = surprises.filter(s => !s.delivered && !pendingDeleteIds.has(s.id));
         if (!profile.isPremium && pending.length >= FREE_SURPRISE_LIMIT) {
             setShowPremiumModal(true);
             return;
@@ -136,13 +148,29 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
         toast.show('Surprise scheduled! 🎉', 'success');
     };
 
-    const handleDelete = async (id: string) => {
-        await StorageService.deleteSurprise(id);
-        setSurprises(prev => prev.filter(s => s.id !== id));
+    const handleDelete = (id: string) => {
+        const target = surprises.find(s => s.id === id);
+        if (!target || pendingDeleteIds.has(id)) return;
+        setPendingDeleteIds(prev => new Set([...prev, id]));
+        toast.showUndo(`Deleted "${target.title}"`, {
+            onUndo: () => clearPendingDelete(id),
+            onExpire: () => {
+                StorageService.deleteSurprise(id)
+                    .then(() => {
+                        clearPendingDelete(id);
+                        setSurprises(StorageService.getSurprises());
+                    })
+                    .catch(() => {
+                        clearPendingDelete(id);
+                        toast.show("Couldn't delete — it's back", 'error');
+                    });
+            },
+        });
     };
 
-    const upcoming = surprises.filter(s => !s.delivered);
-    const delivered = surprises.filter(s => s.delivered);
+    const visibleSurprises = surprises.filter(s => !pendingDeleteIds.has(s.id));
+    const upcoming = visibleSurprises.filter(s => !s.delivered);
+    const delivered = visibleSurprises.filter(s => s.delivered);
     const profile = StorageService.getCoupleProfile();
     const canCreate = profile.isPremium || upcoming.length < FREE_SURPRISE_LIMIT;
 
@@ -173,7 +201,7 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
             />
 
             <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto p-4 pb-32 space-y-6">
-                {surprises.length === 0 && (
+                {visibleSurprises.length === 0 && (
                     <EmptyState
                         variant="surprises"
                         onAction={() => setShowForm(true)}

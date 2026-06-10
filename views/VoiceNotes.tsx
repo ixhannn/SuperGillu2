@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, Square, Play, Pause, Trash2, MicOff, Send, X } from 'lucide-react';
+import { Mic, Square, Play, Pause, Trash2, Send, X } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
 import { ViewHeader } from '../components/ViewHeader';
 import { PremiumModal } from '../components/PremiumModal';
+import { PermissionBanner } from '../components/PermissionBanner';
 import { ViewState, VoiceNote } from '../types';
 import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { requestMediaStream, stopStream, MediaFailureReason } from '../utils/mediaPermissions';
 
 interface VoiceNotesViewProps {
     setView: (view: ViewState) => void;
@@ -204,7 +206,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [waveformData, setWaveformData] = useState<number[]>(new Array(WAVEFORM_BARS).fill(0));
-    const [hasPermission, setHasPermission] = useState(true);
+    const [micFailure, setMicFailure] = useState<MediaFailureReason | null>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
@@ -212,13 +214,29 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     const analyserRef = useRef<AnalyserNode | null>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
     const animFrameRef = useRef<number | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+
+    const closeAudioContext = () => {
+        const ctx = audioCtxRef.current;
+        audioCtxRef.current = null;
+        analyserRef.current = null;
+        if (ctx && ctx.state !== 'closed') {
+            ctx.close().catch(() => {
+                // an already-closing context should not break teardown
+            });
+        }
+    };
 
     useEffect(() => {
         setNotes(StorageService.getVoiceNotes());
         return () => {
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-            audioCtxRef.current?.close();
+            if (timerRef.current) clearInterval(timerRef.current);
+            stopStream(streamRef.current);
+            streamRef.current = null;
+            closeAudioContext();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const drawWaveform = useCallback(() => {
@@ -233,15 +251,25 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     }, []);
 
     const startRecording = async () => {
+        if (isRecording) return;
+
         const profile = StorageService.getCoupleProfile();
         if (!profile.isPremium && notes.length >= FREE_VOICE_NOTE_LIMIT) {
             setShowPremiumModal(true);
             return;
         }
 
+        // Acquire the stream first — the recording overlay only mounts once granted.
+        const result = await requestMediaStream({ audio: true });
+        if (!result.ok) {
+            setMicFailure(result.reason);
+            return;
+        }
+
+        const stream = result.stream;
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setHasPermission(true);
+            setMicFailure(null);
+            streamRef.current = stream;
 
             audioCtxRef.current = new AudioContext();
             const source = audioCtxRef.current.createMediaStreamSource(stream);
@@ -260,9 +288,10 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                     setPendingAudio({ dataUri: ev.target?.result as string, duration: recordingDurationRef.current });
                 };
                 reader.readAsDataURL(blob);
-                stream.getTracks().forEach(t => t.stop());
+                stopStream(stream);
+                streamRef.current = null;
                 if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-                audioCtxRef.current?.close();
+                closeAudioContext();
                 setWaveformData(new Array(WAVEFORM_BARS).fill(0));
             };
             mr.start();
@@ -278,8 +307,12 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
             }), 1000);
             feedback.tap();
         } catch {
-            setHasPermission(false);
-            toast.show('Microphone access denied', 'error');
+            // Stream was granted but recorder setup failed — release everything.
+            stopStream(stream);
+            streamRef.current = null;
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+            closeAudioContext();
+            setMicFailure('unknown');
         }
     };
 
@@ -376,7 +409,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                                 Record a voice note
                             </p>
                             <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
-                                {!hasPermission ? 'Microphone access needed' : 'Tap to start recording'}
+                                {micFailure ? 'Microphone access needed' : 'Tap to start recording'}
                             </p>
                         </div>
                         {!profile.isPremium && (
@@ -387,12 +420,18 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                     </motion.button>
                 )}
 
-                {!hasPermission && !isOverlayOpen && (
-                    <div className="flex items-center justify-center gap-2 py-2">
-                        <MicOff size={13} style={{ color: '#ef4444' }} />
-                        <span className="text-[11px] font-medium" style={{ color: '#ef4444' }}>Grant microphone access in settings</span>
-                    </div>
-                )}
+                <AnimatePresence>
+                    {micFailure && !isOverlayOpen && (
+                        <PermissionBanner
+                            key="mic-permission"
+                            kind="microphone"
+                            reason={micFailure}
+                            tone="light"
+                            onRetry={startRecording}
+                            onDismiss={() => setMicFailure(null)}
+                        />
+                    )}
+                </AnimatePresence>
 
                 <AnimatePresence mode="popLayout">
                     {notes.map((note, i) => (

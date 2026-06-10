@@ -10,6 +10,7 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { compressImage } from '../utils/media';
+import { MediaErrorCard } from '../components/MediaErrorCard';
 import { useConfetti } from '../components/Layout';
 import { useLiorMedia } from '../hooks/useLiorImage';
 
@@ -159,6 +160,10 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
     const [unlockDate, setUnlockDate] = useState('');
     const [image, setImage] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [imageProcessing, setImageProcessing] = useState(false);
+    const [imageError, setImageError] = useState(false);
+    const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const confetti = useConfetti();
 
@@ -195,16 +200,26 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
         }
     };
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const processImageFile = async (file: File) => {
+        // Keep the File so a failed compression can be retried without re-picking.
+        setPendingImageFile(file);
+        setImageError(false);
+        setImageProcessing(true);
         try {
             setImage(await compressImage(file));
+            setPendingImageFile(null);
         } catch {
-            toast.show("Couldn't process photo.", 'error');
+            setImageError(true);
         } finally {
-            e.target.value = '';
+            setImageProcessing(false);
         }
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        await processImageFile(file);
     };
 
     const resetForm = () => {
@@ -212,9 +227,14 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
         setMessage('');
         setUnlockDate('');
         setImage(null);
+        setImageProcessing(false);
+        setImageError(false);
+        setPendingImageFile(null);
+        setSaveError(null);
     };
 
     const handleSave = async () => {
+        if (isSaving) return;
         if (!title.trim() || !message.trim() || !unlockDate) return;
         if (!canCreate) {
             setShowPremiumModal(true);
@@ -222,6 +242,7 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
         }
 
         setIsSaving(true);
+        setSaveError(null);
         try {
             await StorageService.saveTimeCapsule({
                 id: generateId(),
@@ -238,8 +259,11 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
             setShowForm(false);
             feedback.celebrate();
             toast.show('Letter sealed', 'success');
-        } catch (error: any) {
-            toast.show(error?.message || 'Could not seal letter', 'error');
+        } catch (error: unknown) {
+            // Keep the form open with everything intact so retry can resend.
+            setSaveError(error instanceof Error && error.message
+                ? error.message
+                : 'Your letter is still here — try again.');
         } finally {
             setIsSaving(false);
         }
@@ -428,14 +452,34 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
                                     <button
                                         type="button"
                                         onClick={() => fileInputRef.current?.click()}
-                                        className="flex items-center gap-3 px-4 py-3.5 rounded-2xl w-full text-left active:scale-[0.99] transition-transform"
+                                        disabled={imageProcessing}
+                                        className="flex items-center gap-3 px-4 py-3.5 rounded-2xl w-full text-left active:scale-[0.99] transition-transform disabled:opacity-60"
                                         style={{ background: 'rgba(255,255,255,0.5)', border: '1px dashed rgba(155,123,132,0.22)', color: 'var(--color-text-secondary)' }}
                                     >
                                         <Camera size={17} />
-                                        <span className="text-[14px] font-semibold">Add a photo</span>
+                                        <span className="text-[14px] font-semibold">{imageProcessing ? 'Preparing photo…' : 'Add a photo'}</span>
                                     </button>
                                 )}
                                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+
+                                {imageError && pendingImageFile && (
+                                    <MediaErrorCard
+                                        title="Couldn't process that photo"
+                                        detail="Your photo is still selected — try again or pick another."
+                                        onRetry={() => { void processImageFile(pendingImageFile); }}
+                                        onDismiss={() => { setImageError(false); setPendingImageFile(null); }}
+                                    />
+                                )}
+
+                                {saveError && (
+                                    <MediaErrorCard
+                                        title="Couldn't seal your letter"
+                                        detail={saveError}
+                                        retryLabel="Try sealing again"
+                                        onRetry={handleSave}
+                                        onDismiss={() => setSaveError(null)}
+                                    />
+                                )}
 
                                 <button
                                     type="button"

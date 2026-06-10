@@ -9,6 +9,9 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
+import { requestMediaStream, stopStream, MediaFailureReason } from '../utils/mediaPermissions';
+import { PermissionBanner } from '../components/PermissionBanner';
+import { MediaErrorCard } from '../components/MediaErrorCard';
 import { useConfetti } from '../components/Layout';
 
 interface AddMemoryProps {
@@ -38,7 +41,10 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const [selectedMood, setSelectedMood] = useState('love');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [photoError, setPhotoError] = useState(false);
+  const [saveError, setSaveError] = useState<{ title: string; detail: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingPhotoFileRef = useRef<File | null>(null);
   const confetti = useConfetti();
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,6 +56,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const [waveformData, setWaveformData] = useState<number[]>(new Array(WAVEFORM_BARS).fill(0));
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
+  const [micFailure, setMicFailure] = useState<MediaFailureReason | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -58,13 +65,29 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const playbackRef = useRef<HTMLAudioElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const closeAudioContext = () => {
+    const ctx = audioCtxRef.current;
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+    if (ctx && ctx.state !== 'closed') {
+      ctx.close().catch(() => {
+        // an already-closing context should not break teardown
+      });
+    }
+  };
 
   useEffect(() => {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      audioCtxRef.current?.close();
+      if (timerRef.current) clearInterval(timerRef.current);
+      stopStream(streamRef.current);
+      streamRef.current = null;
+      closeAudioContext();
       playbackRef.current?.pause();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const drawWaveform = useCallback(() => {
@@ -79,8 +102,19 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   }, []);
 
   const startRecording = async () => {
+    if (isRecording) return;
+
+    // Acquire the stream first — the recording UI only opens once granted.
+    const result = await requestMediaStream({ audio: true });
+    if (!result.ok) {
+      setMicFailure(result.reason);
+      return;
+    }
+
+    const stream = result.stream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicFailure(null);
+      streamRef.current = stream;
       audioCtxRef.current = new AudioContext();
       const source = audioCtxRef.current.createMediaStreamSource(stream);
       analyserRef.current = audioCtxRef.current.createAnalyser();
@@ -98,9 +132,10 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
           setPendingAudio({ dataUri: ev.target?.result as string, duration: recordingDurationRef.current });
         };
         reader.readAsDataURL(blob);
-        stream.getTracks().forEach(t => t.stop());
+        stopStream(stream);
+        streamRef.current = null;
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-        audioCtxRef.current?.close();
+        closeAudioContext();
         setWaveformData(new Array(WAVEFORM_BARS).fill(0));
       };
       mr.start();
@@ -115,7 +150,12 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       }), 1000);
       feedback.tap();
     } catch {
-      toast.show('Microphone access denied', 'error');
+      // Stream was granted but recorder setup failed — release everything.
+      stopStream(stream);
+      streamRef.current = null;
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      closeAudioContext();
+      setMicFailure('unknown');
     }
   };
 
@@ -152,17 +192,37 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     }
   };
 
+  const processPhoto = async (file: File) => {
+    try {
+      const compressed = await compressImage(file);
+      setImage(compressed);
+      setVideo(null);
+      setPhotoError(false);
+      pendingPhotoFileRef.current = null;
+    } catch {
+      // Keep the file so the user can retry without re-picking it.
+      setPhotoError(true);
+    }
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-       try {
-           const compressed = await compressImage(file);
-           setImage(compressed);
-           setVideo(null);
-       } catch (error) {
-           toast.show("Couldn't process photo. Please try a different image.", 'error');
-       }
-    }
+    // Reset so re-selecting the same file still fires onChange.
+    e.target.value = '';
+    if (!file) return;
+    pendingPhotoFileRef.current = file;
+    setPhotoError(false);
+    await processPhoto(file);
+  };
+
+  const retryPhotoProcessing = () => {
+    const file = pendingPhotoFileRef.current;
+    if (file) void processPhoto(file);
+  };
+
+  const dismissPhotoError = () => {
+    setPhotoError(false);
+    pendingPhotoFileRef.current = null;
   };
 
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,7 +269,8 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     }
 
     setIsSaving(true);
-    
+    setSaveError(null);
+
     const memId = generateId();
 
     let audioMeta: { audioId: string; audioBytes: number; audioMimeType: string; audioStoragePath: string | null; audioDuration: number } | undefined;
@@ -224,9 +285,12 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
           audioStoragePath: result.storagePath,
           audioDuration: pendingAudio.duration,
         };
-      } catch (e: any) {
+      } catch {
         setIsSaving(false);
-        toast.show('Could not save voice recording', 'error');
+        setSaveError({
+          title: "Couldn't save your memory",
+          detail: 'The voice recording could not be stored. Everything you wrote is still here — try again.',
+        });
         return;
       }
     }
@@ -245,7 +309,10 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       await StorageService.saveMemory(newMemory);
     } catch (e: any) {
       setIsSaving(false);
-      alert(e?.message || 'Memory could not be saved.');
+      setSaveError({
+        title: "Couldn't save your memory",
+        detail: e?.message || 'Something went wrong while saving. Everything you wrote is still here — try again.',
+      });
       return;
     }
     feedback.celebrate();
@@ -473,6 +540,18 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
           <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-3 ml-1" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
             Attach
           </p>
+          <AnimatePresence>
+            {photoError && (
+              <MediaErrorCard
+                key="photo-error"
+                title="Couldn't process that photo"
+                detail="The image couldn't be prepared. Retry with the same photo or pick a different one — your note is untouched."
+                onRetry={retryPhotoProcessing}
+                onDismiss={dismissPhotoError}
+                className="mb-3"
+              />
+            )}
+          </AnimatePresence>
           <div className="flex gap-2.5">
             {/* Photo chip */}
             <motion.button
@@ -554,9 +633,22 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
            STICKY SAVE BUTTON — fixed above nav
          ══════════════════════════════════════════════════════════════ */}
       <div
-        className="fixed bottom-0 inset-x-0 z-[45] flex justify-center pointer-events-none"
+        className="fixed bottom-0 inset-x-0 z-[45] flex flex-col items-center gap-3 px-5 pointer-events-none"
         style={{ paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), 20px) + 84px)' }}
       >
+        <AnimatePresence>
+          {saveError && (
+            <MediaErrorCard
+              key="save-error"
+              title={saveError.title}
+              detail={saveError.detail}
+              onRetry={handleSave}
+              retryLabel="Retry save"
+              onDismiss={() => setSaveError(null)}
+              className="pointer-events-auto w-full max-w-sm shadow-xl"
+            />
+          )}
+        </AnimatePresence>
         <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: isDisabled ? 0.45 : 1, y: 0 }}
@@ -697,6 +789,34 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
             >
               Tap to stop
             </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mic permission failure — shown in place of the recording overlay,
+          since recording never starts until the stream is granted. */}
+      <AnimatePresence>
+        {micFailure && !isRecording && (
+          <motion.div
+            key="mic-permission-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.2 } }}
+            className="fixed inset-0 z-[60] flex items-center justify-center px-6"
+            style={{
+              background: 'linear-gradient(180deg, rgba(15,5,10,0.88) 0%, rgba(40,10,25,0.95) 100%)',
+              backdropFilter: 'blur(40px) saturate(1.3)',
+              WebkitBackdropFilter: 'blur(40px) saturate(1.3)',
+            }}
+          >
+            <PermissionBanner
+              kind="microphone"
+              reason={micFailure}
+              tone="dark"
+              onRetry={startRecording}
+              onDismiss={() => setMicFailure(null)}
+              className="w-full max-w-sm"
+            />
           </motion.div>
         )}
       </AnimatePresence>

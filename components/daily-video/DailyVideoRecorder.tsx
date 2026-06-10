@@ -4,6 +4,8 @@ import { X, RotateCcw, Check } from 'lucide-react';
 import { useVideoRecorder } from '../../hooks/useVideoRecorder';
 import { useHoldToRecord } from '../../hooks/useHoldToRecord';
 import { feedback } from '../../utils/feedback';
+import { PermissionBanner } from '../PermissionBanner';
+import { MediaErrorCard } from '../MediaErrorCard';
 
 const CLIP_MS = 5000;
 const RING_RADIUS = 58;
@@ -27,6 +29,7 @@ export function DailyVideoRecorder({ onSaved, onClose }: DailyVideoRecorderProps
   const [phase, setPhase] = useState<Phase>('idle');
   const [take, setTake] = useState<Take | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
 
   const hold = useHoldToRecord({
@@ -68,15 +71,21 @@ export function DailyVideoRecorder({ onSaved, onClose }: DailyVideoRecorderProps
   const handleRetake = () => {
     if (take?.previewUrl) URL.revokeObjectURL(take.previewUrl);
     setTake(null);
+    setSaveFailed(false);
     setPhase('idle');
   };
 
   const handleKeep = async () => {
     if (!take || saving) return;
     setSaving(true);
+    setSaveFailed(false);
     try {
       await onSaved({ blob: take.blob, durationMs: take.durationMs });
       URL.revokeObjectURL(take.previewUrl);
+    } catch {
+      // Keep the take and stay in review so the user can retry —
+      // the recorded clip must never be lost to a transient save error.
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -112,9 +121,29 @@ export function DailyVideoRecorder({ onSaved, onClose }: DailyVideoRecorderProps
           />
         )}
 
-        {recorder.error && (
+        {recorder.errorReason ? (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+              zIndex: 5,
+            }}
+          >
+            <PermissionBanner
+              kind="camera"
+              tone="dark"
+              reason={recorder.errorReason}
+              onRetry={() => void recorder.restartPreview()}
+              className="w-full max-w-sm"
+            />
+          </div>
+        ) : recorder.error ? (
           <div className="dv-recorder__error">{recorder.error}</div>
-        )}
+        ) : null}
       </div>
 
       <div className="dv-recorder__controls">
@@ -152,6 +181,8 @@ export function DailyVideoRecorder({ onSaved, onClose }: DailyVideoRecorderProps
                 type="button"
                 className="dv-recorder__switch"
                 onClick={() => recorder.switchCamera()}
+                disabled={phase === 'recording'}
+                style={phase === 'recording' ? { opacity: 0.4 } : undefined}
               >
                 <RotateCcw size={16} />
                 <span>Flip</span>
@@ -167,6 +198,16 @@ export function DailyVideoRecorder({ onSaved, onClose }: DailyVideoRecorderProps
               exit={{ opacity: 0, y: 12 }}
               className="dv-recorder__review"
             >
+              {saveFailed && (
+                <div style={{ gridColumn: '1 / -1', width: '100%' }}>
+                  <MediaErrorCard
+                    title="Couldn't save your clip"
+                    detail="Your take is still here."
+                    retryLabel="Try saving again"
+                    onRetry={handleKeep}
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 className="dv-recorder__retake"

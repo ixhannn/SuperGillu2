@@ -5,6 +5,7 @@ import { motion, type Variants } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { feedback } from '../utils/feedback';
+import { toast } from '../utils/toast';
 import { calendarDayDifference, dateInputValueToStoredDate, daysUntilDate, formatStoredDate, parseStoredDateOnly } from '../shared/dateOnly.js';
 
 const staggerContainer: Variants = {
@@ -29,6 +30,9 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   const [newTitle, setNewTitle] = useState('');
   const [newDate, setNewDate] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  // Dates hidden optimistically while their undo toast is open. The real
+  // delete only happens in the toast's onExpire (deferred commit).
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const load = () => setDates(StorageService.getSpecialDates());
@@ -37,6 +41,9 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
     storageEventTarget.addEventListener('storage-update', handleUpdate);
     return () => storageEventTarget.removeEventListener('storage-update', handleUpdate);
   }, []);
+
+  // Leaving the view commits any pending deferred delete right away.
+  useEffect(() => () => toast.hide(), []);
 
   const handleAdd = () => {
     if (!newTitle || !newDate) return;
@@ -54,16 +61,41 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
     setShowAdd(false);
   };
 
+  const isDeleting = (id: string) => pendingDeleteIds.has(id);
+
+  const clearPendingDelete = (id: string) => setPendingDeleteIds(prev => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  });
+
   const handleDelete = (id: string) => {
+    // Guard: rapid swipes can't queue multiple deletes of the same item.
+    if (isDeleting(id)) return;
     setDeleteTarget(id);
   };
 
   const confirmDelete = () => {
-    if (deleteTarget) {
-        StorageService.deleteSpecialDate(deleteTarget);
-        setDates(prev => prev.filter(d => d.id !== deleteTarget));
-        setDeleteTarget(null);
-    }
+    const id = deleteTarget;
+    if (!id) return;
+    setDeleteTarget(null);
+    const item = dates.find(d => d.id === id);
+    if (!item || isDeleting(id)) return;
+    setPendingDeleteIds(prev => new Set([...prev, id]));
+    toast.showUndo(`Deleted "${item.title}"`, {
+      onUndo: () => clearPendingDelete(id),
+      onExpire: () => {
+        StorageService.deleteSpecialDate(id)
+          .then(() => {
+            clearPendingDelete(id);
+            setDates(StorageService.getSpecialDates());
+          })
+          .catch(() => {
+            clearPendingDelete(id);
+            toast.show("Couldn't delete — it's back", 'error');
+          });
+      },
+    });
   };
 
   const getDaysText = (dateStr: string) => {
@@ -80,6 +112,8 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
         return { count: diff, label: 'days since' };
     }
   };
+
+  const visibleDates = dates.filter(d => !isDeleting(d.id));
 
   return (
     <div className="p-6 pt-8 pb-32 min-h-screen">
@@ -125,7 +159,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
       )}
 
       <motion.div className="space-y-4" variants={staggerContainer} initial="hidden" animate="show">
-        {dates.length === 0 && !showAdd && (
+        {visibleDates.length === 0 && !showAdd && (
              <div className="flex flex-col items-center text-center py-16 animate-fade-in">
                 <div className="relative mb-5">
                     <div className="absolute inset-0 bg-red-400/20 rounded-full blur-2xl animate-breathe-glow" />
@@ -143,7 +177,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                 </button>
              </div>
         )}
-        {dates.map((item, index) => {
+        {visibleDates.map((item, index) => {
             const { count, label } = getDaysText(item.date);
             return (
               <motion.div
