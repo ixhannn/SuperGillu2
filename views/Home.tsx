@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, Brain, Video, Film, ChevronRight } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, Brain, Video, Film, ChevronRight, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
@@ -467,6 +467,10 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
         return `${status.state === 'sleeping' ? 'Fell asleep' : 'Active'} since ${timeStr}`;
     };
 
+    // A real partner only exists once QR pairing sets partnerUserId.
+    // Until then we show an invite placeholder instead of a fake presence status.
+    const hasPartner = Boolean(profile.partnerUserId);
+
     const handleSurprise = () => {
         const allItems = [...memories.map(m => ({ type: 'memory' as const, item: m })), ...notes.map(n => ({ type: 'note' as const, item: n }))];
         if (allItems.length > 0) {
@@ -682,38 +686,71 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
 
             {/* ── STATUS PILLS ─────────────────────────────────────────── */}
             <div className="flex gap-3 mb-5 relative z-10">
-                {/* Partner status pill */}
-                <div
-                    className="flex-1 flex items-center gap-2.5 px-4 py-4"
-                    style={partnerStatus.state === 'sleeping' ? {
-                        borderRadius: '100px',
-                        background: 'linear-gradient(180deg, rgba(50,44,40,0.98) 0%, rgba(28,25,23,0.98) 100%)',
-                        border: '1px solid rgba(80,70,60,0.40)',
-                        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.12), 0 4px 12px rgba(0,0,0,0.18)',
-                    } : {
-                        borderRadius: '100px',
-                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.78) 100%)',
-                        backdropFilter: 'blur(20px) saturate(140%)',
-                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
-                        border: '1px solid rgba(255,255,255,0.95)',
-                        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), inset 0 0 18px rgba(255,255,255,0.55), 0 2px 10px rgba(232,160,176,0.08)',
-                    }}
-                >
-                    <div className="relative flex-shrink-0">
-                        {partnerStatus.state === 'sleeping'
-                            ? <Moon size={14} className="text-amber-300" fill="currentColor" />
-                            : <Sun size={14} className="text-amber-400 animate-spin-slow" />
-                        }
+                {/* Partner status pill — or an invite placeholder until pairing */}
+                {hasPartner ? (
+                    <div
+                        className="flex-1 flex items-center gap-2.5 px-4 py-4"
+                        style={partnerStatus.state === 'sleeping' ? {
+                            borderRadius: '100px',
+                            background: 'linear-gradient(180deg, rgba(50,44,40,0.98) 0%, rgba(28,25,23,0.98) 100%)',
+                            border: '1px solid rgba(80,70,60,0.40)',
+                            boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.12), 0 4px 12px rgba(0,0,0,0.18)',
+                        } : {
+                            borderRadius: '100px',
+                            background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.78) 100%)',
+                            backdropFilter: 'blur(20px) saturate(140%)',
+                            WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                            border: '1px solid rgba(255,255,255,0.95)',
+                            boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), inset 0 0 18px rgba(255,255,255,0.55), 0 2px 10px rgba(232,160,176,0.08)',
+                        }}
+                    >
+                        <div className="relative flex-shrink-0">
+                            {partnerStatus.state === 'sleeping'
+                                ? <Moon size={14} className="text-amber-300" fill="currentColor" />
+                                : <Sun size={14} className="text-amber-400 animate-spin-slow" />
+                            }
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                            <span className={`text-xs font-semibold leading-tight ${partnerStatus.state === 'sleeping' ? 'text-warmgray-100' : 'text-gray-700'}`}>
+                                {profile.partnerName} · {partnerStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}
+                            </span>
+                            <span className={`text-[10px] mt-0.5 leading-tight truncate ${partnerStatus.state === 'sleeping' ? 'text-warmgray-400' : 'text-gray-400'}`}>
+                                {getStatusDisplay(partnerStatus)}
+                            </span>
+                        </div>
                     </div>
-                    <div className="flex flex-col min-w-0">
-                        <span className={`text-xs font-semibold leading-tight ${partnerStatus.state === 'sleeping' ? 'text-warmgray-100' : 'text-gray-700'}`}>
-                            {profile.partnerName} · {partnerStatus.state === 'sleeping' ? 'Asleep' : 'Awake'}
-                        </span>
-                        <span className={`text-[10px] mt-0.5 leading-tight truncate ${partnerStatus.state === 'sleeping' ? 'text-warmgray-400' : 'text-gray-400'}`}>
-                            {getStatusDisplay(partnerStatus)}
-                        </span>
-                    </div>
-                </div>
+                ) : (
+                    <button
+                        onClick={() => setView('sync')}
+                        className="flex-1 flex items-center gap-2.5 px-4 py-4 text-left spring-press"
+                        style={{
+                            borderRadius: '100px',
+                            background: 'linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(252,244,247,0.72) 100%)',
+                            backdropFilter: 'blur(20px) saturate(140%)',
+                            WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                            border: '1px solid rgba(232,160,176,0.32)',
+                            boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.9), 0 2px 10px rgba(232,160,176,0.08)',
+                        }}
+                        aria-label="Invite your partner to connect"
+                    >
+                        <div className="relative flex-shrink-0">
+                            <div
+                                className="flex h-7 w-7 items-center justify-center rounded-full"
+                                style={{ border: '1.5px dashed rgba(225,29,72,0.45)' }}
+                            >
+                                <UserPlus size={13} className="text-lior-400" />
+                            </div>
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                            <span className="text-xs font-semibold leading-tight text-gray-700">
+                                Invite your partner
+                            </span>
+                            <span className="text-[10px] mt-0.5 leading-tight text-gray-400">
+                                Tap to connect
+                            </span>
+                        </div>
+                    </button>
+                )}
                 {/* My status pill */}
                 <div
                     onClick={toggleMyStatus}
