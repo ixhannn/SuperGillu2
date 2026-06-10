@@ -45,7 +45,7 @@ export const PinPad: React.FC<PinPadProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex w-full flex-col items-center">
       <motion.div
         key={errorSignal}
         animate={errorSignal > 0 ? { x: [0, -9, 9, -7, 7, -4, 4, 0] } : { x: 0 }}

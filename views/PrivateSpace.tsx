@@ -495,7 +495,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                             {lockCopy[lockMode].sub}
                         </p>
 
-                        <div style={{ color: NEU_LILAC }}>
+                        <div className="w-full" style={{ color: NEU_LILAC }}>
                             <PinPad
                                 value={pinEntry}
                                 onChange={handlePinChange}
