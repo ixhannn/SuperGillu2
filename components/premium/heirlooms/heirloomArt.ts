@@ -3,7 +3,7 @@ import type { HeirloomMilestone } from '../../../services/heirlooms';
 /**
  * Heirloom artists — deterministic generative artwork rendered to canvas.
  * Same couple + same milestone + same data = the same piece, forever.
- * Three styles, each composed like a print: artwork field, caption block,
+ * Five styles, each composed like a print: artwork field, caption block,
  * frame, grain. Output is 1080×1440 (3:4) — share- and print-friendly.
  */
 
@@ -110,26 +110,38 @@ const drawCaption = (
     ctx.strokeStyle = withAlpha(accent, 0.55);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(cx - 70, HEIRLOOM_H - 250);
-    ctx.lineTo(cx + 70, HEIRLOOM_H - 250);
+    ctx.moveTo(cx - 70, HEIRLOOM_H - 268);
+    ctx.lineTo(cx + 70, HEIRLOOM_H - 268);
     ctx.stroke();
 
     ctx.fillStyle = ink;
-    ctx.font = `700 64px ${SERIF}`;
-    ctx.fillText(m.title, cx, HEIRLOOM_H - 178);
+    ctx.font = `700 60px ${SERIF}`;
+    ctx.fillText(m.title, cx, HEIRLOOM_H - 196);
 
     ctx.fillStyle = withAlpha(ink, 0.62);
-    ctx.font = `500 34px ${SANS}`;
-    ctx.fillText(`${data.myName} & ${data.partnerName}`, cx, HEIRLOOM_H - 128);
+    ctx.font = `500 32px ${SANS}`;
+    ctx.fillText(`${data.myName} & ${data.partnerName}`, cx, HEIRLOOM_H - 150);
+
+    // The engraving — one quiet italic line, chosen for this strike
+    if (m.engraving) {
+        let size = 27;
+        ctx.font = `italic 500 ${size}px ${SERIF}`;
+        while (size > 19 && ctx.measureText(m.engraving).width > HEIRLOOM_W - 220) {
+            size -= 1;
+            ctx.font = `italic 500 ${size}px ${SERIF}`;
+        }
+        ctx.fillStyle = withAlpha(ink, 0.55);
+        ctx.fillText(m.engraving, cx, HEIRLOOM_H - 112);
+    }
 
     ctx.fillStyle = withAlpha(ink, 0.4);
-    ctx.font = `500 27px ${SANS}`;
-    ctx.fillText(m.dateLabel, cx, HEIRLOOM_H - 88);
+    ctx.font = `500 26px ${SANS}`;
+    ctx.fillText(m.dateLabel, cx, HEIRLOOM_H - 76);
 
     // Strike mark — the collectible's serial
     ctx.fillStyle = withAlpha(accent, 0.8);
     ctx.font = `700 24px ${SANS}`;
-    ctx.fillText(`L I O R   ·   No. ${String(m.strikeNo).padStart(3, '0')}`, cx, HEIRLOOM_H - 50 + 4);
+    ctx.fillText(`L I O R   ·   No. ${String(m.strikeNo).padStart(3, '0')}`, cx, HEIRLOOM_H - 46);
 };
 
 const drawGrain = (ctx: CanvasRenderingContext2D, rng: () => number, strength: number) => {
@@ -378,6 +390,277 @@ const renderLetterpress = (ctx: CanvasRenderingContext2D, data: HeirloomRenderDa
     drawCaption(ctx, data, ink, accent);
 };
 
+/* ── Style IV: Orbit — two bodies, one gravity ──────────────────────── */
+
+const renderOrbit = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rng: () => number) => {
+    const ROSE = '#ff5c7c';
+    const VIOLET = '#8b5cf6';
+
+    // Deep space, a shade bluer than the constellation night
+    const bg = ctx.createLinearGradient(0, 0, 0, HEIRLOOM_H);
+    bg.addColorStop(0, '#090a16');
+    bg.addColorStop(0.5, '#0a0814');
+    bg.addColorStop(1, '#0c0913');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, HEIRLOOM_W, HEIRLOOM_H);
+
+    // Sparse starfield — much quieter than the constellation sky
+    for (let i = 0; i < 150; i++) {
+        const x = 70 + rng() * (HEIRLOOM_W - 140);
+        const y = 70 + rng() * 1020;
+        const r = 0.3 + rng() * 1.2;
+        ctx.fillStyle = `rgba(255,250,242,${0.08 + rng() * 0.22})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Two elliptical paths around a shared center, tilted against each other
+    const cx = HEIRLOOM_W / 2;
+    const cy = 590 + (rng() - 0.5) * 36;
+    const a = 330 + rng() * 56;
+    const b = 178 + rng() * 46;
+    const tilt = 0.42 + rng() * 0.2;
+
+    const pointOn = (sign: 1 | -1, u: number) => {
+        const x0 = Math.cos(u) * a;
+        const y0 = Math.sin(u) * b;
+        const rot = tilt * sign;
+        return {
+            x: cx + x0 * Math.cos(rot) - y0 * Math.sin(rot),
+            y: cy + x0 * Math.sin(rot) + y0 * Math.cos(rot),
+        };
+    };
+
+    // Faint full paths, so the geometry reads as drawn, not accidental
+    ctx.save();
+    ([1, -1] as const).forEach((sign) => {
+        ctx.strokeStyle = withAlpha(sign === 1 ? ROSE : VIOLET, 0.1);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let u = 0; u <= Math.PI * 2 + 0.06; u += 0.05) {
+            const p = pointOn(sign, u);
+            if (u === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+    });
+    ctx.restore();
+
+    // Where the two paths cross on the long axis — the meeting point
+    const uStar = Math.atan(-(a / b) * Math.tan(tilt));
+    const meet = pointOn(1, uStar);
+
+    // Trails: each body sweeps in along its own path, fading behind it.
+    // `dir` is the direction of travel, so the pair mirror one another and
+    // converge on the meeting point from above and below.
+    const span = Math.PI * (0.9 + rng() * 0.22);
+    const gap = 0.17;
+    const drawTrail = (sign: 1 | -1, head: number, dir: 1 | -1, tint: string) => {
+        const segs = 64;
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (let k = 0; k < segs; k++) {
+            const t0 = k / segs;
+            const t1 = (k + 1) / segs;
+            const p0 = pointOn(sign, head - dir * span * (1 - t0));
+            const p1 = pointOn(sign, head - dir * span * (1 - t1));
+            ctx.strokeStyle = withAlpha(tint, Math.pow(t1, 1.7) * 0.6 + 0.02);
+            ctx.lineWidth = 1.1 + t1 * 2.8;
+            if (t1 > 0.72) {
+                ctx.shadowColor = withAlpha(tint, 0.55);
+                ctx.shadowBlur = 12;
+            } else {
+                ctx.shadowBlur = 0;
+            }
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.stroke();
+        }
+        ctx.restore();
+    };
+    drawTrail(1, uStar - gap, 1, ROSE);
+    drawTrail(-1, -uStar + gap, -1, VIOLET);
+
+    // The two of them, holding just short of the meeting point
+    const drawBody = (p: { x: number; y: number }, tint: string, r: number) => {
+        const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 6);
+        halo.addColorStop(0, withAlpha(tint, 0.5));
+        halo.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r * 6, 0, Math.PI * 2);
+        ctx.fill();
+        const core = ctx.createRadialGradient(p.x - r * 0.3, p.y - r * 0.3, 0, p.x, p.y, r);
+        core.addColorStop(0, '#fffdf7');
+        core.addColorStop(1, tint);
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+    };
+    drawBody(pointOn(1, uStar - gap), ROSE, 9);
+    drawBody(pointOn(-1, -uStar + gap), VIOLET, 8);
+
+    // The bright meeting point, one breath ahead of both
+    ctx.save();
+    const flare = ctx.createRadialGradient(meet.x, meet.y, 0, meet.x, meet.y, 64);
+    flare.addColorStop(0, 'rgba(255,253,247,0.95)');
+    flare.addColorStop(0.25, 'rgba(255,217,225,0.4)');
+    flare.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = flare;
+    ctx.beginPath();
+    ctx.arc(meet.x, meet.y, 64, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,253,247,0.8)';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(meet.x - 30, meet.y);
+    ctx.lineTo(meet.x + 30, meet.y);
+    ctx.moveTo(meet.x, meet.y - 30);
+    ctx.lineTo(meet.x, meet.y + 30);
+    ctx.stroke();
+    ctx.fillStyle = '#fffdf7';
+    ctx.beginPath();
+    ctx.arc(meet.x, meet.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Day numeral, small, at the shared center of gravity
+    const label = data.milestone.kind === 'year'
+        ? `Y E A R  ${data.milestone.value}`
+        : `D A Y  ${data.dayCount.toLocaleString()}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,250,240,0.55)';
+    ctx.font = `700 26px ${SANS}`;
+    ctx.fillText(label, cx, cy + 9);
+
+    drawGrain(ctx, rng, 0.05);
+    drawFrame(ctx, '#fffaf0');
+    drawCaption(ctx, data, '#fffaf0', '#ff8fa6');
+};
+
+/* ── Style V: Tapestry — their weeks, woven into cloth ──────────────── */
+
+const renderTapestry = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rng: () => number) => {
+    const palette = paletteFrom(data.moods, rng);
+
+    const bg = ctx.createLinearGradient(0, 0, 0, HEIRLOOM_H);
+    bg.addColorStop(0, '#130f15');
+    bg.addColorStop(1, '#0b0a10');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, HEIRLOOM_W, HEIRLOOM_H);
+
+    // One warp thread per week of the relationship
+    const weeks = Math.max(16, Math.min(64, Math.ceil(Math.max(1, data.dayCount) / 7)));
+    const left = 130;
+    const right = HEIRLOOM_W - 130;
+    const top = 170;
+    const bottom = 1064;
+    const fieldW = right - left;
+    const fieldH = bottom - top;
+    const pitch = fieldW / weeks;
+    const threadW = Math.max(5, pitch * 0.74);
+    const rows = 34;
+    const rowH = fieldH / rows;
+
+    // Warm under-cloth so the gaps between threads read as fibre, not void
+    ctx.fillStyle = 'rgba(201,179,154,0.05)';
+    ctx.fillRect(left - 10, top - 6, fieldW + 20, fieldH + 12);
+    for (let r = 0; r < rows; r += 2) {
+        ctx.fillStyle = 'rgba(201,179,154,0.045)';
+        ctx.fillRect(left - 10, top + r * rowH, fieldW + 20, rowH);
+    }
+
+    // Selvedge bands above and below the weave
+    ctx.fillStyle = withAlpha(palette[0], 0.4);
+    ctx.fillRect(left - 12, top - 26, fieldW + 24, 5);
+    ctx.fillStyle = withAlpha(palette[1], 0.28);
+    ctx.fillRect(left - 12, top - 16, fieldW + 24, 3);
+    ctx.fillStyle = withAlpha(palette[1], 0.28);
+    ctx.fillRect(left - 12, bottom + 13, fieldW + 24, 3);
+    ctx.fillStyle = withAlpha(palette[0], 0.4);
+    ctx.fillRect(left - 12, bottom + 21, fieldW + 24, 5);
+
+    // Warp threads, colors drifting through their real mood palette in runs
+    const threadTints: string[] = [];
+    let ci = Math.floor(rng() * palette.length);
+    const edge = Math.min(2, threadW * 0.2);
+    for (let t = 0; t < weeks; t++) {
+        if (rng() < 0.24) ci = (ci + 1 + Math.floor(rng() * (palette.length - 1))) % palette.length;
+        const tint = palette[ci];
+        threadTints.push(tint);
+        const x = left + t * pitch + (pitch - threadW) / 2;
+        ctx.fillStyle = withAlpha(tint, 0.5 + rng() * 0.18);
+        ctx.fillRect(x, top, threadW, fieldH);
+        // Cylindrical shading: lit left edge, shaded right edge
+        ctx.fillStyle = 'rgba(255,255,255,0.09)';
+        ctx.fillRect(x, top, edge, fieldH);
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.fillRect(x + threadW - edge, top, edge, fieldH);
+        // Over / under weave cells — the checker that makes it cloth
+        for (let r = 0; r < rows; r++) {
+            const y = top + r * rowH;
+            if ((t + r) % 2 === 1) {
+                ctx.fillStyle = 'rgba(8,6,9,0.34)';
+                ctx.fillRect(x - 0.5, y, threadW + 1, rowH);
+            } else {
+                ctx.fillStyle = 'rgba(255,251,244,0.07)';
+                ctx.fillRect(x, y + 1, threadW, 2);
+            }
+        }
+    }
+
+    // Weft grooves — the horizontal rhythm of the loom
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    for (let r = 0; r <= rows; r++) {
+        ctx.fillRect(left - 10, top + r * rowH - 0.5, fieldW + 20, 1);
+    }
+
+    // Fringe — every thread ends in a loose tail below the bottom selvedge
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let t = 0; t < weeks; t++) {
+        const x = left + t * pitch + pitch / 2;
+        const lean = (rng() - 0.5) * 7;
+        const len = 16 + rng() * 14;
+        ctx.strokeStyle = withAlpha(threadTints[t], 0.42);
+        ctx.lineWidth = Math.min(2.4, threadW * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(x, bottom + 28);
+        ctx.quadraticCurveTo(x + lean * 0.4, bottom + 28 + len * 0.6, x + lean, bottom + 28 + len);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    // Luminous knots — one per memory (clamped), resting on "over" cells
+    const knots = Math.max(5, Math.min(18, data.memoryCount || 7));
+    for (let i = 0; i < knots; i++) {
+        const t = Math.floor(rng() * weeks);
+        let r = 1 + Math.floor(rng() * (rows - 2));
+        if ((t + r) % 2 === 1) r -= 1;
+        const kx = left + t * pitch + pitch / 2;
+        const ky = top + r * rowH + rowH / 2;
+        const tint = threadTints[t];
+        const glow = ctx.createRadialGradient(kx, ky, 0, kx, ky, 16);
+        glow.addColorStop(0, withAlpha(tint, 0.8));
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(kx, ky, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff7ea';
+        ctx.beginPath();
+        ctx.arc(kx, ky, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawGrain(ctx, rng, 0.045);
+    drawFrame(ctx, '#fffaf0');
+    drawCaption(ctx, data, '#fffaf0', palette[0]);
+};
+
 /* ── Entry ──────────────────────────────────────────────────────────── */
 
 export function renderHeirloom(canvas: HTMLCanvasElement, data: HeirloomRenderData, pixelScale = 1): void {
@@ -390,5 +673,7 @@ export function renderHeirloom(canvas: HTMLCanvasElement, data: HeirloomRenderDa
     const rng = mulberry32(data.milestone.seed);
     if (data.milestone.style === 'rings') renderRings(ctx, data, rng);
     else if (data.milestone.style === 'letterpress') renderLetterpress(ctx, data, rng);
+    else if (data.milestone.style === 'orbit') renderOrbit(ctx, data, rng);
+    else if (data.milestone.style === 'tapestry') renderTapestry(ctx, data, rng);
     else renderConstellation(ctx, data, rng);
 }

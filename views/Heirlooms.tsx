@@ -5,11 +5,15 @@ import { Download, Gem, Lock, Share2, X } from 'lucide-react';
 import type { ViewState } from '../types';
 import { StorageService } from '../services/storage';
 import {
+    HEIRLOOM_STYLE_LABELS,
     buildHeirloomSchedule,
     collectHeirloom,
     getCollectedHeirloomIds,
+    getHeirloomStatsAtDate,
     isHeirloomFree,
+    scheduleNextHeirloomStrikeNotification,
     type HeirloomMilestone,
+    type HeirloomStrikeStats,
 } from '../services/heirlooms';
 import { renderHeirloom, type HeirloomRenderData, HEIRLOOM_W, HEIRLOOM_H } from '../components/premium/heirlooms/heirloomArt';
 import { GoldShell } from '../components/premium/GoldShell';
@@ -86,9 +90,10 @@ const exportHeirloom = async (data: HeirloomRenderData, mode: 'share' | 'save'):
 
 /* ── The wax seal (CSS-only medallion) ──────────────────────────────── */
 
-const WaxSeal: React.FC<{ size?: number }> = ({ size = 84 }) => (
+/** `still` drops the breathing loop — used for the ceremony's split halves. */
+const WaxSeal: React.FC<{ size?: number; still?: boolean }> = ({ size = 84, still }) => (
     <div
-        className="lp-emblem relative flex items-center justify-center rounded-full"
+        className={`${still ? '' : 'lp-emblem '}relative flex items-center justify-center rounded-full`}
         style={{
             width: size,
             height: size,
@@ -99,6 +104,44 @@ const WaxSeal: React.FC<{ size?: number }> = ({ size = 84 }) => (
         <Gem size={Math.round(size * 0.34)} strokeWidth={1.8} style={{ color: '#4a3713' }} />
     </div>
 );
+
+/* ── Plaque — edition line, engraving, stats at the strike ──────────── */
+
+const formatStrikeStats = (stats: HeirloomStrikeStats): string => {
+    if (stats.memories === 0 && stats.voiceSeconds === 0) {
+        return 'Struck before the first memory was kept.';
+    }
+    const parts = [`${stats.memories} ${stats.memories === 1 ? 'memory' : 'memories'}`];
+    if (stats.voiceSeconds >= 60) {
+        const minutes = Math.round(stats.voiceSeconds / 60);
+        parts.push(`${minutes} minute${minutes === 1 ? '' : 's'} of voice`);
+    } else if (stats.voiceSeconds > 0) {
+        parts.push(`${stats.voiceSeconds} seconds of voice`);
+    }
+    return `By this day: ${parts.join(', ')}`;
+};
+
+const HeirloomPlaque: React.FC<{ milestone: HeirloomMilestone; delay?: number }> = ({ milestone, delay = 0 }) => {
+    const statsLine = useMemo(() => formatStrikeStats(getHeirloomStatsAtDate(milestone.date)), [milestone]);
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...GOLD_SOFT_SPRING, delay }}
+            className="lq mt-3 rounded-[1.2rem] px-5 py-4 text-center"
+        >
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: ACCENT }}>
+                {HEIRLOOM_STYLE_LABELS[milestone.style]} · 1 of 1 · No. {String(milestone.strikeNo).padStart(3, '0')}
+            </p>
+            <p className="font-serif italic mt-2 text-[13.5px] leading-snug" style={{ color: 'rgba(255,251,250,0.88)' }}>
+                “{milestone.engraving}”
+            </p>
+            <p className="mt-2 text-[11px]" style={{ color: GOLD.textLow }}>
+                {statsLine}
+            </p>
+        </motion.div>
+    );
+};
 
 /* ── Main view ──────────────────────────────────────────────────────── */
 
@@ -113,14 +156,39 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
     const [paywallOpen, setPaywallOpen] = useState(false);
     const [ceremony, setCeremony] = useState<HeirloomMilestone | null>(null);
     const [sealBroken, setSealBroken] = useState(false);
+    const [artReady, setArtReady] = useState(false);
     const [viewer, setViewer] = useState<HeirloomMilestone | null>(null);
     const [exporting, setExporting] = useState(false);
+
+    const reduceMotion = useMemo(
+        () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+        [],
+    );
 
     useEffect(() => {
         const onChange = () => setIsPremium(true);
         window.addEventListener('lior:premium-changed', onChange);
         return () => window.removeEventListener('lior:premium-changed', onChange);
     }, []);
+
+    // Ceremony staging: the seal splits first, then the artwork springs in.
+    useEffect(() => {
+        if (!sealBroken) {
+            setArtReady(false);
+            return;
+        }
+        if (reduceMotion) {
+            setArtReady(true);
+            return;
+        }
+        const timer = window.setTimeout(() => setArtReady(true), 560);
+        return () => window.clearTimeout(timer);
+    }, [sealBroken, reduceMotion]);
+
+    // Best effort: a local notification on the morning of the next strike.
+    useEffect(() => {
+        void scheduleNextHeirloomStrikeNotification(schedule.next);
+    }, [schedule]);
 
     // Hardware back closes whichever overlay is up.
     useEffect(() => {
@@ -143,7 +211,9 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
             partnerName,
             dayCount: m.kind === 'days' ? m.value : Math.max(0, daysTogetherFrom(profile.anniversaryDate, m.date)),
             moods,
-            memoryCount: StorageService.getMemories().length,
+            // What the mint saw on the strike day — keeps the piece stable
+            // as new memories are added afterwards.
+            memoryCount: getHeirloomStatsAtDate(m.date).memories,
         };
     }, [myName, partnerName, profile.anniversaryDate]);
 
@@ -177,6 +247,10 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
     }, [exporting, renderDataFor]);
 
     const hasSchedule = schedule.arrived.length > 0 || schedule.next !== null;
+    const openedCount = useMemo(
+        () => schedule.arrived.filter((m) => collected.has(m.id)).length,
+        [schedule, collected],
+    );
 
     /* ── Overlays (portal rule: AnimatePresence INSIDE the portal) ──── */
 
@@ -191,7 +265,7 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                         role="dialog"
                         aria-modal="true"
                         aria-label={`${ceremony.title} heirloom`}
-                        className="fixed inset-0 z-[190] flex flex-col items-center justify-center px-7"
+                        className="fixed inset-0 z-[190] flex flex-col items-center justify-center overflow-y-auto px-7 py-16"
                         style={{ background: 'rgba(7,6,10,0.93)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
                     >
                         <motion.button
@@ -212,7 +286,7 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                 exit={{ opacity: 0, scale: 1.06, transition: { duration: 0.18 } }}
                                 transition={GOLD_SOFT_SPRING}
                                 onClick={breakSeal}
-                                className="flex flex-col items-center text-center"
+                                className="my-auto flex flex-col items-center text-center"
                             >
                                 <WaxSeal size={108} />
                                 <p className="font-serif mt-8 text-[1.7rem] font-bold leading-tight" style={{ color: 'rgba(255,251,250,0.97)', letterSpacing: '-0.02em' }}>
@@ -225,13 +299,54 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                     Tap the seal to open it
                                 </p>
                             </motion.button>
+                        ) : !artReady ? (
+                            /* Stage one: the wax splits, the halves drift apart */
+                            <div key="split" className="my-auto flex flex-col items-center text-center" aria-hidden="true">
+                                <div className="relative" style={{ width: 108, height: 108 }}>
+                                    <motion.div
+                                        className="absolute inset-0"
+                                        style={{ clipPath: 'inset(0 50% 0 0)', willChange: 'transform' }}
+                                        initial={{ x: 0, y: 0, rotate: 0, opacity: 1 }}
+                                        animate={{ x: -62, y: 12, rotate: -26, opacity: 0 }}
+                                        transition={GOLD_SOFT_SPRING}
+                                    >
+                                        <WaxSeal size={108} still />
+                                    </motion.div>
+                                    <motion.div
+                                        className="absolute inset-0"
+                                        style={{ clipPath: 'inset(0 0 0 50%)', willChange: 'transform' }}
+                                        initial={{ x: 0, y: 0, rotate: 0, opacity: 1 }}
+                                        animate={{ x: 62, y: -12, rotate: 26, opacity: 0 }}
+                                        transition={GOLD_SOFT_SPRING}
+                                    >
+                                        <WaxSeal size={108} still />
+                                    </motion.div>
+                                </div>
+                                <motion.div
+                                    initial={{ opacity: 1 }}
+                                    animate={{ opacity: 0 }}
+                                    transition={GOLD_SOFT_SPRING}
+                                    className="flex flex-col items-center"
+                                >
+                                    <p className="font-serif mt-8 text-[1.7rem] font-bold leading-tight" style={{ color: 'rgba(255,251,250,0.97)', letterSpacing: '-0.02em' }}>
+                                        {ceremony.title}
+                                    </p>
+                                    <p className="mt-2 text-[13.5px]" style={{ color: 'rgba(255,248,248,0.5)' }}>
+                                        Struck {ceremony.dateLabel} · No. {String(ceremony.strikeNo).padStart(3, '0')}
+                                    </p>
+                                    <p className="mt-7 text-[13px] font-bold tracking-wide" style={{ color: ACCENT }}>
+                                        Tap the seal to open it
+                                    </p>
+                                </motion.div>
+                            </div>
                         ) : (
+                            /* Stage two: the artwork springs in, then the plaque */
                             <motion.div
                                 key="revealed"
                                 initial={{ opacity: 0, scale: 0.88, rotateX: 14 }}
                                 animate={{ opacity: 1, scale: 1, rotateX: 0 }}
                                 transition={{ ...GOLD_SOFT_SPRING, delay: 0.1 }}
-                                className="w-full max-w-[330px]"
+                                className="my-auto w-full max-w-[330px]"
                                 style={{ perspective: 1000 }}
                             >
                                 <div className="lp-burst" aria-hidden="true">
@@ -255,7 +370,8 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                         <HeirloomThumb data={renderDataFor(ceremony)} full />
                                     </div>
                                 </div>
-                                <div className="mt-5 flex gap-2.5">
+                                <HeirloomPlaque milestone={ceremony} delay={0.42} />
+                                <div className="mt-4 flex gap-2.5">
                                     <motion.button
                                         whileTap={{ scale: 0.96 }}
                                         transition={GOLD_PRESS_SPRING}
@@ -292,7 +408,7 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                         role="dialog"
                         aria-modal="true"
                         aria-label={`${viewer.title} heirloom`}
-                        className="fixed inset-0 z-[190] flex flex-col items-center justify-center px-7"
+                        className="fixed inset-0 z-[190] flex flex-col items-center justify-center overflow-y-auto px-7 py-16"
                         style={{ background: 'rgba(7,6,10,0.93)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
                         onClick={() => { feedback.tap(); setViewer(null); }}
                     >
@@ -300,7 +416,7 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                             initial={{ opacity: 0, scale: 0.92, y: 18 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             transition={GOLD_SOFT_SPRING}
-                            className="w-full max-w-[330px]"
+                            className="my-auto w-full max-w-[330px]"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="lp-foil">
@@ -308,7 +424,8 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                     <HeirloomThumb data={renderDataFor(viewer)} full />
                                 </div>
                             </div>
-                            <div className="mt-5 flex gap-2.5">
+                            <HeirloomPlaque milestone={viewer} delay={0.12} />
+                            <div className="mt-4 flex gap-2.5">
                                 <motion.button
                                     whileTap={{ scale: 0.96 }}
                                     transition={GOLD_PRESS_SPRING}
@@ -414,6 +531,19 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                     </p>
                                 </div>
                             </div>
+                            {/* How far between the last strike and this one */}
+                            <div className="relative z-10 mt-5" aria-hidden="true">
+                                <div className="h-[3px] w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                                    <motion.div
+                                        className="h-full w-full rounded-full"
+                                        style={{ transformOrigin: 'left', background: `linear-gradient(90deg, ${ACCENT} 0%, #ff8fa6 100%)` }}
+                                        initial={{ scaleX: reduceMotion ? schedule.progressToNext : 0 }}
+                                        whileInView={{ scaleX: schedule.progressToNext }}
+                                        viewport={{ once: true, amount: 0.4 }}
+                                        transition={GOLD_SOFT_SPRING}
+                                    />
+                                </div>
+                            </div>
                         </motion.div>
 
                         {schedule.horizon.length > 0 && (
@@ -438,6 +568,9 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                 Your gallery
                             </span>
                             <div className="flex-1 h-px self-center" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
+                            <span className="text-[11px] font-semibold whitespace-nowrap" style={{ color: GOLD.textLow }}>
+                                {openedCount} of {schedule.arrived.length} strikes opened
+                            </span>
                         </motion.div>
 
                         <motion.div variants={goldRise} className="grid grid-cols-2 gap-3">

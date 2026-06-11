@@ -3,6 +3,9 @@
    Shared by views/Premium.tsx (hub) and components/PremiumModal.tsx (sheet).
    Every ambient loop animates transform/opacity only (GPU-composited)
    and is disabled under prefers-reduced-motion.
+   ONE documented exception: lp-text-sheen (headline shimmer) animates
+   background-position on a single h1-sized element — background-clip:text
+   has no compositor-only equivalent, so it runs at half cadence instead.
    ──────────────────────────────────────────────────────────────────── */
 
 .lp-stage {
@@ -24,13 +27,16 @@
   z-index: 0;
 }
 
+/* blur(54px) reads the same as 70px on these soft radial fills but
+   shrinks the blur surface the GPU has to resolve; opacity nudged down
+   to compensate for the slightly tighter falloff. */
 .lp-aurora__blob {
   position: absolute;
   width: 420px;
   height: 420px;
   border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.32;
+  filter: blur(54px);
+  opacity: 0.3;
   will-change: transform;
 }
 
@@ -98,12 +104,17 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: lp-text-sheen 5.2s ease-in-out infinite;
+  animation: lp-text-sheen 10.4s ease-in-out infinite;
 }
 
+/* PERF NOTE: this is the ONE remaining paint (non-compositor) animation
+   in this file. background-clip:text cannot take a pseudo-element overlay,
+   so the sweep has to ride background-position. Cost is bounded: a single
+   h1-sized element, and the cadence is halved (same 2.9s sweep, then a
+   long idle plateau where identical keyframe values mean zero repaints). */
 @keyframes lp-text-sheen {
   0%   { background-position: 120% 0; }
-  55%  { background-position: -60% 0; }
+  27%  { background-position: -60% 0; }
   100% { background-position: -60% 0; }
 }
 
@@ -157,7 +168,10 @@
 }
 
 /* ── Gold foil border (gradient ring via padding hack) ──────────────── */
-
+/* PERF: the foil used to flow via background-position (lp-foil-flow),
+   which repainted the full member-card area every frame. The gradient is
+   now frozen at the animation's most flattering frame (white highlight
+   centered); card motion is carried by lp-holo-sheen (transform-only). */
 .lp-foil {
   position: relative;
   border-radius: 28px;
@@ -171,12 +185,7 @@
     rgba(255, 92, 124, 0.85) 100%
   );
   background-size: 300% 300%;
-  animation: lp-foil-flow 7s ease-in-out infinite;
-}
-
-@keyframes lp-foil-flow {
-  0%, 100% { background-position: 0% 50%; }
-  50%      { background-position: 100% 50%; }
+  background-position: 50% 50%;
 }
 
 /* ── Holographic sheen sweep (member card) ──────────────────────────── */
@@ -313,7 +322,6 @@
   .lp-emblem,
   .lp-orbit,
   .lp-orbit--reverse,
-  .lp-foil,
   .lp-holo-sheen::after,
   .lp-cta::after,
   .lp-burst__p,
@@ -346,7 +354,9 @@
   position: fixed;
   top: max(calc(min(env(safe-area-inset-top, 0px), 3.5rem) + 0.55rem), 0.55rem);
   left: 50%;
-  transform: translateX(-50%);
+  /* translateZ(0) pins the backdrop-blurred pill to its own compositor
+     layer so page scroll underneath never re-rasterizes it. */
+  transform: translateX(-50%) translateZ(0);
   width: min(calc(100vw - 1.5rem), 27rem);
   z-index: 40;
   display: flex;
@@ -444,35 +454,47 @@
   z-index: 1;
 }
 
-/* Specular sweep — light traveling across the pane, rarely. */
+/* Specular sweep — light traveling across the pane, rarely.
+   PERF: rebuilt as a transform-only strip (was a background-position
+   animation that repainted the whole pane every frame). The pseudo is a
+   narrow skewed gradient band that slides across on the compositor, same
+   cadence as before: ~70% idle, then one ~2.4s sweep per 8s cycle. */
+.lq--sheen {
+  /* Clips the sweep strip to the rounded pane. Every current .lq--sheen
+     node already carries overflow-hidden in markup; this makes the
+     material self-contained. */
+  overflow: hidden;
+}
+
 .lq--sheen::after {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 60%;
+  transform: skewX(-20deg) translateX(-150%);
   pointer-events: none;
   z-index: 1;
   background: linear-gradient(
-    115deg,
-    transparent 32%,
-    rgba(255, 250, 238, 0.06) 43%,
-    rgba(255, 250, 238, 0.14) 48%,
-    rgba(255, 250, 238, 0.05) 54%,
-    transparent 66%
+    90deg,
+    transparent 0%,
+    rgba(255, 250, 238, 0.06) 32%,
+    rgba(255, 250, 238, 0.14) 50%,
+    rgba(255, 250, 238, 0.05) 66%,
+    transparent 100%
   );
-  background-size: 260% 100%;
-  background-position: 130% 0;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .lq--sheen::after {
-    animation: lq-sweep 8s ease-in-out infinite;
+    animation: lq-sweep-slide 8s ease-in-out infinite;
   }
 }
 
-@keyframes lq-sweep {
-  0%, 58% { background-position: 130% 0; }
-  88%, 100% { background-position: -60% 0; }
+@keyframes lq-sweep-slide {
+  0%, 58% { transform: skewX(-20deg) translateX(-150%); }
+  88%, 100% { transform: skewX(-20deg) translateX(350%); }
 }
 
 /* Real refraction — use sparingly (header has its own). */
