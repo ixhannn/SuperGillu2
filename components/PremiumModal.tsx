@@ -49,11 +49,11 @@ const CONTEXT_COPY: Record<PremiumFeatureContext, { title: string; sub: string }
 };
 
 const SHEET_FEATURES = [
-    { icon: Clapperboard, label: 'Our Story film', desc: 'Your whole relationship, retold as a premiere', tint: '#f6c768' },
+    { icon: Clapperboard, label: 'Our Story film', desc: 'Your whole relationship, retold as a premiere', tint: '#ff5c7c' },
     { icon: CalendarHeart, label: 'Date Studio, Depths & Duets', desc: 'Date decks, real-talk cards & a two-pen journal', tint: '#fb7185' },
     { icon: Flame, label: 'Love Missions', desc: 'Three small missions a week, tuned to them', tint: '#ec4899' },
     { icon: Video, label: 'Video everywhere', desc: 'Timeline, keepsakes & daily moments', tint: '#a855f7' },
-    { icon: Gift, label: 'Unlimited everything', desc: 'Voice notes, letters, surprises & memories', tint: '#f59e0b' },
+    { icon: Gift, label: 'Unlimited everything', desc: 'Voice notes, letters, surprises & memories', tint: '#ff5c7c' },
 ];
 
 const SHEET_SPRING = { type: 'spring', stiffness: 400, damping: 41, mass: 1 } as const;
@@ -153,12 +153,12 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                         <div className="lp-grain" />
 
                         {/* Gold hairline */}
-                        <div className="absolute top-0 left-0 right-0 h-px z-10 bg-gradient-to-r from-transparent via-amber-300/60 to-transparent" />
+                        <div className="absolute top-0 left-0 right-0 h-px z-10 bg-gradient-to-r from-transparent via-rose-300/50 to-transparent" />
 
                         <div className="relative z-10 px-6 pt-3 pb-7">
                             {/* Drag handle */}
                             <div className="flex justify-center mb-5">
-                                <div className="w-10 h-[5px] rounded-full" style={{ background: 'rgba(255,246,230,0.18)' }} />
+                                <div className="w-10 h-[5px] rounded-full" style={{ background: 'rgba(255,248,248,0.18)' }} />
                             </div>
 
                             {/* Hero */}
@@ -173,12 +173,12 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                     <div
                                         className="relative flex items-center justify-center w-[58px] h-[58px] rounded-[19px]"
                                         style={{
-                                            background: 'linear-gradient(140deg, rgba(246,199,104,0.22) 0%, rgba(185,138,62,0.34) 100%)',
-                                            border: '1px solid rgba(246,199,104,0.4)',
-                                            boxShadow: '0 14px 38px rgba(246,199,104,0.16), inset 0 1px 0 rgba(255,246,222,0.25)',
+                                            background: 'linear-gradient(140deg, rgba(255,92,124,0.22) 0%, rgba(185,138,62,0.34) 100%)',
+                                            border: '1px solid rgba(255,92,124,0.4)',
+                                            boxShadow: '0 14px 38px rgba(255,92,124,0.16), inset 0 1px 0 rgba(255,255,255,0.25)',
                                         }}
                                     >
-                                        <Crown size={26} strokeWidth={1.7} style={{ color: '#f6c768' }} />
+                                        <Crown size={26} strokeWidth={1.7} style={{ color: '#ff5c7c' }} />
                                     </div>
                                 </motion.div>
 
@@ -187,7 +187,7 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ type: 'spring', stiffness: 300, damping: 28, delay: 0.13 }}
                                     className="font-serif text-[1.55rem] leading-tight"
-                                    style={{ color: 'rgba(255,250,242,0.96)', letterSpacing: '-0.02em' }}
+                                    style={{ color: 'rgba(255,251,250,0.96)', letterSpacing: '-0.02em' }}
                                 >
                                     {copy.title}
                                 </motion.h2>
@@ -196,7 +196,7 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ type: 'spring', stiffness: 300, damping: 28, delay: 0.19 }}
                                     className="mt-2 max-w-[32ch] text-[12.5px] leading-relaxed"
-                                    style={{ color: 'rgba(255,246,230,0.5)' }}
+                                    style={{ color: 'rgba(255,248,248,0.5)' }}
                                 >
                                     {copy.sub}
                                 </motion.p>
@@ -222,10 +222,10 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                                 <Icon size={16} style={{ color: feat.tint }} />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,250,242,0.9)' }}>{feat.label}</p>
-                                                <p className="mt-0.5 text-[10.5px] leading-tight" style={{ color: 'rgba(255,246,230,0.38)' }}>{feat.desc}</p>
+                                                <p className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.9)' }}>{feat.label}</p>
+                                                <p className="mt-0.5 text-[10.5px] leading-tight" style={{ color: 'rgba(255,248,248,0.38)' }}>{feat.desc}</p>
                                             </div>
-                                            <InfinityIcon size={13} strokeWidth={2.4} className="shrink-0" style={{ color: 'rgba(246,199,104,0.6)' }} />
+                                            <InfinityIcon size={13} strokeWidth={2.4} className="shrink-0" style={{ color: 'rgba(255,92,124,0.6)' }} />
                                         </motion.div>
                                     );
                                 })}
@@ -237,10 +237,10 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 28, delay: 0.48 }}
                                 className="flex items-start gap-2.5 px-4 py-3 rounded-2xl mb-5"
-                                style={{ background: 'rgba(246,199,104,0.06)', border: '1px solid rgba(246,199,104,0.16)' }}
+                                style={{ background: 'rgba(255,92,124,0.06)', border: '1px solid rgba(255,92,124,0.16)' }}
                             >
-                                <Sparkles size={13} className="shrink-0 mt-0.5" style={{ color: '#f6c768' }} />
-                                <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,246,230,0.55)' }}>
+                                <Sparkles size={13} className="shrink-0 mt-0.5" style={{ color: '#ff5c7c' }} />
+                                <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,248,248,0.55)' }}>
                                     <span className="font-semibold" style={{ color: '#f3cd86' }}>Founding couples offer</span> — Gold is free during early access.
                                 </p>
                             </motion.div>
@@ -258,9 +258,9 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                     onClick={handleUpgrade}
                                     className="lp-cta w-full h-[54px] rounded-2xl font-bold text-[15px] tracking-wide"
                                     style={{
-                                        background: 'linear-gradient(135deg, #f6c768 0%, #d99c3e 100%)',
-                                        color: '#23120a',
-                                        boxShadow: '0 12px 36px rgba(246,199,104,0.28), inset 0 1px 0 rgba(255,246,222,0.45)',
+                                        background: 'linear-gradient(135deg, #ff5c7c 0%, #8b5cf6 100%)',
+                                        color: '#ffffff',
+                                        boxShadow: '0 12px 36px rgba(255,92,124,0.28), inset 0 1px 0 rgba(255,255,255,0.45)',
                                     }}
                                 >
                                     Unlock Lior Gold
@@ -269,7 +269,7 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                 <button
                                     onClick={handleExplore}
                                     className="w-full py-3 rounded-2xl flex items-center justify-center gap-1.5 text-[13px] font-semibold active:scale-95 transition-transform"
-                                    style={{ color: 'rgba(246,199,104,0.85)' }}
+                                    style={{ color: 'rgba(255,92,124,0.85)' }}
                                 >
                                     See everything Gold unlocks
                                     <ChevronRight size={14} strokeWidth={2.4} />
@@ -278,7 +278,7 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                                 <button
                                     onClick={() => { feedback.tap(); onClose(); }}
                                     className="w-full py-2.5 text-[13px] font-medium active:scale-95 transition-transform"
-                                    style={{ color: 'rgba(255,246,230,0.32)' }}
+                                    style={{ color: 'rgba(255,248,248,0.32)' }}
                                 >
                                     Not now
                                 </button>
@@ -287,7 +287,7 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
                             {/* Love note */}
                             <div className="mt-3 flex items-center justify-center gap-2">
                                 <Heart size={10} style={{ color: 'rgba(236,72,153,0.55)' }} fill="currentColor" strokeWidth={0} />
-                                <p className="text-[10.5px]" style={{ color: 'rgba(255,246,230,0.28)' }}>
+                                <p className="text-[10.5px]" style={{ color: 'rgba(255,248,248,0.28)' }}>
                                     Built for the two of you. Always.
                                 </p>
                             </div>
