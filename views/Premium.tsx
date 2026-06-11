@@ -1,3 +1,4 @@
+import ReactDOM from 'react-dom';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     motion,
@@ -375,54 +376,59 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
     const heroExperiences = EXPERIENCES.filter((e) => e.hero);
     const gridExperiences = EXPERIENCES.filter((e) => !e.hero);
 
+    // Portaled to body like the app's vh-shell: lenis-content has
+    // contain:paint, so a fixed header rendered inline would anchor to the
+    // scroll content and ride away with it.
+    const shellHeader = (
+        <div className="lp-shell-header">
+            <motion.button
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ ...SOFT_SPRING, delay: 0.05 }}
+                whileTap={{ scale: 0.86 }}
+                onClick={() => { feedback.tap(); setView('home'); }}
+                aria-label="Go back"
+                className="lp-glass w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{ color: 'rgba(255,246,230,0.85)' }}
+            >
+                <ArrowLeft size={17} strokeWidth={2.4} />
+            </motion.button>
+            <motion.span
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ ...SOFT_SPRING, delay: 0.12 }}
+                className="text-[10px] font-bold uppercase tracking-[0.4em] text-center truncate"
+                style={{ color: 'rgba(246,199,104,0.75)' }}
+            >
+                Lior Gold
+            </motion.span>
+            <div className="w-10 h-10" aria-hidden="true" />
+        </div>
+    );
+
     return (
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="lp-stage flex flex-col h-full min-h-screen"
+            className="relative w-full min-h-screen"
+            style={{ background: '#0f0712', color: 'rgba(255,251,244,0.92)' }}
         >
-            {/* Ambient layers */}
-            <div className="lp-aurora">
-                <div className="lp-aurora__blob lp-aurora__blob--gold" />
-                <div className="lp-aurora__blob lp-aurora__blob--rose" />
-                <div className="lp-aurora__blob lp-aurora__blob--violet" />
-            </div>
-            <div className="lp-grain" />
-
-            <div data-lenis-prevent className="lenis-inner relative z-10 flex-1 overflow-y-auto pb-36">
-                {/* ── Floating header ───────────────────────────────── */}
-                <div
-                    className="sticky top-0 z-30 flex items-center justify-between px-5 pb-3"
-                    style={{
-                        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)',
-                        background: 'linear-gradient(180deg, rgba(15,7,18,0.92) 0%, rgba(15,7,18,0.55) 60%, transparent 100%)',
-                    }}
-                >
-                    <motion.button
-                        initial={{ opacity: 0, x: -12 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ ...SOFT_SPRING, delay: 0.05 }}
-                        whileTap={{ scale: 0.86 }}
-                        onClick={() => { feedback.tap(); setView('home'); }}
-                        aria-label="Go back"
-                        className="lp-glass w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{ color: 'rgba(255,246,230,0.85)' }}
-                    >
-                        <ArrowLeft size={17} strokeWidth={2.4} />
-                    </motion.button>
-                    <motion.span
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ ...SOFT_SPRING, delay: 0.12 }}
-                        className="text-[10px] font-bold uppercase tracking-[0.4em]"
-                        style={{ color: 'rgba(246,199,104,0.75)' }}
-                    >
-                        Lior Premium
-                    </motion.span>
-                    <div className="w-10 h-10" aria-hidden="true" />
+            {/* Fixed ambient backdrop — the page scrolls natively above it */}
+            <div className="lp-backdrop lp-stage" aria-hidden="true">
+                <div className="lp-aurora">
+                    <div className="lp-aurora__blob lp-aurora__blob--gold" />
+                    <div className="lp-aurora__blob lp-aurora__blob--rose" />
+                    <div className="lp-aurora__blob lp-aurora__blob--violet" />
                 </div>
+                <div className="lp-grain" />
+            </div>
 
+            {/* Fixed glass pill header — escapes contain:paint via portal */}
+            {typeof document !== 'undefined' && ReactDOM.createPortal(shellHeader, document.body)}
+            <div className="lp-shell-spacer" aria-hidden="true" />
+
+            <div className="relative z-10 pb-10">
                 <motion.div
                     initial="hidden"
                     animate="visible"
@@ -430,30 +436,35 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     className="px-5 mx-auto w-full max-w-[480px]"
                 >
                     {/* ── Hero ──────────────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="flex flex-col items-center text-center pt-7 pb-8">
-                        <div className="lp-emblem mb-6">
+                    <motion.div variants={riseVariants} className="flex flex-col items-center text-center pt-9 pb-9">
+                        <div className="lp-emblem mb-7">
                             <div className="lp-orbit"><span className="lp-orbit__spark" /></div>
                             <div className="lp-orbit lp-orbit--reverse"><span className="lp-orbit__spark" /></div>
                             <div
-                                className="relative flex items-center justify-center w-[76px] h-[76px] rounded-[24px]"
+                                className="relative flex items-center justify-center w-[84px] h-[84px] rounded-[26px]"
                                 style={{
-                                    background: 'linear-gradient(140deg, rgba(246,199,104,0.22) 0%, rgba(185,138,62,0.34) 100%)',
-                                    border: '1px solid rgba(246,199,104,0.4)',
-                                    boxShadow: '0 18px 50px rgba(246,199,104,0.18), inset 0 1px 0 rgba(255,246,222,0.25)',
+                                    background: 'linear-gradient(140deg, rgba(246,199,104,0.24) 0%, rgba(185,138,62,0.38) 100%)',
+                                    border: '1px solid rgba(246,199,104,0.45)',
+                                    boxShadow: '0 22px 60px rgba(246,199,104,0.22), inset 0 1px 0 rgba(255,246,222,0.28)',
                                 }}
                             >
-                                <Crown size={34} strokeWidth={1.7} style={{ color: '#f6c768' }} />
+                                <Crown size={38} strokeWidth={1.6} style={{ color: '#f6c768' }} />
                             </div>
                         </div>
 
-                        <h1 className="font-serif text-[2.3rem] leading-[1.04]" style={{ letterSpacing: '-0.025em' }}>
-                            <span style={{ color: 'rgba(255,250,242,0.95)' }}>One membership,</span>
+                        <h1 className="font-serif leading-[1.03]" style={{ fontSize: 'clamp(2.35rem, 9.5vw, 2.8rem)', letterSpacing: '-0.028em' }}>
+                            <span style={{ color: 'rgba(255,250,242,0.96)' }}>One membership,</span>
                             <br />
                             <span className="lp-shimmer-text">every way to love</span>
                         </h1>
-                        <p className="mt-4 max-w-[30ch] text-[14px] leading-relaxed" style={{ color: 'rgba(255,246,230,0.5)' }}>
-                            Films, stories, insights and an unlimited vault — built for the two of you.
+                        <p className="mt-4 max-w-[32ch] text-[14px] leading-relaxed" style={{ color: 'rgba(255,246,230,0.52)' }}>
+                            Your film, date nights, duets, missions — and an unlimited vault for everything you are.
                         </p>
+                        <div className="mt-5 flex items-center gap-2.5" aria-hidden="true">
+                            <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, rgba(246,199,104,0.5))' }} />
+                            <Sparkles size={11} style={{ color: 'rgba(246,199,104,0.7)' }} />
+                            <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, rgba(246,199,104,0.5), transparent)' }} />
+                        </div>
                     </motion.div>
 
                     {/* ── Membership card ───────────────────────────── */}

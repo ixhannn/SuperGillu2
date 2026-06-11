@@ -325,3 +325,53 @@
     background-position: 50% 0;
   }
 }
+
+/* ── Page-flow gold shell (Lenis-native) ──────────────────────────────
+   Gold views flow in the app's page scroll: the dark stage rides a fixed
+   backdrop and the header is a fixed glass pill (vh-shell pattern), so
+   Lenis keeps full control of vertical scrolling — no nested scrollers. */
+/* Absolute (not fixed): lenis-content has contain:paint, which turns it
+   into the containing block for fixed descendants - fixed layers would
+   scroll away with the content. The view root spans the full content
+   height, so an absolute backdrop covers everything. */
+.lp-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.lp-shell-header {
+  position: fixed;
+  top: max(calc(min(env(safe-area-inset-top, 0px), 3.5rem) + 0.55rem), 0.55rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 1.5rem), 27rem);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.45rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(28, 14, 32, 0.78), rgba(18, 9, 22, 0.66));
+  border: 1px solid rgba(246, 199, 104, 0.16);
+  box-shadow:
+    0 14px 44px rgba(8, 3, 12, 0.42),
+    inset 0 1px 0 rgba(255, 246, 222, 0.08);
+  backdrop-filter: blur(20px) saturate(135%);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
+}
+
+.lp-shell-spacer {
+  height: 4.7rem;
+}
+
+[data-native-shell="native"] .lp-shell-header {
+  top: max(calc(env(safe-area-inset-top, 0px) + 0.35rem), 0.35rem);
+}
+
+[data-native-shell="native"] .lp-shell-spacer {
+  height: 4.2rem;
+}
