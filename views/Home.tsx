@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, Brain, Video, Film, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import type { Variants } from 'framer-motion';
@@ -15,6 +15,7 @@ import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
 import { buildRelationshipMilestones } from '../shared/countdowns.js';
+import { buildRelationshipStats } from '../shared/relationshipStats.js';
 import { springSmooth, springSnappy } from '../utils/motion';
 import { toast } from '../utils/toast';
 import { NotificationsService } from '../services/notifications';
@@ -503,6 +504,14 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const homeContainerStyle = getHomeContainerStyle();
     const homeHeaderOverlayHeight = getHomeHeaderOverlayHeight();
 
+    // Instant "by the numbers" content derived from the anniversary alone, so a
+    // brand-new couple sees substance on day one. Recomputed only when the date
+    // changes (the values move at most once a day, so a stable snapshot is fine).
+    const relationshipStats = useMemo(
+        () => buildRelationshipStats(profile.anniversaryDate),
+        [profile.anniversaryDate],
+    );
+
     const triggerReceivedHeartbeat = () => {
         setReceivedHeartbeat(true);
         if (heartbeatBtnRef.current) {
@@ -727,6 +736,40 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     </TiltCard>
                 </div>
             </ScrollReveal>
+
+            {/* ── RELATIONSHIP BY THE NUMBERS — instant day-one substance ─── */}
+            {relationshipStats && (
+                <ScrollReveal variant="fadeUp" delay={0.05}>
+                    <div className="mb-5 relative z-10">
+                        <div className="grid grid-cols-3 gap-2.5">
+                            {[
+                                { label: 'Weeks', value: relationshipStats.weeks.toLocaleString() },
+                                { label: 'Months', value: relationshipStats.months.toLocaleString() },
+                                { label: 'Hours', value: relationshipStats.hours.toLocaleString() },
+                            ].map((stat) => (
+                                <div key={stat.label} className="bento-card p-3 flex flex-col items-center text-center">
+                                    <span className="font-bold text-xl text-lior-500 leading-none" style={DAYS_TOGETHER_LEGACY_FONT_STYLE}>{stat.value}</span>
+                                    <span className="text-[10px] uppercase tracking-widest text-gray-400 mt-1.5">{stat.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex items-center justify-between gap-3 mt-2.5 px-1">
+                            <span className="text-[11px] text-gray-500 flex items-center gap-1.5 min-w-0">
+                                <Calendar size={12} className="text-lior-400 flex-shrink-0" />
+                                <span className="truncate">Your story began on a {relationshipStats.weekday}</span>
+                            </span>
+                            {relationshipStats.nextMilestone && (
+                                <button
+                                    onClick={() => setView('countdowns')}
+                                    className="text-[11px] font-semibold text-lior-500 flex-shrink-0 spring-press"
+                                >
+                                    {relationshipStats.nextMilestone.title} · {relationshipStats.nextMilestone.daysUntil === 0 ? 'today!' : `${relationshipStats.nextMilestone.daysUntil}d`}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </ScrollReveal>
+            )}
 
             {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
             <ScrollReveal variant="popIn">
