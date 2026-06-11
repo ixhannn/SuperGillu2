@@ -5,7 +5,13 @@
       "name": "Lior Dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173
+      "port": 3002
+    },
+    {
+      "name": "Lior Dev E2E",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:e2e", "--", "--port", "3017"],
+      "port": 3017
     }
   ]
 }

@@ -25,11 +25,23 @@ if (typeof document !== 'undefined') {
     activePointerId = null;
   };
 
+  // Every tappable surface gets the pressed state — not just elements that
+  // opted in via .spring-press. Cards rendered as cursor-pointer divs and
+  // plain buttons previously gave zero visual response until the click
+  // ripple fired, which reads as "dead" on native. Scroll cancellation
+  // below keeps this from flashing mid-scroll.
+  const PRESSABLE = '.spring-press, [data-press], button, [role="button"], .cursor-pointer';
   document.addEventListener('pointerdown', (e) => {
     const target = e.target as HTMLElement;
-    const interactive = target.closest('.spring-press, [data-press]') as HTMLElement | null;
-    if (interactive) {
+    const interactive = target.closest(PRESSABLE) as HTMLElement | null;
+    if (interactive && !interactive.closest('[data-no-press]')) {
       if (!interactive.hasAttribute('disabled') && interactive.getAttribute('aria-disabled') !== 'true') {
+        // Near-viewport-sized surfaces (modal backdrops, full-screen sheets)
+        // must not visibly scale — pressing them would reveal layer edges.
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const rect = interactive.getBoundingClientRect();
+        if (vw > 0 && vh > 0 && rect.width >= vw * 0.96 && rect.height >= vh * 0.8) return;
         clearPressed();
         interactive.dataset.pressing = 'true';
         pressedEl = interactive;

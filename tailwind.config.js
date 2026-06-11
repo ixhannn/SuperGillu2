@@ -1,5 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+    future: {
+        // Wrap every hover: utility in @media (hover: hover): touch devices
+        // otherwise latch hover styles after a tap until the next tap lands
+        // elsewhere — a classic "webby" tell inside the native shell.
+        hoverOnlyWhenSupported: true,
+    },
     content: [
         "./index.html",
         "./src/**/*.{js,ts,jsx,tsx}",
