@@ -1024,7 +1024,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                         </span>
                                     </div>
                                     <p className="mt-0.5 text-[11px]" style={{ color: 'rgba(255,246,230,0.45)' }}>
-                                        Films, stories, insights & unlimited everything
+                                        Your film, date nights, duets & unlimited everything
                                     </p>
                                 </div>
                                 <ChevronRight size={16} style={{ color: 'rgba(246,199,104,0.55)' }} />

@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence, animate, useMotionValue, type PanInfo } from 'framer-motion';
-import { Brain, ChevronRight, Crown, Film, Gift, Heart, Infinity as InfinityIcon, Mic, Sparkles, Video } from 'lucide-react';
+import { CalendarHeart, ChevronRight, Clapperboard, Crown, Flame, Gift, Heart, Infinity as InfinityIcon, Sparkles, Video } from 'lucide-react';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { StorageService } from '../services/storage';
@@ -44,16 +44,16 @@ const CONTEXT_COPY: Record<PremiumFeatureContext, { title: string; sub: string }
     },
     generic: {
         title: 'Unlock everything, together',
-        sub: 'Films, stories, insights and an unlimited vault — one membership.',
+        sub: 'Your film, date nights, duets, missions — and an unlimited vault.',
     },
 };
 
 const SHEET_FEATURES = [
+    { icon: Clapperboard, label: 'Our Story film', desc: 'Your whole relationship, retold as a premiere', tint: '#f6c768' },
+    { icon: CalendarHeart, label: 'Date Studio, Depths & Duets', desc: 'Date decks, real-talk cards & a two-pen journal', tint: '#fb7185' },
+    { icon: Flame, label: 'Love Missions', desc: 'Three small missions a week, tuned to them', tint: '#ec4899' },
     { icon: Video, label: 'Video everywhere', desc: 'Timeline, keepsakes & daily moments', tint: '#a855f7' },
-    { icon: Mic, label: 'Unlimited voice notes', desc: 'Your voices, kept forever', tint: '#f43f5e' },
-    { icon: Gift, label: 'Unlimited letters & surprises', desc: 'No caps on future letters or surprises', tint: '#f59e0b' },
-    { icon: Film, label: 'Films & weekly stories', desc: 'Your fortnight, woven into a film', tint: '#818cf8' },
-    { icon: Brain, label: 'Love Tracker insights', desc: 'Patterns, love languages & nudges', tint: '#ec4899' },
+    { icon: Gift, label: 'Unlimited everything', desc: 'Voice notes, letters, surprises & memories', tint: '#f59e0b' },
 ];
 
 const SHEET_SPRING = { type: 'spring', stiffness: 400, damping: 41, mass: 1 } as const;
@@ -78,6 +78,9 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
         });
         feedback.celebrate();
         toast.show('Welcome to Lior Gold 👑', 'success');
+        // Let any mounted premium surface (GoldGate, deck locks, meters)
+        // refresh without waiting for a remount or focus event.
+        window.dispatchEvent(new CustomEvent('lior:premium-changed'));
         onClose();
     }, [onClose]);
 

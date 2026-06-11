@@ -35,6 +35,11 @@ const E2E_VIEWS: ViewState[] = [
   'weekly-recap',
   'storage-console',
   'premium',
+  'our-story',
+  'date-studio',
+  'duet-journal',
+  'depths',
+  'love-missions',
 ];
 
 const E2E_VIEW_SET = new Set<ViewState>(E2E_VIEWS);

@@ -17,6 +17,87 @@
     content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esm.sh https://fonts.googleapis.com https://fonts.gstatic.com https://lior-media.joinlior.workers.dev; media-src 'self' data: blob: https://*.supabase.co https://lior-media.joinlior.workers.dev; worker-src 'self' blob:;">
   <link rel="manifest" href="/manifest.json">
 
+  <!-- E2E only: hidden windows freeze requestAnimationFrame, which stalls
+       framer-motion exits/transitions and makes animation-dependent flows
+       untestable in headless preview harnesses. MessageChannel messages are
+       NOT throttled in hidden pages, so this shim keeps the frameloop alive.
+       Compiled out of meaning unless the build sets VITE_E2E=1 AND the page
+       is opened with ?e2e=1 while hidden. Must run before the app bundle so
+       framer captures the shimmed rAF at module init. -->
+  <script>
+    (function () {
+      if ('%VITE_E2E%' !== '1') return;
+      if (!/[?&]e2e=1/.test(location.search)) return;
+      if (document.visibilityState !== 'hidden') return;
+      var queue = [];
+      var cancelled = new Set();
+      var scheduled = false;
+      var nextId = 1;
+      var last = performance.now();
+      var channel = new MessageChannel();
+      channel.port1.onmessage = function () {
+        var now = performance.now();
+        if (now - last < 12) { channel.port2.postMessage(null); return; }
+        last = now;
+        scheduled = false;
+        var jobs = queue; queue = [];
+        for (var i = 0; i < jobs.length; i++) {
+          if (cancelled.has(jobs[i].id)) { cancelled.delete(jobs[i].id); continue; }
+          try { jobs[i].cb(now); } catch (e) { /* keep the loop alive */ }
+        }
+      };
+      window.requestAnimationFrame = function (cb) {
+        var id = nextId++;
+        queue.push({ id: id, cb: cb });
+        if (!scheduled) { scheduled = true; channel.port2.postMessage(null); }
+        return id;
+      };
+      window.cancelAnimationFrame = function (id) { cancelled.add(id); };
+      // WAAPI timelines are compositor-driven and also freeze when hidden —
+      // animation.finished never resolves, which deadlocks AnimatePresence
+      // mode="wait". The app also calls el.animate() directly, so the API
+      // must exist: replace it with an instant-finish fake that applies the
+      // final keyframe and resolves via timers (which still run when hidden).
+      try {
+        Element.prototype.animate = function (keyframes) {
+          var el = this;
+          try {
+            var last = Array.isArray(keyframes) ? keyframes[keyframes.length - 1] : keyframes;
+            if (last) {
+              for (var k in last) {
+                if (k !== 'offset' && k !== 'easing' && k !== 'composite') el.style[k] = last[k];
+              }
+            }
+          } catch (e) { }
+          var finishListeners = [];
+          var anim = {
+            currentTime: 0,
+            playState: 'running',
+            playbackRate: 1,
+            onfinish: null,
+            oncancel: null,
+            effect: { getComputedTiming: function () { return { duration: 0, progress: 1 }; } },
+            play: function () { }, pause: function () { }, reverse: function () { },
+            persist: function () { }, commitStyles: function () { },
+            cancel: function () { anim.playState = 'idle'; if (anim.oncancel) try { anim.oncancel(); } catch (e) { } },
+            finish: function () { anim.playState = 'finished'; if (anim.onfinish) try { anim.onfinish(); } catch (e) { } },
+            addEventListener: function (type, fn) { if (type === 'finish') finishListeners.push(fn); },
+            removeEventListener: function () { },
+          };
+          anim.finished = new Promise(function (resolve) {
+            setTimeout(function () {
+              anim.playState = 'finished';
+              if (anim.onfinish) try { anim.onfinish(); } catch (e) { }
+              for (var i = 0; i < finishListeners.length; i++) { try { finishListeners[i](); } catch (e) { } }
+              resolve(anim);
+            }, 30);
+          });
+          return anim;
+        };
+      } catch (e) { }
+    })();
+  </script>
+
   <!-- iOS Specific PWA config -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

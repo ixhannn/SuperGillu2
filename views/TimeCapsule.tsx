@@ -1,24 +1,34 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarDays, Camera, Clock3, LockKeyhole, Plus, Trash2, Unlock, X } from 'lucide-react';
-import { ViewHeader } from '../components/ViewHeader';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
+import { AnimatePresence, animate, motion, useMotionValue, type PanInfo } from 'framer-motion';
+import { Camera, Feather, Heart, Plus, X } from 'lucide-react';
+import type { TimeCapsule, ViewState } from '../types';
+import { StorageService, storageEventTarget } from '../services/storage';
+import { GoldShell } from '../components/premium/GoldShell';
+import {
+    GOLD,
+    GOLD_PRESS_SPRING,
+    GOLD_SOFT_SPRING,
+    GoldCTA,
+    GoldSectionHeader,
+    goldRise,
+    goldStagger,
+} from '../components/premium/GoldKit';
+import { ACCENT, DAY_MS, WaxSeal, formatDate } from '../components/premium/time-capsule/SealKit';
+import { OpenedLetterCard, SealedEnvelopeCard } from '../components/premium/time-capsule/LetterCards';
+import { LetterReader } from '../components/premium/time-capsule/LetterReader';
 import { PremiumModal } from '../components/PremiumModal';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { ViewState, TimeCapsule } from '../types';
-import { StorageService, storageEventTarget } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { compressImage } from '../utils/media';
-import { useConfetti } from '../components/Layout';
-import { useLiorMedia } from '../hooks/useLiorImage';
 
 interface TimeCapsuleViewProps {
     setView: (view: ViewState) => void;
 }
 
 const FREE_CAPSULE_LIMIT = 3;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 type CapsuleStatus = 'sealed' | 'ready' | 'opened';
 
@@ -27,140 +37,27 @@ function getStatus(capsule: TimeCapsule): CapsuleStatus {
     return new Date(capsule.unlockDate).getTime() <= Date.now() ? 'ready' : 'sealed';
 }
 
-function daysUntil(iso: string) {
-    return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / DAY_MS));
-}
-
-function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
 function dateOnlyToLocalNoonIso(value: string) {
     return new Date(`${value}T12:00:00`).toISOString();
 }
 
-function progressFor(capsule: TimeCapsule) {
-    const start = new Date(capsule.createdAt).getTime();
-    const end = new Date(capsule.unlockDate).getTime();
-    if (end <= start) return 100;
-    return Math.max(0, Math.min(100, ((Date.now() - start) / (end - start)) * 100));
-}
-
-const statusTone: Record<CapsuleStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-    sealed: { label: 'Sealed', color: '#9a6a2f', bg: 'rgba(255,245,224,0.76)', icon: <LockKeyhole size={14} /> },
-    ready: { label: 'Ready', color: '#b85d78', bg: 'rgba(255,232,238,0.76)', icon: <Unlock size={14} /> },
-    opened: { label: 'Opened', color: '#467f74', bg: 'rgba(229,247,244,0.74)', icon: <Unlock size={14} /> },
-};
-
-const CapsuleCard: React.FC<{
+interface ReaderState {
     capsule: TimeCapsule;
-    onOpen: (id: string) => void;
-    onDelete: (id: string) => void;
-}> = ({ capsule, onOpen, onDelete }) => {
-    const status = getStatus(capsule);
-    const tone = statusTone[status];
-    const { src: imageUrl, handleError } = useLiorMedia(capsule.imageId, capsule.image, capsule.storagePath);
-    const progress = status === 'opened' ? 100 : progressFor(capsule);
-
-    return (
-        <motion.article
-            layout
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="rounded-[26px] overflow-hidden"
-            style={{ background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.78)', boxShadow: '0 14px 34px rgba(155,123,132,0.10)' }}
-        >
-            {imageUrl && (
-                <div className="h-36 overflow-hidden bg-black/5">
-                    <img
-                        src={imageUrl}
-                        alt=""
-                        onError={handleError}
-                        className="w-full h-full object-cover"
-                        style={{ filter: status === 'opened' ? 'none' : 'blur(7px)', transform: status === 'opened' ? 'none' : 'scale(1.04)' }}
-                    />
-                </div>
-            )}
-
-            <div className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ background: tone.bg, color: tone.color }}>
-                            {tone.icon}
-                            {tone.label}
-                        </span>
-                        <h3 className="font-serif text-[21px] leading-tight font-bold mt-3" style={{ color: 'var(--color-text-primary)' }}>
-                            {capsule.title}
-                        </h3>
-                    </div>
-                    <button
-                        type="button"
-                        aria-label={`Delete ${capsule.title}`}
-                        onPointerDown={e => e.stopPropagation()}
-                        onClick={e => { e.stopPropagation(); onDelete(capsule.id); }}
-                        className="w-10 h-10 rounded-2xl flex items-center justify-center active:scale-90 transition-transform shrink-0"
-                        style={{ background: 'rgba(239,68,68,0.08)', color: '#bf4d4d' }}
-                    >
-                        <Trash2 size={16} />
-                    </button>
-                </div>
-
-                {status === 'opened' ? (
-                    <p className="mt-4 text-[15px] leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-text-primary)' }}>
-                        {capsule.message}
-                    </p>
-                ) : (
-                    <div className="mt-4">
-                        <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                            {status === 'ready' ? 'This letter can be opened now.' : 'The message stays hidden until the date arrives.'}
-                        </p>
-                        <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(155,123,132,0.12)' }}>
-                            <div className="h-full rounded-full" style={{ width: `${progress}%`, background: status === 'ready' ? '#b85d78' : '#c49a5a' }} />
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex items-center justify-between gap-3 mt-5">
-                    <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
-                        <CalendarDays size={15} />
-                        {formatDate(capsule.unlockDate)}
-                    </span>
-
-                    {status === 'ready' ? (
-                        <button
-                            type="button"
-                            onClick={() => onOpen(capsule.id)}
-                            className="px-4 py-2.5 rounded-full text-white text-[12px] font-bold active:scale-95 transition-transform"
-                            style={{ background: 'var(--theme-nav-center-bg-active)', boxShadow: '0 8px 22px rgba(196,104,126,0.22)' }}
-                        >
-                            Open
-                        </button>
-                    ) : status === 'sealed' ? (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9a6a2f' }}>
-                            <Clock3 size={13} />
-                            {daysUntil(capsule.unlockDate)} day{daysUntil(capsule.unlockDate) === 1 ? '' : 's'}
-                        </span>
-                    ) : null}
-                </div>
-            </div>
-        </motion.article>
-    );
-};
+    mode: 'ceremony' | 'read';
+}
 
 export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => {
     const [capsules, setCapsules] = useState<TimeCapsule[]>([]);
     const [showForm, setShowForm] = useState(false);
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+    const [reading, setReading] = useState<ReaderState | null>(null);
     const [title, setTitle] = useState('');
     const [message, setMessage] = useState('');
     const [unlockDate, setUnlockDate] = useState('');
     const [image, setImage] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const confetti = useConfetti();
 
     useEffect(() => {
         const load = () => setCapsules(StorageService.getTimeCapsules());
@@ -169,22 +66,36 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
         return () => storageEventTarget.removeEventListener('storage-update', load);
     }, []);
 
+    // Hardware back closes the composer sheet while it is open.
+    useEffect(() => {
+        if (!showForm) return;
+        const handleBack = (e: Event) => { e.preventDefault(); setShowForm(false); };
+        window.addEventListener('lior:hardware-back', handleBack);
+        return () => window.removeEventListener('lior:hardware-back', handleBack);
+    }, [showForm]);
+
     const profile = StorageService.getCoupleProfile();
-    const canCreate = !!profile.isPremium || capsules.length < FREE_CAPSULE_LIMIT;
+    const isPremium = !!profile.isPremium;
+    const canCreate = isPremium || capsules.length < FREE_CAPSULE_LIMIT;
+    const sealInitial = (profile.myName?.trim()?.charAt(0) || '✦').toUpperCase();
 
-    const sortedCapsules = useMemo(() => {
-        const rank: Record<CapsuleStatus, number> = { ready: 0, sealed: 1, opened: 2 };
-        return [...capsules].sort((a, b) => {
-            const byStatus = rank[getStatus(a)] - rank[getStatus(b)];
-            if (byStatus !== 0) return byStatus;
-            return new Date(a.unlockDate).getTime() - new Date(b.unlockDate).getTime();
-        });
+    const groups = useMemo(() => {
+        const ready: TimeCapsule[] = [];
+        const sealed: TimeCapsule[] = [];
+        const opened: TimeCapsule[] = [];
+        for (const capsule of capsules) {
+            const status = getStatus(capsule);
+            if (status === 'ready') ready.push(capsule);
+            else if (status === 'sealed') sealed.push(capsule);
+            else opened.push(capsule);
+        }
+        const byUnlockAsc = (a: TimeCapsule, b: TimeCapsule) => new Date(a.unlockDate).getTime() - new Date(b.unlockDate).getTime();
+        return {
+            ready: [...ready].sort(byUnlockAsc),
+            sealed: [...sealed].sort(byUnlockAsc),
+            opened: [...opened].sort((a, b) => byUnlockAsc(b, a)),
+        };
     }, [capsules]);
-
-    const counts = useMemo(() => capsules.reduce((acc, capsule) => {
-        acc[getStatus(capsule)] += 1;
-        return acc;
-    }, { sealed: 0, ready: 0, opened: 0 } as Record<CapsuleStatus, number>), [capsules]);
 
     const openComposer = () => {
         if (canCreate) {
@@ -238,19 +149,24 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
             setShowForm(false);
             feedback.celebrate();
             toast.show('Letter sealed', 'success');
-        } catch (error: any) {
-            toast.show(error?.message || 'Could not seal letter', 'error');
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : '';
+            toast.show(msg || 'Could not seal letter', 'error');
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleUnlock = async (id: string) => {
-        await StorageService.unlockTimeCapsule(id);
-        setCapsules(StorageService.getTimeCapsules());
-        feedback.celebrate();
-        confetti.trigger();
-    };
+    const handleCrack = useCallback(async (id: string) => {
+        try {
+            await StorageService.unlockTimeCapsule(id);
+            setCapsules(StorageService.getTimeCapsules());
+        } catch {
+            toast.show('Could not open the letter', 'error');
+        }
+    }, []);
+
+    const closeReader = useCallback(() => setReading(null), []);
 
     const confirmDelete = async () => {
         if (!deleteTarget) return;
@@ -266,191 +182,412 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
         }
     };
 
+    const requestDelete = (id: string) => {
+        feedback.tap();
+        setDeleteTarget(id);
+    };
+
+    // Composer sheet pull-to-dismiss (pan pattern from PremiumModal —
+    // attached to the grab zone so the form body can still scroll).
+    const sheetY = useMotionValue(0);
+
+    useEffect(() => {
+        if (!showForm) sheetY.set(0);
+    }, [showForm, sheetY]);
+
+    const handlePan = useCallback((_: unknown, info: PanInfo) => {
+        sheetY.set(info.offset.y > 0 ? info.offset.y : info.offset.y * 0.06);
+    }, [sheetY]);
+
+    const handlePanEnd = useCallback((_: unknown, info: PanInfo) => {
+        if (info.offset.y > 130 || info.velocity.y > 700) {
+            feedback.tap();
+            setShowForm(false);
+        } else {
+            animate(sheetY, 0, { type: 'spring', stiffness: 420, damping: 34 });
+        }
+    }, [sheetY]);
+
     const minDate = new Date(Date.now() + DAY_MS).toISOString().split('T')[0];
     const isSaveDisabled = isSaving || !title.trim() || !message.trim() || !unlockDate;
 
+    const fieldStyle: React.CSSProperties = {
+        background: 'rgba(255,255,255,0.055)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        color: GOLD.textHigh,
+    };
+
     return (
-        <div className="min-h-screen px-5 pt-10 pb-36">
-            <ViewHeader
-                title="Future Letters"
-                subtitle="Write now. Open later."
-                onBack={() => setView('home')}
-                variant="centered"
-                rightSlot={
-                    <button
-                        type="button"
-                        onClick={openComposer}
-                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-white active:scale-95 transition-transform"
-                        style={{ background: 'var(--theme-nav-center-bg-active)', boxShadow: '0 8px 22px rgba(196,104,126,0.24)' }}
-                        aria-label="Write future letter"
-                    >
-                        <Plus size={20} />
-                    </button>
-                }
-            />
-
-            <section className="rounded-[28px] p-5 mb-4" style={{ background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.78)', boxShadow: '0 14px 34px rgba(155,123,132,0.10)' }}>
-                <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>Private queue</p>
-                        <h2 className="font-serif text-2xl font-bold mt-1" style={{ color: 'var(--color-text-primary)' }}>
-                            {counts.ready ? `${counts.ready} ready to open` : 'Letters for later'}
-                        </h2>
-                        <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-                            Keep the note hidden until the day you choose.
-                        </p>
+        <GoldShell
+            eyebrow="Future Letters"
+            accent={ACCENT}
+            rightSlot={
+                <motion.button
+                    initial={{ opacity: 0, x: 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ ...GOLD_SOFT_SPRING, delay: 0.08 }}
+                    whileTap={{ scale: 0.86 }}
+                    onClick={openComposer}
+                    aria-label="Write a future letter"
+                    className="lp-glass w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ color: GOLD.light }}
+                >
+                    <Plus size={18} strokeWidth={2.4} />
+                </motion.button>
+            }
+        >
+            <motion.div initial="hidden" animate="visible" variants={goldStagger}>
+                {/* ── Hero ──────────────────────────────────────────── */}
+                <motion.div variants={goldRise} className="flex flex-col items-center text-center pt-6">
+                    <div className="lp-emblem mb-5">
+                        <div className="lp-orbit"><span className="lp-orbit__spark" /></div>
+                        <WaxSeal initial="✦" size={64} />
                     </div>
-                    <button
-                        type="button"
-                        onClick={openComposer}
-                        className="shrink-0 rounded-2xl px-4 py-3 flex items-center gap-2 text-white text-[13px] font-bold active:scale-95 transition-transform"
-                        style={{ background: 'var(--theme-nav-center-bg-active)', boxShadow: '0 10px 24px rgba(196,104,126,0.22)' }}
-                    >
-                        <Plus size={17} />
-                        Write
-                    </button>
-                </div>
+                    <h1 className="font-serif text-[2rem] leading-[1.08]" style={{ letterSpacing: '-0.02em' }}>
+                        <span style={{ color: GOLD.textHigh }}>Letters that wait</span>
+                        <br />
+                        <span className="lp-shimmer-text">for the right day</span>
+                    </h1>
+                    <p className="mt-3 max-w-[30ch] text-[13.5px] leading-relaxed" style={{ color: GOLD.textMid }}>
+                        Seal a note in wax and choose the morning it opens — not a day sooner.
+                    </p>
+                </motion.div>
 
-                <div className="grid grid-cols-3 gap-2.5 mt-5">
-                    {[
-                        ['Ready', counts.ready],
-                        ['Sealed', counts.sealed],
-                        ['Opened', counts.opened],
-                    ].map(([label, value]) => (
-                        <div key={label} className="rounded-2xl px-3 py-3" style={{ background: 'rgba(255,248,249,0.74)', border: '1px solid rgba(196,104,126,0.10)' }}>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-secondary)' }}>{label}</p>
-                            <p className="text-xl font-bold mt-0.5" style={{ color: 'var(--color-text-primary)' }}>{value}</p>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            <div className="space-y-3.5">
-                <AnimatePresence mode="popLayout">
-                    {sortedCapsules.length === 0 ? (
-                        <motion.button
-                            type="button"
-                            key="empty"
-                            initial={{ opacity: 0, y: 12 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0 }}
-                            onClick={openComposer}
-                            className="w-full rounded-[28px] p-6 text-left spring-press"
-                            style={{ background: 'rgba(255,255,255,0.66)', border: '1px dashed rgba(196,104,126,0.24)' }}
-                        >
-                            <LockKeyhole size={24} style={{ color: 'var(--color-nav-active)' }} />
-                            <p className="font-serif text-xl font-bold mt-4" style={{ color: 'var(--color-text-primary)' }}>No letters yet</p>
-                            <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-secondary)' }}>Write a note and choose when it opens.</p>
-                        </motion.button>
-                    ) : sortedCapsules.map(capsule => (
-                        <CapsuleCard
-                            key={capsule.id}
-                            capsule={capsule}
-                            onOpen={handleUnlock}
-                            onDelete={setDeleteTarget}
-                        />
-                    ))}
-                </AnimatePresence>
-            </div>
-
-            {!profile.isPremium && (
-                <p className="text-center text-[12px] py-5" style={{ color: 'var(--color-text-secondary)' }}>
-                    {capsules.length}/{FREE_CAPSULE_LIMIT} free future letters
-                </p>
-            )}
-
-            <AnimatePresence>
-                {showForm && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-sm p-4"
-                        onClick={() => setShowForm(false)}
-                    >
-                        <motion.div
-                            initial={{ y: 120, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: 80, opacity: 0 }}
-                            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                            className="w-full max-w-md rounded-t-[28px] overflow-hidden"
-                            style={{ background: 'var(--color-surface)', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 -18px 48px rgba(45,31,37,0.18)' }}
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <div className="flex items-center justify-between px-5 pt-5 pb-3">
-                                <div>
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>New letter</p>
-                                    <h2 className="font-serif text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>Write for later</h2>
-                                </div>
-                                <button type="button" onClick={() => setShowForm(false)} aria-label="Close composer" className="w-10 h-10 rounded-2xl flex items-center justify-center active:scale-90" style={{ background: 'rgba(155,123,132,0.10)', color: 'var(--color-text-secondary)' }}>
-                                    <X size={18} />
-                                </button>
+                {/* ── Counts ────────────────────────────────────────── */}
+                {capsules.length > 0 && (
+                    <motion.div variants={goldRise} className="grid grid-cols-3 gap-2.5 mt-7">
+                        {[
+                            { label: 'Ready', value: groups.ready.length },
+                            { label: 'Sealed', value: groups.sealed.length },
+                            { label: 'Opened', value: groups.opened.length },
+                        ].map((stat) => (
+                            <div key={stat.label} className="lp-glass rounded-2xl px-3 py-3.5 text-center">
+                                <span className="block font-serif text-[1.45rem] leading-none" style={{ color: GOLD.textHigh }}>
+                                    {stat.value}
+                                </span>
+                                <span className="mt-1.5 block text-[9.5px] font-bold uppercase tracking-[0.16em]" style={{ color: GOLD.textLow }}>
+                                    {stat.label}
+                                </span>
                             </div>
-
-                            <div className="px-5 pb-6 space-y-4">
-                                <input
-                                    value={title}
-                                    onChange={e => setTitle(e.target.value)}
-                                    placeholder="Title"
-                                    className="w-full px-4 py-3.5 rounded-2xl text-[16px] outline-none"
-                                    style={{ background: 'rgba(255,255,255,0.68)', border: '1px solid rgba(155,123,132,0.14)', color: 'var(--color-text-primary)' }}
-                                />
-
-                                <textarea
-                                    value={message}
-                                    onChange={e => setMessage(e.target.value)}
-                                    placeholder="Letter"
-                                    rows={7}
-                                    className="w-full px-4 py-3.5 rounded-2xl text-[15px] outline-none resize-none"
-                                    style={{ background: 'rgba(255,255,255,0.68)', border: '1px solid rgba(155,123,132,0.14)', color: 'var(--color-text-primary)', lineHeight: '24px' }}
-                                />
-
-                                <div>
-                                    <label className="text-[11px] font-bold uppercase tracking-widest mb-2 block" style={{ color: 'var(--color-text-secondary)' }}>Opens on</label>
-                                    <input
-                                        type="date"
-                                        value={unlockDate}
-                                        min={minDate}
-                                        onChange={e => setUnlockDate(e.target.value)}
-                                        className="w-full px-4 py-3.5 rounded-2xl text-[15px] outline-none"
-                                        style={{ background: 'rgba(255,255,255,0.68)', border: '1px solid rgba(155,123,132,0.14)', color: 'var(--color-text-primary)' }}
-                                    />
-                                </div>
-
-                                {image ? (
-                                    <div className="relative rounded-2xl overflow-hidden">
-                                        <img src={image} alt="" className="w-full h-36 object-cover" />
-                                        <button type="button" onClick={() => setImage(null)} className="absolute top-2 right-2 bg-black/45 text-white p-2 rounded-full active:scale-90" aria-label="Remove photo">
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="flex items-center gap-3 px-4 py-3.5 rounded-2xl w-full text-left active:scale-[0.99] transition-transform"
-                                        style={{ background: 'rgba(255,255,255,0.5)', border: '1px dashed rgba(155,123,132,0.22)', color: 'var(--color-text-secondary)' }}
-                                    >
-                                        <Camera size={17} />
-                                        <span className="text-[14px] font-semibold">Add a photo</span>
-                                    </button>
-                                )}
-                                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-
-                                <button
-                                    type="button"
-                                    onClick={handleSave}
-                                    disabled={isSaveDisabled}
-                                    className="w-full py-4 rounded-2xl text-white font-bold disabled:opacity-40 active:scale-[0.98] transition-transform"
-                                    style={{ background: 'var(--theme-nav-center-bg-active)', boxShadow: '0 10px 26px rgba(196,104,126,0.22)' }}
-                                >
-                                    {isSaving ? 'Sealing...' : 'Seal Letter'}
-                                </button>
-                            </div>
-                        </motion.div>
+                        ))}
                     </motion.div>
                 )}
-            </AnimatePresence>
+
+                {/* ── Empty state ───────────────────────────────────── */}
+                {capsules.length === 0 && (
+                    <motion.div
+                        variants={goldRise}
+                        className="relative overflow-hidden rounded-[1.6rem] mt-8 px-6 py-8 flex flex-col items-center text-center"
+                        style={{ background: GOLD.cardBg, border: `1px solid ${ACCENT}33` }}
+                    >
+                        <div
+                            className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
+                            style={{ background: `radial-gradient(circle, ${ACCENT}2e 0%, transparent 70%)` }}
+                        />
+                        <div
+                            className="relative z-10 flex w-12 h-12 items-center justify-center rounded-2xl mb-4"
+                            style={{ background: `${ACCENT}1f`, border: `1px solid ${ACCENT}3d` }}
+                        >
+                            <Feather size={22} style={{ color: ACCENT }} />
+                        </div>
+                        <p className="relative z-10 font-serif text-[1.3rem] leading-tight" style={{ color: GOLD.textHigh }}>
+                            Nothing waiting yet
+                        </p>
+                        <p className="relative z-10 mt-2 max-w-[30ch] text-[12.5px] leading-relaxed" style={{ color: GOLD.textMid }}>
+                            Write to a future morning — your next anniversary, a hard week you can see coming, a promise you want to keep.
+                        </p>
+                        <motion.button
+                            whileTap={{ scale: 0.96 }}
+                            transition={GOLD_PRESS_SPRING}
+                            onClick={openComposer}
+                            className="lp-cta relative z-10 mt-5 h-[46px] px-6 rounded-xl font-bold text-[13.5px]"
+                            style={{
+                                background: `linear-gradient(135deg, ${GOLD.primary} 0%, ${GOLD.deep} 100%)`,
+                                color: GOLD.inkOnGold,
+                                boxShadow: '0 10px 28px rgba(246,199,104,0.26)',
+                            }}
+                        >
+                            Write the first letter
+                        </motion.button>
+                    </motion.div>
+                )}
+
+                {/* ── Ready to open ─────────────────────────────────── */}
+                {groups.ready.length > 0 && (
+                    <motion.div variants={goldRise}>
+                        <GoldSectionHeader label="Ready to open" className="mt-9 mb-3" />
+                    </motion.div>
+                )}
+                {groups.ready.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                        <AnimatePresence initial={false} mode="popLayout">
+                            {groups.ready.map((capsule) => (
+                                <SealedEnvelopeCard
+                                    key={capsule.id}
+                                    capsule={capsule}
+                                    sealInitial={sealInitial}
+                                    ready
+                                    onTap={() => { feedback.tap(); setReading({ capsule, mode: 'ceremony' }); }}
+                                    onDelete={() => requestDelete(capsule.id)}
+                                />
+                            ))}
+                        </AnimatePresence>
+                    </div>
+                )}
+
+                {/* ── Still sealed ──────────────────────────────────── */}
+                {groups.sealed.length > 0 && (
+                    <motion.div variants={goldRise}>
+                        <GoldSectionHeader label="Still sealed" className="mt-9 mb-3" />
+                    </motion.div>
+                )}
+                {groups.sealed.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                        <AnimatePresence initial={false} mode="popLayout">
+                            {groups.sealed.map((capsule) => (
+                                <SealedEnvelopeCard
+                                    key={capsule.id}
+                                    capsule={capsule}
+                                    sealInitial={sealInitial}
+                                    ready={false}
+                                    onTap={() => { feedback.tap(); toast.show(`Sealed until ${formatDate(capsule.unlockDate)}`, 'info'); }}
+                                    onDelete={() => requestDelete(capsule.id)}
+                                />
+                            ))}
+                        </AnimatePresence>
+                    </div>
+                )}
+
+                {/* ── Opened letters ────────────────────────────────── */}
+                {groups.opened.length > 0 && (
+                    <motion.div variants={goldRise}>
+                        <GoldSectionHeader label="Opened letters" className="mt-9 mb-3" />
+                    </motion.div>
+                )}
+                {groups.opened.length > 0 && (
+                    <div className="flex flex-col gap-2.5">
+                        <AnimatePresence initial={false} mode="popLayout">
+                            {groups.opened.map((capsule) => (
+                                <OpenedLetterCard
+                                    key={capsule.id}
+                                    capsule={capsule}
+                                    onRead={() => { feedback.tap(); setReading({ capsule, mode: 'read' }); }}
+                                    onDelete={() => requestDelete(capsule.id)}
+                                />
+                            ))}
+                        </AnimatePresence>
+                    </div>
+                )}
+
+                {/* ── Seal a new letter ─────────────────────────────── */}
+                {capsules.length > 0 && (
+                    <motion.div variants={goldRise} className="mt-8">
+                        <GoldCTA onClick={openComposer}>Seal a new letter</GoldCTA>
+                    </motion.div>
+                )}
+
+                {/* ── Free meter ────────────────────────────────────── */}
+                {!isPremium && (
+                    <motion.div
+                        variants={goldRise}
+                        className="rounded-[1.4rem] mt-5 px-4 py-4"
+                        style={{ background: GOLD.cardBg, border: GOLD.cardBorder }}
+                    >
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: GOLD.textLow }}>
+                                Free letters
+                            </span>
+                            <span className="text-[11.5px] font-semibold" style={{ color: GOLD.textMid }}>
+                                {capsules.length} of {FREE_CAPSULE_LIMIT} letters
+                            </span>
+                        </div>
+                        <div className="h-[5px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                            <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.max(4, Math.min(1, capsules.length / FREE_CAPSULE_LIMIT) * 100)}%` }}
+                                transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+                                className="h-full rounded-full"
+                                style={{ background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT}cc)` }}
+                            />
+                        </div>
+                        {capsules.length >= FREE_CAPSULE_LIMIT && (
+                            <button
+                                type="button"
+                                onClick={() => { feedback.tap(); setShowPremiumModal(true); }}
+                                className="mt-3 text-[11.5px] font-semibold active:scale-95 transition-transform"
+                                style={{ color: GOLD.eyebrow }}
+                            >
+                                Gold removes the limit →
+                            </button>
+                        )}
+                    </motion.div>
+                )}
+
+                {/* ── Footer ────────────────────────────────────────── */}
+                <motion.div variants={goldRise} className="mt-10 flex items-center justify-center gap-2">
+                    <Heart size={11} style={{ color: 'rgba(236,72,153,0.6)' }} fill="currentColor" strokeWidth={0} />
+                    <span className="text-[11px]" style={{ color: GOLD.textLow }}>
+                        Some words are worth the wait.
+                    </span>
+                </motion.div>
+            </motion.div>
+
+            {/* ── Composer sheet (portal + pan + hardware-back) ─────── */}
+            {ReactDOM.createPortal(
+                <AnimatePresence>
+                    {showForm && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0, transition: { duration: 0.22 } }}
+                            className="fixed inset-0 z-[200] flex items-end justify-center"
+                            style={{ backgroundColor: 'rgba(13,7,15,0.66)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+                            onClick={() => setShowForm(false)}
+                        >
+                            <motion.div
+                                initial={{ y: '104%' }}
+                                animate={{ y: 0 }}
+                                exit={{ y: '104%', transition: { duration: 0.3, ease: [0.4, 0, 0.7, 0.2] } }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 41, mass: 1 }}
+                                role="dialog"
+                                aria-modal="true"
+                                aria-label="Write a future letter"
+                                className="lp-stage relative w-full max-w-[440px] overflow-hidden"
+                                style={{
+                                    y: sheetY,
+                                    borderRadius: '32px 32px 0 0',
+                                    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {/* Ambient layers */}
+                                <div className="lp-aurora">
+                                    <div className="lp-aurora__blob lp-aurora__blob--gold" style={{ width: 300, height: 300, top: -120 }} />
+                                    <div
+                                        className="lp-aurora__blob lp-aurora__blob--violet"
+                                        style={{ width: 280, height: 280, top: 160, background: `radial-gradient(circle, ${ACCENT}38 0%, transparent 65%)` }}
+                                    />
+                                </div>
+                                <div className="lp-grain" />
+                                <div className="absolute top-0 left-0 right-0 h-px z-10 bg-gradient-to-r from-transparent via-amber-300/60 to-transparent" />
+
+                                {/* Grab zone — pan-to-dismiss lives here so the form scrolls */}
+                                <motion.div
+                                    onPan={handlePan}
+                                    onPanEnd={handlePanEnd}
+                                    className="relative z-10 px-6 pt-3 pb-2"
+                                    style={{ touchAction: 'none' }}
+                                >
+                                    <div className="flex justify-center mb-4">
+                                        <div className="w-10 h-[5px] rounded-full" style={{ background: 'rgba(255,246,230,0.18)' }} />
+                                    </div>
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: GOLD.eyebrow }}>
+                                        New letter
+                                    </p>
+                                    <h2 className="font-serif text-[1.5rem] mt-1 leading-tight" style={{ color: GOLD.textHigh, letterSpacing: '-0.02em' }}>
+                                        Seal something for later
+                                    </h2>
+                                </motion.div>
+
+                                <div className="relative z-10 px-6 pb-8 pt-3 space-y-4 overflow-y-auto" style={{ maxHeight: '68vh' }}>
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: 'rgba(246,199,104,0.55)' }}>
+                                            Title
+                                        </label>
+                                        <input
+                                            value={title}
+                                            onChange={e => setTitle(e.target.value)}
+                                            placeholder="For the morning of our anniversary"
+                                            className="w-full px-4 py-3.5 rounded-2xl text-[16px] outline-none placeholder:text-[rgba(255,246,230,0.28)]"
+                                            style={fieldStyle}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: 'rgba(246,199,104,0.55)' }}>
+                                            The letter
+                                        </label>
+                                        <textarea
+                                            value={message}
+                                            onChange={e => setMessage(e.target.value)}
+                                            placeholder="Write to the two of you on the day this opens — what you hope for, what you promise, what you never want to forget."
+                                            rows={6}
+                                            className="w-full px-4 py-3.5 rounded-2xl text-[15px] outline-none resize-none placeholder:text-[rgba(255,246,230,0.28)]"
+                                            style={{ ...fieldStyle, lineHeight: '24px' }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: 'rgba(246,199,104,0.55)' }}>
+                                            Opens on
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={unlockDate}
+                                            min={minDate}
+                                            onChange={e => setUnlockDate(e.target.value)}
+                                            className="w-full px-4 py-3.5 rounded-2xl text-[15px] outline-none"
+                                            style={{ ...fieldStyle, colorScheme: 'dark' }}
+                                        />
+                                    </div>
+
+                                    {image ? (
+                                        <div className="relative rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+                                            <img src={image} alt="" className="w-full h-40 object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => setImage(null)}
+                                                className="absolute top-2 right-2 p-2 rounded-full active:scale-90 transition-transform"
+                                                style={{ background: 'rgba(13,7,15,0.6)', color: 'rgba(255,246,230,0.9)' }}
+                                                aria-label="Remove photo"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl text-left active:scale-[0.99] transition-transform"
+                                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(245,158,11,0.3)', color: GOLD.textMid }}
+                                        >
+                                            <Camera size={16} style={{ color: 'rgba(246,199,104,0.7)' }} />
+                                            <span className="text-[13.5px] font-semibold">Tuck in a photo</span>
+                                            <span className="ml-auto text-[10.5px]" style={{ color: GOLD.textLow }}>optional</span>
+                                        </button>
+                                    )}
+                                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+
+                                    <GoldCTA onClick={handleSave} disabled={isSaveDisabled}>
+                                        {isSaving ? 'Sealing…' : 'Seal the letter'}
+                                    </GoldCTA>
+                                    <p className="text-center text-[11.5px]" style={{ color: GOLD.textLow }}>
+                                        It stays sealed until the day arrives.
+                                    </p>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
+            {/* ── Reader / unlock ceremony ──────────────────────────── */}
+            {ReactDOM.createPortal(
+                <AnimatePresence>
+                    {reading && (
+                        <LetterReader
+                            key={reading.capsule.id}
+                            capsule={reading.capsule}
+                            mode={reading.mode}
+                            sealInitial={sealInitial}
+                            onCrack={handleCrack}
+                            onClose={closeReader}
+                        />
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
             <ConfirmModal
                 isOpen={deleteTarget !== null}
@@ -464,6 +601,6 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
             />
 
             <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} featureContext="capsule" />
-        </div>
+        </GoldShell>
     );
 };

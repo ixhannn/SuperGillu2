@@ -139,6 +139,69 @@ export interface CoupleProfile {
   nightlights?: NightlightEntry[];
   streakData?: StreakData;
   questions?: QuestionEntry[];
+  /** Premium: Duet Journal — both write, sealed until both have written. */
+  duetEntries?: DuetEntry[];
+  /** Premium: Date Studio — saved & scheduled date plans. */
+  datePlans?: DatePlan[];
+  /** Premium: Love Missions — weekly mission state. */
+  missionState?: MissionState;
+  /** Premium: Depths — favorites & session progress. */
+  depthsState?: DepthsState;
+}
+
+// ── Premium: Duet Journal ───────────────────────────────────────────
+export interface DuetAnswer {
+  text: string;
+  writtenAt: string; // ISO
+}
+
+export interface DuetEntry {
+  id: string;
+  prompt: string;
+  answers: Record<string, DuetAnswer>; // keyed by partner display name
+  createdAt: string; // ISO
+  revealedAt?: string; // ISO — set when both answers exist
+}
+
+// ── Premium: Date Studio ────────────────────────────────────────────
+export interface DatePlan {
+  id: string;
+  ideaId?: string; // content id from content/dateIdeas.ts
+  title: string;
+  emoji: string;
+  category: string;
+  scheduledFor?: string; // ISO
+  note?: string;
+  completedAt?: string; // ISO
+  createdAt: string; // ISO
+}
+
+// ── Premium: Love Missions ──────────────────────────────────────────
+export interface MissionRecord {
+  id: string; // content id from content/missions.ts
+  weekStart: string; // YYYY-MM-DD (Monday)
+  title: string;
+  detail: string;
+  language: LoveLanguageType | 'any';
+  completedBy?: string; // display name
+  completedAt?: string; // ISO
+  feltBy?: string; // partner acknowledgment display name
+  feltAt?: string; // ISO
+}
+
+export interface MissionState {
+  weekStart: string; // YYYY-MM-DD (Monday) of the active week
+  missions: MissionRecord[];
+  completedTotal: number;
+  weekStreak: number; // consecutive weeks with ≥1 completion
+  lastCompletedWeek?: string; // YYYY-MM-DD (Monday)
+}
+
+// ── Premium: Depths (conversation decks) ────────────────────────────
+export interface DepthsState {
+  favorites: string[]; // question content ids
+  completedSessions: number;
+  lastDeckId?: string;
 }
 
 export interface PresenceTrace {
@@ -648,7 +711,7 @@ export interface SystemMessage {
   seenAt?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium' | 'our-story' | 'date-studio' | 'duet-journal' | 'depths' | 'love-missions';
 
 // ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {
