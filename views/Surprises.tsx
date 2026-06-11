@@ -10,6 +10,7 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { useConfetti } from '../components/Layout';
+import { useSheetDismiss } from '../hooks/useSheetDismiss';
 
 interface SurprisesViewProps {
     setView: (view: ViewState) => void;
@@ -81,6 +82,7 @@ const SurpriseReveal: React.FC<{ surprise: Surprise; onClose: () => void }> = ({
 export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
     const [surprises, setSurprises] = useState<Surprise[]>([]);
     const [showForm, setShowForm] = useState(false);
+    const formSheetDismiss = useSheetDismiss(() => setShowForm(false));
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [activeSurprise, setActiveSurprise] = useState<Surprise | null>(null);
     const [title, setTitle] = useState('');
@@ -265,8 +267,12 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
                             className="w-full max-w-[440px] overflow-hidden"
                             style={{ borderRadius: '28px 28px 0 0', background: 'var(--theme-bg-main)', maxHeight: '88vh', overflowY: 'auto' }}
                             onClick={e => e.stopPropagation()}
+                            {...formSheetDismiss.sheetDragProps}
                         >
-                            <div className="flex items-center justify-between px-6 pt-6 pb-4">
+                            <div className="flex justify-center pt-3 -mb-1" {...formSheetDismiss.handleProps}>
+                                <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.2)' }} />
+                            </div>
+                            <div className="flex items-center justify-between px-6 pt-3 pb-4" {...formSheetDismiss.handleProps}>
                                 <h2 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>Plan a Surprise</h2>
                                 <button onClick={() => setShowForm(false)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.1)' }}>
                                     <X size={16} style={{ color: 'var(--color-text-primary)' }} />

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronRight } from 'lucide-react';
 import { RelationshipSignals } from '../services/relationshipSignals';
 import { feedback } from '../utils/feedback';
+import { useSheetDismiss } from '../hooks/useSheetDismiss';
 
 interface PulseCheckSheetProps {
   onComplete?: () => void;
@@ -24,6 +25,7 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
   const [gratitude, setGratitude] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const question = RelationshipSignals.getNextPulseQuestion();
+  const { sheetDragProps, handleProps } = useSheetDismiss(() => onClose?.());
 
   const handleScoreSelect = useCallback((score: 1 | 2 | 3 | 4 | 5) => {
     feedback.tap();
@@ -76,9 +78,10 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
         transition={{ type: 'spring', damping: 28, stiffness: 350 }}
         className="w-full max-w-lg rounded-t-3xl overflow-hidden"
         style={{ background: 'var(--theme-bg-main)' }}
+        {...sheetDragProps}
       >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
+        {/* Handle — drag down to dismiss */}
+        <div className="flex justify-center pt-3 pb-1" {...handleProps}>
           <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(var(--theme-particle-2-rgb), 0.2)' }} />
         </div>
 

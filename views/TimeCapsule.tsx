@@ -9,6 +9,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { useSheetDismiss } from '../hooks/useSheetDismiss';
 import { compressImage } from '../utils/media';
 import { useConfetti } from '../components/Layout';
 import { useLiorMedia } from '../hooks/useLiorImage';
@@ -152,6 +153,7 @@ const CapsuleCard: React.FC<{
 export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => {
     const [capsules, setCapsules] = useState<TimeCapsule[]>([]);
     const [showForm, setShowForm] = useState(false);
+    const formSheetDismiss = useSheetDismiss(() => setShowForm(false));
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
     const [title, setTitle] = useState('');
@@ -376,8 +378,12 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
                             className="w-full max-w-md rounded-t-[28px] overflow-hidden"
                             style={{ background: 'var(--color-surface)', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 -18px 48px rgba(45,31,37,0.18)' }}
                             onClick={e => e.stopPropagation()}
+                            {...formSheetDismiss.sheetDragProps}
                         >
-                            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                            <div className="flex justify-center pt-3 -mb-1" {...formSheetDismiss.handleProps}>
+                                <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.2)' }} />
+                            </div>
+                            <div className="flex items-center justify-between px-5 pt-2 pb-3" {...formSheetDismiss.handleProps}>
                                 <div>
                                     <p className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-secondary)' }}>New letter</p>
                                     <h2 className="font-serif text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>Write for later</h2>

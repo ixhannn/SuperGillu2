@@ -9,6 +9,7 @@ import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { useSheetDismiss } from '../hooks/useSheetDismiss';
 
 interface VoiceNotesViewProps {
     setView: (view: ViewState) => void;
@@ -329,6 +330,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
         setPendingAudio(null);
         setTitle('');
     };
+    const saveSheetDismiss = useSheetDismiss(handleDiscard);
 
     const handleDelete = async (id: string) => {
         await StorageService.deleteVoiceNote(id);
@@ -539,9 +541,10 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                             maxHeight: '70vh',
                             paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)',
                         }}
+                        {...saveSheetDismiss.sheetDragProps}
                     >
-                        {/* Drag handle */}
-                        <div className="flex justify-center pt-3 pb-1">
+                        {/* Drag handle — flick down to discard */}
+                        <div className="flex justify-center pt-3 pb-1" {...saveSheetDismiss.handleProps}>
                             <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.2)' }} />
                         </div>
 
