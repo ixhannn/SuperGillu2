@@ -21,6 +21,7 @@ import {
     ChevronRight,
     Clapperboard,
     Crown,
+    Download,
     Feather,
     Film,
     Flame,
@@ -33,8 +34,10 @@ import {
     Sparkles,
     Video,
 } from 'lucide-react';
-import type { CoupleProfile, ViewState } from '../types';
+import type { CoupleProfile, DatePlan, ViewState } from '../types';
 import { StorageService } from '../services/storage';
+import { PremiumFeaturesStore, mondayOf } from '../services/premiumFeatures';
+import { buildStoryFilm, runtimeLabel } from '../components/premium/our-story/chapters';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { daysTogetherFrom } from '../shared/dateOnly.js';
@@ -242,6 +245,15 @@ const UsageMeter: React.FC<{ used: number; limit: number; tint: string; isPremiu
     );
 };
 
+/* ── Byte formatting for the vault receipt ──────────────────────────── */
+
+const formatBytes = (bytes: number): string => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
 /* ── Unlock burst ───────────────────────────────────────────────────── */
 
 const BURST_PARTICLES = Array.from({ length: 18 }, (_, i) => {
@@ -322,10 +334,16 @@ const COMPARE_ROWS: Array<{ label: string; free: string; gold: string }> = [
 type PlanId = 'monthly' | 'yearly' | 'forever';
 
 const PLANS: Array<{ id: PlanId; name: string; price: string; cadence: string; note?: string; badge?: string }> = [
-    { id: 'monthly', name: 'Monthly', price: '$2.99', cadence: '/ month' },
-    { id: 'yearly', name: 'Yearly', price: '$19.99', cadence: '/ year', note: '≈ $1.67 a month', badge: 'Most loved' },
-    { id: 'forever', name: 'Forever', price: '$49.99', cadence: 'once', note: 'Yours for life' },
+    { id: 'monthly', name: 'Monthly', price: '$2.99', cadence: '/ month', note: '≈ one coffee' },
+    { id: 'yearly', name: 'Yearly', price: '$19.99', cadence: '/ year', note: '$1.67 a month', badge: 'Most loved' },
+    { id: 'forever', name: 'Forever', price: '$49.99', cadence: 'once', note: 'One date night, once' },
 ];
+
+const PLAN_VALUE_LINE: Record<PlanId, string> = {
+    monthly: 'All twelve experiences and an unlimited vault — for the price of one coffee a month.',
+    yearly: 'Everything Gold does, every single day, for about five cents a day.',
+    forever: 'Pay once. Every experience — and every future one — for the rest of your story.',
+};
 
 /* ── Main view ──────────────────────────────────────────────────────── */
 
@@ -339,15 +357,141 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current);
     }, []);
 
-    const counts = useMemo(() => ({
-        memories: StorageService.getMemories().length,
-        voiceNotes: StorageService.getVoiceNotes().length,
-        capsules: StorageService.getTimeCapsules().length,
-        surprises: StorageService.getSurprises().filter((s) => !s.delivered).length,
-    }), []);
+    const counts = useMemo(() => {
+        const voiceNotes = StorageService.getVoiceNotes();
+        const memories = StorageService.getMemories();
+        return {
+            memories: memories.length,
+            memoriesWithMedia: memories.filter((m) => m.imageId || m.image || m.storagePath || m.videoId || m.videoStoragePath).length,
+            voiceNotes: voiceNotes.length,
+            voiceSeconds: voiceNotes.reduce((sum, n) => sum + (Number.isFinite(n.duration) ? n.duration : 0), 0),
+            capsules: StorageService.getTimeCapsules().length,
+            surprises: StorageService.getSurprises().filter((s) => !s.delivered).length,
+            vaultBytes: StorageService.getManagedStorageStats().totalBytes,
+        };
+    }, []);
 
     const isPremium = !!profile.isPremium;
     const days = useMemo(() => daysTogetherFrom(profile.anniversaryDate), [profile.anniversaryDate]);
+
+    // ── Live pulse: the real, current state of every experience ────────
+    const live = useMemo(() => {
+        const story = buildStoryFilm();
+        const plans = PremiumFeaturesStore.getDatePlans();
+        const duets = PremiumFeaturesStore.getDuetEntries();
+        const depthsState = PremiumFeaturesStore.getDepthsState();
+        const missionState = PremiumFeaturesStore.getMissionState();
+        const myName = profile.myName?.trim() || 'You';
+        const partnerName = profile.partnerName?.trim() || 'Your love';
+
+        const now = Date.now();
+        const inDaysLabel = (iso: string) => {
+            const diff = Math.ceil((new Date(iso).getTime() - now) / 86_400_000);
+            if (diff <= 0) return 'tonight';
+            if (diff === 1) return 'tomorrow';
+            return `in ${diff} days`;
+        };
+
+        const upcomingPlan: DatePlan | undefined = plans
+            .filter((p) => !p.completedAt && p.scheduledFor && new Date(p.scheduledFor).getTime() > now - 6 * 3_600_000)
+            .sort((a, b) => new Date(a.scheduledFor as string).getTime() - new Date(b.scheduledFor as string).getTime())[0];
+
+        const openDuet = [...duets].reverse().find((d) => !d.revealedAt);
+        const duetWaitingOn = openDuet
+            ? [myName, partnerName].find((n) => !openDuet.answers[n])
+            : undefined;
+        const duetsRevealed = duets.filter((d) => d.revealedAt).length;
+
+        const weekActive = missionState && missionState.weekStart === mondayOf() ? missionState : undefined;
+        const missionsDone = weekActive ? weekActive.missions.filter((m) => m.completedAt).length : 0;
+        const weekStreak = missionState?.weekStreak ?? 0;
+
+        return {
+            storyChapters: story.chapters.length,
+            ourStory: `${story.chapters.length} scenes ready · ${runtimeLabel(story.chapters.length)}`,
+            dateStudio: upcomingPlan
+                ? `${upcomingPlan.emoji} ${upcomingPlan.title} — ${inDaysLabel(upcomingPlan.scheduledFor as string)}`
+                : '72 ideas waiting in the deck',
+            duetJournal: openDuet
+                ? (duetWaitingOn ? `Sealed — waiting on ${duetWaitingOn}` : 'Both sealed — ready to reveal')
+                : duetsRevealed > 0
+                    ? `${duetsRevealed} duet${duetsRevealed === 1 ? '' : 's'} on the shelf`
+                    : 'One prompt, two pens — start tonight',
+            depths: depthsState.completedSessions > 0 || depthsState.favorites.length > 0
+                ? `${depthsState.favorites.length} kept · ${depthsState.completedSessions} night${depthsState.completedSessions === 1 ? '' : 's'} played`
+                : 'Six decks, light to deep',
+            loveMissions: weekActive
+                ? `${missionsDone} of 3 this week${weekStreak > 0 ? ` · 🔥 ${weekStreak}` : ''}`
+                : 'Three new missions every Monday',
+            upcomingPlan,
+            upcomingPlanLabel: upcomingPlan ? inDaysLabel(upcomingPlan.scheduledFor as string) : null,
+            duetWaitingOn,
+            duetsRevealed,
+            missionsLeft: weekActive ? Math.max(0, 3 - missionsDone) : 3,
+            plansMade: plans.length,
+        };
+    }, [profile]);
+
+    // Daily video is async (IndexedDB) — load it lazily so the hub chunk
+    // stays lean; copy falls back gracefully until it arrives.
+    const [scenesShot, setScenesShot] = useState<number | null>(null);
+    const [recordedToday, setRecordedToday] = useState<boolean | null>(null);
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            try {
+                const { VideoMomentsService } = await import('../services/videoMoments');
+                const [settings, already] = await Promise.all([
+                    VideoMomentsService.getSettings(),
+                    VideoMomentsService.hasRecordedToday(),
+                ]);
+                if (cancelled) return;
+                setScenesShot(settings?.totalClips ?? 0);
+                setRecordedToday(already);
+            } catch {
+                /* fallback copy stays */
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    const liveFor = useCallback((key: string): string | null => {
+        switch (key) {
+            case 'our-story': return live.ourStory;
+            case 'date-studio': return live.dateStudio;
+            case 'duet-journal': return live.duetJournal;
+            case 'depths': return live.depths;
+            case 'love-missions': return live.loveMissions;
+            case 'daily-video':
+                if (recordedToday === null) return null;
+                return recordedToday
+                    ? `Tonight's scene is in the can${scenesShot ? ` · ${scenesShot} shot` : ''}`
+                    : 'Tonight’s scene: 5 seconds, still unshot';
+            default: return null;
+        }
+    }, [live, recordedToday, scenesShot]);
+
+    // ── Tonight: what Gold can do for you right now ─────────────────────
+    const tonight = useMemo(() => {
+        const items: Array<{ key: string; view: ViewState; icon: Experience['icon']; tint: string; title: string; sub: string }> = [];
+        if (recordedToday === false) {
+            items.push({ key: 'shoot', view: 'daily-video', icon: Video, tint: '#a855f7', title: 'Shoot today’s scene', sub: '5 seconds, sound on' });
+        }
+        if (live.duetWaitingOn) {
+            items.push({ key: 'duet', view: 'duet-journal', icon: Feather, tint: '#c4b5fd', title: 'A seal is waiting', sub: `${live.duetWaitingOn}’s pen is due` });
+        }
+        if (live.missionsLeft > 0 && live.missionsLeft < 3) {
+            items.push({ key: 'mission', view: 'love-missions', icon: Flame, tint: '#ec4899', title: 'Finish a mission', sub: `${live.missionsLeft} left this week` });
+        }
+        if (live.upcomingPlan) {
+            items.push({ key: 'plan', view: 'date-studio', icon: CalendarHeart, tint: '#fb7185', title: `${live.upcomingPlan.emoji} ${live.upcomingPlan.title}`, sub: live.upcomingPlanLabel ?? 'planned' });
+        } else {
+            items.push({ key: 'draw', view: 'date-studio', icon: CalendarHeart, tint: '#fb7185', title: 'Draw tonight’s date', sub: '72 ideas in the deck' });
+        }
+        items.push({ key: 'story', view: 'our-story', icon: Clapperboard, tint: '#f6c768', title: 'Screen Our Story', sub: `${live.storyChapters} scenes, cut from real life` });
+        items.push({ key: 'depths', view: 'depths', icon: MessagesSquare, tint: '#5eead4', title: 'Go three questions deep', sub: 'pass the phone' });
+        return items.slice(0, 4);
+    }, [live, recordedToday]);
 
     const usageFor = useCallback((exp: Experience): number => {
         if (exp.usageKey === 'surprises') return counts.surprises;
@@ -375,6 +519,22 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
 
     const heroExperiences = EXPERIENCES.filter((e) => e.hero);
     const gridExperiences = EXPERIENCES.filter((e) => !e.hero);
+
+    // Live-aware card sublines: real state when we have it, brochure copy
+    // only as the cold-start fallback.
+    const renderSub = (exp: Experience, className: string, color: string) => {
+        const liveLine = liveFor(exp.key);
+        return (
+            <p className={className} style={{ color }}>
+                {liveLine ? (
+                    <>
+                        <span className="lp-live-dot lp-live-dot--inline" aria-hidden="true" />
+                        {liveLine}
+                    </>
+                ) : exp.sub}
+            </p>
+        );
+    };
 
     // Portaled to body like the app's vh-shell: lenis-content has
     // contain:paint, so a fixed header rendered inline would anchor to the
@@ -473,23 +633,52 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                         <MemberCard profile={profile} isPremium={isPremium} days={days} />
                     </motion.div>
 
-                    {/* ── Story so far ──────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="grid grid-cols-3 gap-2.5 mt-6">
-                        {[
-                            { value: counts.memories, label: 'Memories' },
-                            { value: counts.voiceNotes, label: 'Voice notes' },
-                            { value: days, label: 'Days together' },
-                        ].map((stat) => (
-                            <div key={stat.label} className="lp-glass rounded-2xl px-3 py-4 text-center">
-                                <AnimatedNumber
-                                    value={stat.value}
-                                    className="block font-serif text-[1.6rem] leading-none"
-                                />
-                                <span className="mt-1.5 block text-[9.5px] font-bold uppercase tracking-[0.16em]" style={{ color: 'rgba(255,246,230,0.4)' }}>
-                                    {stat.label}
-                                </span>
-                            </div>
-                        ))}
+                    {/* ── Tonight: live, doable right now ───────────── */}
+                    <motion.div variants={riseVariants} className="mt-8 mb-3 flex items-center gap-3">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: 'rgba(246,199,104,0.8)' }}>
+                            Tonight
+                        </span>
+                        <span className="lp-live-dot" aria-hidden="true" />
+                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(246,199,104,0.25), transparent)' }} />
+                    </motion.div>
+
+                    <motion.div
+                        variants={riseVariants}
+                        className="-mx-5 px-5 flex gap-2.5 overflow-x-auto pb-1"
+                        style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
+                    >
+                        {tonight.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <motion.button
+                                    key={item.key}
+                                    whileTap={{ scale: 0.95 }}
+                                    transition={PRESS_SPRING}
+                                    onClick={() => handleOpen(item.view)}
+                                    className="shrink-0 flex items-center gap-3 pl-2.5 pr-4 py-2.5 rounded-2xl text-left"
+                                    style={{
+                                        background: 'linear-gradient(150deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.025) 100%)',
+                                        border: `1px solid ${item.tint}38`,
+                                        maxWidth: '15rem',
+                                    }}
+                                >
+                                    <span
+                                        className="flex w-9 h-9 shrink-0 items-center justify-center rounded-xl"
+                                        style={{ background: `${item.tint}1f`, border: `1px solid ${item.tint}40` }}
+                                    >
+                                        <Icon size={16} style={{ color: item.tint }} />
+                                    </span>
+                                    <span className="min-w-0">
+                                        <span className="block text-[12.5px] font-semibold leading-tight truncate" style={{ color: 'rgba(255,250,242,0.93)' }}>
+                                            {item.title}
+                                        </span>
+                                        <span className="block text-[10.5px] mt-0.5 truncate" style={{ color: 'rgba(255,246,230,0.42)' }}>
+                                            {item.sub}
+                                        </span>
+                                    </span>
+                                </motion.button>
+                            );
+                        })}
                     </motion.div>
 
                     {/* ── New this season ───────────────────────────── */}
@@ -537,9 +726,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                             <h3 className="font-serif text-[1.15rem] leading-tight" style={{ color: 'rgba(255,250,242,0.95)' }}>
                                                 {exp.title}
                                             </h3>
-                                            <p className="mt-1 text-[11.5px] leading-snug" style={{ color: 'rgba(255,246,230,0.45)' }}>
-                                                {exp.sub}
-                                            </p>
+                                            {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,246,230,0.45)')}
                                         </div>
                                         <ChevronRight size={17} style={{ color: 'rgba(255,246,230,0.28)' }} />
                                     </div>
@@ -579,9 +766,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                             <h4 className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,250,242,0.92)' }}>
                                                 {exp.title}
                                             </h4>
-                                            <p className="mt-0.5 text-[10.5px] leading-snug" style={{ color: 'rgba(255,246,230,0.38)' }}>
-                                                {exp.sub}
-                                            </p>
+                                            {renderSub(exp, 'mt-0.5 text-[10.5px] leading-snug', 'rgba(255,246,230,0.38)')}
                                         </div>
                                     </motion.button>
                                 );
@@ -628,9 +813,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                             <h3 className="text-[15px] font-semibold leading-tight" style={{ color: 'rgba(255,250,242,0.94)' }}>
                                                 {exp.title}
                                             </h3>
-                                            <p className="mt-1 text-[11.5px] leading-snug" style={{ color: 'rgba(255,246,230,0.42)' }}>
-                                                {exp.sub}
-                                            </p>
+                                            {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,246,230,0.42)')}
                                         </div>
                                         <ChevronRight size={17} style={{ color: 'rgba(255,246,230,0.28)' }} />
                                     </div>
@@ -664,9 +847,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                             <h4 className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,250,242,0.92)' }}>
                                                 {exp.title}
                                             </h4>
-                                            <p className="mt-0.5 text-[10.5px] leading-snug" style={{ color: 'rgba(255,246,230,0.38)' }}>
-                                                {exp.sub}
-                                            </p>
+                                            {renderSub(exp, 'mt-0.5 text-[10.5px] leading-snug', 'rgba(255,246,230,0.38)')}
                                         </div>
                                         {exp.usageKey && exp.usageLimit ? (
                                             <UsageMeter used={usageFor(exp)} limit={exp.usageLimit} tint={exp.tint} isPremium={isPremium} />
@@ -683,6 +864,56 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             })}
                         </div>
                     </div>
+
+                    {/* ── The vault receipt ─────────────────────────── */}
+                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: 'rgba(246,199,104,0.8)' }}>
+                            What you’ve already built
+                        </span>
+                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(246,199,104,0.25), transparent)' }} />
+                    </motion.div>
+
+                    <motion.div
+                        variants={riseVariants}
+                        className="relative overflow-hidden rounded-[1.6rem] px-5 pt-5 pb-4"
+                        style={{
+                            background: 'linear-gradient(150deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.018) 100%)',
+                            border: '1px solid rgba(246,199,104,0.18)',
+                        }}
+                    >
+                        <div className="flex flex-col gap-2.5">
+                            {[
+                                { label: 'Memories kept', value: counts.memories, always: true },
+                                { label: 'Voice notes', value: counts.voiceNotes, always: true, suffix: counts.voiceSeconds >= 60 ? `${Math.round(counts.voiceSeconds / 60)} min` : undefined },
+                                { label: 'Letters sealed for later', value: counts.capsules },
+                                { label: 'Surprises waiting', value: counts.surprises },
+                                { label: 'Duets revealed', value: live.duetsRevealed },
+                                { label: 'Dates planned', value: live.plansMade },
+                                { label: 'Days together', value: days, always: true },
+                            ].filter((row) => row.always || row.value > 0).map((row) => (
+                                <div key={row.label} className="flex items-baseline gap-2.5">
+                                    <span className="text-[12px] shrink-0" style={{ color: 'rgba(255,246,230,0.55)' }}>{row.label}</span>
+                                    <span className="flex-1 translate-y-[-3px]" style={{ borderBottom: '1px dotted rgba(255,246,230,0.16)' }} />
+                                    {row.suffix && (
+                                        <span className="text-[10.5px] shrink-0" style={{ color: 'rgba(255,246,230,0.35)' }}>{row.suffix}</span>
+                                    )}
+                                    <AnimatedNumber value={row.value} className="font-serif text-[1.15rem] leading-none shrink-0" />
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-4 pt-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(246,199,104,0.16)' }}>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'rgba(255,246,230,0.38)' }}>
+                                In your vault
+                            </span>
+                            <span className="font-serif text-[13.5px]" style={{ color: '#f3cd86' }}>{formatBytes(counts.vaultBytes)}</span>
+                        </div>
+                        <p className="mt-2.5 text-[11.5px] leading-relaxed" style={{ color: isPremium ? 'rgba(246,199,104,0.75)' : 'rgba(255,246,230,0.45)' }}>
+                            {isPremium
+                                ? 'No caps. Nothing expires. Synced to both of you.'
+                                : 'Free keeps your first 50 memories — Gold keeps every single one, forever.'}
+                        </p>
+                    </motion.div>
 
                     {/* ── Free vs Gold ──────────────────────────────── */}
                     <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
@@ -789,14 +1020,30 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             </motion.div>
                             </LayoutGroup>
 
+                            <motion.div variants={riseVariants} className="mt-3.5 px-2 text-center" style={{ minHeight: '2.3rem' }}>
+                                <AnimatePresence mode="wait" initial={false}>
+                                    <motion.p
+                                        key={selectedPlan}
+                                        initial={{ opacity: 0, y: 7 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -7 }}
+                                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                                        className="text-[12px] leading-relaxed"
+                                        style={{ color: 'rgba(255,246,230,0.52)' }}
+                                    >
+                                        {PLAN_VALUE_LINE[selectedPlan]}
+                                    </motion.p>
+                                </AnimatePresence>
+                            </motion.div>
+
                             <motion.div
                                 variants={riseVariants}
-                                className="mt-4 flex items-start gap-2.5 px-4 py-3.5 rounded-2xl"
+                                className="mt-3 flex items-start gap-2.5 px-4 py-3.5 rounded-2xl"
                                 style={{ background: 'rgba(246,199,104,0.06)', border: '1px solid rgba(246,199,104,0.16)' }}
                             >
                                 <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: '#f6c768' }} />
                                 <p className="text-[11.5px] leading-relaxed" style={{ color: 'rgba(255,246,230,0.55)' }}>
-                                    <span className="font-semibold" style={{ color: '#f3cd86' }}>Founding couples offer</span> — everything is free during early access. Pricing above is a preview of what's ahead.
+                                    <span className="font-semibold" style={{ color: '#f3cd86' }}>Founding couples offer</span> — everything is free during early access, and your founding price stays locked. It never rises.
                                 </p>
                             </motion.div>
 
@@ -856,6 +1103,42 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             </div>
                         </motion.div>
                     )}
+
+                    {/* ── The Gold promise ──────────────────────────── */}
+                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: 'rgba(246,199,104,0.8)' }}>
+                            The Gold promise
+                        </span>
+                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(246,199,104,0.25), transparent)' }} />
+                    </motion.div>
+
+                    <motion.div variants={riseVariants} className="flex flex-col gap-2.5">
+                        {[
+                            { icon: InfinityIcon, title: 'Every future experience, included', sub: 'New Gold features land inside your membership — never a higher tier.' },
+                            { icon: Download, title: 'Your story is yours', sub: 'Export everything, anytime — photos, letters, voices, all of it.' },
+                            { icon: Heart, title: 'Leave anytime, keep everything', sub: 'Cancel whenever. Nothing the two of you made ever disappears.' },
+                        ].map((row) => {
+                            const Icon = row.icon;
+                            return (
+                                <div
+                                    key={row.title}
+                                    className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl"
+                                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                                >
+                                    <div
+                                        className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl"
+                                        style={{ background: 'rgba(246,199,104,0.12)', border: '1px solid rgba(246,199,104,0.28)' }}
+                                    >
+                                        <Icon size={17} style={{ color: '#f3cd86' }} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,250,242,0.92)' }}>{row.title}</p>
+                                        <p className="mt-0.5 text-[11px] leading-snug" style={{ color: 'rgba(255,246,230,0.42)' }}>{row.sub}</p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </motion.div>
 
                     {/* ── Footer ────────────────────────────────────── */}
                     <motion.div variants={riseVariants} className="mt-10 flex items-center justify-center gap-2">

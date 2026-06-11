@@ -375,3 +375,29 @@
 [data-native-shell="native"] .lp-shell-spacer {
   height: 4.2rem;
 }
+
+/* ── Live status dot — signals real, current data on a card ─────────── */
+.lp-live-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #6ee7a0;
+  box-shadow: 0 0 6px rgba(110, 231, 160, 0.7);
+}
+
+.lp-live-dot--inline {
+  margin-right: 6px;
+  vertical-align: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lp-live-dot {
+    animation: lp-live-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes lp-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
