@@ -261,24 +261,20 @@ interface Experience {
     sub: string;
     tint: string;
     hero?: boolean;
-    isNew?: boolean;
     usageKey?: 'surprises' | 'capsules' | 'voiceNotes';
     usageLimit?: number;
 }
 
-const NEW_EXPERIENCES: Experience[] = [
-    { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck from your real life, on the days that matter', tint: '#e8c97d', hero: true, isNew: true },
-    { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'Your whole relationship, retold as a private film premiere', tint: '#ff5c7c', hero: true, isNew: true },
-    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Draw tonight\'s date from the deck', tint: '#fb7185', isNew: true },
-    { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: 'One prompt, two pens — sealed until you both write', tint: '#c4b5fd', isNew: true },
-    { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: 'Conversation decks for real talk', tint: '#5eead4', isNew: true },
-    { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: 'Three small missions, every week', tint: '#ec4899', isNew: true },
-];
-
 const EXPERIENCES: Experience[] = [
+    { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck from your real life, on the days that matter', tint: '#e8c97d', hero: true },
+    { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'Your whole relationship, retold as a private film premiere', tint: '#ff5c7c', hero: true },
     { key: 'daily-video', view: 'daily-video', icon: Video, title: 'Daily Video Moments', sub: '5 seconds a day, woven into a film of your fortnight', tint: '#a855f7', hero: true },
-    { key: 'weekly-recap', view: 'weekly-recap', icon: Film, title: 'Weekly Story', sub: 'Your week together, retold like an editorial', tint: '#818cf8', hero: true },
-    { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: 'Patterns, love languages & gentle nudges', tint: '#ec4899', hero: true },
+    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Draw tonight\'s date from the deck', tint: '#fb7185' },
+    { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: 'One prompt, two pens — sealed until you both write', tint: '#c4b5fd' },
+    { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: 'Conversation decks for real talk', tint: '#5eead4' },
+    { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: 'Three small missions, every week', tint: '#ec4899' },
+    { key: 'weekly-recap', view: 'weekly-recap', icon: Film, title: 'Weekly Story', sub: 'Your week together, retold like an editorial', tint: '#818cf8' },
+    { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: 'Patterns, love languages & gentle nudges', tint: '#d96aff' },
     { key: 'surprises', view: 'surprises', icon: Gift, title: 'Surprises', sub: 'Scheduled moments of joy', tint: '#8b5cf6', usageKey: 'surprises', usageLimit: 3 },
     { key: 'future-letters', view: 'time-capsule', icon: Lock, title: 'Future Letters', sub: 'Sealed until the day arrives', tint: '#f59e0b', usageKey: 'capsules', usageLimit: 3 },
     { key: 'voice-notes', view: 'voice-notes', icon: Mic, title: 'Voice Notes', sub: 'Your voices, kept forever', tint: '#f43f5e', usageKey: 'voiceNotes', usageLimit: 5 },
@@ -672,98 +668,10 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                         );
                     })()}
 
-                    {/* ── New this season ───────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
-                        <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            New this season
-                        </span>
-                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
-                    </motion.div>
-
-                    <div className="flex flex-col gap-3">
-                        {NEW_EXPERIENCES.filter((e) => e.hero).map((exp) => {
-                            const Icon = exp.icon;
-                            return (
-                                <motion.button
-                                    key={exp.key}
-                                    variants={riseVariants}
-                                    whileTap={{ scale: 0.975 }}
-                                    transition={PRESS_SPRING}
-                                    onClick={() => handleOpen(exp.view)}
-                                    className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
-                                    style={{ background: 'linear-gradient(145deg, rgba(255,92,124,0.12) 0%, rgba(255,255,255,0.02) 55%)' }}
-                                >
-                                    <Icon size={118} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                    <div
-                                        className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
-                                        style={{ background: `radial-gradient(circle, ${exp.tint}38 0%, transparent 70%)` }}
-                                    />
-                                    <span
-                                        className="absolute top-3.5 right-3.5 z-10 px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase tracking-[0.2em]"
-                                        style={{ background: '#ff5c7c', color: '#ffffff', boxShadow: '0 4px 12px rgba(255,92,124,0.4)' }}
-                                    >
-                                        New
-                                    </span>
-                                    <div className="relative z-10 flex items-center gap-4">
-                                        <div
-                                            className="flex w-12 h-12 shrink-0 items-center justify-center rounded-2xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 8px 18px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={22} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div className="flex-1 min-w-0 pr-8">
-                                            <h3 className="font-serif text-[1.15rem] leading-tight" style={{ color: 'rgba(255,251,250,0.95)' }}>
-                                                {exp.title}
-                                            </h3>
-                                            {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,248,248,0.45)')}
-                                        </div>
-                                        <ChevronRight size={17} style={{ color: 'rgba(255,248,248,0.28)' }} />
-                                    </div>
-                                </motion.button>
-                            );
-                        })}
-
-                        <div className="grid grid-cols-2 gap-3">
-                            {NEW_EXPERIENCES.filter((e) => !e.hero).map((exp) => {
-                                const Icon = exp.icon;
-                                return (
-                                    <motion.button
-                                        key={exp.key}
-                                        variants={riseVariants}
-                                        whileTap={{ scale: 0.96 }}
-                                        transition={PRESS_SPRING}
-                                        onClick={() => handleOpen(exp.view)}
-                                        className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
-                                    >
-                                        <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                        <span
-                                            className="absolute top-3 right-3 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-[0.18em]"
-                                            style={{ background: '#ff5c7c', color: '#ffffff', boxShadow: '0 4px 12px rgba(255,92,124,0.4)' }}
-                                        >
-                                            New
-                                        </span>
-                                        <div
-                                            className="flex w-10 h-10 items-center justify-center rounded-xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 6px 14px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={18} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.92)' }}>
-                                                {exp.title}
-                                            </h4>
-                                            {renderSub(exp, 'mt-0.5 text-[10.5px] leading-snug', 'rgba(255,248,248,0.38)')}
-                                        </div>
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
                     {/* ── Experiences ───────────────────────────────── */}
                     <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            {isPremium ? 'Your experiences' : 'The collection'}
+                            {isPremium ? 'Your experiences' : 'What Gold unlocks'}
                         </span>
                         <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
                     </motion.div>
