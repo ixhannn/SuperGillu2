@@ -37,3 +37,37 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # Screenshot baselines are generated on Windows (win32-suffixed), so this job
+  # must run on a Windows runner to match them. Playwright boots the vite dev
+  # server itself (playwright.config.ts webServer, VITE_E2E=1).
+  visual-parity:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Visual parity suite
+        run: npm run test:visual
+
+      - name: Upload diff artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-parity-diffs
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

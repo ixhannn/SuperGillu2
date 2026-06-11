@@ -1,5 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 
+// Home renders wall-clock state (days-together count, the live HH:MM:SS
+// "Our time together" ticker, next-milestone countdowns), so the clock and
+// timezone must both be pinned or the baselines rot daily and differ between
+// the dev machine and CI runners.
+const FIXED_NOW = new Date('2026-04-21T10:00:00Z');
+test.use({ timezoneId: 'Asia/Kolkata' });
+
+// CI runners rasterize fonts slightly differently than the dev machine that
+// generated the baselines; give them a little extra antialiasing slack.
+const MAX_DIFF_PIXEL_RATIO = process.env.CI ? 0.01 : 0.006;
+
 const freezeVisualMotion = async (page: Page) => {
   await page.addStyleTag({
     content: `
@@ -19,6 +30,9 @@ const freezeVisualMotion = async (page: Page) => {
 };
 
 const seedStableState = async (page: Page) => {
+  // setFixedTime (not install) keeps real timers running, so the ticker's
+  // setInterval still fires — it just always reads the same frozen Date.
+  await page.clock.setFixedTime(FIXED_NOW);
   await page.addInitScript(() => {
     const profile = {
       myName: 'Ishan',
@@ -103,7 +117,7 @@ for (const view of ['home', 'us', 'timeline', 'daily-moments', 'private-space', 
     await expect(page).toHaveScreenshot(`${view}-393.png`, {
       fullPage: false,
       animations: 'disabled',
-      maxDiffPixelRatio: 0.006,
+      maxDiffPixelRatio: MAX_DIFF_PIXEL_RATIO,
     });
   });
 }

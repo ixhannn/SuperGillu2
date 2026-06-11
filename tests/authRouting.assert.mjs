@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+// Normalize to LF: the literal-\n anchors below false-fail on CRLF working
+// copies (fresh Windows checkouts/worktrees) otherwise.
+const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 const authRenderBlock = appSource.slice(
   appSource.indexOf('// Cloud Authentication Check'),
