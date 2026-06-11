@@ -41,6 +41,7 @@ const E2E_VIEWS: ViewState[] = [
   'duet-journal',
   'depths',
   'love-missions',
+  'heirlooms',
 ];
 
 const E2E_VIEW_SET = new Set<ViewState>(E2E_VIEWS);

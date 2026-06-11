@@ -149,6 +149,14 @@ export interface CoupleProfile {
   missionState?: MissionState;
   /** Premium: Depths — favorites & session progress. */
   depthsState?: DepthsState;
+  /** Premium: Heirlooms — which milestone artworks have been unsealed. */
+  heirloomState?: HeirloomState;
+}
+
+// ── Premium: Heirlooms (collectible milestone art) ──────────────────
+export interface HeirloomState {
+  /** Milestone ids that have been ceremonially unsealed. */
+  collected: string[];
 }
 
 // ── Premium: Duet Journal ───────────────────────────────────────────
@@ -713,7 +721,7 @@ export interface SystemMessage {
   seenAt?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'coco-pet' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium' | 'our-story' | 'date-studio' | 'duet-journal' | 'depths' | 'love-missions';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'keepsakes' | 'countdowns' | 'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'presence-room' | 'bonsai-bloom' | 'coco-pet' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium' | 'our-story' | 'date-studio' | 'duet-journal' | 'depths' | 'love-missions' | 'heirlooms';
 
 // ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {

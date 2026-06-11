@@ -22,6 +22,7 @@ import {
     Feather,
     Film,
     Flame,
+    Gem,
     Gift,
     Heart,
     Infinity as InfinityIcon,
@@ -35,6 +36,7 @@ import type { CoupleProfile, DatePlan, ViewState } from '../types';
 import { StorageService } from '../services/storage';
 import { useAuroraParallax } from '../components/premium/GoldKit';
 import { PremiumFeaturesStore, mondayOf } from '../services/premiumFeatures';
+import { buildHeirloomSchedule, getCollectedHeirloomIds } from '../services/heirlooms';
 import { buildStoryFilm } from '../components/premium/our-story/chapters';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
@@ -229,12 +231,13 @@ interface Experience {
  * important.
  */
 const MARQUEE_EXPERIENCES: Experience[] = [
+    { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck from your real life, on the days that matter.', tint: '#e8c97d' },
     { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'A film only you two could make — cut from your real days.', tint: '#ff5c7c' },
     { key: 'daily-video', view: 'daily-video', icon: Video, title: 'Daily Video Moments', sub: 'Five seconds a day. A film every fortnight.', tint: '#a855f7' },
-    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Seventy-two nights, shuffled. Draw one.', tint: '#fb7185' },
 ];
 
 const QUIET_EXPERIENCES: Experience[] = [
+    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: '', tint: '#fb7185' },
     { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: '', tint: '#c4b5fd' },
     { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: '', tint: '#5eead4' },
     { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: '', tint: '#ec4899' },
@@ -249,6 +252,7 @@ const QUIET_EXPERIENCES: Experience[] = [
 /* ── Free vs Gold — five lines, written like a person ───────────────── */
 
 const COMPARE_ROWS: Array<{ label: string; free: string; gold: string }> = [
+    { label: 'Heirlooms', free: 'The first', gold: 'Every strike' },
     { label: 'Your vault', free: 'First fifty', gold: 'Everything, forever' },
     { label: 'Voices, letters & surprises', free: 'A few', gold: 'Unlimited' },
     { label: 'Video', free: '—', gold: 'Everywhere' },
@@ -336,7 +340,23 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
 
         const missionsLeft = weekActive ? Math.max(0, 3 - missionsDone) : 3;
 
+        const heirloomSchedule = buildHeirloomSchedule();
+        const collectedIds = getCollectedHeirloomIds();
+        const sealedHeirloom = heirloomSchedule.arrived.find((h) => !collectedIds.has(h.id));
+        const nextHeirloom = heirloomSchedule.next;
+
         return {
+            sealedHeirloom,
+            nextHeirloom,
+            heirlooms: sealedHeirloom
+                ? `${sealedHeirloom.title} is struck and sealed.`
+                : nextHeirloom
+                    ? (nextHeirloom.daysUntil === 0
+                        ? `${nextHeirloom.title} arrives today.`
+                        : nextHeirloom.daysUntil === 1
+                            ? `${nextHeirloom.title} arrives tomorrow.`
+                            : `${nextHeirloom.title} arrives in ${nextHeirloom.daysUntil} days.`)
+                    : 'Art struck from your real life.',
             storyChapters: story.chapters.length,
             ourStory: `Your film has ${asWords(story.chapters.length)} scene${story.chapters.length === 1 ? '' : 's'} now.`,
             dateStudio: upcomingPlan
@@ -402,6 +422,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
     }, [counts, live.duetsRevealed, live.plansMade]);
     const liveFor = useCallback((key: string): string | null => {
         switch (key) {
+            case 'heirlooms': return live.heirlooms;
             case 'our-story': return live.ourStory;
             case 'date-studio': return live.dateStudio;
             case 'duet-journal': return live.duetJournal;
@@ -419,6 +440,9 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
     // ── Tonight: ONE thing, chosen for right now ────────────────────────
     const spotlight = useMemo(() => {
         const items: Array<{ key: string; view: ViewState; icon: Experience['icon']; tint: string; title: string; sub: string }> = [];
+        if (live.sealedHeirloom) {
+            items.push({ key: 'heirloom', view: 'heirlooms', icon: Gem, tint: '#e8c97d', title: `${live.sealedHeirloom.title} is waiting`, sub: 'An heirloom, struck and sealed. Break the wax together.' });
+        }
         if (live.duetWaitingOn) {
             items.push({ key: 'duet', view: 'duet-journal', icon: Feather, tint: '#c4b5fd', title: 'A seal is waiting', sub: `Only ${live.duetWaitingOn}’s pen is missing. Finish it, and the page opens.` });
         }
