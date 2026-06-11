@@ -16,8 +16,13 @@ assert.ok(
 );
 
 assert.ok(
-  workerSource.includes('X-Upload-Key'),
-  'Expected worker CORS headers to allow X-Upload-Key for browser fallback uploads',
+  !workerSource.includes('X-Upload-Key') && !workerSource.includes('UPLOAD_KEY'),
+  'Worker must not allow the legacy shared upload-key fallback; managed uploads must use Supabase session auth',
+);
+
+assert.ok(
+  !workerSource.includes('usingUploadKeyFallback') && !workerSource.includes('upload_legacy'),
+  'Worker must not retain stale upload-key fallback branches after removing the shared key path',
 );
 
 assert.ok(

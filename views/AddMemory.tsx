@@ -1,15 +1,17 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, X, Video, Mic, Square, Play, Pause, Trash2, Send, Sparkles, ImagePlus } from 'lucide-react';
+import { ArrowLeft, Camera, X, Video, Mic, Square, Play, Pause, Trash2, Sparkles, ImagePlus } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { PremiumModal } from '../components/PremiumModal';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
+import { NativeMediaService } from '../services/nativeMedia';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { useConfetti } from '../components/Layout';
+import { MediaForge, ForgeFrame } from '../components/MediaForge';
 
 interface AddMemoryProps {
   setView: (view: ViewState) => void;
@@ -31,10 +33,25 @@ function formatDuration(seconds: number): string {
   return `${m}:${s}`;
 }
 
+type MediaMeta = { kind: 'photo' | 'video'; bytes?: number; durationSec?: number; fileName?: string };
+
 export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [video, setVideo] = useState<string | null>(null);
+  const [mediaMeta, setMediaMeta] = useState<MediaMeta | null>(null);
+  const [isProcessingMedia, setIsProcessingMedia] = useState<'photo' | 'video' | null>(null);
+  const [forgeFrame, setForgeFrame] = useState<ForgeFrame>('none');
+  // Forge state — when a photo or video is freshly picked, the full-screen
+  // MediaForge sheet opens. The user reviews, frames, captions, and confirms
+  // before the asset commits to the form. Cancelling discards the pick.
+  const [forgePending, setForgePending] = useState<{
+    kind: 'photo' | 'video';
+    image: string | null;
+    video: string | null;
+    bytes?: number;
+    durationSec?: number;
+  } | null>(null);
   const [selectedMood, setSelectedMood] = useState('love');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -152,52 +169,158 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     }
   };
 
+  // ── Helpers ─────────────────────────────────────────────────────────────
+  const approxDataUrlBytes = (url: string): number | undefined => (
+    url.startsWith('data:')
+      ? Math.round(((url.length - (url.indexOf(',') + 1)) * 3) / 4)
+      : undefined
+  );
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-       try {
-           const compressed = await compressImage(file);
-           setImage(compressed);
-           setVideo(null);
-       } catch (error) {
-           toast.show("Couldn't process photo. Please try a different image.", 'error');
-       }
+    if (!file) return;
+    setIsProcessingMedia('photo');
+    try {
+      const compressed = await compressImage(file);
+      // Don't commit yet — open the Forge for the user to review.
+      setForgePending({
+        kind: 'photo',
+        image: compressed,
+        video: null,
+        bytes: approxDataUrlBytes(compressed),
+      });
+    } catch {
+      toast.show("Couldn't process photo. Please try a different image.", 'error');
+    } finally {
+      setIsProcessingMedia(null);
     }
   };
 
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          const profile = StorageService.getCoupleProfile();
-          if (!profile.isPremium) {
-              setShowPremiumModal(true);
-              return;
-          }
-
-          if (isVideoTooLarge(file)) {
-              toast.show("Video too large! Please choose a video under 25MB.", 'error');
-              return;
-          }
-          
-          try {
-            const thumb = await generateVideoThumbnail(file);
-            setImage(thumb);
-          } catch(e) { console.error("Thumbnail failed", e); }
-
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-              setVideo(ev.target?.result as string);
-          };
-          reader.readAsDataURL(file);
+  const handlePhotoPick = async () => {
+    feedback.tap();
+    if (NativeMediaService.isNativeAvailable()) {
+      setIsProcessingMedia('photo');
+      try {
+        const picked = await NativeMediaService.pickPhoto();
+        if (picked) {
+          setForgePending({
+            kind: 'photo',
+            image: picked.dataUrl,
+            video: null,
+            bytes: approxDataUrlBytes(picked.dataUrl),
+          });
+        }
+      } catch {
+        toast.show("Couldn't open the photo picker. Try again.", 'error');
+      } finally {
+        setIsProcessingMedia(null);
       }
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const profile = StorageService.getCoupleProfile();
+    if (!profile.isPremium) {
+      setShowPremiumModal(true);
+      return;
+    }
+    if (isVideoTooLarge(file)) {
+      toast.show('Video too large! Please choose a video under 25MB.', 'error');
+      return;
+    }
+
+    setIsProcessingMedia('video');
+    try {
+      let thumb: string | null = null;
+      try { thumb = await generateVideoThumbnail(file); }
+      catch (err) { console.error('Thumbnail failed', err); }
+
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target?.result as string);
+        reader.onerror = () => reject(new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+
+      let durationSec: number | undefined;
+      try {
+        durationSec = await new Promise<number>((resolve, reject) => {
+          const v = document.createElement('video');
+          v.preload = 'metadata';
+          v.src = dataUrl;
+          v.onloadedmetadata = () => resolve(Number.isFinite(v.duration) ? v.duration : 0);
+          v.onerror = () => reject(new Error('metadata failed'));
+        });
+      } catch { /* duration is optional */ }
+
+      setForgePending({
+        kind: 'video',
+        image: thumb,
+        video: dataUrl,
+        bytes: file.size,
+        durationSec,
+      });
+    } finally {
+      setIsProcessingMedia(null);
+    }
+  };
+
+  // ── Forge handlers ──────────────────────────────────────────────────────
+  const handleForgeConfirm = ({ frame, caption }: { frame: ForgeFrame; caption: string }) => {
+    if (!forgePending) return;
+    setImage(forgePending.image);
+    setVideo(forgePending.video);
+    setMediaMeta({
+      kind: forgePending.kind,
+      bytes: forgePending.bytes,
+      durationSec: forgePending.durationSec,
+    });
+    setForgeFrame(frame);
+    if (caption) {
+      // Merge caption into the text area without clobbering existing text.
+      setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${caption}` : caption));
+    }
+    setForgePending(null);
+  };
+
+  const handleForgeRetry = () => {
+    if (!forgePending) return;
+    const kind = forgePending.kind;
+    setForgePending(null);
+    // Re-trigger the matching picker on the next tick.
+    window.setTimeout(() => {
+      if (kind === 'video') videoInputRef.current?.click();
+      else void handlePhotoPick();
+    }, 60);
+  };
+
+  const handleForgeClose = () => {
+    setForgePending(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (videoInputRef.current) videoInputRef.current.value = '';
   };
 
   const removeMedia = (e: React.MouseEvent) => {
     e.stopPropagation();
     setImage(null);
     setVideo(null);
+    setMediaMeta(null);
+    setForgeFrame('none');
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (videoInputRef.current) videoInputRef.current.value = '';
+  };
+
+  const replaceMedia = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (mediaMeta?.kind === 'video') {
+      videoInputRef.current?.click();
+    } else {
+      void handlePhotoPick();
+    }
   };
 
   const handleSave = async () => {
@@ -238,6 +361,10 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       video: video || undefined,
       date: new Date().toISOString(),
       mood: selectedMood,
+      // Persist the visual frame so the timeline + detail view can
+      // re-apply it — without this the polaroid/film/glow looks chosen
+      // in MediaForge are silently dropped on save.
+      frame: forgeFrame !== 'none' ? forgeFrame : undefined,
       ...(audioMeta || {}),
     };
 
@@ -245,7 +372,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       await StorageService.saveMemory(newMemory);
     } catch (e: any) {
       setIsSaving(false);
-      alert(e?.message || 'Memory could not be saved.');
+      toast.show(e?.message || 'Memory could not be saved.', 'error');
       return;
     }
     feedback.celebrate();
@@ -255,295 +382,417 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
   const isDisabled = isSaving || (!text.trim() && !image && !video && !pendingAudio);
   const hasMedia = !!(image || video);
-  const attachmentCount = [hasMedia, !!pendingAudio].filter(Boolean).length;
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Display helpers
+  // ══════════════════════════════════════════════════════════════════════
+  const today = useMemo(() => new Date(), []);
+  const dateLine = useMemo(() => today.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }), [today]);
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Card surface — single composer card holds textarea + mood + previews.
+  // Frosted white at ~86% opacity, soft elevation, tight 1px hairline.
+  // ══════════════════════════════════════════════════════════════════════
+  const cardStyle: React.CSSProperties = {
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78))',
+    border: '1px solid rgba(255,255,255,0.85)',
+    boxShadow: '0 1px 0 rgba(255,255,255,0.95) inset, 0 12px 28px rgba(90,60,80,0.07), 0 2px 6px rgba(90,60,80,0.04)',
+    borderRadius: 22,
+  };
 
   return (
-    <motion.div 
+    <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="flex flex-col h-[100dvh] max-h-[100dvh] min-h-0 overflow-hidden"
+        className="flex flex-col h-[100dvh] max-h-[100dvh] min-h-0 overflow-hidden relative"
         style={{ background: 'transparent' }}
     >
-      <ViewHeader
-        title="New Memory"
-        onBack={() => setView('home')}
-        variant="centered"
-      />
+      {/* ══════════════════════════════════════════════════════════════
+           AMBIENT WASH — two soft pools behind the composer. Pulled way
+           back from the prior design so the page reads quiet, not staged.
+         ══════════════════════════════════════════════════════════════ */}
+      <div aria-hidden className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div
+          className="absolute rounded-full"
+          style={{
+            top: '-25%', left: '-25%', width: '80vw', height: '80vw',
+            background: 'radial-gradient(circle, rgba(244,114,182,0.13), transparent 65%)',
+            filter: 'blur(80px)',
+          }}
+        />
+        <div
+          className="absolute rounded-full"
+          style={{
+            bottom: '-30%', right: '-25%', width: '85vw', height: '85vw',
+            background: 'radial-gradient(circle, rgba(168,85,247,0.10), transparent 65%)',
+            filter: 'blur(80px)',
+          }}
+        />
+      </div>
 
-      <div data-lenis-prevent className="lenis-inner min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-48">
-        {/* ══════════════════════════════════════════════════════════════
-             SECTION 1 — TEXT INPUT (Hero area, biggest real estate)
-           ══════════════════════════════════════════════════════════════ */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 450, damping: 30, delay: 0.05 }}
-          className="mb-6"
+      {/* ══════════════════════════════════════════════════════════════
+           HEADER — minimal: back chevron, date label, mirror spacer.
+         ══════════════════════════════════════════════════════════════ */}
+      <div
+        className="relative z-10 flex items-center justify-between px-5"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)', paddingBottom: 8 }}
+      >
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.92 }}
+          onClick={() => { feedback.tap(); setView('home'); }}
+          aria-label="Back"
+          className="w-10 h-10 rounded-full flex items-center justify-center"
+          style={{
+            background: 'rgba(255,255,255,0.70)',
+            border: '1px solid rgba(0,0,0,0.04)',
+            color: 'var(--color-text-primary)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
         >
+          <ArrowLeft size={17} strokeWidth={2.2} />
+        </motion.button>
+
+        <span
+          className="text-[10.5px] font-semibold uppercase"
+          style={{
+            color: 'var(--color-text-secondary)',
+            opacity: 0.55,
+            letterSpacing: '0.20em',
+          }}
+        >
+          {dateLine}
+        </span>
+
+        <span className="w-10 h-10" aria-hidden />
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════
+           SCROLL BODY — single composer, one mood row, one add-media row.
+         ══════════════════════════════════════════════════════════════ */}
+      <div
+        data-lenis-prevent
+        className="lenis-inner relative z-[1] flex-1 min-h-0 overflow-y-auto px-5 pt-3 pb-32"
+      >
+        {/* Hero — slim, single line. The composer is the focus. */}
+        <motion.h1
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="font-serif mb-6"
+          style={{
+            fontSize: 'clamp(26px, 7.4vw, 32px)',
+            fontWeight: 600,
+            lineHeight: 1.05,
+            letterSpacing: '-0.02em',
+            color: 'var(--color-text-primary)',
+          }}
+        >
+          A new memory
+        </motion.h1>
+
+        {/* ── COMPOSER CARD ───────────────────────────────────────────
+            One unified surface holding: attached media (if any),
+            voice note preview (if any), the textarea, and the mood
+            row separated by a hairline. */}
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
+          className="overflow-hidden"
+          style={cardStyle}
+        >
+          {/* Media thumbnail — only when attached. */}
+          <AnimatePresence mode="popLayout">
+            {hasMedia && (
+              <motion.div
+                key="media-preview"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="relative"
+              >
+                <div className="relative overflow-hidden" style={{ background: '#000' }}>
+                  {video && image ? (
+                    <div className="relative">
+                      <img
+                        src={image}
+                        alt=""
+                        className="w-full object-cover"
+                        style={{ maxHeight: 220, filter: forgeFrame === 'film' ? 'saturate(1.15) contrast(1.04) sepia(0.10)' : undefined }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.16)' }}>
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center"
+                          style={{
+                            background: 'rgba(255,255,255,0.28)',
+                            border: '1.5px solid rgba(255,255,255,0.45)',
+                            backdropFilter: 'blur(12px)',
+                            WebkitBackdropFilter: 'blur(12px)',
+                          }}
+                        >
+                          <Play size={18} fill="white" style={{ color: '#fff', marginLeft: 2 }} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : video ? (
+                    <video src={video} controls className="w-full" style={{ maxHeight: 220, background: '#000' }} />
+                  ) : image ? (
+                    <img
+                      src={image}
+                      alt=""
+                      className="w-full object-cover"
+                      style={{ maxHeight: 220, filter: forgeFrame === 'film' ? 'saturate(1.15) contrast(1.04) sepia(0.10)' : undefined }}
+                    />
+                  ) : null}
+
+                  {/* Tiny meta chip */}
+                  {mediaMeta && (
+                    <div
+                      className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold text-white"
+                      style={{
+                        background: 'rgba(0,0,0,0.42)',
+                        border: '1px solid rgba(255,255,255,0.14)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {mediaMeta.kind === 'video' ? <Video size={10} strokeWidth={2.4} /> : <ImagePlus size={10} strokeWidth={2.4} />}
+                      <span className="capitalize">{mediaMeta.kind}</span>
+                      {mediaMeta.kind === 'video' && typeof mediaMeta.durationSec === 'number' && mediaMeta.durationSec > 0 && (
+                        <span className="tabular-nums opacity-80">{formatDuration(mediaMeta.durationSec)}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Replace + Remove — quiet pills, top-right */}
+                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.92 }}
+                      onClick={replaceMedia}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      aria-label="Replace media"
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{
+                        background: 'rgba(255,255,255,0.22)',
+                        border: '1px solid rgba(255,255,255,0.32)',
+                        backdropFilter: 'blur(10px)',
+                        WebkitBackdropFilter: 'blur(10px)',
+                        color: '#fff',
+                      }}
+                    >
+                      <ImagePlus size={13} strokeWidth={2.2} />
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.92 }}
+                      onClick={removeMedia}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      aria-label="Remove media"
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{
+                        background: 'rgba(0,0,0,0.50)',
+                        border: '1px solid rgba(255,255,255,0.18)',
+                        backdropFilter: 'blur(10px)',
+                        WebkitBackdropFilter: 'blur(10px)',
+                        color: '#fff',
+                      }}
+                    >
+                      <X size={13} strokeWidth={2.2} />
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Voice preview — inline strip, only when audio exists */}
+          <AnimatePresence mode="popLayout">
+            {pendingAudio && !isRecording && (
+              <motion.div
+                key="voice-strip"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="px-4 py-3 flex items-center gap-3"
+                style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}
+              >
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.92 }}
+                  onClick={toggleAudioPlayback}
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: audioPlaying ? 'linear-gradient(135deg, #f472b6, #ec4899)' : 'rgba(244,114,182,0.12)',
+                    color: audioPlaying ? '#fff' : '#ec4899',
+                    boxShadow: audioPlaying ? '0 4px 12px rgba(244,114,182,0.32)' : 'none',
+                  }}
+                  aria-label={audioPlaying ? 'Pause' : 'Play'}
+                >
+                  {audioPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" style={{ marginLeft: 1 }} />}
+                </motion.button>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-[2px] h-5">
+                    {Array.from({ length: 28 }).map((_, i) => {
+                      const seed = ((i * 7) % 11) / 11;
+                      const baseHeight = 0.25 + seed * 0.65;
+                      const progressX = audioProgress * 28;
+                      const isPast = i < progressX;
+                      return (
+                        <span
+                          key={i}
+                          className="flex-1 rounded-full"
+                          style={{
+                            height: `${baseHeight * 100}%`,
+                            background: isPast ? '#ec4899' : 'rgba(244,114,182,0.22)',
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                  <span
+                    className="block mt-1 text-[10px] tabular-nums font-semibold"
+                    style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}
+                  >
+                    {formatDuration(pendingAudio.duration)} voice note
+                  </span>
+                </div>
+
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.92 }}
+                  onClick={removeAudio}
+                  className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(239,68,68,0.08)', color: '#dc2626' }}
+                  aria-label="Remove voice note"
+                >
+                  <Trash2 size={13} strokeWidth={2.2} />
+                </motion.button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Processing skeleton — same card, slim band */}
+          <AnimatePresence>
+            {isProcessingMedia && !hasMedia && (
+              <motion.div
+                key="processing"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22 }}
+                className="relative overflow-hidden flex items-center justify-center py-6"
+                style={{
+                  background: 'linear-gradient(90deg, rgba(244,114,182,0.04), rgba(168,85,247,0.04))',
+                  borderBottom: '1px solid rgba(0,0,0,0.05)',
+                }}
+              >
+                <motion.span
+                  aria-hidden
+                  className="absolute inset-y-0 w-[40%]"
+                  style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)' }}
+                  initial={{ x: '-100%' }}
+                  animate={{ x: '300%' }}
+                  transition={{ repeat: Infinity, duration: 1.4, ease: 'linear' }}
+                />
+                <span className="text-[11px] font-semibold uppercase" style={{ letterSpacing: '0.18em', color: '#ec4899' }}>
+                  {isProcessingMedia === 'video' ? 'Processing video…' : 'Compressing photo…'}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* TEXTAREA — the heart of the page */}
           <textarea
             value={text}
             onFocus={() => feedback.tap()}
             onChange={(e) => setText(e.target.value)}
-            placeholder="What made this moment special?"
-            className="w-full min-h-[160px] p-5 text-[16px] leading-relaxed resize-none outline-none placeholder:opacity-25"
-            style={{ 
-                borderRadius: 20,
-                background: 'rgba(255,255,255,0.6)', 
-                border: '1.5px solid rgba(var(--theme-particle-2-rgb),0.1)', 
-                color: 'var(--color-text-primary)',
-                boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.015), 0 1px 3px rgba(0,0,0,0.02)',
-            }}
+            placeholder="What happened? Who was there? What did it feel like?"
+            inputMode="text"
+            enterKeyHint="done"
+            autoCapitalize="sentences"
+            autoCorrect="on"
+            spellCheck
+            className="block w-full min-h-[160px] px-5 py-4 text-[16px] leading-relaxed resize-none outline-none bg-transparent placeholder:opacity-40"
+            style={{ color: 'var(--color-text-primary)', fontWeight: 400 }}
           />
-        </motion.div>
 
-        {/* ══════════════════════════════════════════════════════════════
-             SECTION 2 — MOOD SELECTOR (Compact pill strip)
-           ══════════════════════════════════════════════════════════════ */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 450, damping: 30, delay: 0.1 }}
-          className="mb-6"
-        >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-3 ml-1" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
-            Mood
-          </p>
-          <div className="flex gap-2">
-            {Moods.map((m) => {
-              const active = selectedMood === m.id;
-              return (
-                <motion.button
-                  key={m.id}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => { setSelectedMood(m.id); feedback.tap(); }}
-                  className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-2xl transition-all relative"
-                  style={{
-                    background: active
-                      ? 'linear-gradient(135deg, rgba(244,114,182,0.12), rgba(251,207,232,0.2))'
-                      : 'rgba(255,255,255,0.4)',
-                    border: active
-                      ? '1.5px solid rgba(244,114,182,0.3)'
-                      : '1px solid rgba(255,255,255,0.6)',
-                    boxShadow: active
-                      ? '0 4px 16px rgba(244,114,182,0.1)'
-                      : 'none',
-                  }}
-                >
-                  <span className={`text-[22px] transition-transform ${active ? 'scale-110' : ''}`}>{m.emoji}</span>
-                  <span
-                    className="text-[9px] font-bold uppercase tracking-wider"
-                    style={{ color: active ? 'var(--color-nav-active)' : 'var(--color-text-secondary)', opacity: active ? 1 : 0.4 }}
+          {/* MOOD ROW — hairline divider, then inline emoji chips */}
+          <div
+            className="flex items-center justify-between gap-3 px-4 py-3"
+            style={{ borderTop: '1px solid rgba(0,0,0,0.05)' }}
+          >
+            <span
+              className="text-[11px] font-semibold flex-shrink-0"
+              style={{ color: 'var(--color-text-secondary)', opacity: 0.62 }}
+            >
+              How did it feel?
+            </span>
+            <div className="flex items-center gap-1">
+              {Moods.map((m) => {
+                const active = selectedMood === m.id;
+                return (
+                  <motion.button
+                    key={m.id}
+                    type="button"
+                    whileTap={{ scale: 0.88 }}
+                    onClick={() => { setSelectedMood(m.id); feedback.tap(); }}
+                    aria-label={m.label}
+                    aria-pressed={active}
+                    className="w-9 h-9 rounded-full flex items-center justify-center transition-all"
+                    style={{
+                      background: active ? 'rgba(244,114,182,0.16)' : 'transparent',
+                      border: active ? '1.5px solid rgba(244,114,182,0.45)' : '1px solid transparent',
+                      transform: active ? 'scale(1.05)' : 'scale(1)',
+                    }}
                   >
-                    {m.label}
-                  </span>
-                </motion.button>
-              );
-            })}
+                    <span className="text-[19px] leading-none">{m.emoji}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
           </div>
-        </motion.div>
+        </motion.section>
 
-        {/* ══════════════════════════════════════════════════════════════
-             SECTION 3 — MEDIA PREVIEW (shown when media is attached)
-           ══════════════════════════════════════════════════════════════ */}
-        <AnimatePresence>
-          {hasMedia && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-              className="mb-6 relative overflow-hidden"
-              style={{ borderRadius: 20, boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}
-            >
-              {video && image ? (
-                <div className="relative">
-                  <img src={image} alt="Video thumb" className="w-full h-auto object-cover" style={{ maxHeight: 280 }} />
-                  <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.15)' }}>
-                    <motion.div
-                      whileTap={{ scale: 0.9 }}
-                      className="w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-xl"
-                      style={{ background: 'rgba(255,255,255,0.25)', border: '1.5px solid rgba(255,255,255,0.4)' }}
-                    >
-                      <Play size={22} fill="white" style={{ color: '#fff', marginLeft: 2 }} />
-                    </motion.div>
-                  </div>
-                </div>
-              ) : video ? (
-                <video src={video} controls className="w-full h-auto" style={{ maxHeight: 280 }} />
-              ) : image ? (
-                <img src={image} alt="Memory" className="w-full h-auto object-cover" style={{ maxHeight: 280 }} />
-              ) : null}
-
-              {/* Remove media button */}
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.85 }}
-                onClick={removeMedia}
-                onPointerDown={e => e.stopPropagation()}
-                aria-label="Remove attached media"
-                className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
-                style={{
-                  background: 'rgba(0,0,0,0.45)',
-                  backdropFilter: 'blur(12px)',
-                  WebkitBackdropFilter: 'blur(12px)',
-                }}
-              >
-                <X size={15} className="text-white" />
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ══════════════════════════════════════════════════════════════
-             SECTION 3b — VOICE NOTE PREVIEW (after recording)
-           ══════════════════════════════════════════════════════════════ */}
-        <AnimatePresence>
-          {pendingAudio && !isRecording && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-              className="mb-6 rounded-[18px] p-4"
-              style={{
-                background: 'linear-gradient(135deg, rgba(244,114,182,0.06), rgba(251,207,232,0.1))',
-                border: '1.5px solid rgba(244,114,182,0.15)',
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <motion.button
-                  whileTap={{ scale: 0.85 }}
-                  onClick={toggleAudioPlayback}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background: audioPlaying
-                      ? 'var(--theme-nav-center-bg-active)'
-                      : 'linear-gradient(135deg, rgba(244,114,182,0.15), rgba(251,207,232,0.25))',
-                    boxShadow: audioPlaying ? '0 4px 16px rgba(244,114,182,0.3)' : 'none',
-                  }}
-                >
-                  {audioPlaying
-                    ? <Pause size={14} fill="white" style={{ color: '#fff' }} />
-                    : <Play size={14} fill="var(--color-nav-active)" style={{ color: 'var(--color-nav-active)', marginLeft: 1 }} />
-                  }
-                </motion.button>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Mic size={11} style={{ color: 'var(--color-nav-active)' }} />
-                    <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>Voice attached</span>
-                    <span className="text-[10px] tabular-nums ml-auto flex-shrink-0" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
-                      {formatDuration(pendingAudio.duration)}
-                    </span>
-                  </div>
-                  <div className="h-[4px] rounded-full overflow-hidden" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.1)' }}>
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${audioProgress * 100}%`,
-                        background: 'var(--theme-nav-center-bg-active)',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <motion.button
-                  whileTap={{ scale: 0.8 }}
-                  onClick={removeAudio}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'rgba(239,68,68,0.08)' }}
-                >
-                  <Trash2 size={13} style={{ color: '#ef4444' }} />
-                </motion.button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ══════════════════════════════════════════════════════════════
-             SECTION 4 — ATTACH BAR (compact row of action chips)
-           ══════════════════════════════════════════════════════════════ */}
+        {/* ── ADD MEDIA ROW ──────────────────────────────────────────
+            Three quiet action chips. Highlighted when their attachment
+            is already in place; the Voice chip disables itself once a
+            recording exists (one voice note per memory). */}
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 450, damping: 30, delay: 0.15 }}
-          className="mb-6"
+          transition={{ duration: 0.45, delay: 0.10, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-4 grid grid-cols-3 gap-2"
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-3 ml-1" style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }}>
-            Attach
-          </p>
-          <div className="flex gap-2.5">
-            {/* Photo chip */}
+          {[
+            { id: 'photo', label: 'Photo', Icon: Camera, onTap: handlePhotoPick, active: !!image && !video, disabled: false },
+            { id: 'video', label: 'Video', Icon: Video, onTap: () => { feedback.tap(); videoInputRef.current?.click(); }, active: !!video, disabled: false },
+            { id: 'voice', label: 'Voice', Icon: Mic, onTap: pendingAudio ? undefined : startRecording, active: !!pendingAudio, disabled: !!pendingAudio },
+          ].map((act) => (
             <motion.button
-              whileTap={{ scale: 0.92 }}
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-1 flex items-center gap-2.5 p-3.5 rounded-2xl"
+              key={act.id}
+              type="button"
+              whileTap={{ scale: 0.96 }}
+              onClick={act.onTap}
+              disabled={act.disabled}
+              className="flex items-center justify-center gap-2 py-3 rounded-2xl disabled:opacity-60"
               style={{
-                background: hasMedia && !video
-                  ? 'linear-gradient(135deg, rgba(168,85,247,0.1), rgba(139,92,246,0.08))'
-                  : 'rgba(255,255,255,0.5)',
-                border: hasMedia && !video
-                  ? '1.5px solid rgba(168,85,247,0.2)'
-                  : '1px solid rgba(255,255,255,0.6)',
+                background: act.active ? 'rgba(244,114,182,0.10)' : 'rgba(255,255,255,0.78)',
+                border: `1px solid ${act.active ? 'rgba(244,114,182,0.32)' : 'rgba(0,0,0,0.04)'}`,
+                color: act.active ? '#ec4899' : 'var(--color-text-primary)',
               }}
             >
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.12), rgba(139,92,246,0.08))' }}
-              >
-                <Camera size={16} strokeWidth={1.8} style={{ color: '#8b5cf6' }} />
-              </div>
-              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>Photo</span>
+              <act.Icon size={15} strokeWidth={2.0} />
+              <span className="text-[12.5px] font-semibold">{act.label}</span>
             </motion.button>
-
-            {/* Video chip */}
-            <motion.button
-              whileTap={{ scale: 0.92 }}
-              onClick={() => videoInputRef.current?.click()}
-              className="flex-1 flex items-center gap-2.5 p-3.5 rounded-2xl"
-              style={{
-                background: video
-                  ? 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(96,165,250,0.08))'
-                  : 'rgba(255,255,255,0.5)',
-                border: video
-                  ? '1.5px solid rgba(59,130,246,0.2)'
-                  : '1px solid rgba(255,255,255,0.6)',
-              }}
-            >
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(96,165,250,0.08))' }}
-              >
-                <Video size={16} strokeWidth={1.8} style={{ color: '#3b82f6' }} />
-              </div>
-              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>Video</span>
-            </motion.button>
-
-            {/* Voice chip */}
-            <motion.button
-              whileTap={{ scale: 0.92 }}
-              onClick={pendingAudio ? undefined : startRecording}
-              className="flex-1 flex items-center gap-2.5 p-3.5 rounded-2xl"
-              style={{
-                background: pendingAudio
-                  ? 'linear-gradient(135deg, rgba(244,114,182,0.1), rgba(251,207,232,0.12))'
-                  : 'rgba(255,255,255,0.5)',
-                border: pendingAudio
-                  ? '1.5px solid rgba(244,114,182,0.2)'
-                  : '1px solid rgba(255,255,255,0.6)',
-                opacity: pendingAudio ? 0.6 : 1,
-              }}
-            >
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, rgba(244,114,182,0.12), rgba(251,207,232,0.08))' }}
-              >
-                <Mic size={16} strokeWidth={1.8} style={{ color: '#f472b6' }} />
-              </div>
-              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>Voice</span>
-            </motion.button>
-          </div>
+          ))}
         </motion.div>
 
         <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleImageUpload} />
@@ -551,40 +800,55 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-           STICKY SAVE BUTTON — fixed above nav
+           STICKY CTA — single rose pill, full width, calm shadow.
          ══════════════════════════════════════════════════════════════ */}
       <div
-        className="fixed bottom-0 inset-x-0 z-[45] flex justify-center pointer-events-none"
-        style={{ paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), 20px) + 84px)' }}
+        className="fixed bottom-0 inset-x-0 z-[45] px-5"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
       >
+        <div
+          aria-hidden
+          className="absolute -top-10 inset-x-0 h-10 pointer-events-none"
+          style={{ background: 'linear-gradient(to bottom, transparent, var(--theme-bg-main, #f5d2dc))' }}
+        />
         <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: isDisabled ? 0.45 : 1, y: 0 }}
-          whileTap={{ scale: 0.94 }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileTap={{ scale: 0.985 }}
           onClick={handleSave}
           disabled={isDisabled}
-          className="pointer-events-auto flex items-center gap-2.5 px-8 py-4 rounded-full text-[14px] font-bold text-white disabled:pointer-events-none"
+          className="relative w-full flex items-center justify-center gap-2 overflow-hidden disabled:cursor-not-allowed"
           style={{
-            background: 'var(--theme-nav-center-bg-active)',
+            height: 54,
+            borderRadius: 18,
+            background: isDisabled
+                ? 'rgba(255,255,255,0.55)'
+                : 'linear-gradient(180deg, #ec4899 0%, #be3d72 100%)',
+            color: isDisabled ? 'rgba(80,40,60,0.45)' : '#fff5f8',
             boxShadow: isDisabled
-              ? 'none'
-              : '0 8px 32px rgba(244,114,182,0.35), 0 2px 8px rgba(0,0,0,0.08)',
-            transition: 'opacity 0.3s, box-shadow 0.3s',
+                ? '0 6px 14px rgba(90,60,80,0.06)'
+                : '0 12px 28px rgba(236,72,153,0.32), 0 3px 8px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.22)',
+            fontWeight: 700,
+            fontSize: 14.5,
+            letterSpacing: '0.01em',
+            transition: 'opacity 0.2s, box-shadow 0.2s',
           }}
+          aria-label="Save memory"
         >
           {isSaving ? (
             <>
-              <motion.div
+              <motion.span
+                aria-hidden
                 animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                transition={{ repeat: Infinity, duration: 0.85, ease: 'linear' }}
                 className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
               />
-              Saving...
+              <span>Saving…</span>
             </>
           ) : (
             <>
-              <Sparkles size={16} />
-              Save Memory
+              <Sparkles size={14} strokeWidth={2.2} />
+              <span>Save memory</span>
             </>
           )}
         </motion.button>
@@ -702,6 +966,20 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       </AnimatePresence>
 
       <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+
+      {/* Full-screen Forge — opens on every photo/video pick before commit */}
+      <MediaForge
+        isOpen={!!forgePending}
+        kind={forgePending?.kind ?? 'photo'}
+        imageSrc={forgePending?.image ?? null}
+        videoSrc={forgePending?.video ?? null}
+        bytes={forgePending?.bytes}
+        durationSec={forgePending?.durationSec}
+        initialCaption={text}
+        onConfirm={handleForgeConfirm}
+        onRetry={handleForgeRetry}
+        onClose={handleForgeClose}
+      />
     </motion.div>
   );
 };

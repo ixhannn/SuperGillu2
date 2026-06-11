@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { ArrowLeft } from 'lucide-react';
-import { useNavigation } from '../App';
+import { useNavigationActions } from '../App';
 import { motion } from 'framer-motion';
 
 interface ViewHeaderProps {
@@ -13,6 +14,54 @@ interface ViewHeaderProps {
   tone?: 'default' | 'romance';
 }
 
+const useSpacerVisible = (ref: React.RefObject<HTMLDivElement | null>) => {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const compute = () => {
+      const shell = el.closest('.keep-alive-shell');
+      const isCachedTab = shell?.classList.contains('is-cached') || shell?.getAttribute('aria-hidden') === 'true';
+      const isVisible = !isCachedTab && el.offsetParent !== null && el.offsetWidth > 0;
+      setVisible((prev) => (prev === isVisible ? prev : isVisible));
+    };
+
+    compute();
+
+    const shell = el.closest('.keep-alive-shell');
+    let observer: MutationObserver | null = null;
+    if (shell) {
+      observer = new MutationObserver(compute);
+      observer.observe(shell, { attributes: true, attributeFilter: ['class', 'style'] });
+    }
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(compute);
+      resizeObserver.observe(el);
+      if (shell instanceof HTMLElement) resizeObserver.observe(shell);
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') compute();
+    };
+
+    window.addEventListener('resize', compute);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      observer?.disconnect();
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', compute);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [ref]);
+
+  return visible;
+};
+
 export const ViewHeader: React.FC<ViewHeaderProps> = ({
   title,
   subtitle,
@@ -21,15 +70,14 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
   variant,
   borderless = false,
 }) => {
-  const { goBack } = useNavigation();
+  const { goBack } = useNavigationActions();
   const handleBack = onBack ?? goBack;
   const isGhost = borderless || variant === 'transparent';
+  const spacerRef = useRef<HTMLDivElement>(null);
+  const visible = useSpacerVisible(spacerRef);
 
-  return (
-    <>
-      <div className="vh-spacer" aria-hidden="true" />
-      {/* vh-shell owns fixed positioning + centering — no Framer transforms here */}
-      <div className="vh-shell">
+  const shell = (
+    <div className="vh-shell">
       <motion.header
         className={`vh${isGhost ? ' vh--ghost' : ''}`}
         initial={{ opacity: 0, y: -12, scale: 0.97 }}
@@ -83,7 +131,13 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
           )}
         </div>
       </motion.header>
-      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div ref={spacerRef} className="vh-spacer" aria-hidden="true" />
+      {visible && typeof document !== 'undefined' ? ReactDOM.createPortal(shell, document.body) : null}
     </>
   );
 };

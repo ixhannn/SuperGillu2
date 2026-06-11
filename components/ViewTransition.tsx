@@ -19,14 +19,8 @@ export const ViewTransition: React.FC<ViewTransitionProps> = ({ children }) => {
       data-transition-shell="true"
       className="w-full min-h-full"
       style={{
-        contain:            'paint',
-        isolation:          'isolate',
-        backfaceVisibility: 'hidden',
-        transform:          'translateZ(0)',
-        // NOTE: the view-transition-name lives on the viewport-clipped <main>
-        // in Layout.tsx (cheap viewport-sized snapshots), NOT here — this
-        // wrapper is full content height and naming it would force the
-        // browser to rasterize multi-thousand-px textures per navigation.
+        contain:   'paint',
+        isolation: 'isolate',
       }}
     >
       {children}

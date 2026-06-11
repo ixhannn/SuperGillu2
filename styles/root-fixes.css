@@ -9,10 +9,94 @@ body,
 html,
 body {
   overscroll-behavior-y: none;
+  /* iOS WKWebView: kill the grey tap-highlight rectangle that flashes
+     under any tappable element the moment a finger lands — even during a
+     scroll gesture. This is the "posts blinking while scrolling" bug. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Capacitor: every element that the user can touch during a scroll
+   should not flash an :active state mid-scroll. We let the dedicated
+   .spring-press ripple system (Layout.handleRipple) handle deliberate taps
+   instead — it only fires on a real click, after iOS' gesture detector
+   has already decided this wasn't a scroll. */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* The scroll wrapper. iOS native momentum scroll only kicks in when
+   overflow-y is scroll/auto AND -webkit-overflow-scrolling: touch is set.
+   We isolate the scroll into its own stacking context (z-index alone is
+   enough) without forcing a transform/will-change layer — those layers
+   were what made the WebGL background reflow on every scroll frame. */
+.lenis-wrapper {
+  -webkit-overflow-scrolling: touch;
+  /* contain: size suggests to the browser that the wrapper's size won't
+     change during scroll, letting it skip layout recalcs on each frame. */
+  contain: layout paint;
+}
+
+/* The soft keyboard overlays the WebView. Do not ask Android to resize the
+   native window: that exposes the grey system surface behind the fixed shell.
+   Instead, keep the app full-height and add enough scroll room above IME. */
+html[data-keyboard-open="true"],
+html[data-keyboard-open="true"] body {
+  height: 100%;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+html[data-keyboard-open="true"] .lenis-wrapper {
+  scroll-padding-bottom: calc(var(--lior-keyboard-height, 0px) + 8rem);
+}
+
+html[data-keyboard-open="true"] .lenis-content {
+  padding-bottom: calc(var(--lior-keyboard-height, 0px) + 8rem) !important;
+}
+
+html[data-keyboard-open="true"] input,
+html[data-keyboard-open="true"] textarea,
+html[data-keyboard-open="true"] select,
+html[data-keyboard-open="true"] [contenteditable="true"] {
+  scroll-margin-top: var(--lior-keyboard-top-guard, 104px);
+  scroll-margin-bottom: calc(var(--lior-keyboard-height, 0px) + 1rem);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Mobile input: remove the 300ms tap delay and the system tap-highlight on
+   interactive form elements. touch-action:manipulation tells the browser
+   "only pan/zoom are native gestures here; skip the double-tap-to-zoom wait."
+   ────────────────────────────────────────────────────────────────────────── */
+input,
+textarea,
+select {
+  touch-action: manipulation;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Prevent iOS / Android WebView from zooming the page when a text input is
+   focused. The browser auto-zooms whenever it detects a font-size < 16px on
+   the focused element. We only enforce this on native Capacitor builds to
+   avoid overriding explicit Tailwind text utilities on web previews.
+   The attribute selector [data-native-shell="native"] is set by nativeShell.ts
+   as soon as Capacitor boots; class-level Tailwind rules (specificity 0,1,0)
+   win over this type selector (0,0,1), so Tailwind overrides still apply.
+   ────────────────────────────────────────────────────────────────────────── */
+[data-native-shell="native"] input:not([type="range"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+[data-native-shell="native"] textarea {
+  font-size: max(16px, 1em);
 }
 
 :root {
   --radius-xl: 24px;
+  --lior-ease-silk: cubic-bezier(0.16, 1, 0.3, 1);
+  --lior-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --lior-ease-press: cubic-bezier(0.2, 0, 0, 1);
+  --lior-motion-tab: 240ms;
+  --lior-motion-push: 360ms;
+  --lior-motion-pop: 260ms;
+  --lior-motion-modal: 380ms;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -36,6 +120,25 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
   -webkit-backdrop-filter: none !important;
 }
 
+[data-lior-motion-veil="true"] {
+  opacity: 0;
+  transform: translate3d(-24%, 0, 0) scaleX(0.72);
+  transform-origin: center;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+html[data-transitioning="1"] [data-lior-motion-veil="true"] {
+  animation: lior-motion-veil 520ms var(--lior-ease-silk) both;
+  animation-play-state: running !important;
+}
+
+@keyframes lior-motion-veil {
+  0%   { opacity: 0;    transform: translate3d(-24%, 0, 0) scaleX(0.72); }
+  34%  { opacity: 0.34; transform: translate3d(-4%, 0, 0) scaleX(0.92); }
+  100% { opacity: 0;    transform: translate3d(34%, 0, 0) scaleX(1.08); }
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    `cv-auto` utility — lets any wrapper opt into content-visibility:auto.
    Use on long, scroll-distant sections (memory cards, timeline rows, etc.)
@@ -50,58 +153,119 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
 
 /* ──────────────────────────────────────────────────────────────────────────
    Keep-alive tab shells.
-   Every visited ROOT_TAB lives in its own shell. Only the active one paints
-   and accepts input; the rest are display:none (state preserved, paint cost
-   zero). Tab switch = CSS class flip → instant, no React unmount.
+   Every visited ROOT_TAB lives in its own shell. Cached tabs stay off-flow and
+   invisible instead of display:none, so returning to a heavy tab does not force
+   a cold full-tree layout wake-up.
    ────────────────────────────────────────────────────────────────────────── */
+[data-transition-shell="true"] {
+  position: relative;
+}
+
 .keep-alive-shell {
-  /* Each shell is the full content area. Stacking handled by display toggle. */
   width: 100%;
   min-height: 100%;
 }
+
 .keep-alive-shell.is-cached {
-  /* display:none preserves React state but skips ALL paint and layout.
-     Effects/listeners continue to run — that's the keep-alive point. */
-  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
 }
+
 .keep-alive-shell.is-active {
-  display: block;
-}
-/* Liquid float-in — OPT-IN via the one-shot `is-entering` class, which only
-   the bottom-nav tab fast path grants (App.tsx shell-activation effect,
-   removed on animationend/animationcancel). Shells activated inside a View
-   Transition or gesture commit never get the class, so the motion can
-   neither capture mid-frame into the VT snapshot nor replay after it.
-
-   TRANSFORM-ONLY on purpose, twice over:
-   1. Translate doesn't re-rasterize nested layers the way the earlier scale
-      attempt did — the compositor just moves them.
-   2. Animating opacity (or even will-change: opacity) on the shell turns it
-      into a backdrop root: every backdrop-filter surface inside the
-      incoming tab (.bento-card, .liquid-glass, the status pills) loses its
-      frost for the duration and the blur visibly pops back at animationend.
-      A pure translate keeps the glass frosted throughout.
-
-   `both` pins the final state on the shell so there's no flash if the
-   animation is interrupted by a rapid re-tap. */
-.keep-alive-shell.is-active.is-entering {
-  animation: keep-alive-fade-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: transform;
+  position: relative;
+  z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  /* Cached root tabs are the hottest path. Keep this as a silk fade so heavy
+     routes do not re-rasterize their entire shell while switching. */
+  animation: keep-alive-tab-enter var(--lior-motion-tab) var(--lior-ease-silk) both;
+  will-change: opacity;
 }
 
-@keyframes keep-alive-fade-in {
-  from {
-    transform: translate3d(0, 12px, 0);
-  }
+@keyframes keep-alive-tab-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.home-reveal,
+.home-reveal-item {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0) scale(0.985);
+  transform-origin: center;
+  animation: lior-home-reveal 520ms var(--lior-ease-silk) var(--home-reveal-delay, 0ms) both;
+  will-change: transform, opacity;
+}
+
+/* ── PERF: skip paint + backdrop-blur of far-offscreen Home sections ────────
+ * Each `.home-reveal` wraps a full-width, vertically-stacked section. When a
+ * section is well outside the viewport, content-visibility:auto lets the
+ * browser skip its layout/paint entirely — including the costly 52px
+ * backdrop-filter of any glass card inside it. On-screen sections are wholly
+ * unaffected, so the rendered pixels are byte-identical (zero visual change).
+ *
+ * `contain-intrinsic-size: auto …` reserves height while skipped: the browser
+ * uses each section's last-rendered size once known, falling back to 320px
+ * before first paint, so scroll geometry stays stable.
+ *
+ * Scoped to `.home-reveal` ONLY — never `.home-reveal-item`, whose grid cells
+ * lay out horizontally where a fixed intrinsic height would distort the row.
+ * ──────────────────────────────────────────────────────────────────────── */
+.home-reveal {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
+.home-reveal-fadeScale {
+  transform: translate3d(0, 12px, 0) scale(0.965);
+}
+
+.home-reveal-slideFromLeft {
+  transform: translate3d(-28px, 0, 0);
+}
+
+.home-reveal-slideFromRight {
+  transform: translate3d(28px, 0, 0);
+}
+
+.home-reveal-popIn {
+  transform: translate3d(0, 12px, 0) scale(0.94);
+}
+
+.home-reveal-tiltUp {
+  transform: translate3d(0, 26px, 0) scale(0.975);
+}
+
+[data-home-reveal-grid="true"] {
+  perspective: 900px;
+}
+
+[data-home-reveal-grid="true"] > .home-reveal-item:nth-child(1) { --home-reveal-delay: 30ms; }
+[data-home-reveal-grid="true"] > .home-reveal-item:nth-child(2) { --home-reveal-delay: 80ms; }
+[data-home-reveal-grid="true"] > .home-reveal-item:nth-child(3) { --home-reveal-delay: 130ms; }
+[data-home-reveal-grid="true"] > .home-reveal-item:nth-child(4) { --home-reveal-delay: 180ms; }
+[data-home-reveal-grid="true"] > .home-reveal-item:nth-child(5) { --home-reveal-delay: 230ms; }
+[data-home-reveal-grid="true"] > .home-reveal-item:nth-child(6) { --home-reveal-delay: 280ms; }
+
+@keyframes lior-home-reveal {
   to {
-    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 /* Reduced motion: instant snap, no fade */
 @media (prefers-reduced-motion: reduce) {
-  .keep-alive-shell.is-active.is-entering {
+  .keep-alive-shell.is-active,
+  .home-reveal,
+  .home-reveal-item {
     animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -114,47 +278,130 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
 .bn-icon {
   transform: translateZ(0) scale(0.84);
   transform-origin: center;
-  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 260ms var(--lior-ease-silk);
   will-change: transform;
   backface-visibility: hidden;
 }
 .bn-icon.is-active {
-  transform: translateZ(0) scale(1);
+  transform: translate3d(0, -1px, 0) scale(1);
 }
 .bn-fab {
-  transform: translateZ(0) scale(1) rotate(0deg);
-  /* Bouncy release: the orb springs back with a tiny overshoot wiggle. */
-  transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: translateZ(0) scale(1);
+  transition: transform 170ms var(--lior-ease-soft);
   will-change: transform;
   backface-visibility: hidden;
 }
 .bn-fab:active {
-  /* Instant squish + playful tilt on touch-down. */
-  transform: translateZ(0) scale(0.86) rotate(-8deg);
-  transition-duration: 90ms;
-  transition-timing-function: cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  transform: translate3d(0, 1px, 0) scale(0.92);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
    Native View Transitions API styling.
-   The directional slide keyframes live in index.css and target the NAMED
-   layer ::view-transition-*(main-view) (set via view-transition-name on the
-   viewport-clipped <main> in Layout.tsx). The root snapshots are frozen
-   there with `animation: none !important` so nav/ambient layers stay
-   rock-solid — only the content layer moves.
+   The browser captures snapshots of ::view-transition-old(root) and
+   ::view-transition-new(root) on the compositor thread. These keyframes
+   re-create our iOS-style slide + scale per-direction without ever cloning
+   the DOM into a fixed layer.
    ────────────────────────────────────────────────────────────────────────── */
+@keyframes lior-vt-tab-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0; transform: translate3d(0, -8px, 0) scale(1.012); }
+}
+@keyframes lior-vt-tab-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.988); }
+  58%  { opacity: 1; }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes lior-vt-push-out {
+  from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0.22; transform: translate3d(-10vw, 0, 0) scale(0.982); }
+}
+@keyframes lior-vt-push-in {
+  from { opacity: 0; transform: translate3d(24vw, 0, 0) scale(0.982); }
+  42%  { opacity: 1; }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes lior-vt-pop-out {
+  from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0.18; transform: translate3d(24vw, 0, 0) scale(0.982); }
+}
+@keyframes lior-vt-pop-in {
+  from { opacity: 0; transform: translate3d(-10vw, 0, 0) scale(0.982); }
+  42%  { opacity: 1; }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes lior-vt-modal-out {
+  from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0.62; transform: translate3d(0, -10px, 0) scale(0.982); }
+}
+@keyframes lior-vt-modal-in {
+  from { opacity: 0; transform: translate3d(0, 28px, 0) scale(0.982); }
+  50%  { opacity: 1; }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+/* Sheet dismissal — the inverse of modal: the composer slides back DOWN
+   while the screen beneath settles forward in depth (iOS sheet stack). */
+@keyframes lior-vt-modal-close-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0; transform: translate3d(0, 34px, 0) scale(0.984); }
+}
+@keyframes lior-vt-modal-close-in {
+  from { opacity: 0.62; transform: translate3d(0, -10px, 0) scale(0.982); }
+  50%  { opacity: 1; }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+::view-transition-group(root) {
+  isolation: isolate;
+}
+
+/* Same refined deceleration curve the JS fallback uses. */
 ::view-transition-old(root),
-::view-transition-new(root),
-::view-transition-old(main-view),
-::view-transition-new(main-view) {
-  /* Don't let the snapshots eat pointer events */
+::view-transition-new(root) {
+  animation-timing-function: var(--lior-ease-silk);
+  animation-fill-mode: both;
+  /* Important: don't let the snapshots eat pointer events */
   pointer-events: none;
+}
+
+html[data-vt-dir="tab"]::view-transition-old(root) {
+  animation: var(--lior-motion-tab) var(--lior-ease-soft) lior-vt-tab-out;
+}
+html[data-vt-dir="tab"]::view-transition-new(root) {
+  animation: var(--lior-motion-tab) var(--lior-ease-silk) lior-vt-tab-in;
+}
+
+html[data-vt-dir="push"]::view-transition-old(root) {
+  animation: var(--lior-motion-push) var(--lior-ease-soft) lior-vt-push-out;
+}
+html[data-vt-dir="push"]::view-transition-new(root) {
+  animation: var(--lior-motion-push) var(--lior-ease-silk) lior-vt-push-in;
+}
+
+html[data-vt-dir="pop"]::view-transition-old(root) {
+  animation: var(--lior-motion-pop) var(--lior-ease-soft) lior-vt-pop-out;
+}
+html[data-vt-dir="pop"]::view-transition-new(root) {
+  animation: var(--lior-motion-pop) var(--lior-ease-silk) lior-vt-pop-in;
+}
+
+html[data-vt-dir="modal"]::view-transition-old(root) {
+  animation: var(--lior-motion-modal) var(--lior-ease-soft) lior-vt-modal-out;
+}
+html[data-vt-dir="modal"]::view-transition-new(root) {
+  animation: var(--lior-motion-modal) var(--lior-ease-silk) lior-vt-modal-in;
+}
+
+html[data-vt-dir="modal-close"]::view-transition-old(root) {
+  animation: var(--lior-motion-pop) var(--lior-ease-soft) lior-vt-modal-close-out;
+}
+html[data-vt-dir="modal-close"]::view-transition-new(root) {
+  animation: var(--lior-motion-pop) var(--lior-ease-silk) lior-vt-modal-close-in;
 }
 
 /* Reduced motion — instant snap */
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(main-view),
-  ::view-transition-new(main-view) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
     animation-duration: 0.001ms !important;
   }
 }

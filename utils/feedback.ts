@@ -3,6 +3,8 @@ import { Haptics } from '../services/haptics';
 class FeedbackEngine {
   private audioCtx: AudioContext | null = null;
   private isEnabled: boolean = true;
+  private lastAudioAt = 0;
+  private readonly audioDebounceMs = 70;
 
   constructor() {
     // We only initialize AudioContext on first user interaction to comply with browser autoplay policies
@@ -21,9 +23,16 @@ class FeedbackEngine {
     return this.audioCtx;
   }
 
+  private canPlayAudio(): boolean {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - this.lastAudioAt < this.audioDebounceMs) return false;
+    this.lastAudioAt = now;
+    return true;
+  }
+
   // Generate a soft, rounded 'pop' or 'tick' sound computationally
-  private playTone(frequency: number, type: OscillatorType, duration: number, volumeLevel: number = 0.1) {
-    if (!this.isEnabled) return;
+  private playTone(frequency: number, type: OscillatorType, duration: number, volumeLevel: number = 0.1, skipCooldown = false) {
+    if (!this.isEnabled || (!skipCooldown && !this.canPlayAudio())) return;
     const ctx = this.getAudioContext();
     if (!ctx) return;
 
@@ -70,7 +79,7 @@ class FeedbackEngine {
   // --- PREMIUM AUDIO ---
 
   public playTick() {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled || !this.canPlayAudio()) return;
     const ctx = this.getAudioContext();
     if (!ctx) return;
 
@@ -100,7 +109,7 @@ class FeedbackEngine {
   }
 
   public playPop() {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled || !this.canPlayAudio()) return;
     const ctx = this.getAudioContext();
     if (!ctx) return;
 
@@ -129,14 +138,14 @@ class FeedbackEngine {
   }
 
   public playSuccess() {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled || !this.canPlayAudio()) return;
     const ctx = this.getAudioContext();
     if (!ctx) return;
     
     // Play a quick, clean two-tone chime (F5 to C6 - perfect fifth), much softer than before
-    this.playTone(698.46, 'sine', 0.1, 0.03); 
+    this.playTone(698.46, 'sine', 0.1, 0.03, true); 
     setTimeout(() => {
-      this.playTone(1046.50, 'sine', 0.2, 0.04); 
+      this.playTone(1046.50, 'sine', 0.2, 0.04, true); 
     }, 80);
   }
 

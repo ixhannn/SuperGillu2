@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send } from 'lucide-react';
 import { RelationshipSignals } from '../services/relationshipSignals';
@@ -14,6 +14,22 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
   const [bestMoment, setBestMoment] = useState('');
   const [hardThing, setHardThing] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const bestRef = useRef<HTMLTextAreaElement>(null);
+  const hardRef = useRef<HTMLTextAreaElement>(null);
+
+  // Delay focus until the sheet slide-in animation has settled (~350ms).
+  // Triggering the keyboard during the animation causes a jarring layout jump
+  // on Android because the keyboard resize and the spring animation race.
+  useEffect(() => {
+    if (step === 'best') {
+      const t = setTimeout(() => bestRef.current?.focus(), 350);
+      return () => clearTimeout(t);
+    }
+    if (step === 'hard') {
+      const t = setTimeout(() => hardRef.current?.focus(), 150);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
 
   const handleSubmit = useCallback(async () => {
     if (!bestMoment.trim() || isSubmitting) return;
@@ -81,18 +97,23 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
                   What was the best moment this week?
                 </h3>
                 <textarea
+                  ref={bestRef}
                   value={bestMoment}
                   onChange={(e) => setBestMoment(e.target.value)}
                   placeholder="The thing that made you feel closest..."
                   maxLength={300}
                   rows={3}
-                  className="w-full rounded-2xl px-4 py-3 text-sm resize-none outline-none"
+                  inputMode="text"
+                  enterKeyHint="next"
+                  autoCapitalize="sentences"
+                  autoCorrect="on"
+                  spellCheck
+                  className="w-full rounded-2xl px-4 py-3 text-[16px] resize-none outline-none"
                   style={{
                     background: 'rgba(var(--theme-particle-2-rgb), 0.06)',
                     border: '1px solid rgba(var(--theme-particle-2-rgb), 0.1)',
                     color: 'var(--color-text-primary)',
                   }}
-                  autoFocus
                 />
                 <motion.button
                   whileTap={{ scale: 0.97 }}
@@ -123,18 +144,23 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
                   This is optional and just for you. Naming it helps.
                 </p>
                 <textarea
+                  ref={hardRef}
                   value={hardThing}
                   onChange={(e) => setHardThing(e.target.value)}
                   placeholder="Something that felt unresolved, heavy, or distant..."
                   maxLength={300}
                   rows={3}
-                  className="w-full rounded-2xl px-4 py-3 text-sm resize-none outline-none"
+                  inputMode="text"
+                  enterKeyHint="send"
+                  autoCapitalize="sentences"
+                  autoCorrect="on"
+                  spellCheck
+                  className="w-full rounded-2xl px-4 py-3 text-[16px] resize-none outline-none"
                   style={{
                     background: 'rgba(var(--theme-particle-2-rgb), 0.06)',
                     border: '1px solid rgba(var(--theme-particle-2-rgb), 0.1)',
                     color: 'var(--color-text-primary)',
                   }}
-                  autoFocus
                 />
                 <div className="flex gap-3 mt-4">
                   <motion.button

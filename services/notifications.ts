@@ -8,26 +8,93 @@
  *   - `recap-sunday`      : every Sunday at reminder time for Weekly Recap
  *   - `cycle-3-days`      : remind once when 3 days remain in cycle
  *
- * Partner nudges (you recorded → partner hasn't) require server-side state,
- * so this file only exposes a stub that a Supabase Edge Function will call.
+ * Partner nudges are server-triggered via the `send-partner-nudge` Edge Function.
+ * `registerPushToken()` must be called after auth to enable them.
  */
 
+import { Capacitor } from '@capacitor/core';
 import { NotificationPrefs, NotificationSchedule } from '../types';
+import { SupabaseService } from './supabase';
 
 const CAP_NS = '@capacitor/local-notifications';
 
 type LocalNotifications = {
+  checkPermissions: () => Promise<{ display: 'granted' | 'denied' | 'prompt' }>;
   requestPermissions: () => Promise<{ display: 'granted' | 'denied' | 'prompt' }>;
   schedule: (opts: { notifications: unknown[] }) => Promise<unknown>;
   cancel: (opts: { notifications: { id: number }[] }) => Promise<void>;
   getPending: () => Promise<{ notifications: { id: number }[] }>;
+  createChannel?: (channel: {
+    id: string;
+    name: string;
+    description?: string;
+    importance?: 1 | 2 | 3 | 4 | 5;
+    visibility?: -1 | 0 | 1;
+    sound?: string;
+    vibration?: boolean;
+    lights?: boolean;
+    lightColor?: string;
+  }) => Promise<void>;
 };
 
+// High-importance channel so reminders appear as a heads-up banner (Android 8+
+// requires a channel; the plugin's default channel is only IMPORTANCE_DEFAULT,
+// which can land silently in the shade and read as "notifications don't work").
+const ANDROID_CHANNEL_ID = 'lior-reminders';
+let channelEnsured = false;
+
+async function ensureChannel(local: LocalNotifications): Promise<void> {
+  if (channelEnsured || typeof local.createChannel !== 'function') return;
+  try {
+    await local.createChannel({
+      id: ANDROID_CHANNEL_ID,
+      name: 'Lior reminders',
+      description: 'Daily moments, weekly recaps and partner alerts',
+      importance: 5,       // IMPORTANCE_HIGH → heads-up banner + sound
+      visibility: 1,       // VISIBILITY_PUBLIC
+      vibration: true,
+      lights: true,
+      lightColor: '#E91E8C',
+    });
+    channelEnsured = true;
+  } catch {
+    /* createChannel unsupported on this platform — default channel is used */
+  }
+}
+
+type PushNotifications = {
+  checkPermissions: () => Promise<{ receive: 'granted' | 'denied' | 'prompt' }>;
+  requestPermissions: () => Promise<{ receive: 'granted' | 'denied' | 'prompt' }>;
+  register: () => Promise<void>;
+  addListener: (event: 'registration', handler: (data: { value: string }) => void) => Promise<unknown>;
+};
+
+type NativePermissionState = 'granted' | 'denied' | 'prompt';
+
+function isNativeNotificationRuntime(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
 async function getCapacitorLocalNotifications(): Promise<LocalNotifications | null> {
+  if (!isNativeNotificationRuntime()) return null;
   try {
     // Dynamic import — safe when plugin is not installed
     const mod = (await import(/* @vite-ignore */ CAP_NS)) as { LocalNotifications?: LocalNotifications };
     return mod.LocalNotifications ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function getCapacitorPushNotifications(): Promise<PushNotifications | null> {
+  if (!isNativeNotificationRuntime()) return null;
+  try {
+    const mod = (await import(/* @vite-ignore */ '@capacitor/push-notifications')) as { PushNotifications?: PushNotifications };
+    return mod.PushNotifications ?? null;
   } catch {
     return null;
   }
@@ -44,6 +111,19 @@ const DEFAULT_PREFS: NotificationPrefs = {
   filmReadyEnabled: true,
   partnerNudgeEnabled: true,
 };
+
+let pushRegistrationListenerBound = false;
+
+function mergePermissionStates(...states: Array<NativePermissionState | null | undefined>): NativePermissionState {
+  if (states.some((state) => state === 'denied')) return 'denied';
+  if (states.some((state) => state === 'prompt')) return 'prompt';
+  return 'granted';
+}
+
+function toNotificationPermission(state: NativePermissionState): NotificationPermission {
+  if (state === 'prompt') return 'default';
+  return state;
+}
 
 function readPrefs(): NotificationPrefs {
   try {
@@ -105,17 +185,40 @@ export const NotificationsService = {
     writePrefs(prefs);
   },
 
-  async requestPermission(): Promise<'granted' | 'denied' | 'prompt'> {
+  async getPermissionStatus(): Promise<NotificationPermission> {
     const native = await getCapacitorLocalNotifications();
     if (native) {
-      const { display } = await native.requestPermissions();
-      return display;
+      const local = await native.checkPermissions().catch(() => ({ display: 'denied' as const }));
+      const push = await getCapacitorPushNotifications();
+      if (!push) return toNotificationPermission(local.display);
+      const remote = await push.checkPermissions().catch(() => ({ receive: 'denied' as const }));
+      return toNotificationPermission(mergePermissionStates(local.display, remote.receive));
+    }
+    if (typeof Notification === 'undefined') return 'denied';
+    return Notification.permission;
+  },
+
+  async requestPermission(): Promise<NotificationPermission> {
+    const native = await getCapacitorLocalNotifications();
+    if (native) {
+      const local = await native.requestPermissions().catch(() => ({ display: 'denied' as const }));
+      const push = await getCapacitorPushNotifications();
+      if (!push) return toNotificationPermission(local.display);
+      const remote = await push.requestPermissions().catch(() => ({ receive: 'denied' as const }));
+      const permission = mergePermissionStates(local.display, remote.receive);
+      if (permission === 'granted') {
+        await this.registerPushToken().catch(() => {});
+      }
+      return toNotificationPermission(permission);
     }
     if (typeof Notification === 'undefined') return 'denied';
     if (Notification.permission === 'granted') return 'granted';
     if (Notification.permission === 'denied') return 'denied';
     const result = await Notification.requestPermission();
-    return result as 'granted' | 'denied' | 'prompt';
+    if (result === 'granted') {
+      await this.registerPushToken().catch(() => {});
+    }
+    return result;
   },
 
   /**
@@ -156,10 +259,20 @@ export const NotificationsService = {
 
     const native = await getCapacitorLocalNotifications();
     if (native) {
+      // Make sure we actually hold permission — otherwise the scheduled
+      // notifications are silently dropped. Only prompt when the user hasn't
+      // decided yet (status 'prompt'); never re-nag a denial.
+      const status = await native.checkPermissions().catch(() => ({ display: 'denied' as const }));
+      if (status.display === 'prompt') {
+        await native.requestPermissions().catch(() => undefined);
+      }
+      await ensureChannel(native);
       const payload = queued.map((s) => ({
         id: hashId(s.id),
         title: s.title,
         body: s.body,
+        channelId: ANDROID_CHANNEL_ID,
+        smallIcon: 'ic_notification',
         schedule: { at: new Date(s.fireAt), allowWhileIdle: true },
         extra: { kind: s.kind, ...s.payload },
       }));
@@ -195,11 +308,14 @@ export const NotificationsService = {
 
     const native = await getCapacitorLocalNotifications();
     if (native) {
+      await ensureChannel(native);
       await native.schedule({
         notifications: [{
           id: hashId(`${kind}-${Date.now()}`),
           title,
           body,
+          channelId: ANDROID_CHANNEL_ID,
+          smallIcon: 'ic_notification',
           schedule: { at: new Date(Date.now() + 500) },
         }],
       });
@@ -213,4 +329,114 @@ export const NotificationsService = {
   listPending(): NotificationSchedule[] {
     return readSchedules();
   },
+
+  /**
+   * Register this device for push notifications.
+   * - Native (Android/iOS): uses @capacitor/push-notifications → FCM token
+   * - Web PWA: uses VAPID Web Push subscription
+   * The token is stored in Supabase `device_push_tokens` so the
+   * `send-partner-nudge` Edge Function can reach either partner's device.
+   */
+  async registerPushToken(): Promise<void> {
+    if (!SupabaseService.isConfigured()) return;
+
+    const deviceId = localStorage.getItem('lior_device_id') || 'unknown';
+
+    // ── Native path: Capacitor PushNotifications ─────────────────────
+    const nativePush = await getCapacitorPushNotifications();
+    if (nativePush) {
+      const { receive } = await nativePush.requestPermissions().catch(() => ({ receive: 'denied' as const }));
+      if (receive !== 'granted') return;
+
+      if (!pushRegistrationListenerBound) {
+        await nativePush.addListener('registration', (token: { value: string }) => {
+          void savePushToken(token.value, 'fcm', deviceId);
+        });
+        pushRegistrationListenerBound = true;
+      }
+
+      await nativePush.register();
+      return; // native path handled
+    }
+
+    // ── Web PWA path: VAPID subscription ─────────────────────────────
+    const vapidKey = (import.meta as { env?: Record<string, string> }).env?.VITE_VAPID_PUBLIC_KEY;
+    if (!vapidKey || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+      const subscription = existing ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey,
+      });
+      await savePushToken(JSON.stringify(subscription.toJSON()), 'web', deviceId);
+    } catch { /* permission denied or not supported */ }
+  },
+
+  /**
+   * Trigger the server-side partner nudge after recording a pulse check.
+   * Fire-and-forget — does not block the recording flow.
+   */
+  async triggerPartnerNudge(): Promise<void> {
+    if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
+    try {
+      const token = await SupabaseService.getAccessToken();
+      if (!token) return;
+      const { url } = SupabaseService.getProjectConfig();
+      if (!url) return;
+
+      await fetch(`${url}/functions/v1/send-partner-nudge`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      });
+    } catch { /* fire-and-forget */ }
+  },
+
+  /**
+   * Send the partner a push when the heartbeat button is tapped, so it lands
+   * even if their app is closed. Fire-and-forget — never blocks the UI.
+   * `senderName` is the current user's display name (the partner sees it).
+   */
+  async triggerHeartbeatPush(senderName: string): Promise<void> {
+    if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
+    try {
+      const token = await SupabaseService.getAccessToken();
+      if (!token) return;
+      const { url } = SupabaseService.getProjectConfig();
+      if (!url) return;
+
+      await fetch(`${url}/functions/v1/send-partner-nudge`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'heartbeat', senderName }),
+      });
+    } catch { /* fire-and-forget */ }
+  },
 };
+
+async function savePushToken(token: string, platform: 'fcm' | 'web', deviceId: string): Promise<void> {
+  try {
+    const [userId, coupleId] = await Promise.all([
+      SupabaseService.getCurrentUserId(),
+      SupabaseService.getCurrentCoupleId(),
+    ]);
+    if (!userId || !coupleId || !SupabaseService.client) return;
+
+    await SupabaseService.client.from('device_push_tokens').upsert({
+      id: `${userId}:${deviceId}`,
+      user_id: userId,
+      couple_id: coupleId,
+      token,
+      platform,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+  } catch { /* best-effort */ }
+}

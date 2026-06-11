@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const storageSource = readFileSync(new URL('../services/storage.ts', import.meta.url), 'utf8');
-const petCharacterSource = readFileSync(new URL('../components/PetCharacter.tsx', import.meta.url), 'utf8');
+const cocoCreatureSource = readFileSync(new URL('../components/coco-pet/CocoPetCreature.jsx', import.meta.url), 'utf8');
+const couplePetSource = readFileSync(new URL('../components/CouplePet.tsx', import.meta.url), 'utf8');
 
 assert.match(
   storageSource,
@@ -29,7 +30,13 @@ assert.match(
 );
 
 assert.match(
-  petCharacterSource,
-  /const safeType = isPetType\(type\) \? type : 'bear';[\s\S]*const colors = PALETTES\[safeType\];[\s\S]*const BodySVG = BODY_MAP\[safeType\];/,
-  'Expected PetCharacter to guard its runtime type before reading palette/style maps.',
+  cocoCreatureSource,
+  /const v = PET_VARIANTS\[variant\] \|\| PET_VARIANTS\.rose;/,
+  'Expected the Coco pet creature to fall back safely when a persisted variant is unknown.',
+);
+
+assert.doesNotMatch(
+  couplePetSource,
+  /PetCharacter|PetShop|PetAIService/,
+  'Expected the old pet character/shop/AI page to be removed from the active CouplePet entry point.',
 );

@@ -411,12 +411,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                         position: 'relative',
                                     }}
                                 >
-                                    <motion.div
-                                        animate={{ scale: [1, 1.08, 1] }}
-                                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                                    >
-                                        <Heart size={46} fill="currentColor" style={{ color: 'var(--color-nav-active)' }} />
-                                    </motion.div>
+                                    <motion.img
+                                        src="/icon-128.png"
+                                        alt="Lior"
+                                        className="h-[68px] w-[68px] object-cover"
+                                        style={{ borderRadius: 15 }}
+                                        animate={{ scale: [1, 1.035, 1] }}
+                                        transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                                    />
                                     {/* Sparkle */}
                                     <motion.div
                                         style={{ position: 'absolute', top: -6, right: -6 }}
@@ -710,12 +712,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                         justifyContent: 'center',
                                     }}
                                 >
-                                    <motion.div
-                                        animate={{ scale: [1, 1.1, 1] }}
-                                        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                                    >
-                                        <Heart size={50} fill="currentColor" style={{ color: 'var(--color-nav-active)' }} />
-                                    </motion.div>
+                                    <motion.img
+                                        src="/icon-128.png"
+                                        alt="Lior"
+                                        className="h-[72px] w-[72px] object-cover"
+                                        style={{ borderRadius: 16 }}
+                                        animate={{ scale: [1, 1.04, 1] }}
+                                        transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                                    />
                                 </motion.div>
 
                                 {/* Orbiting sparkles */}

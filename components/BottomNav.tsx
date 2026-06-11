@@ -2,6 +2,7 @@ import React, { useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { Home, Plus, Archive, Sparkles, Heart, Users } from 'lucide-react';
 import { ViewState } from '../types';
 import { Audio } from '../services/audio';
+import { Haptics } from '../services/haptics';
 import { useNativeShell } from '../hooks/useNativeShell';
 
 interface BottomNavProps {
@@ -140,6 +141,7 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
 
   const handleNavTap = useCallback((id: string) => {
     Audio.play(id === 'add-memory' ? 'press' : 'navSwitch');
+    void (id === 'add-memory' ? Haptics.press() : Haptics.softTap());
     if (currentView === 'private-space' && id === 'add-memory') {
       window.dispatchEvent(new CustomEvent('private-space:add'));
       return;

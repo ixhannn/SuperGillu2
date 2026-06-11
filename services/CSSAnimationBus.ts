@@ -33,6 +33,7 @@ function q(v: number, decimals = 3): string {
 }
 
 let t = 0;
+let registered = false;
 
 // Pre-allocated double buffers — swap each frame to avoid per-frame allocations
 const _bufA: { [k: string]: string } = Object.create(null);
@@ -41,45 +42,56 @@ const _out:  { [k: string]: string } = Object.create(null);
 let _cur  = _bufA;  // values computed this frame
 let _prev = _bufB;  // values from last frame (for diff)
 
-AnimationEngine.register({
-  id: 'css-animation-bus',
-  priority: 10, // highest — always runs, CSS bus must never shed
-  budgetMs: 0.3,
-  minTier: 'css-only', // runs in ALL tiers — CSS fallback depends on these vars
+export function startCSSAnimationBus(): void {
+  if (registered) return;
+  registered = true;
 
-  tick(delta) {
-    t += delta * 0.001; // convert ms → seconds
-  },
+  AnimationEngine.register({
+    id: 'css-animation-bus',
+    priority: 10, // highest — always runs, CSS bus must never shed
+    budgetMs: 0.3,
+    minTier: 'css-only', // runs in ALL tiers — CSS fallback depends on these vars
 
-  cssProps() {
-    const breatheSin   = Math.sin(t * Math.PI * 2 * 0.5);   // 0.5 Hz
-    const breatheCos   = Math.cos(t * Math.PI * 2 * 0.5);
-    const breatheScale = (breatheSin + 1) * 0.5;            // 0→1
+    tick(delta) {
+      t += delta * 0.001; // convert ms → seconds
+    },
 
-    const pulseAlpha   = (Math.sin(t * Math.PI * 2 * 1.0) + 1) * 0.5;       // 1 Hz, 0→1
-    const shimmerPhase = ((t * 0.25) % 1);                                    // 0→1 at 0.25 Hz
-    const uiBreath     = 0.6 + (breatheScale * 0.4);                          // 0.6→1.0
+    cssProps() {
+      const breatheSin   = Math.sin(t * Math.PI * 2 * 0.5);   // 0.5 Hz
+      const breatheCos   = Math.cos(t * Math.PI * 2 * 0.5);
+      const breatheScale = (breatheSin + 1) * 0.5;            // 0→1
 
-    // Write into current buffer (reused, no allocation)
-    _cur['--breathe-sin']   = q(breatheSin);
-    _cur['--breathe-cos']   = q(breatheCos);
-    _cur['--breathe-scale'] = q(breatheScale);
-    _cur['--pulse-alpha']   = q(pulseAlpha);
-    _cur['--shimmer-phase'] = q(shimmerPhase);
-    _cur['--ui-breathe']    = q(uiBreath);
+      const pulseAlpha   = (Math.sin(t * Math.PI * 2 * 1.0) + 1) * 0.5;       // 1 Hz, 0→1
+      const shimmerPhase = ((t * 0.25) % 1);                                    // 0→1 at 0.25 Hz
+      const uiBreath     = 0.6 + (breatheScale * 0.4);                          // 0.6→1.0
 
-    // Diff against previous frame — only emit changed values
-    // Clear _out first (max 6 keys, so cheap)
-    for (const k in _out) delete _out[k];
-    for (const key in _cur) {
-      if (_cur[key] !== _prev[key]) _out[key] = _cur[key];
-    }
+      // Write into current buffer (reused, no allocation)
+      _cur['--breathe-sin']   = q(breatheSin);
+      _cur['--breathe-cos']   = q(breatheCos);
+      _cur['--breathe-scale'] = q(breatheScale);
+      _cur['--pulse-alpha']   = q(pulseAlpha);
+      _cur['--shimmer-phase'] = q(shimmerPhase);
+      _cur['--ui-breathe']    = q(uiBreath);
 
-    // Swap buffers without copying
-    const tmp = _prev; _prev = _cur; _cur = tmp;
+      // Diff against previous frame — only emit changed values
+      // Clear _out first (max 6 keys, so cheap)
+      for (const k in _out) delete _out[k];
+      for (const key in _cur) {
+        if (_cur[key] !== _prev[key]) _out[key] = _cur[key];
+      }
 
-    return _out;
-  },
-});
+      // Swap buffers without copying
+      const tmp = _prev; _prev = _cur; _cur = tmp;
 
-export {}; // side-effect import — just importing this file activates the bus
+      return _out;
+    },
+  });
+}
+
+export function stopCSSAnimationBus(): void {
+  if (!registered) return;
+  registered = false;
+  AnimationEngine.unregister('css-animation-bus');
+}
+
+export {};

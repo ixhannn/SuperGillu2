@@ -21,6 +21,17 @@ export const NavigationContext = createContext<{
   currentView: 'home',
 });
 export const useNavigation = () => useContext(NavigationContext);
+
+export const NavigationActionsContext = createContext<{
+  navigateTo: (view: ViewState, options?: NavigationOptions) => void;
+  goBack: () => void;
+  canGoBack: boolean;
+}>({
+  navigateTo: () => {},
+  goBack: () => {},
+  canGoBack: false,
+});
+export const useNavigationActions = () => useContext(NavigationActionsContext);
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { ViewTransition } from './components/ViewTransition';
@@ -32,38 +43,42 @@ import { SupabaseService } from './services/supabase';
 import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
 import { DiagnosticsService } from './services/diagnostics';
+import { remoteErrorSink } from './services/errorSink';
+import { FrameHealthService } from './services/frameHealth';
 import { NotificationsService } from './services/notifications';
 import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
 import { AppLaunchOverlay } from './components/AppLaunchOverlay';
 import { DevPanel } from './components/DevPanel';
-import { WhatsNew } from './components/WhatsNew';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
 import { InternalAdminService } from './services/internalAdmin';
-import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModules } from './views/viewRegistry';
+import { scheduleIdleTask } from './utils/scheduler';
 import { toast } from './utils/toast';
+import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
 import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
 
 const hasCompletedOnboarding = () => StorageService.hasCompletedOnboarding();
 
-const COMMON_NAV_PRELOADS: ViewState[] = [
+const WhatsNew = React.lazy(() =>
+  import('./components/WhatsNew').then((module) => ({ default: module.WhatsNew })),
+);
+
+const CORE_NAV_PRELOADS: ViewState[] = [
   'add-memory',
   'timeline',
   'daily-moments',
   'us',
+];
+
+const SECONDARY_NAV_PRELOADS: ViewState[] = [
   'profile',
   'sync',
   'countdowns',
   'open-when',
   'dinner-decider',
-  'mood-calendar',
-  'bonsai-bloom',
-  'private-space',
-  'time-capsule',
-  'surprises',
-  'daily-video',
-  'weekly-recap',
 ];
+
+const T_KEEP_ALIVE_TAB = 240;
 
 /** Inner component — must live inside CoachmarkProvider to access context */
 const CoachmarkTourScheduler: React.FC<{ shouldTrigger: boolean; onTriggered: () => void }> = ({ shouldTrigger, onTriggered }) => {
@@ -119,37 +134,83 @@ const RouteLoader = () => (
 
 const RouteFallback = () => null;
 
+const KeepAliveTabContent = React.memo(({
+  tab,
+  setView,
+}: {
+  tab: ViewState;
+  setView: (view: ViewState, options?: NavigationOptions) => void;
+}) => {
+  const TabView = getViewComponent(tab);
+  return <TabView setView={setView} />;
+});
+KeepAliveTabContent.displayName = 'KeepAliveTabContent';
+
+const KeepAliveTabShell = React.memo(({
+  tab,
+  isActive,
+  setView,
+}: {
+  tab: ViewState;
+  isActive: boolean;
+  setView: (view: ViewState, options?: NavigationOptions) => void;
+}) => {
+  return (
+    <div
+      data-keep-alive-tab={tab}
+      className={`keep-alive-shell ${isActive ? 'is-active' : 'is-cached'}`}
+      aria-hidden={!isActive}
+      inert={isActive ? undefined : true}
+    >
+      {/* Per-shell boundaries: a tab that suspends only blanks its own
+          shell, and a tab that THROWS (e.g. a failed chunk after a
+          redeploy) is contained here — one broken tab can never take down
+          the visible tree or the bottom nav. */}
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <KeepAliveTabContent tab={tab} setView={setView} />
+        </Suspense>
+      </ErrorBoundary>
+    </div>
+  );
+});
+KeepAliveTabShell.displayName = 'KeepAliveTabShell';
+
 // Main App Component with Default Export
 const App = () => {
   const e2eMode = isE2EAppMode();
   const [currentView, setCurrentView] = useState<ViewState>('home');
-  const [, setTransitionDir] = useState<TransitionDirection>('tab');
   const historyStack = useRef<ViewState[]>([]);
   const scrollPositions = useRef<Record<string, number>>({});
   const pendingScrollRestore = useRef<{ view: ViewState; y: number } | null>(null);
   const transitionLockRef = useRef(false);
+  const tabTransitionTokenRef = useRef(0);
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const pendingNavigationMetricRef = useRef<{ view: ViewState; direction: TransitionDirection; startedAt: number } | null>(null);
   // Tracks current view synchronously for pre-transition direction calculation.
   // Must be updated BEFORE state changes so direction is resolved correctly.
   const currentViewRef = useRef<ViewState>('home');
 
-  // ── Keep-alive tab registry ─────────────────────────────────────────────
-  // The REF is the source of truth so navigation callbacks never close over
-  // state — that keeps navigateTo/runNavigation referentially stable for the
-  // app's lifetime. (Previously runNavigation depended on the mountedTabs
-  // STATE, so its identity churned when a tab mounted, which re-ran the giant
-  // bootstrap effect — re-fetching the Supabase session, re-subscribing auth,
-  // restarting the native shell — on the FIRST visit to every tab. That was
-  // the single biggest tab-switch stall in the app.)
+  // ── Keep-alive tab cache ────────────────────────────────────────────────
+  // Every ROOT_TAB visited at least once stays mounted in the DOM. Switching
+  // between cached tabs becomes a CSS visibility flip — no React unmount, no
+  // re-render of the just-mounted tree, no Suspense boundary work, no
+  // fresh useState/useEffect cost. Same React instance survives every
+  // back-and-forth (Home → Us → Home is now genuinely free).
+  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => new Set(['home']));
   const mountedTabsRef = useRef<Set<ViewState>>(new Set(['home']));
-  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => mountedTabsRef.current);
-  const mountTab = useCallback((tab: ViewState) => {
-    if (!ROOT_TABS.includes(tab) || mountedTabsRef.current.has(tab)) return;
-    const next = new Set(mountedTabsRef.current);
-    next.add(tab);
-    mountedTabsRef.current = next;
-    setMountedTabs(next);
+  const markTabMounted = useCallback((view: ViewState) => {
+    if (!ROOT_TABS.includes(view)) return;
+    setMountedTabs((prev) => {
+      if (prev.has(view)) {
+        mountedTabsRef.current = prev;
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(view);
+      mountedTabsRef.current = next;
+      return next;
+    });
   }, []);
 
   // Register main scroll container from Layout
@@ -168,73 +229,6 @@ const App = () => {
     });
   }, []);
 
-  // Set by runTabTransition for the destination of a tab fast-path switch.
-  // Only those activations get the one-shot `is-entering` float-in; shells
-  // activated inside a View Transition / gesture commit must NOT animate
-  // (the VT owns the motion — a CSS animation would capture mid-frame into
-  // the snapshot or replay after it).
-  const pendingTabEnterRef = useRef<ViewState | null>(null);
-
-  // Imperative shell activation — flips is-active/is-cached + inert/aria on
-  // the keep-alive shells. Runs before paint on EVERY commit (no dep array):
-  // it is idempotent over ≤6 elements, and dep-gating broke remount paths
-  // (session re-auth) where currentView/mountedTabs hadn't changed but the
-  // DOM was rebuilt from stale cached classes.
-  //
-  // ORDER MATTERS: this is declared BEFORE the scroll-restore effect below.
-  // Layout effects run in declaration order; the restore must happen AFTER
-  // the display flip, otherwise scrollTo clamps against the OLD tab's
-  // content height and tall tabs come back scrolled to the wrong place.
-  useLayoutEffect(() => {
-    // Scope to the LIVE transition shell. TransitionEngine's JS fallback
-    // clones the whole shell into document.body (aria-hidden) for the exit
-    // snapshot — a document-wide query would restyle the clone mid-animation.
-    const host = document.querySelector<HTMLElement>('[data-transition-shell]:not([aria-hidden="true"])');
-    if (!host) return;
-    const shells = host.querySelectorAll<HTMLElement>('[data-keep-alive-tab]');
-    shells.forEach((el) => {
-      const tab = el.dataset.keepAliveTab;
-      if (!tab || tab === '__overlay__') return;
-      const isActive = tab === currentView;
-      el.classList.toggle('is-active', isActive);
-      el.classList.toggle('is-cached', !isActive);
-      el.toggleAttribute('inert', !isActive);
-      if (isActive) {
-        el.removeAttribute('aria-hidden');
-        if (pendingTabEnterRef.current === tab && !el.classList.contains('is-entering')) {
-          el.classList.add('is-entering');
-          // If no animation actually started (prefers-reduced-motion or a
-          // tier rule set animation: none), release immediately — otherwise
-          // the class (and its will-change layer) sticks forever and a
-          // never-firing listener leaks per switch.
-          const started = typeof el.getAnimations !== 'function'
-            || el.getAnimations().some(
-              (animation) => animation instanceof CSSAnimation && animation.animationName === 'keep-alive-fade-in',
-            );
-          if (!started) {
-            el.classList.remove('is-entering');
-          } else {
-            // animationend BUBBLES from descendants — only the shell's OWN
-            // float-in ending (or being cancelled mid-flight by a rapid
-            // re-tap hiding the shell) may release the class.
-            const onSettled = (event: AnimationEvent) => {
-              if (event.target !== el || event.animationName !== 'keep-alive-fade-in') return;
-              el.classList.remove('is-entering');
-              el.removeEventListener('animationend', onSettled);
-              el.removeEventListener('animationcancel', onSettled);
-            };
-            el.addEventListener('animationend', onSettled);
-            el.addEventListener('animationcancel', onSettled);
-          }
-        }
-      } else {
-        el.setAttribute('aria-hidden', 'true');
-        el.classList.remove('is-entering');
-      }
-    });
-    pendingTabEnterRef.current = null;
-  });
-
   useLayoutEffect(() => {
     const pending = pendingScrollRestore.current;
     if (!pending || pending.view !== currentView) return;
@@ -251,20 +245,19 @@ const App = () => {
       const destination = historyStack.current.pop() ?? 'home';
       scrollPositions.current[prev] = getCurrentScroll();
       currentViewRef.current        = destination;
-      if (ROOT_TABS.includes(destination)) mountTab(destination);
       flushSync(() => {
-        setTransitionDir('pop');
+        markTabMounted(destination);
         setCurrentView(destination);
       });
     };
     window.addEventListener('te:gesture-back', handler);
     return () => window.removeEventListener('te:gesture-back', handler);
-  }, [getCurrentScroll, mountTab]);
+  }, [getCurrentScroll, markTabMounted]);
 
-  // ── Module preload + shell pre-mount on prefetch ────────────────────────
-  // Fired on pointerdown. For ROOT_TABS we also pre-mount the keep-alive
-  // shell (hidden) so the lazy mount and first render happen during the
-  // finger-down window — by pointerup the switch is a pure CSS class flip.
+  // ── Module preload on prefetch ──────────────────────────────────────────
+  // Keep-alive tab cache obviates the need to pre-mount React trees, but we
+  // still preload the JS modules for non-tab destinations on pointerdown so
+  // their lazy chunks are parsed by the time the user lifts their finger.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ view?: string; views?: string[] }>).detail;
@@ -272,20 +265,17 @@ const App = () => {
         .filter((view): view is ViewState => Boolean(view) && view !== currentViewRef.current)
         .filter((view, index, list) => list.indexOf(view) === index)
         .slice(0, 3);
-      for (const view of hintedViews) {
-        if (ROOT_TABS.includes(view) && isViewModuleLoaded(view)) mountTab(view);
-      }
-      void preloadViewModules(hintedViews);
+      void preloadViewModulesSequential(hintedViews);
     };
     window.addEventListener('te:prefetch', handler);
     return () => window.removeEventListener('te:prefetch', handler);
-  }, [mountTab]);
+  }, []);
 
-  // Monotonic navigation token. finalizeNavigation callbacks capture the
-  // token of the navigation that scheduled them and no-op if a newer
-  // navigation has started since — a stale rAF from the lock-free tab path
-  // must never clear the lock of (or record a bogus metric for) an in-flight
-  // View Transition, which would let a second navigation slip into a busy
+  // Monotonic navigation token: finalize callbacks capture the token of the
+  // navigation that scheduled them and no-op if a newer navigation started
+  // since. Without this, the lock-free tab path's deferred finalize (the
+  // T_KEEP_ALIVE_TAB timeout) could fire mid-View-Transition of a FOLLOWING
+  // push and clear ITS lock — letting a third navigation slip into a busy
   // TransitionEngine and permanently desync the lock.
   const navTokenRef = useRef(0);
 
@@ -300,23 +290,47 @@ const App = () => {
     transitionLockRef.current = false;
   }, []);
 
-  // ── Fast tab transition ─────────────────────────────────────────────────
-  // Tab-to-tab is a single state commit; the shells' class flip happens in a
-  // layout effect and the cached element identities mean React reconciles
-  // essentially nothing. No flushSync, no View Transition, no lock window —
-  // this is what makes tab taps land on the very next frame, iOS-style.
+  useEffect(() => {
+    mountedTabsRef.current = mountedTabs;
+  }, [mountedTabs]);
+
+  useEffect(() => {
+    markTabMounted(currentView);
+  }, [currentView, markTabMounted]);
+
+  // ── Fast tab transition (CSS-only crossfade) ────────────────────────────
+  // For tab-to-tab switches, we don't need View Transitions API or DOM
+  // cloning — both views are already mounted side-by-side. We just toggle
+  // CSS classes to crossfade between them. This is the path that gives the
+  // app its native feel: no flushSync, no JS work, no main-thread block.
   const runTabTransition = useCallback((destination: ViewState, startedAt?: number) => {
-    const token = ++navTokenRef.current;
+    const root = typeof document !== 'undefined' ? document.documentElement : null;
+    const tabTransitionToken = tabTransitionTokenRef.current + 1;
+    tabTransitionTokenRef.current = tabTransitionToken;
+    if (root) root.dataset.tabTransitioning = '1';
+
+    const navToken = ++navTokenRef.current;
+    transitionLockRef.current = true;
     pendingNavigationMetricRef.current = {
       view: destination,
       direction: 'tab',
       startedAt: startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     };
-    pendingTabEnterRef.current = destination;
-    setTransitionDir('tab');
+
+    markTabMounted(destination);
     setCurrentView(destination);
-    requestAnimationFrame(() => finalizeNavigation(token));
-  }, [finalizeNavigation]);
+    transitionLockRef.current = false;
+
+    // Keep the metric window aligned with the CSS animation, but do not keep
+    // tab navigation locked: the compositor animation can be interrupted and
+    // restarted cleanly, and rapid taps should never feel swallowed.
+    window.setTimeout(() => {
+      finalizeNavigation(navToken);
+      if (root && tabTransitionTokenRef.current === tabTransitionToken) {
+        delete root.dataset.tabTransitioning;
+      }
+    }, T_KEEP_ALIVE_TAB);
+  }, [finalizeNavigation, markTabMounted]);
 
   const runNavigation = useCallback((destination: ViewState, dir: TransitionDirection, startedAt?: number) => {
     pendingScrollRestore.current = {
@@ -324,17 +338,13 @@ const App = () => {
       y: scrollPositions.current[destination] ?? 0,
     };
 
-    // Tab-to-tab ALWAYS takes the keep-alive fast path — including first
-    // visits (the shell mounts in the same commit; the module is preloaded
-    // by navigateTo before we get here, and the registry's synchronous
-    // thenable means no Suspense round-trip).
-    if (dir === 'tab' && ROOT_TABS.includes(destination) && ROOT_TABS.includes(currentViewRef.current)) {
-      mountTab(destination);
+    // Fast path: tab-to-tab between already-cached views.
+    if (dir === 'tab' && mountedTabsRef.current.has(destination) && ROOT_TABS.includes(currentViewRef.current)) {
       runTabTransition(destination, startedAt);
       return;
     }
 
-    const token = ++navTokenRef.current;
+    const navToken = ++navTokenRef.current;
     transitionLockRef.current = true;
     pendingNavigationMetricRef.current = {
       view: destination,
@@ -346,21 +356,15 @@ const App = () => {
       dir as EngineDirection,
       () => {
         flushSync(() => {
-          // Mounting INSIDE flushSync gives the setState discrete priority,
-          // so async callers (e.g. "save then setView" promise continuations)
-          // still commit the destination shell atomically with currentView —
-          // a default-lane mountTab queued outside would NOT be flushed here
-          // and the snapshot would capture an empty tree.
-          if (ROOT_TABS.includes(destination)) mountTab(destination);
-          setTransitionDir(dir);
+          markTabMounted(destination);
           setCurrentView(destination);
         });
       },
       () => {
-        requestAnimationFrame(() => finalizeNavigation(token));
+        requestAnimationFrame(() => finalizeNavigation(navToken));
       },
     );
-  }, [finalizeNavigation, mountTab, runTabTransition]);
+  }, [finalizeNavigation, markTabMounted, runTabTransition]);
 
   const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
@@ -404,9 +408,8 @@ const App = () => {
         view,
         y: scrollPositions.current[view] ?? 0,
       };
-      if (ROOT_TABS.includes(view)) mountTab(view);
       flushSync(() => {
-        setTransitionDir(dir);
+        markTabMounted(view);
         setCurrentView(view);
       });
       transitionLockRef.current = false;
@@ -417,17 +420,16 @@ const App = () => {
       transitionLockRef.current = true;
       void preloadViewModule(view)
         .then(() => {
-          // Commit immediately — the synchronous-thenable registry mounts the
-          // freshly parsed module without a Suspense round-trip, so there is
-          // nothing to wait a frame for.
-          transitionLockRef.current = false;
-          commitNavigation();
+          requestAnimationFrame(() => {
+            transitionLockRef.current = false;
+            commitNavigation();
+          });
         })
         .catch((error) => {
           // Chunk failed (redeploy rotated hashes / offline). STAY on the
-          // current view: committing would mount a rejected lazy and feed the
-          // error to the top-level boundary, taking down working tabs. The
-          // registry never caches rejections, so the next tap retries cleanly.
+          // current view: committing would mount a rejected lazy and feed
+          // the error to an ErrorBoundary. The registry never caches
+          // rejections, so the next tap retries cleanly.
           DiagnosticsService.recordError('navigation.preload', error, { view });
           transitionLockRef.current = false;
           toast.show("Couldn't open that screen — check your connection", 'error');
@@ -436,7 +438,7 @@ const App = () => {
     }
 
     commitNavigation();
-  }, [getCurrentScroll, mountTab, runNavigation]);
+  }, [getCurrentScroll, runNavigation]);
 
   const goBack = useCallback(() => {
     if (transitionLockRef.current) return;
@@ -451,6 +453,15 @@ const App = () => {
   }, [getCurrentScroll, runNavigation]);
 
   const canGoBack = historyStack.current.length > 0;
+  const navigationActionsValue = useMemo(() => ({
+    navigateTo,
+    goBack,
+    canGoBack,
+  }), [navigateTo, goBack, canGoBack]);
+  const navigationValue = useMemo(() => ({
+    ...navigationActionsValue,
+    currentView,
+  }), [navigationActionsValue, currentView]);
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -467,7 +478,9 @@ const App = () => {
   }, [e2eMode]);
 
   useEffect(() => {
+    DiagnosticsService.setRemoteSink(remoteErrorSink);
     DiagnosticsService.start();
+    FrameHealthService.start();
   }, []);
 
   useEffect(() => {
@@ -477,26 +490,36 @@ const App = () => {
   }, [isInitialized, launchReady]);
 
   useEffect(() => {
-    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated && SupabaseService.isConfigured())) return;
+    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
     if (typeof window === 'undefined') return;
 
-    const scheduleIdle = window.requestIdleCallback ?? ((cb: IdleRequestCallback) => window.setTimeout(() => cb({
-      didTimeout: false,
-      timeRemaining: () => 0,
-    }), 900));
-    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout;
-    const idleId = scheduleIdle(() => {
-      void preloadViewModules(COMMON_NAV_PRELOADS);
-    }, { timeout: 2400 });
+    const cancelers: Array<() => void> = [];
 
-    return () => cancelIdle(idleId as number);
+    const scheduleIdlePreload = (views: ViewState[], timeout: number, delay: number) => {
+      cancelers.push(scheduleIdleTask(() => {
+        void preloadViewModulesSequential(views);
+      }, { timeout, delay }));
+    };
+
+    scheduleIdlePreload(CORE_NAV_PRELOADS, 1600, 700);
+    scheduleIdlePreload(SECONDARY_NAV_PRELOADS, 3200, 3600);
+
+    return () => {
+      cancelers.forEach((cancel) => cancel());
+    };
   }, [e2eMode, isAuthenticated, isInitialized, showOnboarding]);
 
   useEffect(() => {
-    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated && SupabaseService.isConfigured())) return;
-    void NotificationsService.applySchedule().catch((error) => {
-      DiagnosticsService.recordError('notifications.schedule', error);
-    });
+    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
+    return scheduleIdleTask(() => {
+      void NotificationsService.applySchedule().catch((error) => {
+        DiagnosticsService.recordError('notifications.schedule', error);
+      });
+      // Register this device for push so partner nudges can be delivered.
+      void NotificationsService.registerPushToken().catch((error) => {
+        DiagnosticsService.recordError('notifications.push_register', error);
+      });
+    }, { timeout: 3200, delay: 1200 });
   }, [e2eMode, isAuthenticated, isInitialized, showOnboarding]);
 
   useEffect(() => {
@@ -514,6 +537,25 @@ const App = () => {
         console.error("Sync Initialization failed:", syncError);
         DiagnosticsService.recordError('sync.init', syncError);
       }
+    };
+
+    // Onboarding gate: trust the SERVER as source of truth, with the device-local
+    // flag as a fast path. This is what stops a reinstall / new device / relogin
+    // from re-triggering onboarding when the couple has already onboarded — the
+    // local profile is empty on a fresh device until sync rehydrates, but
+    // relationship_facts.onboarding_done (via get_my_relationship) already knows.
+    const resolveOnboarded = async (): Promise<boolean> => {
+      if (hasCompletedOnboarding()) return true;
+      try {
+        const rel = await SupabaseService.getMyRelationship();
+        if (rel?.onboardingDone) {
+          StorageService.markOnboardingComplete();
+          return true;
+        }
+      } catch {
+        // Server truth unavailable (offline / pre-migration) — fall back to local gate.
+      }
+      return false;
     };
 
     const initializeApp = async () => {
@@ -554,7 +596,6 @@ const App = () => {
             setShowLaunchOverlay(false);
             if (initialView) {
               currentViewRef.current = initialView;
-              if (ROOT_TABS.includes(initialView)) mountTab(initialView);
               setCurrentView(initialView);
             }
           }
@@ -581,8 +622,9 @@ const App = () => {
 
                 if (session) {
                   await initializeSync();
+                  const onboarded = await resolveOnboarded();
                   if (!disposed) {
-                    setShowOnboarding(!hasCompletedOnboarding());
+                    setShowOnboarding(!onboarded);
                   }
                 } else {
                   if (!disposed) {
@@ -596,7 +638,7 @@ const App = () => {
 
             if (session) {
               await initializeSync();
-              hasOnboardedAfterBootstrap = hasCompletedOnboarding();
+              hasOnboardedAfterBootstrap = await resolveOnboarded();
               if (!disposed) {
                 setShowOnboarding(!hasOnboardedAfterBootstrap);
               }
@@ -618,9 +660,10 @@ const App = () => {
             SyncService.reset();
           }
         } else {
-          hasOnboardedAfterBootstrap = hasCompletedOnboarding();
+          hasOnboardedAfterBootstrap = false;
           if (!disposed) {
-            setShowOnboarding(!hasOnboardedAfterBootstrap);
+            setIsAuthenticated(false);
+            setShowOnboarding(false);
           }
           SyncService.reset();
         }
@@ -672,15 +715,21 @@ const App = () => {
       },
     });
 
+    // On resume (app foregrounded) and on network recovery, ask SyncService to
+    // RECONNECT — not just reconcile. The realtime socket dies silently while
+    // backgrounded, and the old `&& SyncService.isConnected` guard made these a
+    // no-op precisely when the socket was dead (isConnected never flipped false).
+    // resume() rebuilds the subscription if needed, then reconciles + flushes
+    // the offline outbox. This is what keeps the app feeling live after reopen.
     removeResumeListener = NativeShellService.onResume(() => {
       const shell = NativeShellService.getState();
-      if (shell.isOnline && SyncService.isConnected) {
-        void SyncService.refreshFromCloud();
+      if (shell.isOnline) {
+        void SyncService.resume();
       }
     });
     removeShellListener = NativeShellService.subscribe((shell) => {
-      if (!wasOnline && shell.isOnline && SyncService.isConnected) {
-        void SyncService.refreshFromCloud();
+      if (!wasOnline && shell.isOnline) {
+        void SyncService.resume();
       }
       wasOnline = shell.isOnline;
     });
@@ -695,17 +744,14 @@ const App = () => {
       removeShellListener?.();
       NativeShellService.stop();
     };
-  // All deps are referentially stable for the app's lifetime (mountTab,
-  // getCurrentScroll, runNavigation are dep-free useCallbacks), so this
-  // bootstrap runs exactly once. It previously re-ran — re-fetching the
-  // session, re-subscribing auth, restarting the native shell — every time
-  // a new tab mounted, because runNavigation's identity depended on the
-  // mountedTabs STATE.
-  }, [e2eMode, getCurrentScroll, mountTab, runNavigation]);
+  }, [e2eMode, getCurrentScroll, runNavigation]);
 
 
   const handleOnboardingSelect = (_me: string, _partner: string) => {
-    // Profile + lior_onboarded flag are saved inside the Onboarding component
+    // Profile + lior_onboarded flag are saved inside the Onboarding component.
+    // Also record completion on the SERVER so a future reinstall / new device
+    // never re-triggers onboarding (fire-and-forget; safe no-op pre-migration).
+    void SupabaseService.markOnboardingComplete();
     setShowOnboarding(false);
     // Schedule the coachmark tour for brand-new users
     setScheduleTour(true);
@@ -717,49 +763,25 @@ const App = () => {
 
   // ── Keep-alive tab tree ─────────────────────────────────────────────────
   // Render every visited ROOT_TAB inside its own keep-alive shell. Only the
-  // active one is visible; the others have `display:none` (state preserved,
-  // effects continue, paint cost zero).
-  //
-  // Two invariants make tab switches near-free:
-  //  1. The tab's React ELEMENT is created exactly once and cached — stable
-  //     element identity lets React bail out of the entire subtree, so a
-  //     switch reconciles ~nothing. (Previously every switch recreated all
-  //     elements and synchronously re-rendered EVERY mounted view.)
-  //  2. is-active/is-cached + inert/aria-hidden are applied imperatively in
-  //     a layout effect, so the shells' JSX doesn't depend on currentView.
-  // Safe because navigateTo is referentially stable for the app's lifetime.
-  const tabElementCache = useRef(new Map<ViewState, React.ReactElement>());
+  // active one is visible; cached tabs sit off-flow and invisible so returning
+  // to a heavy page does not pay the cold display:none layout cost again.
+  // Non-tab views render in a separate overlay slot below.
+  const visibleMountedTabs = useMemo(() => {
+    const next = new Set(mountedTabs);
+    if (ROOT_TABS.includes(currentView)) next.add(currentView);
+    return Array.from(next);
+  }, [currentView, mountedTabs]);
+
   const keepAliveTabs = useMemo(() => {
-    return Array.from(mountedTabs).map((tab) => {
-      let element = tabElementCache.current.get(tab);
-      if (!element) {
-        const TabView = getViewComponent(tab);
-        element = <TabView setView={navigateTo} />;
-        tabElementCache.current.set(tab, element);
-      }
-      return (
-        <div
-          key={tab}
-          data-keep-alive-tab={tab}
-          // CONSTANT className — the shell-activation layout effect is the
-          // single authority for is-active/is-cached/is-entering. If React
-          // rendered activity classes here, a re-render of this memo (e.g. a
-          // pointerdown pre-mount during another tab's 240ms entrance) would
-          // diff the stale prop and strip the imperative classes mid-flight.
-          // The effect runs pre-paint on every commit, so the first paint of
-          // any remount is corrected before the user can see is-cached.
-          className="keep-alive-shell is-cached"
-        >
-          {/* Per-shell boundaries: a tab that suspends only blanks its own
-              shell, and a tab that THROWS (e.g. failed chunk) is contained
-              here — one broken tab can never take down the visible tree. */}
-          <ErrorBoundary>
-            <Suspense fallback={null}>{element}</Suspense>
-          </ErrorBoundary>
-        </div>
-      );
-    });
-  }, [mountedTabs, navigateTo]);
+    return visibleMountedTabs.map((tab) => (
+      <KeepAliveTabShell
+        key={tab}
+        tab={tab}
+        isActive={tab === currentView}
+        setView={navigateTo}
+      />
+    ));
+  }, [visibleMountedTabs, currentView, navigateTo]);
 
   // Non-tab view (push/pop destinations like sync, settings, etc.)
   // Mounts/unmounts normally — these are not on the hot path.
@@ -769,20 +791,13 @@ const App = () => {
     return <ActiveView setView={navigateTo} />;
   }, [currentView, navigateTo]);
 
-  // Stable context value — navigateTo/goBack never change identity; the
-  // object itself only changes when currentView/canGoBack actually change.
-  const navigationContextValue = useMemo(
-    () => ({ navigateTo, goBack, canGoBack, currentView }),
-    [navigateTo, goBack, canGoBack, currentView],
-  );
-
   // Global Loading State
   if (!isInitialized) {
     return <RouteLoader />;
   }
 
   // Cloud Authentication Check
-  if (!e2eMode && !isAuthenticated && SupabaseService.isConfigured()) {
+  if (!e2eMode && !isAuthenticated) {
     const AuthOverlayView = currentView === 'privacy-policy'
       ? getViewComponent('privacy-policy')
       : getViewComponent('terms-of-service');
@@ -821,48 +836,50 @@ const App = () => {
 
   return (
     <>
-      <NavigationContext.Provider value={navigationContextValue}>
-        <CoachmarkProvider currentView={currentView} navigateTo={navigateTo}>
-          <ErrorBoundary>
-            <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef}>
-              <Suspense fallback={<RouteFallback />}>
-                <ViewTransition viewKey={currentView}>
-                  {/* Keep-alive: every visited tab stays mounted forever.
-                      Switching between tabs is a CSS visibility flip — no
-                      React unmount, no Suspense roundtrip, no fresh mount
-                      cost. This is what makes tab nav feel native. */}
-                  {keepAliveTabs}
-                  {/* Non-tab views (push/pop destinations) render on top.
-                      They mount/unmount normally since they're not hot-path. */}
-                  {overlayView && (
-                    <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>{overlayView}</Suspense>
-                      </ErrorBoundary>
-                    </div>
-                  )}
-                </ViewTransition>
-              </Suspense>
-            </Layout>
-            <AuraSignalReceiver />
-            <AnimatePresence>
-              {showLaunchOverlay && <AppLaunchOverlay />}
-            </AnimatePresence>
-            <AnimatePresence>
-              {showWhatsNew && (
-                <WhatsNew onClose={() => {
-                  setShowWhatsNew(false);
-                  setScheduleTour(true);
-                }} />
-              )}
-            </AnimatePresence>
-            <CoachmarkTourScheduler
-              shouldTrigger={scheduleTour}
-              onTriggered={() => setScheduleTour(false)}
-            />
-          </ErrorBoundary>
-        </CoachmarkProvider>
-      </NavigationContext.Provider>
+      <NavigationActionsContext.Provider value={navigationActionsValue}>
+        <NavigationContext.Provider value={navigationValue}>
+          <CoachmarkProvider currentView={currentView} navigateTo={navigateTo}>
+            <ErrorBoundary>
+              <Layout currentView={currentView} setView={navigateTo} registerScrollRef={registerScrollRef}>
+                <Suspense fallback={<RouteFallback />}>
+                  <ViewTransition viewKey={currentView}>
+                    {/* Keep-alive: every visited tab stays mounted forever.
+                        Switching between tabs is a CSS visibility flip — no
+                        React unmount, no Suspense roundtrip, no fresh mount
+                        cost. This is what makes tab nav feel native. */}
+                    {keepAliveTabs}
+                    {/* Non-tab views (push/pop destinations) render on top.
+                        They mount/unmount normally since they're not hot-path. */}
+                    {overlayView && (
+                      <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
+                        {overlayView}
+                      </div>
+                    )}
+                  </ViewTransition>
+                </Suspense>
+              </Layout>
+              <AuraSignalReceiver />
+              <AnimatePresence>
+                {showLaunchOverlay && <AppLaunchOverlay />}
+              </AnimatePresence>
+              <AnimatePresence>
+                {showWhatsNew && (
+                  <Suspense fallback={null}>
+                    <WhatsNew onClose={() => {
+                      setShowWhatsNew(false);
+                      setScheduleTour(true);
+                    }} />
+                  </Suspense>
+                )}
+              </AnimatePresence>
+              <CoachmarkTourScheduler
+                shouldTrigger={scheduleTour}
+                onTriggered={() => setScheduleTour(false)}
+              />
+            </ErrorBoundary>
+          </CoachmarkProvider>
+        </NavigationContext.Provider>
+      </NavigationActionsContext.Provider>
       {import.meta.env.DEV && <DevPanel actions={[
         {
           label: '▶ Replay splash screen',
@@ -899,11 +916,11 @@ const App = () => {
           action: () => {
             const mems = StorageService.getMemories();
             if (mems.length === 0) {
-              console.warn('[MediaDebug] No memories found');
+              DiagnosticsService.recordInfo('media-debug', 'No memories found');
               return;
             }
             mems.slice(0, 3).forEach((m: any, i: number) => {
-              console.log(`[MediaDebug] Memory ${i} (${m.id}):`, {
+              DiagnosticsService.recordInfo('media-debug', `Memory ${i} (${m.id})`, {
                 imageId: m.imageId || null,
                 storagePath: m.storagePath || null,
                 hasInlineImage: !!(m.image && m.image.length > 0),
@@ -913,18 +930,18 @@ const App = () => {
                 hasInlineVideo: !!(m.video && m.video.length > 0),
               });
             });
-            console.log(`[MediaDebug] Total memories: ${mems.length}`);
+            DiagnosticsService.recordInfo('media-debug', `Total memories: ${mems.length}`);
           },
         },
         {
           label: '🔄 Recover images from cloud',
           action: async () => {
-            console.log('[MediaDebug] Starting cloud image recovery...');
+            DiagnosticsService.recordInfo('media-debug', 'Starting cloud image recovery');
             try {
               await StorageService.recoverImagesFromCloud();
-              console.log('[MediaDebug] Recovery complete');
+              DiagnosticsService.recordInfo('media-debug', 'Recovery complete');
             } catch (e) {
-              console.error('[MediaDebug] Recovery failed', e);
+              DiagnosticsService.recordError('media-debug', e);
             }
           },
         },
@@ -937,7 +954,7 @@ const App = () => {
           action: () => {
             const next = !InternalAdminService.isOverrideEnabled();
             InternalAdminService.setOverride(next);
-            console.log(`[Admin] Internal admin override ${next ? 'enabled' : 'disabled'}`);
+            DiagnosticsService.recordInfo('admin', `Internal admin override ${next ? 'enabled' : 'disabled'}`);
           },
         },
       ]} />}
@@ -978,7 +995,7 @@ const AuraSignalReceiver = () => {
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
            new Notification('Lior - New Aura', {
                body: detail.payload.title, 
-               icon: '/icon.svg',
+               icon: '/notification-icon.png',
                silent: false
            });
         }

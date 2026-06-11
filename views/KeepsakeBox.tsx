@@ -35,7 +35,7 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
     const displaySender = normalizedSender === 'Tulika' ? 'Tulika' : (normalizedSender === 'Ishan' ? 'Ishan' : (isMine ? 'Me' : partnerName));
 
     return (
-        <div className={`flex w-full mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}>
+        <div className={`perf-list-item flex w-full mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}>
             <motion.div
                 layoutId={`keepsake-${keepsake.id}`}
                 onClick={() => { feedback.light(); onClick(); }}
@@ -62,7 +62,7 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
 
                     {mediaSrc && (keepsake.type === 'photo' || keepsake.type === 'memory') && (
                         <div className="rounded-xl overflow-hidden mb-3 border-2 border-white/10 bg-white/5 transform transition-all duration-500">
-                            <img src={mediaSrc} className="w-full h-auto" alt="Keepsake" onError={handleMediaError} />
+                            <img src={mediaSrc} className="w-full h-auto" alt="Keepsake" onError={handleMediaError} loading="lazy" decoding="async" />
                         </div>
                     )}
 
@@ -163,7 +163,7 @@ const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void 
                             isVideo ? (
                                 <video src={mediaUrl || ''} controls autoPlay className="max-w-full max-h-[40vh] object-contain relative z-10" onError={handleMediaError} />
                             ) : (
-                                <img src={mediaUrl || ''} className="max-w-full max-h-[40vh] object-contain relative z-10" alt="Keepsake" onError={handleMediaError} />
+                                <img src={mediaUrl || ''} className="max-w-full max-h-[40vh] object-contain relative z-10" alt="Keepsake" onError={handleMediaError} decoding="async" />
                             )
                         )}
                     </div>
@@ -329,7 +329,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
             feedback.celebrate();
             resetCompose();
         } catch (error: any) {
-            alert(error?.message || 'Keepsake could not be saved.');
+            toast.show(error?.message || 'Keepsake could not be saved.', 'error');
         }
     };
 
@@ -488,7 +488,7 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                                         style={{ background: 'rgba(var(--theme-particle-2-rgb),0.06)', border: '2px dashed rgba(var(--theme-particle-2-rgb),0.22)', color: 'var(--color-text-secondary)' }}
                                     >
                                         {image ? (
-                                            <img src={image} className="w-full h-full object-cover" alt="Preview" />
+                                            <img src={image} className="w-full h-full object-cover" alt="Preview" decoding="async" />
                                         ) : (
                                             <>
                                                 <Camera size={32} className="mb-2" />

@@ -55,6 +55,11 @@ const FPSMonitor: React.FC = () => {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
 
+    // Opt the engine into per-subscriber cost tracking only while the overlay
+    // is mounted. In production this stays off, saving two performance.now()
+    // calls per subscriber per frame.
+    AnimationEngine.costTrackingEnabled = true;
+
     const id = setInterval(() => {
       setFps(AnimationEngine.fps);
       setTier(AnimationEngine.tier);
@@ -71,7 +76,10 @@ const FPSMonitor: React.FC = () => {
       setTotal(parseFloat(total.toFixed(2)));
     }, POLL_MS);
 
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      AnimationEngine.costTrackingEnabled = false;
+    };
   }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {

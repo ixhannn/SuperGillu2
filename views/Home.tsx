@@ -10,11 +10,16 @@ import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
-import { CouplePet } from '../components/CouplePet';
 import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
+import { buildRelationshipMilestones } from '../shared/countdowns.js';
+import { LiveTogetherCounter } from '../components/LiveTogetherCounter';
+import { springSmooth, springSnappy } from '../utils/motion';
+import { toast } from '../utils/toast';
+import { NotificationsService } from '../services/notifications';
+import { useRelationship } from '../hooks/useRelationship';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -30,6 +35,15 @@ interface HomeProps {
 const getDisplayName = (value: string | undefined, fallback: string) => {
     const trimmed = value?.trim();
     return trimmed ? trimmed : fallback;
+};
+
+const DAYS_TOGETHER_LEGACY_FONT_STYLE: React.CSSProperties = {
+    fontFamily: '"Outfit", "Playfair Display", Georgia, serif',
+};
+
+const DAYS_TOGETHER_LEGACY_UNIT_STYLE: React.CSSProperties = {
+    ...DAYS_TOGETHER_LEGACY_FONT_STYLE,
+    fontWeight: 400,
 };
 
 const parseAnniversaryDate = (value: string | undefined) => parseStoredDateOnly(value);
@@ -80,7 +94,7 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
                         <div className="bg-white p-3 rounded-2xl shadow-soft-xl border border-gray-100/80 -rotate-1">
                             {imageUrl ? (
                                 <div className="aspect-square bg-gray-50 rounded-xl overflow-hidden mb-3">
-                                    <img src={imageUrl} alt="Memory" className="w-full h-full object-cover" />
+                                    <img src={imageUrl} alt="Memory" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                 </div>
                             ) : (
                                 <div className="aspect-video bg-lior-50 rounded-xl flex items-center justify-center mb-3 text-lior-200">
@@ -128,19 +142,41 @@ const HeartbeatRipple = ({ active }: { active: boolean }) => {
 
     useEffect(() => {
         if (!active) return;
-        let animationFrameId: number;
-        const animate = () => {
-            animationFrameId = requestAnimationFrame(animate);
-            if (AmbientService.isPlaying && rippleRef.current) {
-                const data = AmbientService.getFrequencyData();
-                let bassSum = 0;
-                for (let i = 0; i < 4; i++) bassSum += data[i] || 0;
-                const scale = 1 + (bassSum / 4 / 255) * 0.4;
-                rippleRef.current.style.transform = `scale(${scale})`;
+        // No-op when ambient music isn't playing — avoid burning a RAF every
+        // frame for nothing. Cheap polling kicks the RAF on/off based on
+        // AmbientService state. When music isn't playing the loop sleeps.
+        let animationFrameId = 0;
+        let pollId = 0;
+
+        const tick = () => {
+            if (!AmbientService.isPlaying || !rippleRef.current) {
+                animationFrameId = 0;
+                return;
+            }
+            const data = AmbientService.getFrequencyData();
+            let bassSum = 0;
+            for (let i = 0; i < 4; i++) bassSum += data[i] || 0;
+            const scale = 1 + (bassSum / 4 / 255) * 0.4;
+            rippleRef.current.style.transform = `scale(${scale})`;
+            animationFrameId = requestAnimationFrame(tick);
+        };
+
+        const ensureRunning = () => {
+            if (animationFrameId === 0 && AmbientService.isPlaying) {
+                animationFrameId = requestAnimationFrame(tick);
             }
         };
-        animate();
-        return () => cancelAnimationFrame(animationFrameId);
+
+        ensureRunning();
+        // Re-check 4×/s — costs nothing vs. RAF, only kicks the loop when
+        // ambient audio actually starts playing.
+        pollId = window.setInterval(ensureRunning, 250);
+
+        return () => {
+            if (animationFrameId !== 0) cancelAnimationFrame(animationFrameId);
+            window.clearInterval(pollId);
+            if (rippleRef.current) rippleRef.current.style.transform = '';
+        };
     }, [active]);
 
     if (!active) return null;
@@ -181,16 +217,14 @@ const scrollVariants = {
     }
 };
 
-const gridContainerVariants: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: 0.08, delayChildren: 0.03 } }
-};
-
 const gridItemVariants: Variants = {
     hidden: { opacity: 0, y: 32, scale: 0.92, rotateX: 4 },
     visible: {
         opacity: 1, y: 0, scale: 1, rotateX: 0,
-        transition: { type: 'spring' as const, stiffness: 380, damping: 22, mass: 0.7 }
+        // Critically-damped silk spring (was stiffness 380/damping 22 → ~0.67
+        // ratio = visible bounce). springSmooth settles without overshoot,
+        // matching the route layer's no-bounce language.
+        transition: springSmooth,
     }
 };
 
@@ -200,17 +234,12 @@ const ScrollReveal = ({ children, variant = 'fadeUp', delay = 0, className = '' 
     delay?: number;
     className?: string;
 }) => (
-    <motion.div
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: "-50px" }}
-        variants={scrollVariants[variant]}
-        transition={{ type: "spring", stiffness: 350, damping: 24, mass: 0.7, delay }}
-        className={className}
-        style={{ transformPerspective: 900 }}
+    <div
+        className={`home-reveal home-reveal-${variant} ${className}`.trim()}
+        style={{ '--home-reveal-delay': `${Math.round(delay * 1000)}ms` } as React.CSSProperties}
     >
         {children}
-    </motion.div>
+    </div>
 );
 
 // Counting number animation hook
@@ -252,7 +281,13 @@ const useCountUp = (target: number, inView: boolean, duration = 1800) => {
 // Memoized below as `Home` — setView is referentially stable, so tab
 // switches and other App-level renders bail out of this whole tree.
 const HomeView: React.FC<HomeProps> = ({ setView }) => {
-    const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Ishan', partnerName: 'Tulika', anniversaryDate: new Date().toISOString() });
+    // Neutral placeholder until the real profile loads in the effect below.
+    // (Was hardcoded to 'Ishan'/'Tulika', which could flash a phantom couple
+    // for a brand-new user before their stored profile hydrated.)
+    const [profile, setProfile] = useState<CoupleProfile>({ myName: '', partnerName: '', anniversaryDate: new Date().toISOString() });
+    // Authoritative "do I actually have a partner?" signal. Drives solo-mode UI
+    // so an unlinked user never sees a phantom partner or a heartbeat-to-nobody.
+    const { isLinked } = useRelationship();
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [daysTogether, setDaysTogether] = useState(0);
@@ -262,7 +297,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     const [otdImage, setOtdImage] = useState<string | null>(null);
     const [showSurprise, setShowSurprise] = useState(false);
     const [surpriseContent, setSurpriseContent] = useState<{ type: 'memory' | 'note', item: Memory | Note } | null>(null);
-    const [showPet, setShowPet] = useState(false);
     const [nextEvent, setNextEvent] = useState<{ title: string, days: number } | null>(null);
     const [streak, setStreak] = useState(0);
     const [memories, setMemories] = useState<Memory[]>([]);
@@ -275,10 +309,13 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     const [isTogether, setIsTogether] = useState(false);
     const [premiumOpen, setPremiumOpen] = useState(false);
 
-    const headerOverlayRef = useRef<HTMLDivElement>(null);
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<HeartbeatParticlesHandle>(null);
+    const headerOverlayRef = useRef<HTMLDivElement>(null);
+    const scrollRafRef = useRef<number | null>(null);
+    const headerScrollTopRef = useRef(0);
+    const lastOverlayStateRef = useRef<string>('');
     const heroInView = useInView(heroRef, { once: true, margin: "-100px" });
     const displayCount = useCountUp(daysTogether, heroInView);
 
@@ -317,6 +354,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         if (anniv) {
             events.push({ title: 'Our Anniversary', date: anniv });
         }
+        // Derived milestones (100/500/1000 days, next monthsary) give a brand-new
+        // couple something near and motivating to count down to before they've
+        // added any of their own special dates.
+        buildRelationshipMilestones(anniversaryDate, now).forEach((m) => {
+            events.push({ title: m.title, date: m.nextDate });
+        });
         events.sort((a, b) => a.date.getTime() - b.date.getTime());
         return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
     };
@@ -372,11 +415,11 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             if (detail.signalType === 'HEARTBEAT') {
                 triggerReceivedHeartbeat();
                 if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-                    new Notification(StorageService.getCoupleProfile().partnerName, { body: '❤️ You received a heartbeat!', icon: '/icon.svg' });
+                    new Notification(StorageService.getCoupleProfile().partnerName, { body: '❤️ You received a heartbeat!', icon: '/notification-icon.png' });
                 }
             } else if (detail.signalType === 'PET_NUDGE') {
                 if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-                    new Notification(StorageService.getCoupleProfile().partnerName, { body: `${detail.payload?.partner || 'Your partner'} sent a nudge! 👉`, icon: '/icon.svg' });
+                    new Notification(StorageService.getCoupleProfile().partnerName, { body: `${detail.payload?.partner || 'Your partner'} sent a nudge! 👉`, icon: '/notification-icon.png' });
                 }
             }
         };
@@ -409,41 +452,54 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         } else setOtdImage(null);
     }, [onThisDayMemory]);
 
-    // Scroll-linked header opacity — transparent at top, solid on scroll.
-    // Styles are written straight to the DOM (rAF-coalesced) so scrolling
-    // never re-renders the Home tree. setState here used to reconcile the
-    // entire view (TiltCards, bento grid, motion divs) on every scroll frame.
+    // Scroll-linked header opacity — write directly to the DOM (no React state)
+    // so scrolling the page does NOT re-render the entire Home tree. The
+    // overlay element keeps its initial markup; we just mutate inline style on
+    // an `headerOverlayRef` element from the scroll listener. This eliminates
+    // the main source of scroll jank on Home.
     useEffect(() => {
         const mainEl = document.querySelector('main');
-        const el = headerOverlayRef.current;
-        if (!mainEl || !el) return;
+        if (!mainEl) return;
 
-        let rafId = 0;
-        let lastOpacity = -1;
+        const applyOverlay = (y: number) => {
+            const overlayEl = headerOverlayRef.current;
+            if (!overlayEl) return;
+            const next = getHomeHeaderOverlayState(y);
+            // Cheap signature so we skip writes when nothing changed
+            // (e.g. scrolling between 0–18 keeps overlay fully hidden).
+            const sig = `${next.opacity.toFixed(3)}|${next.backdropFilter}`;
+            if (lastOverlayStateRef.current === sig) return;
+            lastOverlayStateRef.current = sig;
 
-        const apply = () => {
-            rafId = 0;
-            const overlay = getHomeHeaderOverlayState(mainEl.scrollTop || 0);
-            if (overlay.opacity === lastOpacity) return;
-            lastOpacity = overlay.opacity;
-            el.style.opacity = String(overlay.opacity);
-            el.style.background = overlay.background;
-            el.style.backdropFilter = overlay.backdropFilter;
-            el.style.setProperty('-webkit-backdrop-filter', overlay.webkitBackdropFilter);
-            el.style.borderBottom = overlay.borderBottom;
-            el.style.transitionDuration = `${overlay.transitionDurationMs}ms`;
+            const style = overlayEl.style;
+            style.opacity = String(next.opacity);
+            style.background = next.background;
+            style.backdropFilter = next.backdropFilter;
+            (style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter = next.webkitBackdropFilter;
+            style.borderBottom = next.borderBottom;
+            style.transitionDuration = `${next.transitionDurationMs}ms`;
         };
 
-        const handleScroll = () => {
-            if (rafId === 0) rafId = requestAnimationFrame(apply);
-        };
+        function handleScroll() {
+            if (scrollRafRef.current !== null) return;
+            scrollRafRef.current = requestAnimationFrame(flushScroll);
+        }
+
+        function flushScroll() {
+            scrollRafRef.current = null;
+            const y = mainEl!.scrollTop || 0;
+            if (headerScrollTopRef.current === y) return;
+            headerScrollTopRef.current = y;
+            applyOverlay(y);
+        }
 
         mainEl.addEventListener('scroll', handleScroll, { passive: true });
-        apply();
+        // Initial paint
+        applyOverlay(mainEl.scrollTop || 0);
 
         return () => {
+            if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
             mainEl.removeEventListener('scroll', handleScroll);
-            if (rafId) cancelAnimationFrame(rafId);
         };
     }, []);
 
@@ -472,6 +528,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         particlesRef.current?.triggerButtonDissolve(rect, () => {
             setIsDissolving(false);
             SyncService.sendSignal('HEARTBEAT');
+            // Push so the partner feels it even if their app is closed.
+            void NotificationsService.triggerHeartbeatPush(getDisplayName(profile.myName, 'Your partner'));
         });
     };
 
@@ -495,13 +553,13 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             const random = allItems[Math.floor(Math.random() * allItems.length)];
             setSurpriseContent(random);
             setShowSurprise(true);
-        } else alert("Add some memories or notes first! 💖");
+        } else toast.show('Add some memories or notes first! 💖', 'info');
     };
 
     return (
         <div className="px-4 relative parallax-container" style={homeContainerStyle}>
-            {/* Scroll-linked floating header bar — styles driven directly by
-                the scroll effect above; React only sets the resting state. */}
+            {/* Scroll-linked floating header bar — style mutated by the scroll
+                listener directly (no React state) so scrolling stays jank-free. */}
             <div
                 ref={headerOverlayRef}
                 className="fixed top-0 left-0 right-0 z-30 pointer-events-none transition-opacity ease-out"
@@ -513,28 +571,23 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     borderBottom: '1px solid rgba(255,255,255,0)',
                     transitionDuration: '0ms',
                     height: homeHeaderOverlayHeight,
+                    // Pre-promote to compositor so toggling backdrop-filter
+                    // mid-scroll never re-creates a paint layer.
+                    transform: 'translateZ(0)',
+                    willChange: 'opacity, background, backdrop-filter',
+                    contain: 'layout paint style',
                 }}
             />
 
             {/* Particle Heart — triggered on send & receive */}
             <HeartbeatParticles ref={particlesRef} />
             {showSurprise && surpriseContent && <SurpriseModal content={surpriseContent} onClose={() => setShowSurprise(false)} />}
-            {showPet && (
-                <CouplePet
-                    memories={memories}
-                    notes={notes}
-                    status={myStatus}
-                    partnerName={profile.partnerName}
-                    onClose={() => setShowPet(false)}
-                />
-            )}
-
             {/* ── HEADER ──────────────────────────────────────────────── */}
             <div className="flex items-center justify-between mb-2 relative z-10">
                 <motion.div
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ type: "spring", stiffness: 250, damping: 22 }}
+                    transition={springSmooth}
                 >
                     <button
                         onClick={() => setView('profile')}
@@ -577,7 +630,11 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 className="font-serif truncate text-gray-800 leading-none"
                                 style={{ fontSize: isTogether ? '1.22rem' : '1.625rem' }}
                             >
-                                {getDisplayName(profile.myName, 'You')} <span className="text-lior-500">&</span> {getDisplayName(profile.partnerName, 'Partner')}
+                                {isLinked ? (
+                                    <>{getDisplayName(profile.myName, 'You')} <span className="text-lior-500">&</span> {getDisplayName(profile.partnerName, 'Partner')}</>
+                                ) : (
+                                    getDisplayName(profile.myName, 'You')
+                                )}
                             </h1>
                             {isTogether ? (
                                 <p className="mt-1 truncate text-[10px] font-extrabold leading-none tracking-[0.02em] text-[#386b4f]">
@@ -601,7 +658,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 <motion.button
                     initial={{ opacity: 0, scale: 0.5 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.2 }}
+                    transition={{ ...springSnappy, delay: 0.2 }}
                     onClick={() => setView('sync')}
                     className={`spring-press transition-all rounded-2xl px-3 py-2 min-w-[7.25rem] flex items-center justify-center gap-2 border ${
                         isConnected
@@ -655,8 +712,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 <div className={`transition-all duration-500 w-full ${showDetailedDuration ? 'opacity-0 translate-y-4 absolute pointer-events-none' : ''}`}>
                                     <p className="text-white/50 text-micro uppercase tracking-widest mb-3">You've been together for</p>
                                     <div className="flex items-baseline gap-2.5 mb-3">
-                                        <h2 className="text-[5.5rem] font-serif tracking-tighter font-bold text-white leading-none drop-shadow-lg">{displayCount}</h2>
-                                        <span className="text-xl text-white/50 font-serif italic">days</span>
+                                        <h2 className="text-[5.5rem] tracking-tighter font-bold text-white leading-none drop-shadow-lg" style={DAYS_TOGETHER_LEGACY_FONT_STYLE}>{displayCount}</h2>
+                                        <span className="text-xl text-white/50 italic" style={DAYS_TOGETHER_LEGACY_UNIT_STYLE}>days</span>
                                     </div>
                                     <p className="text-white/70 text-xs font-semibold flex items-center gap-1.5">
                                         <Sparkles size={11} fill="currentColor" /> Every day matters
@@ -664,7 +721,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                                 <div className={`transition-all duration-500 w-full ${!showDetailedDuration ? 'opacity-0 -translate-y-4 absolute pointer-events-none' : ''}`}>
                                     <p className="text-white/50 text-micro uppercase tracking-widest mb-3">That is exactly</p>
-                                    <h2 className="text-3xl font-serif font-bold mb-3 leading-tight text-white">{detailedDuration || `${daysTogether} days`}</h2>
+                                    <h2 className="text-3xl font-bold mb-3 leading-tight text-white" style={DAYS_TOGETHER_LEGACY_FONT_STYLE}>{detailedDuration || `${daysTogether} days`}</h2>
                                     <p className="text-white/70 text-xs font-semibold flex items-center gap-1.5">
                                         <Heart size={11} fill="currentColor" /> and counting...
                                     </p>
@@ -675,10 +732,18 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
+            {/* ── OUR TIME TOGETHER — a live, ticking counter (day-one substance) ─ */}
+            {profile.anniversaryDate && (
+                <LiveTogetherCounter
+                    anniversaryDate={profile.anniversaryDate}
+                    onOpenCountdowns={() => setView('countdowns')}
+                />
+            )}
+
             {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
             <ScrollReveal variant="popIn">
                 <div className="mb-5 flex gap-3 relative z-10">
-                    <div onClick={sendHeartbeat} className="flex-1">
+                    <div onClick={isLinked ? sendHeartbeat : () => setView('sync')} className="flex-1">
                         <div
                             ref={heartbeatBtnRef}
                             className={`w-full h-full group relative text-white p-5 rounded-[1.5rem] spring-press flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 ${receivedHeartbeat ? 'ring-2 ring-lior-300/60 animate-glow-pulse' : ''} ${isDissolving ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
@@ -690,14 +755,26 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                     : 'inset 0 1px 0 rgba(255,255,255,0.22), 0 8px 22px rgba(244,63,94,0.28), 0 16px 36px rgba(225,29,72,0.14)',
                             }}
                         >
-                            <HeartbeatRipple active={showHeartbeat} />
-                            <div className={`transition-transform duration-300 ${showHeartbeat ? 'scale-125 animate-wiggle-spring' : ''}`}>
+                            <HeartbeatRipple active={showHeartbeat && isLinked} />
+                            <div className={`transition-transform duration-300 ${showHeartbeat && isLinked ? 'scale-125 animate-wiggle-spring' : ''}`}>
                                 <Heart fill="currentColor" size={22} />
                             </div>
-                            <span className="font-bold text-sm tracking-wide">Heartbeat</span>
+                            <span className="flex flex-col leading-tight">
+                                {isLinked ? (
+                                    <>
+                                        <span className="text-[14px] font-extrabold tracking-wide">Send heartbeat</span>
+                                        <span className="mt-0.5 text-[11px] font-semibold text-white/80">A soft pulse to them</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="text-[14px] font-extrabold tracking-wide">Invite your partner</span>
+                                        <span className="mt-0.5 text-[11px] font-semibold text-white/80">Link up to send heartbeats</span>
+                                    </>
+                                )}
+                            </span>
                         </div>
                     </div>
-                    <div onClick={() => setShowPet(true)} className="w-[4.5rem]">
+                    <div onClick={() => setView('coco-pet')} className="w-[4.5rem]">
                         <div className="w-full h-full bento-card text-lior-500 p-5 flex items-center justify-center spring-press">
                             <PawPrint size={22} />
                         </div>
@@ -710,7 +787,35 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 ancestor opacity animation would kill their frosted glass
                 (backdrop root). Transform-only recede keeps the frost. */}
             <div className="flex gap-3 mb-5 relative z-10 scroll-recede-flat">
-                {/* Partner status pill */}
+                {/* Partner status pill — ghost placeholder until someone joins */}
+                {!isLinked && (
+                <button
+                    onClick={() => setView('sync')}
+                    className="flex-1 flex items-center gap-2.5 px-4 py-4 text-left spring-press"
+                    style={{
+                        borderRadius: '100px',
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.35) 100%)',
+                        backdropFilter: 'blur(20px) saturate(140%)',
+                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        border: '1.5px dashed rgba(225,29,72,0.28)',
+                        boxShadow: '0 2px 10px rgba(232,160,176,0.06)',
+                    }}
+                    aria-label="Your partner hasn't joined yet — tap to invite"
+                >
+                    <div className="relative flex-shrink-0">
+                        <Heart size={14} className="text-lior-300" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-semibold leading-tight text-gray-500">
+                            Partner · not linked yet
+                        </span>
+                        <span className="text-[10px] mt-0.5 leading-tight text-gray-400">
+                            their status appears here
+                        </span>
+                    </div>
+                </button>
+                )}
+                {isLinked && (
                 <div
                     className="flex-1 flex items-center gap-2.5 px-4 py-4"
                     style={partnerStatus.state === 'sleeping' ? {
@@ -742,6 +847,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         </span>
                     </div>
                 </div>
+                )}
                 {/* My status pill */}
                 <div
                     onClick={toggleMyStatus}
@@ -844,6 +950,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                     src={otdImage}
                                     className="absolute inset-0 w-full h-full object-cover"
                                     alt="On this day"
+                                    loading="lazy"
+                                    decoding="async"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                             </>
@@ -879,16 +987,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             )}
 
             {/* ── STATUS & FEATURE BENTO GRID ──────────────────────────── */}
-            <motion.div
+            <div
                 className="grid grid-cols-2 gap-3 relative z-10 mb-16"
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-50px" }}
-                variants={gridContainerVariants}
-                style={{ transformPerspective: 900 }}
+                data-home-reveal-grid="true"
             >
                 {/* Open When — bento-card alignment */}
-                <motion.div variants={gridItemVariants}>
+                <div className="home-reveal-item">
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
@@ -905,10 +1009,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Letters for any moment</span>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* Dinner Decider — bento-card alignment */}
-                <motion.div variants={gridItemVariants}>
+                <div className="home-reveal-item">
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
@@ -925,10 +1029,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Can't decide? We will.</span>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* Mood Board */}
-                <motion.div variants={gridItemVariants} className="col-span-1">
+                <div className="home-reveal-item col-span-1">
                     <motion.button
                         type="button"
                         aria-label="Open Aura Board"
@@ -947,10 +1051,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
                         </div>
                     </motion.button>
-                </motion.div>
+                </div>
 
                 {/* Bonsai Bloom */}
-                <motion.div variants={gridItemVariants} className="col-span-1">
+                <div className="home-reveal-item col-span-1">
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
@@ -967,10 +1071,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* Private Space */}
-                <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
+                <div className="home-reveal-item col-span-2 mt-3">
                     <motion.div
                         whileTap={{ scale: 0.98 }}
                         transition={{ type: 'spring', stiffness: 520, damping: 28 }}
@@ -1005,10 +1109,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             </div>
                         </div>
                     </motion.div>
-                </motion.div>
+                </div>
 
                 {/* ── PREMIUM DRAWER ────────────────────────────────────── */}
-                <motion.div variants={gridItemVariants} className="col-span-2 mt-3">
+                <div className="home-reveal-item col-span-2 mt-3">
                     {/* Trigger row */}
                     <motion.button
                         onClick={() => setPremiumOpen(prev => !prev)}
@@ -1169,8 +1273,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             </motion.div>
                         )}
                     </AnimatePresence>
-                </motion.div>
-            </motion.div>
+                </div>
+            </div>
         </div>
     );
 };

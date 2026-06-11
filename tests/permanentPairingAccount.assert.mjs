@@ -10,8 +10,8 @@ const migrationSource = readFileSync(new URL('../supabase/migrations/20260423170
 
 assert.match(
   storageSource,
-  /const restoreAccountScopedFlagsForAccount = \(userId: string \| null\) => \{[\s\S]*ACCOUNT_LOCAL_KEYS\.ONBOARDING_COMPLETE[\s\S]*CACHE_KEYS\.LINK_LOCK[\s\S]*localStorage\.setItem\(key, scopedValue\);[\s\S]*localStorage\.removeItem\(key\);/,
-  'Expected account activation to restore account-scoped onboarding and pair-lock flags to the active runtime keys.',
+  /const restoreAccountScopedFlagsForAccount = \(userId: string \| null\) => \{[\s\S]*ACCOUNT_LOCAL_KEYS\.ONBOARDING_COMPLETE[\s\S]*CACHE_KEYS\.LINK_LOCK[\s\S]*localStorage\.setItem\(key, scopedValue\);[\s\S]*localStorage\.setItem\(scopedKey, baseValue\);/,
+  'Expected account activation to mirror scoped flags into base AND promote any existing base flags into the scoped store, so re-login never wipes onboarding / coachmark / pair-lock state.',
 );
 
 assert.match(
@@ -40,8 +40,8 @@ assert.match(
 
 assert.match(
   syncServiceSource,
-  /await SupabaseService\.upsertUserProfile\(localProfileBeforeCoupleLookup\.myName\);[\s\S]*partnerName: linked\?\.partnerName \|\| profile\.partnerName,/,
-  'Expected sync bootstrap to persist the local account name and restore partnerName from the permanent linked account.',
+  /await SupabaseService\.upsertUserProfile\(localProfileBeforeCoupleLookup\.myName\);[\s\S]*const pairingStatus = await PairingService\.getStatus\(\);[\s\S]*partnerName: pairingStatus\?\.isLinked \? pairingStatus\.partnerName \|\| profile\.partnerName : profile\.partnerName,/,
+  'Expected sync bootstrap to persist the local account name and restore partnerName from authoritative pairing status.',
 );
 
 assert.match(
@@ -52,7 +52,7 @@ assert.match(
 
 assert.match(
   pairingSource,
-  /async claimInvite\(raw: string\): Promise<ClaimResult> \{[\s\S]*await SupabaseService\.upsertUserProfile\(profile\.myName\);[\s\S]*claim_pair_invite/,
+  /async claimInvite\(raw: string\): Promise<ClaimResult> \{[\s\S]*await SupabaseService\.upsertUserProfile\(profile\.myName\);[\s\S]*SupabaseService\.claimPairInviteV2/,
   'Expected invite claiming to persist the claimer account display name before joining the couple.',
 );
 

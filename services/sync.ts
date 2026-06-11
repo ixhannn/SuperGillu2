@@ -2,9 +2,20 @@ import { StorageService, storageEventTarget, StorageUpdateDetail, getPendingDele
 import { SupabaseService } from './supabase';
 import { MediaStorageService } from './mediaStorage';
 import { MediaMigrationService } from './mediaMigration';
+import { PairingService } from './pairing';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { isDailyMomentExpired } from '../shared/mediaRetention.js';
 import { createDeletionLookup, filterUploadableItems, getRemoteDeletedIdsToPurge, hasRecordedDeletion } from './syncDeletionLedger.js';
+import { runFrameBudgeted, scheduleIdleTask } from '../utils/scheduler';
+import { enqueueOutbox, getOutbox, outboxSize, removeOutboxEntry } from './syncOutbox';
+
+// Tables backed by a single shared row per couple. Their outbox dedup key is the
+// table name (not a row id), since there is only ever one logical row.
+const SINGLETON_TABLES = new Set(['couple_profile', 'pet_stats', 'together_music', 'our_room_state']);
+// How often to run a safety-net reconcile while the app is foregrounded and
+// connected. Realtime handles live updates; this only catches anything the
+// socket missed (e.g. a dropped event during a brief network blip).
+const PERIODIC_RECONCILE_MS = 120_000;
 
 export const syncEventTarget = new EventTarget();
 
@@ -13,7 +24,6 @@ class SyncServiceClass {
     public isConnected: boolean = false;
     public lastSyncTime: string = '';
     private channel: RealtimeChannel | null = null;
-    private ROOM_ID = 'lior_global_room';
     private presenceInterval: any = null;
     private realtimeChannels: RealtimeChannel[] = [];
     private storageListener: ((e: Event) => void) | null = null;
@@ -22,6 +32,24 @@ class SyncServiceClass {
     private amILeader = false;
     private activeSessionId: string | null = null;
     private reconcileInFlight: Promise<void> | null = null;
+    private cancelInitialReconcile: (() => void) | null = null;
+
+    // ── Connection health / auto-reconnect ──────────────────────────────────
+    // The realtime websocket dies silently when a mobile OS backgrounds the app
+    // or the network drops. Without detecting that, `isConnected` stayed true
+    // forever and live updates silently stopped. These track real channel state
+    // so we can flip to disconnected and rebuild the subscription.
+    private channelReady = false;
+    private shouldStayConnected = false;
+    private reconnectTimer: any = null;
+    private reconnectAttempts = 0;
+    private periodicReconcileInterval: any = null;
+    private resumeInFlight = false;
+    private flushingOutbox = false;
+    // Monotonic epoch: callbacks from a torn-down channel compare against this
+    // and no-op if stale, so an old channel's CLOSED event can't trigger a
+    // spurious reconnect during a normal teardown/resubscribe.
+    private connectionEpoch = 0;
 
     private getMediaFallbackId(table: string, item: any): string {
         if (item?.imageId) return item.imageId;
@@ -56,6 +84,24 @@ class SyncServiceClass {
     }
 
     private cleanupRealtimeState() {
+        // Invalidate any in-flight channel status callbacks from the channels
+        // we are about to tear down so they cannot schedule a reconnect.
+        this.connectionEpoch++;
+        this.channelReady = false;
+
+        this.cancelInitialReconcile?.();
+        this.cancelInitialReconcile = null;
+
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+
+        if (this.periodicReconcileInterval) {
+            clearInterval(this.periodicReconcileInterval);
+            this.periodicReconcileInterval = null;
+        }
+
         if (this.presenceInterval) {
             clearInterval(this.presenceInterval);
             this.presenceInterval = null;
@@ -77,7 +123,18 @@ class SyncServiceClass {
         this.channel = null;
     }
 
+    private scheduleInitialReconcile() {
+        this.cancelInitialReconcile?.();
+        this.cancelInitialReconcile = scheduleIdleTask(() => {
+            this.cancelInitialReconcile = null;
+            void this.reconcileCloud();
+        }, { timeout: 2400, delay: 650 });
+    }
+
     public reset() {
+        // Explicit teardown (logout / not configured) — stop trying to reconnect.
+        this.shouldStayConnected = false;
+        this.reconnectAttempts = 0;
         this.cleanupRealtimeState();
         this.isConnected = false;
         this.status = 'Offline';
@@ -116,28 +173,62 @@ class SyncServiceClass {
         }
 
         const localProfileBeforeCoupleLookup = StorageService.getCoupleProfile();
-        await SupabaseService.upsertUserProfile(localProfileBeforeCoupleLookup.myName);
-        if (localProfileBeforeCoupleLookup.coupleId) {
+        // Restore the user's own identity (myName) on a fresh device. The name is
+        // stored per-account in the cloud (user_profiles) but never synced via
+        // couple_profile, so without this an existing account re-shows onboarding.
+        if (!localProfileBeforeCoupleLookup.myName?.trim()) {
+            const cloudName = await SupabaseService.fetchOwnDisplayName();
+            if (cloudName) {
+                StorageService.saveCoupleProfile(
+                    { ...localProfileBeforeCoupleLookup, myName: cloudName },
+                    'sync',
+                );
+            }
+        } else {
+            await SupabaseService.upsertUserProfile(localProfileBeforeCoupleLookup.myName);
+        }
+        if (localProfileBeforeCoupleLookup.coupleId && localProfileBeforeCoupleLookup.partnerUserId) {
             SupabaseService.setCachedCoupleId(localProfileBeforeCoupleLookup.coupleId);
+        } else {
+            SupabaseService.setCachedCoupleId(null);
         }
 
         // ensure_user_couple must run first so couple_memberships has a row
         // before claimLegacyRows tries to look up the couple_id
-        const coupleId = await SupabaseService.getCurrentCoupleId();
+        let coupleId = await SupabaseService.getCurrentCoupleId();
         if (!coupleId) {
             this.reset();
             this.updateStatus('Offline (Couple Setup Failed)');
             return;
         }
+        const pairingStatus = await PairingService.getStatus();
+        if (pairingStatus?.coupleId) {
+            coupleId = pairingStatus.coupleId;
+            SupabaseService.setCachedCoupleId(coupleId);
+        }
         await SupabaseService.claimLegacyRows();
         await SupabaseService.backfillRowsToCouple(coupleId);
         const profile = StorageService.getCoupleProfile();
-        const linked = await SupabaseService.getLinkedPartner(coupleId);
+        if (
+            pairingStatus?.isLinked
+            && pairingStatus.partnerUserId
+            && (
+                profile.coupleId !== coupleId
+                || profile.partnerUserId !== pairingStatus.partnerUserId
+                || profile.partnerName !== pairingStatus.partnerName
+            )
+        ) {
+            StorageService.forceNewPairing(
+                coupleId,
+                pairingStatus.partnerUserId,
+                pairingStatus.partnerName || undefined,
+            );
+        }
         const nextProfile = {
             ...profile,
             coupleId,
-            partnerUserId: linked?.partnerUserId || profile.partnerUserId,
-            partnerName: linked?.partnerName || profile.partnerName,
+            partnerUserId: pairingStatus?.isLinked ? pairingStatus.partnerUserId || profile.partnerUserId : profile.partnerUserId,
+            partnerName: pairingStatus?.isLinked ? pairingStatus.partnerName || profile.partnerName : profile.partnerName,
         };
         if (
             profile.coupleId !== nextProfile.coupleId
@@ -150,21 +241,35 @@ class SyncServiceClass {
 
         this.cleanupRealtimeState();
         this.isConnected = true;
+        this.shouldStayConnected = true;
+        this.reconnectAttempts = 0;
         this.setupRealtimeSubscription();
         this.updateStatus('Connected');
         this.lastSyncTime = new Date().toLocaleTimeString();
 
-        // Heartbeat
+        // Heartbeat — presence is keyed by the stable user id (not display name)
+        // so renaming yourself never makes your partner look permanently offline.
         if (this.presenceInterval) clearInterval(this.presenceInterval);
         this.presenceInterval = setInterval(() => {
             if (this.channel && this.isConnected) {
                 const profile = StorageService.getCoupleProfile();
                 this.channel.track({
                     user: profile.myName,
+                    userId: SupabaseService.getCachedUserId() || undefined,
                     online_at: new Date().toISOString()
                 });
             }
         }, 5000);
+
+        // Safety-net reconcile: catches anything realtime missed while the app is
+        // open (a dropped event, a momentary socket stall that didn't fully error).
+        if (this.periodicReconcileInterval) clearInterval(this.periodicReconcileInterval);
+        this.periodicReconcileInterval = setInterval(() => {
+            const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+            if (this.isConnected && visible) {
+                void this.reconcileCloud();
+            }
+        }, PERIODIC_RECONCILE_MS);
 
         // BIND LOCAL CHANGES TO CLOUD PUSH
         this.storageListener = (e: Event) => {
@@ -178,8 +283,26 @@ class SyncServiceClass {
         };
         storageEventTarget.addEventListener('storage-update', this.storageListener);
 
-        // Reconcile cloud with protection
-        this.reconcileCloud();
+        // On a fresh device (empty local store) the partner's existing data,
+        // media, pet levels and room live only in the cloud. Pull it down
+        // immediately so logging into an existing account shows everything
+        // right away. On a device that already has content, keep the deferred
+        // reconcile so first paint isn't blocked.
+        const hasLocalContent =
+            StorageService.getMemories().length > 0
+            || StorageService.getNotes().length > 0
+            || StorageService.getKeepsakes().length > 0
+            || StorageService.getDailyPhotos().length > 0
+            || StorageService.getSpecialDates().length > 0;
+        if (hasLocalContent) {
+            // Reconcile cloud with protection after first paint settles.
+            this.scheduleInitialReconcile();
+        } else {
+            void this.reconcileCloud();
+        }
+
+        // Replay any writes that were queued while offline / disconnected.
+        void this.flushOutbox();
     }
 
     private triggerSystemNotification(detail: StorageUpdateDetail) {
@@ -191,7 +314,7 @@ class SyncServiceClass {
 
         let title = "Lior";
         let body = "Something new was added!";
-        let icon = "/icon.svg";
+        let icon = "/notification-icon.png";
 
         switch (detail.table) {
             case 'memories':
@@ -232,11 +355,11 @@ class SyncServiceClass {
         if (document.visibilityState === 'visible') return;
 
         try {
-            new Notification(title, { body, icon, badge: "/icon.svg" });
+            new Notification(title, { body, icon, badge: "/notification-icon.png" });
         } catch (e) {
             // Fallback for some mobile browsers
             navigator.serviceWorker.ready.then(registration => {
-                registration.showNotification(title, { body, icon, badge: "/icon.svg" });
+                registration.showNotification(title, { body, icon, badge: "/notification-icon.png" });
             });
         }
     }
@@ -288,7 +411,7 @@ class SyncServiceClass {
                 time_capsules: 'cap', surprises: 'surp', private_space_items: 'priv',
             };
 
-            for (const table of tables) {
+            await runFrameBudgeted(tables, async (table) => {
                 try {
                     const getLocalItems = localCollectionAccessors[table];
                     const localItems = getLocalItems ? getLocalItems() : [];
@@ -300,7 +423,7 @@ class SyncServiceClass {
                         ? await SupabaseService.fetchAllRows(table)
                         : await SupabaseService.fetchAll(table);
                     // Null signifies a fetch error, meaning the table likely doesn't exist
-                    if (cloudItems === null) continue;
+                    if (cloudItems === null) return;
 
                     if (cloudItems.length === 0) {
                         // CLOUD EMPTY PROTECTION: Push local data to cloud instead of pulling
@@ -321,7 +444,7 @@ class SyncServiceClass {
                                     const payload = local.startsWith('data:')
                                         ? local
                                         : await MediaStorageService.downloadMedia(local);
-                                    if (!payload) continue;
+                                    if (!payload) return;
                                     const path = await MediaStorageService.buildCustomPath('singleton', 'together-music', 'track', {
                                         ownerUserId: meta?.ownerUserId,
                                         timestamp: meta?.date,
@@ -343,7 +466,8 @@ class SyncServiceClass {
                         } else if (table === 'user_status') {
                             const local = StorageService.getStatus();
                             const profile = StorageService.getCoupleProfile();
-                            await SupabaseService.upsertItem(table, { id: profile.myName, ...local });
+                            const myId = StorageService.getMyUserId() || profile.myName;
+                            await SupabaseService.upsertItem(table, { id: myId, ...local });
                         } else {
                             const uploadableItems = filterUploadableItems(localItems, table, deletionLookup, isDeletedLocally);
                             for (const it of uploadableItems) {
@@ -375,7 +499,7 @@ class SyncServiceClass {
                 } catch (tableError) {
                     console.warn(`Sync skipped for table ${table}:`, tableError);
                 }
-            }
+            }, { budgetMs: 8, yieldEvery: 1 });
             this.updateStatus('Cloud Synced');
 
             // Ensure Storage bucket exists
@@ -418,9 +542,81 @@ class SyncServiceClass {
         syncEventTarget.dispatchEvent(new Event('sync-update'));
     }
 
+    /** Stable outbox dedup key for a change (singletons collapse to the table). */
+    private outboxIdFor(detail: StorageUpdateDetail): string {
+        if (SINGLETON_TABLES.has(detail.table)) return detail.table;
+        return String(detail.id ?? detail.item?.id ?? 'singleton');
+    }
+
+    /** Drop large base64 payloads before queueing; re-hydrated from local IDB at flush. */
+    private stripMediaPayload(item: any): any {
+        if (!item || typeof item !== 'object') return item;
+        const out = { ...item };
+        // Only strip when there's a reference (id / storagePath) to re-hydrate from,
+        // so an inline-only data URI is preserved in the queue.
+        if (out.imageId || out.storagePath) delete out.image;
+        if (out.videoId || out.videoStoragePath) delete out.video;
+        if (out.audioId || out.audioStoragePath) delete out.audio;
+        return out;
+    }
+
+    /** Record a change for later replay when offline / disconnected / on failure. */
+    private enqueueChange(detail: StorageUpdateDetail) {
+        enqueueOutbox({
+            table: detail.table,
+            id: this.outboxIdFor(detail),
+            action: detail.action === 'delete' ? 'delete' : 'save',
+            item: detail.action === 'delete' ? undefined : this.stripMediaPayload(detail.item),
+        });
+        // Surface the pending count to the connection UI.
+        syncEventTarget.dispatchEvent(new Event('sync-update'));
+    }
+
     private async handleLocalChange(detail: StorageUpdateDetail) {
-        if (!this.isConnected) return;
+        // Durably queue first if we can't push right now — never silently drop.
+        if (!this.isConnected) {
+            this.enqueueChange(detail);
+            return;
+        }
         try {
+            await this.pushChange(detail);
+        } catch (e) {
+            console.warn('Cloud push failed; queued for retry', e);
+            this.enqueueChange(detail);
+        }
+    }
+
+    /** Replay queued offline writes. Stops on the first failure to retry later. */
+    private async flushOutbox(): Promise<void> {
+        if (this.flushingOutbox || !this.isConnected) return;
+        if (outboxSize() === 0) return;
+        this.flushingOutbox = true;
+        try {
+            for (const entry of getOutbox()) {
+                try {
+                    await this.pushChange({
+                        table: entry.table,
+                        id: entry.id,
+                        action: entry.action,
+                        item: entry.item,
+                        source: 'user',
+                    } as StorageUpdateDetail);
+                    removeOutboxEntry(entry.table, entry.id);
+                } catch (e) {
+                    console.warn('Outbox flush stalled; will retry', e);
+                    break; // keep this and following entries for the next attempt
+                }
+            }
+        } finally {
+            this.flushingOutbox = false;
+            this.lastSyncTime = new Date().toLocaleTimeString();
+            syncEventTarget.dispatchEvent(new Event('sync-update'));
+        }
+    }
+
+    /** Push a single change to the cloud. Throws on failure (callers may re-queue). */
+    private async pushChange(detail: StorageUpdateDetail) {
+        {
             if (detail.action === 'save' && detail.item) {
                 if (['couple_profile', 'pet_stats', 'together_music', 'our_room_state'].includes(detail.table)) {
                     await SupabaseService.saveSingle(detail.table, detail.item);
@@ -467,25 +663,116 @@ class SyncServiceClass {
                         }
                     }
 
-                    await SupabaseService.upsertItem(detail.table, cleanItem);
+                    const ok = await SupabaseService.upsertItem(detail.table, cleanItem);
+                    if (ok === false) throw new Error(`upsert failed for ${detail.table}`);
                 }
             } else if (detail.action === 'delete') {
-                await SupabaseService.deleteItem(detail.table, detail.id);
+                const ok = await SupabaseService.deleteItem(detail.table, detail.id);
+                if (ok === false) throw new Error(`delete failed for ${detail.table}`);
                 // Intentionally NOT calling removePendingDelete — tombstone stays forever
             }
             this.lastSyncTime = new Date().toLocaleTimeString();
             syncEventTarget.dispatchEvent(new Event('sync-update'));
-        } catch (e) {
-            console.error("Cloud push failed", e);
+        }
+    }
+
+    // ── Connection health, reconnect & resume ───────────────────────────────
+    private handleChannelStatus(status: string) {
+        if (status === 'SUBSCRIBED') {
+            this.channelReady = true;
+            this.reconnectAttempts = 0;
+            if (!this.isConnected) {
+                this.isConnected = true;
+                this.updateStatus('Connected');
+            }
+            // We're live again — drain anything queued while we were down.
+            void this.flushOutbox();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            this.channelReady = false;
+            if (this.isConnected) {
+                this.isConnected = false;
+                this.updateStatus('Reconnecting…');
+            }
+            this.scheduleReconnect();
+        }
+    }
+
+    private scheduleReconnect() {
+        // Only auto-reconnect for an unexpected drop, never after an explicit reset.
+        if (!this.shouldStayConnected) return;
+        if (this.reconnectTimer) return;
+        // Exponential backoff, capped at 30s.
+        const delay = Math.min(30_000, 1_000 * 2 ** Math.min(this.reconnectAttempts, 5));
+        this.reconnectAttempts++;
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            void this.reconnect();
+        }, delay);
+    }
+
+    private async reconnect() {
+        if (!this.shouldStayConnected) return;
+        if (!SupabaseService.init()) return;
+        const profile = StorageService.getCoupleProfile();
+        if (!profile.coupleId) return;
+
+        // Tear down the dead channels (this bumps the epoch, invalidating their
+        // stale status callbacks) and build a fresh subscription.
+        this.realtimeChannels.forEach((channel) => {
+            try { channel.unsubscribe(); } catch { /* already gone */ }
+        });
+        this.realtimeChannels = [];
+        this.channel = null;
+        this.connectionEpoch++;
+        this.setupRealtimeSubscription();
+
+        // Pull anything missed while the socket was down, then flush queued writes.
+        await this.reconcileCloud();
+        await this.flushOutbox();
+    }
+
+    /**
+     * Called when the app returns to the foreground or the network comes back.
+     * The realtime socket is routinely killed while backgrounded, so we rebuild
+     * it if it isn't healthy, then reconcile and flush queued writes. This is the
+     * fix for "the app feels stale after reopening / switching devices".
+     */
+    public async resume() {
+        if (!SupabaseService.init()) return;
+        if (this.resumeInFlight) return;
+        this.resumeInFlight = true;
+        try {
+            const profile = StorageService.getCoupleProfile();
+            if (!profile.coupleId) return; // not set up yet — normal init will handle it
+            this.shouldStayConnected = true;
+            // Trust the channel's real state, not just our flag: a backgrounded
+            // OS often kills the socket without firing CHANNEL_ERROR, leaving a
+            // "zombie" channel that still reports ready. If it isn't genuinely
+            // joined, rebuild it; otherwise just catch up + drain the outbox.
+            const channelAlive = !!this.channel
+                && (this.channel as any).state === 'joined'
+                && this.channelReady;
+            if (!channelAlive) {
+                await this.reconnect();
+            } else {
+                await this.reconcileCloud();
+                await this.flushOutbox();
+            }
+        } finally {
+            this.resumeInFlight = false;
         }
     }
 
     private setupRealtimeSubscription() {
         if (!SupabaseService.client) return;
         const profile = StorageService.getCoupleProfile();
+        const coupleId = profile.coupleId;
+        if (!coupleId) return;
+
+        const epoch = this.connectionEpoch;
 
         this.channel = SupabaseService.client
-            .channel(this.ROOM_ID)
+            .channel(`lior_room:${coupleId}`)
             .on('presence', { event: 'sync' }, () => {
                 const state = this.channel?.presenceState();
                 this.handlePresenceUpdate(state, profile);
@@ -496,13 +783,17 @@ class SyncServiceClass {
             .on('broadcast', { event: 'signal' }, (payload) => {
                 syncEventTarget.dispatchEvent(new CustomEvent('signal-received', { detail: payload.payload }));
             })
-            .subscribe();
+            .subscribe((status) => {
+                // Ignore status from a channel we've already torn down.
+                if (epoch !== this.connectionEpoch) return;
+                this.handleChannelStatus(status);
+            });
         this.realtimeChannels.push(this.channel);
 
         const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items'];
         tables.forEach(table => {
             const tableChannel = SupabaseService.client?.channel(`public:${table}`)
-                .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+                .on('postgres_changes', { event: '*', schema: 'public', table, filter: `couple_id=eq.${coupleId}` }, (payload) => {
                     if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                         const logicalId = payload.new?.data?.id || payload.new?.id;
                         // Skip if locally tombstoned — the delete is still propagating to cloud
@@ -521,7 +812,7 @@ class SyncServiceClass {
         });
 
         const deletionChannel = SupabaseService.client?.channel('public:sync_deletions')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_deletions' }, (payload) => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_deletions', filter: `couple_id=eq.${coupleId}` }, (payload) => {
                 if (payload.eventType !== 'INSERT' && payload.eventType !== 'UPDATE') return;
                 const table = payload.new?.table_name;
                 const logicalId = payload.new?.logical_id;
@@ -534,19 +825,26 @@ class SyncServiceClass {
     }
 
     private handlePresenceUpdate(state: any, profile: any) {
+        const myUserId = SupabaseService.getCachedUserId();
+        const partnerUserId = profile.partnerUserId as string | undefined;
         let partnerFound = false;
-        const users: string[] = [];
+        // Identity tokens for stable leader election: prefer user id, fall back
+        // to display name for clients that predate userId presence payloads.
+        const identities: string[] = [];
         if (state) {
             Object.values(state).forEach((presences: any) => {
                 presences.forEach((p: any) => {
-                    users.push(p.user);
-                    if (p.user === profile.partnerName) partnerFound = true;
+                    identities.push(p.userId || p.user);
+                    const isPartnerById = partnerUserId && p.userId === partnerUserId;
+                    const isPartnerByName = !p.userId && p.user === profile.partnerName;
+                    if (isPartnerById || isPartnerByName) partnerFound = true;
                 });
             });
         }
         this.isPartnerPresent = partnerFound;
-        const sortedUsers = users.sort();
-        this.amILeader = sortedUsers[0] === profile.myName;
+        const sortedIdentities = [...identities].sort();
+        const myIdentity = myUserId || profile.myName;
+        this.amILeader = sortedIdentities[0] === myIdentity;
         if (this.isPartnerPresent && this.amILeader) {
             this.initiateSession();
         } else if (!this.isPartnerPresent) {

@@ -108,7 +108,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': allowed ?? 'null',
     'Access-Control-Allow-Methods': 'GET, HEAD, PUT, DELETE, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, X-Cleanup-Token, X-Admin-Token, X-Upload-Key, Range',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, X-Cleanup-Token, X-Admin-Token, Range',
     'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, ETag',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
@@ -321,11 +321,6 @@ function requireAdminToken(request, env) {
   return !!token && !!env.ADMIN_DASHBOARD_TOKEN && token === env.ADMIN_DASHBOARD_TOKEN;
 }
 
-function hasUploadKeyFallback(request, env) {
-  const token = request.headers.get('X-Upload-Key') || '';
-  return !!token && !!env.UPLOAD_KEY && token === env.UPLOAD_KEY;
-}
-
 async function getAuthenticatedUser(request, env) {
   const accessToken = readBearerToken(request.headers.get('Authorization'));
   if (!accessToken || !env.SUPABASE_URL) return null;
@@ -389,7 +384,15 @@ async function supabaseRequest(env, path, init = {}) {
   }
 
   if (response.status === 204) return null;
-  return response.json();
+  const contentLength = response.headers.get('content-length');
+  if (contentLength === '0' || contentLength === '') return null;
+  const text = await response.text();
+  if (!text || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 async function fetchMediaAssetByKey(env, key) {
@@ -1799,9 +1802,33 @@ async function deleteAndVerify(env, key) {
   return !probe;
 }
 
-async function fetchLegacyMediaPayload(env, storagePath) {
-  if (!storagePath || typeof storagePath !== 'string' || storagePath.startsWith('data:')) {
+function parseDataUrl(dataUrl) {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  const contentType = match[1];
+  const base64Data = match[2];
+  try {
+    const binaryString = atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return {
+      buffer: bytes.buffer,
+      contentType: normalizeMimeType(contentType),
+    };
+  } catch {
     return null;
+  }
+}
+
+async function fetchLegacyMediaPayload(env, storagePath) {
+  if (!storagePath || typeof storagePath !== 'string') {
+    return null;
+  }
+  if (storagePath.startsWith('data:')) {
+    return parseDataUrl(storagePath);
   }
 
   const parsedRef = parseSupabaseStorageRef(storagePath);
@@ -2331,16 +2358,20 @@ async function runRepair(env, source = 'manual') {
       continue;
     }
 
+    let step = 'init';
     try {
+      step = 'fetch';
       const payload = await fetchLegacyMediaPayload(env, ref.storage_path);
       if (!payload?.buffer || payload.buffer.byteLength === 0) {
         throw new Error('Legacy media source could not be fetched');
       }
 
+      step = 'mime-check';
       if (!isMimeAllowedForManagedAsset(ref.feature, assetRole, payload.contentType)) {
         throw new Error(`Legacy payload MIME ${payload.contentType} does not match ${ref.feature}/${assetRole}`);
       }
 
+      step = 'build-key';
       const targetKey = buildManagedMediaKey({
         coupleId: ref.couple_id,
         ownerUserId: ref.owner_user_id ?? null,
@@ -2350,16 +2381,21 @@ async function runRepair(env, source = 'manual') {
         timestamp: ref.item_timestamp || resolveRepairTimestamp(ref.feature, ref.row_data),
       });
 
+      step = 'r2-put';
       await env.LIOR_BUCKET.put(targetKey, payload.buffer, {
         httpMetadata: { contentType: payload.contentType },
       });
 
+      step = 'r2-verify';
       const verification = await env.LIOR_BUCKET.head(targetKey);
       if (!verification) {
         throw new Error(`Uploaded repair object could not be verified for ${targetKey}`);
       }
 
+      step = 'checksum';
       const checksumSha256 = await sha256Hex(payload.buffer);
+
+      step = 'upsert-asset';
       await upsertMediaAsset(env, {
         couple_id: ref.couple_id,
         owner_user_id: ref.owner_user_id ?? null,
@@ -2374,13 +2410,14 @@ async function runRepair(env, source = 'manual') {
         checksum_sha256: checksumSha256,
         status: 'ready',
         expires_at: ref.expires_at ?? null,
-        metadata: { repairedFrom: ref.storage_path, repairedBy: source },
+        metadata: { repairedFrom: ref.storage_path?.slice(0, 80), repairedBy: source },
         upload_started_at: new Date().toISOString(),
         ready_at: new Date().toISOString(),
         last_verified_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
 
+      step = 'patch-row';
       const nextData = { ...(ref.row_data || {}) };
       nextData[ref.field_name] = targetKey;
       if (ref.field_name === 'storagePath' && nextData.image === ref.storage_path) nextData.image = targetKey;
@@ -2389,6 +2426,8 @@ async function runRepair(env, source = 'manual') {
       if (ref.owner_user_id && !nextData.ownerUserId) nextData.ownerUserId = ref.owner_user_id;
 
       await patchSourceRowData(env, ref.source_table, ref.row_id, nextData);
+
+      step = 'cleanup-legacy';
       await deleteLegacyMediaSource(env, ref.storage_path);
 
       await insertStorageEvent(env, {
@@ -2399,12 +2438,12 @@ async function runRepair(env, source = 'manual') {
         r2_key: targetKey,
         source_table: ref.source_table,
         logical_row_id: ref.logical_row_id,
-        metadata: { fieldName: ref.field_name, previousPath: ref.storage_path, repairedBy: source },
+        metadata: { fieldName: ref.field_name, previousPath: ref.storage_path?.slice(0, 80), repairedBy: source },
       }).catch(() => {});
 
       repaired += 1;
     } catch (error) {
-      const message = String(error instanceof Error ? error.message : error);
+      const message = `[${step}] ${String(error instanceof Error ? error.message : error)}`;
       failed += 1;
       failures.push({ logicalRowId: ref.logical_row_id, fieldName: ref.field_name, message });
       await insertStorageEvent(env, {
@@ -2415,7 +2454,7 @@ async function runRepair(env, source = 'manual') {
         r2_key: null,
         source_table: ref.source_table,
         logical_row_id: ref.logical_row_id,
-        metadata: { fieldName: ref.field_name, storagePath: ref.storage_path, message, repairedBy: source },
+        metadata: { fieldName: ref.field_name, storagePath: ref.storage_path?.slice(0, 80), message, repairedBy: source },
       }).catch(() => {});
       await upsertStorageAlert(env, {
         couple_id: ref.couple_id ?? null,
@@ -2684,39 +2723,34 @@ export default {
       return new Response('Managed uploads must target a valid v2 key', { status: 400, headers: cors });
     }
 
-    const usingUploadKeyFallback = hasUploadKeyFallback(request, env);
     const canUseFullAuthFlow = hasSupabaseAdmin(env);
     let user = null;
     let asset = null;
 
-    if (usingUploadKeyFallback) {
-      user = { id: 'upload-key' };
-    } else {
-      user = await getAuthenticatedUser(request, env);
-      if (!user) {
-        return new Response('Unauthorized', { status: 401, headers: cors });
-      }
+    user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return new Response('Unauthorized', { status: 401, headers: cors });
+    }
 
-      if (canUseFullAuthFlow) {
-        const memberOfCouple = await isUserInCouple(env, user.id, parsedKey.coupleId);
-        if (!memberOfCouple) {
-          return new Response('Forbidden', { status: 403, headers: cors });
-        }
-
-        asset = await fetchMediaAssetByKey(env, key);
-        if (asset?.couple_id && asset.couple_id !== parsedKey.coupleId) {
-          return new Response('media_assets couple mismatch', { status: 409, headers: cors });
-        }
-      } else if (parsedKey.ownerUserId && parsedKey.ownerUserId !== user.id) {
+    if (canUseFullAuthFlow) {
+      const memberOfCouple = await isUserInCouple(env, user.id, parsedKey.coupleId);
+      if (!memberOfCouple) {
         return new Response('Forbidden', { status: 403, headers: cors });
       }
+
+      asset = await fetchMediaAssetByKey(env, key);
+      if (asset?.couple_id && asset.couple_id !== parsedKey.coupleId) {
+        return new Response('media_assets couple mismatch', { status: 409, headers: cors });
+      }
+    } else if (parsedKey.ownerUserId && parsedKey.ownerUserId !== user.id) {
+      return new Response('Forbidden', { status: 403, headers: cors });
     }
 
     if (request.method === 'PUT') {
-      if (!usingUploadKeyFallback && asset?.owner_user_id && asset.owner_user_id !== user.id) {
+      if (asset?.owner_user_id && asset.owner_user_id !== user.id) {
         return new Response('Upload reservation belongs to another user', { status: 403, headers: cors });
       }
-      if (!usingUploadKeyFallback && !asset?.id) {
+      if (!asset?.id) {
         return new Response('Upload was not reserved in media_assets', { status: 409, headers: cors });
       }
 
@@ -2760,13 +2794,13 @@ export default {
       }
       const checksumSha256 = await sha256Hex(combined.buffer);
 
-      if (!usingUploadKeyFallback && Number(asset.byte_size || 0) !== total) {
+      if (Number(asset.byte_size || 0) !== total) {
         return new Response('media_assets byte size mismatch', { status: 409, headers: cors });
       }
-      if (!usingUploadKeyFallback && normalizeMimeType(asset.mime_type) !== normalizedContentType) {
+      if (normalizeMimeType(asset.mime_type) !== normalizedContentType) {
         return new Response('media_assets MIME mismatch', { status: 409, headers: cors });
       }
-      if (!usingUploadKeyFallback && String(asset.checksum_sha256 || '') !== checksumSha256) {
+      if (String(asset.checksum_sha256 || '') !== checksumSha256) {
         return new Response('media_assets checksum mismatch', { status: 409, headers: cors });
       }
 
@@ -2803,7 +2837,7 @@ export default {
           couple_id: parsedKey.coupleId ?? null,
           feature: parsedKey.feature,
           severity: 'info',
-          event_type: usingUploadKeyFallback ? 'media.upload_legacy_verified' : 'media.upload_verified',
+          event_type: 'media.upload_verified',
           r2_key: key,
           source_table: null,
           logical_row_id: parsedKey.itemId,
@@ -2845,7 +2879,7 @@ export default {
           couple_id: parsedKey.coupleId ?? null,
           feature: parsedKey.feature,
           severity: 'info',
-          event_type: usingUploadKeyFallback ? 'media.deleted_legacy' : 'media.deleted',
+          event_type: 'media.deleted',
           r2_key: key,
           source_table: asset?.source_table ?? null,
           logical_row_id: asset?.logical_row_id ?? parsedKey.itemId,

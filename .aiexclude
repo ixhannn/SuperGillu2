@@ -1,11 +1,10 @@
-# Ignore AI folders
+# Ignore AI tool folders
 .agent/
 .claude/
 .codebuddy/
 .codex/
 .continue/
 .cursor/
-.gemini/
 .kiro/
 .opencode/
 .qoder/
@@ -13,6 +12,38 @@
 .trae/
 .windsurf/
 everything-claude-code/
+
+# Dependencies & build output
 node_modules/
 dist/
+dist-admin/
 dist-ssr/
+
+# Large generated / binary graphify files (too big for AI context)
+graphify-out/graph.json
+graphify-out/graph.html
+graphify-out/cache/
+
+# Log files (large, not useful for AI)
+*.log
+*.err.log
+dev-server.log
+dev-server.err.log
+dev-server-e2e.log
+dev-server-e2e.err.log
+vite-dev-5173.log
+vite-dev-5173.err.log
+.codex-vite-5173.log
+.codex-vite-5173.err.log
+.codex-vite.out.log
+.codex-vite.err.log
+.codex-vite-4173.out.log
+.codex-vite-4173.err.log
+
+# TypeScript compiler output dumps
+tsc_out.txt
+tsc_out_utf8.txt
+tsc_errors.txt
+
+# Test artifacts
+test-results/

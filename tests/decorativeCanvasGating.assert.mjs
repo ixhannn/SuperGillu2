@@ -6,14 +6,14 @@ const deferredSource = readFileSync(new URL('../components/DeferredOverlays.tsx'
 
 assert.match(
   ambientSource,
-  /import\s+\{\s*shouldGateHeavyView\s*\}\s+from\s+['"]\.\.\/utils\/runtimeProfile['"]/,
-  'Expected AmbientVisuals to use runtime profile gating before mounting decorative WebGL canvases',
+  /import\s+\{\s*isLowPowerDevice\s*\}\s+from\s+['"]\.\.\/utils\/runtimeProfile['"]/,
+  'Expected AmbientVisuals to use low-power runtime gating before mounting decorative WebGL canvases',
 );
 
 assert.match(
   ambientSource,
-  /if\s*\(\s*shouldGateHeavyView\(\)\s*\)\s*return;/,
-  'Expected AmbientVisuals to skip decorative WebGL canvases on compact/native/low-power devices',
+  /if\s*\(\s*isLowPowerDevice\(\)\s*\)\s*return;/,
+  'Expected AmbientVisuals to skip decorative WebGL canvases on genuinely low-power devices',
 );
 
 assert.match(
@@ -27,4 +27,3 @@ assert.match(
   /if\s*\(\s*shouldGateHeavyView\(\)\s*\)\s*return;/,
   'Expected DeferredOverlays to skip idle-mounted decorative canvases on compact/native/low-power devices',
 );
-

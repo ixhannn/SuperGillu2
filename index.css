@@ -1,6 +1,3 @@
-/* Fonts are loaded once from index.html (preconnected, parallel) — the
-   render-blocking @import that used to live here serialized font CSS behind
-   this stylesheet on every cold start. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities; /* ============================================    LIOR — Premium Design System v4 (Pro Max)    True geometric glass, massive radii, cinematic shadows    ============================================ */ /* ── DESIGN TOKENS ───────────────────────────────────────────────────────── */
@@ -199,231 +196,8 @@ label,
 [data-drag] {
   -webkit-user-select: none;
   user-select: none;
-} /* ── VIEW TRANSITIONS API (iOS Safari 18+, Chrome 111+) ──────────────────── */ /*  * Two layers:  *   ::view-transition-*(root)       — fallback for browsers/paths not using  *                                      view-transition-name on the content div.  *   ::view-transition-*(main-view)  — applied to the named content wrapper set  *                                      in ViewTransition.tsx (mobile VT path).  *  * Direction data is set via data-nav-dir on <html> in navigateWithTransition().  */ /* Keep the shell stable. Only the named content layer should animate. */
-::view-transition-group(root),
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none !important;
-} /* Named main-view layer: tab crossfade default */
-::view-transition-group(main-view) {
-  animation-duration: 0ms;
 }
-::view-transition-old(main-view),
-::view-transition-new(main-view) {
-  animation-duration: 300ms;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-  backface-visibility: hidden;
-  will-change: transform, opacity;
-}
-::view-transition-old(main-view) {
-  animation-name: vt-tab-out;
-}
-::view-transition-new(main-view) {
-  animation-name: vt-tab-in;
-} /* ── Push: true iOS drill-in. Incoming screen slides the FULL width over
-     the outgoing one (fully opaque — no crossfade mush), while the outgoing
-     screen parallaxes away at a third of the speed and dims. Both run on
-     compositor-thread snapshots, so they hold the panel's native frame rate
-     even if React is busy. */
-html[data-vt-dir="push"]::view-transition-old(main-view) {
-  animation-name: vt-push-out;
-  animation-duration: 420ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-}
-html[data-vt-dir="push"]::view-transition-new(main-view) {
-  animation-name: vt-push-in;
-  animation-duration: 420ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-} /* Pop: the departing screen slides off to the right ABOVE the previous one
-     (z-index inverts the default pair order), which un-dims and parallaxes
-     back in beneath — the exact inverse of the push. */
-html[data-vt-dir="pop"]::view-transition-old(main-view) {
-  animation-name: vt-pop-out;
-  animation-duration: 380ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  z-index: 2;
-}
-html[data-vt-dir="pop"]::view-transition-new(main-view) {
-  animation-name: vt-pop-in;
-  animation-duration: 380ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  z-index: 1;
-} /* Modal: sheet rises the full height from the bottom edge while the
-     backdrop screen settles back in depth — the iOS sheet stack. */
-html[data-vt-dir="modal"]::view-transition-old(main-view) {
-  animation-name: vt-sheet-backdrop;
-  animation-duration: 460ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-}
-html[data-vt-dir="modal"]::view-transition-new(main-view) {
-  animation-name: vt-sheet-up;
-  animation-duration: 460ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-}
-html[data-vt-dir="modal-close"]::view-transition-old(main-view) {
-  animation-name: vt-sheet-down;
-  animation-duration: 360ms;
-  animation-timing-function: cubic-bezier(0.55, 0.06, 0.68, 0.19);
-  z-index: 2;
-}
-html[data-vt-dir="modal-close"]::view-transition-new(main-view) {
-  animation-name: vt-sheet-backdrop-return;
-  animation-duration: 360ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  z-index: 1;
-}
-@keyframes vt-push-in {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-@keyframes vt-push-out {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(-32%);
-    opacity: 0.72;
-  }
-}
-@keyframes vt-pop-out {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
-@keyframes vt-pop-in {
-  from {
-    transform: translateX(-32%);
-    opacity: 0.72;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-@keyframes vt-sheet-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-@keyframes vt-sheet-down {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(100%);
-  }
-}
-@keyframes vt-sheet-backdrop {
-  from {
-    transform: scale(1);
-    opacity: 1;
-  }
-  to {
-    transform: scale(0.94);
-    opacity: 0.78;
-  }
-}
-@keyframes vt-sheet-backdrop-return {
-  from {
-    transform: scale(0.94);
-    opacity: 0.78;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-@keyframes vt-tab-in {
-  from {
-    opacity: 0.74;
-    transform: scale(0.992);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes vt-tab-out {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0.88;
-    transform: scale(1.008);
-  }
-}
-@keyframes vt-slide-in-right {
-  from {
-    opacity: 0.84;
-    transform: translateX(10%) scale(0.994);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-@keyframes vt-slide-out-left {
-  from {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-  to {
-    opacity: 0.92;
-    transform: translateX(-3.5%) scale(0.998);
-  }
-}
-@keyframes vt-slide-in-left {
-  from {
-    opacity: 0.84;
-    transform: translateX(-4.5%) scale(0.996);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-@keyframes vt-slide-out-right {
-  from {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-  to {
-    opacity: 0.9;
-    transform: translateX(9%) scale(0.994);
-  }
-}
-@keyframes vt-slide-up {
-  from {
-    opacity: 0.8;
-    transform: translateY(8%) scale(0.988);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-@keyframes vt-scale-out {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0.88;
-    transform: scale(0.994);
-  }
-} /* ── LONG PRESS RING — no CSS animation needed; JS drives dashoffset ─────── */ /* The SVG inherits the element's border-radius for clip matching.             */
+/* ── LONG PRESS RING — no CSS animation needed; JS drives dashoffset ─────── */ /* The SVG inherits the element's border-radius for clip matching.             */
 [data-long-press] {
   position: relative;
   overflow: visible;
@@ -803,12 +577,12 @@ canvas.fixed,
   will-change: transform;
 } /* ── VIEW HEADER — premium redesign ─────────────────────────────────────── */
 .vh-spacer {
-  height: calc(env(safe-area-inset-top, 0px) + 5.5rem);
+  height: 5.5rem;
   pointer-events: none;
 } /* Centering shell — fixed position only, no animation here */
 .vh-shell {
   position: fixed;
-  top: max(env(safe-area-inset-top, 0px) + 0.55rem, 0.55rem);
+  top: max(calc(min(env(safe-area-inset-top, 0px), 3.5rem) + 0.55rem), 0.55rem);
   left: 50%;
   transform: translateX(-50%);
   width: min(calc(100vw - 1.5rem), 26rem);
@@ -903,10 +677,10 @@ canvas.fixed,
   z-index: 2;
 }
 .vh-title {
-  font-family: var(--font-serif, "Lora", Georgia, serif);
+  font-family: var(--font-display);
   font-size: 1.62rem;
   font-weight: 700;
-  letter-spacing: -0.033em;
+  letter-spacing: 0;
   line-height: 1.08;
   color: var(--color-text-primary);
   text-shadow:
@@ -2077,7 +1851,7 @@ canvas.fixed,
   display: flow-root;
 } /* Safe-area top padding for device notch / status bar */
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: min(env(safe-area-inset-top, 0px), 3.5rem);
 } /*   Lenis inner — native scroll containers inside the main Lenis scroller.   These have data-lenis-prevent which tells Lenis "don't intercept here".   They scroll natively, but we apply the same compositor hints to keep   them on their own GPU layers.    overscroll-behavior: contain prevents scroll chaining: when the inner   list hits its boundary, the chain stops here instead of bleeding into   the main Lenis scroll. */
 .lenis-inner {
   overscroll-behavior: contain;
@@ -2662,4 +2436,44 @@ img {
     rgba(255, 255, 255, 0) 100%
   );
   pointer-events: none;
+}
+/* ─── PERFORMANCE: scroll containment for long lists ─────────────────────
+ * Cards marked [data-perf-list-item="true"] are skipped from layout/paint
+ * when offscreen via content-visibility:auto. Intrinsic size is supplied so
+ * the browser still reserves space (avoids scroll-jump). aspect-ratio on
+ * the element itself preserves visible geometry exactly — zero visual diff.
+ * Cost: 0; benefit: large memory timelines scroll buttery on mid-range.
+ * ──────────────────────────────────────────────────────────────────────── */
+.perf-list-item,
+[data-perf-list-item="true"] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
+/* ─── KEEP-ALIVE TAB SHELL ──────────────────────────────────────────────
+ * App.tsx renders every visited root tab side-by-side and tags inactive
+ * ones with `.is-cached` + `inert` + `aria-hidden`. The visual hide was
+ * missing — without `display:none` every cached tab was still in layout,
+ * forcing the browser to paint+composite all of them on every scroll.
+ * That was the single biggest hidden cost in the app. Pairing display
+ * toggle with `content-visibility: hidden` makes the cached subtree free
+ * to walk + paint while keeping React state intact.
+ * ──────────────────────────────────────────────────────────────────── */
+.keep-alive-shell {
+  display: block;
+  min-height: 100%;
+  /* Promote the active shell to its own compositing layer so transitions
+   * don't repaint sibling fixed overlays. */
+}
+.keep-alive-shell.is-active {
+  display: block;
+  content-visibility: visible;
+}
+.keep-alive-shell.is-cached {
+  display: none !important;
+  /* Belt-and-braces: even if a child somewhere forces display, this
+   * skips layout/paint while keeping the React state (effects, refs)
+   * fully alive. */
+  content-visibility: hidden;
+  contain: strict size layout style paint;
 }

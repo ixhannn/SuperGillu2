@@ -14,17 +14,16 @@
  */
 
 // ─── Timing (ms) ──────────────────────────────────────────────────────────────
-export const T_TAB          = 220;
-export const T_PUSH         = 280;
-export const T_POP          = 200;
-export const T_MODAL_OPEN   = 300;
-export const T_MODAL_CLOSE  = 220;
+export const T_TAB          = 240;
+export const T_PUSH         = 360;
+export const T_POP          = 260;
+export const T_MODAL_OPEN   = 380;
+export const T_MODAL_CLOSE  = 240;
 
 // ─── Easing ───────────────────────────────────────────────────────────────────
-const E_STANDARD     = 'cubic-bezier(0.22, 1, 0.36, 1)';     // iOS spring-like
-const E_TAB_OUT      = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-const E_MODAL_SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';  // 6px overshoot
-const E_MODAL_DROP   = 'cubic-bezier(0.55, 0, 1, 0.45)';
+const E_SILK     = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const E_STANDARD = 'cubic-bezier(0.22, 1, 0.36, 1)';
+const E_EXIT     = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
 // ─── Gesture constants ─────────────────────────────────────────────────────────
 const CLAIM_PX    = 10;    // px before axis lock
@@ -50,25 +49,25 @@ function dirConfig(dir: EngineDirection, W: number): DirConfig {
 
   switch (dir) {
     case 'tab':
-      return { dur: T_TAB,  inEase: E_STANDARD, outEase: E_TAB_OUT,
-        inFrom: [tx(0, 0.97),        '0.72'],
-        outTo:  [tx(0, 1.03),        '0'   ] };
+      return { dur: T_TAB,  inEase: E_SILK, outEase: E_STANDARD,
+        inFrom: [ty('10px', 0.988),  '0'],
+        outTo:  [ty('-8px', 1.012),  '0'] };
     case 'push':
-      return { dur: T_PUSH, inEase: E_STANDARD, outEase: E_STANDARD,
-        inFrom: [tx(W * 0.30, 0.97), '0.84'],
-        outTo:  [tx(-W * 0.12, 0.97),'0'   ] };
+      return { dur: T_PUSH, inEase: E_SILK, outEase: E_STANDARD,
+        inFrom: [tx(W * 0.24, 0.982), '0'],
+        outTo:  [tx(-W * 0.10, 0.982),'0.22'] };
     case 'pop':
-      return { dur: T_POP,  inEase: E_STANDARD, outEase: E_STANDARD,
-        inFrom: [tx(-W * 0.12, 0.97),'0.84'],
-        outTo:  [tx(W * 0.30, 0.97), '0'   ] };
+      return { dur: T_POP,  inEase: E_SILK, outEase: E_STANDARD,
+        inFrom: [tx(-W * 0.10, 0.982),'0'],
+        outTo:  [tx(W * 0.24, 0.982), '0.18'] };
     case 'modal':
-      return { dur: T_MODAL_OPEN,  inEase: E_MODAL_SPRING, outEase: E_TAB_OUT,
-        inFrom: [ty('6%', 0.97),   '0.80'],
-        outTo:  ['scale(0.96)',    '0.88'] };
+      return { dur: T_MODAL_OPEN,  inEase: E_SILK, outEase: E_STANDARD,
+        inFrom: [ty('28px', 0.982),'0'],
+        outTo:  [ty('-10px', 0.982),'0.62'] };
     case 'modal-close':
-      return { dur: T_MODAL_CLOSE, inEase: E_STANDARD,      outEase: E_MODAL_DROP,
-        inFrom: ['scale(0.96)',    '0.88'],
-        outTo:  [ty('8%', 0.97),   '0'  ] };
+      return { dur: T_MODAL_CLOSE, inEase: E_STANDARD, outEase: E_EXIT,
+        inFrom: [ty('-10px', 0.982), '0.62'],
+        outTo:  [ty('30px', 0.982),  '0'] };
   }
 }
 

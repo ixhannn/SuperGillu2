@@ -26,5 +26,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Assertion suites
+        run: npm test
+
       - name: Build
         run: npm run build

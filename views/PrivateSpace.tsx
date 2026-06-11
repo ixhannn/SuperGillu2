@@ -57,6 +57,8 @@ const NEU_LILAC = '#b8a4c8';
 const neuBgStyle: React.CSSProperties = {
     background: NEU_BG,
     color: NEU_INK,
+    marginTop: 'calc(0px - env(safe-area-inset-top, 0px))',
+    paddingTop: 'env(safe-area-inset-top, 0px)',
 };
 
 const neuDotPattern: React.CSSProperties = {
@@ -126,7 +128,7 @@ const PrivateMediaPreview: React.FC<{ item: PrivateSpaceItem; mode?: 'card' | 'd
     }, [item]);
 
     if (item.kind === 'photo' && src) {
-        return <img src={src} alt={item.title || 'Private photo'} className="h-full w-full object-cover" loading="lazy" />;
+        return <img src={src} alt={item.title || 'Private photo'} className="h-full w-full object-cover" loading="lazy" decoding="async" />;
     }
 
     if (item.kind === 'video' && src) {
@@ -356,7 +358,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
             <div className="relative min-h-[100dvh] overflow-hidden" style={neuBgStyle}>
                 <div className="absolute inset-0 opacity-60" style={neuDotPattern} />
                 <div className="absolute left-1/2 top-[30%] h-80 w-80 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(232,200,230,0.35),transparent_70%)] blur-2xl" />
-                <ViewHeader title="" onBack={() => setView('home')} tone="romance" />
+                <ViewHeader title="Private Space" subtitle="locked" onBack={() => setView('home')} tone="romance" />
 
                 <div className="relative z-10 flex min-h-[84vh] flex-col items-center justify-center px-6">
                     <motion.div
@@ -524,7 +526,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                         </button>
                     </div>
                 ) : (
-                    <motion.div layout className="grid grid-cols-2 gap-3">
+                    <motion.div className="grid grid-cols-2 gap-3">
                         {filteredItems.map((item, index) => {
                             const isPhoto = item.kind === 'photo';
                             const isVideo = item.kind === 'video';
@@ -534,7 +536,6 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                             const isHero = filter === 'all' && index === 0 && filteredItems.length >= 3;
                             return (
                                 <motion.button
-                                    layout
                                     key={item.id}
                                     initial={{ opacity: 0, y: 14 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -542,6 +543,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                                     whileTap={{ scale: 0.965 }}
                                     onClick={() => setSelected(item)}
                                     className={cx(
+                                        'perf-card-shell',
                                         'group relative overflow-hidden rounded-[1.6rem] text-left',
                                         isHero ? 'col-span-2 aspect-[2.08]' : 'aspect-square'
                                     )}
@@ -705,6 +707,10 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                                     value={title}
                                     onChange={(event) => setTitle(event.target.value)}
                                     placeholder="Name this private item"
+                                    inputMode="text"
+                                    enterKeyHint="next"
+                                    autoCapitalize="sentences"
+                                    autoCorrect="on"
                                     className="min-h-[3.3rem] w-full rounded-[1.15rem] px-4 text-[1rem] font-semibold outline-none"
                                     style={{ ...fieldStyle, color: NEU_INK }}
                                 />
@@ -719,7 +725,12 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                                     onChange={(event) => setNote(event.target.value)}
                                     placeholder={kind === 'note' ? 'Write what only you two should see...' : 'Add context, a secret, or a memory cue...'}
                                     rows={4}
-                                    className="w-full resize-none rounded-[1.15rem] px-4 py-3 text-[0.95rem] leading-6 outline-none"
+                                    inputMode="text"
+                                    enterKeyHint="done"
+                                    autoCapitalize="sentences"
+                                    autoCorrect="on"
+                                    spellCheck
+                                    className="w-full resize-none rounded-[1.15rem] px-4 py-3 text-[16px] leading-6 outline-none"
                                     style={{ ...fieldStyle, color: NEU_INK }}
                                 />
                             </label>

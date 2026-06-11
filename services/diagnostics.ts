@@ -26,6 +26,13 @@ const SLOW_NAVIGATION_MS = 650;
 
 let isStarted = false;
 
+// Optional remote sink. Kept as a plug-in callback so this low-level module
+// never imports the Supabase client (which would create an import cycle and
+// couple diagnostics to the network layer). errorSink.ts registers the real
+// implementation at startup; until then errors are still captured locally.
+type RemoteSink = (event: DiagnosticEvent) => void;
+let remoteSink: RemoteSink | null = null;
+
 const getStorage = (): Storage | null => {
   try {
     return typeof window !== 'undefined' ? window.localStorage : null;
@@ -79,6 +86,14 @@ const appendEvent = (event: Omit<DiagnosticEvent, 'id' | 'timestamp'>) => {
     ...event,
   };
   writeEvents([next, ...readEvents()]);
+  // Forward genuine faults to the remote sink (best-effort, never throws).
+  if (remoteSink && (next.kind === 'error' || next.kind === 'rejection')) {
+    try {
+      remoteSink(next);
+    } catch {
+      // A failing sink must never break the app or the local diagnostic log.
+    }
+  }
 };
 
 const onWindowError = (event: ErrorEvent) => {
@@ -108,6 +123,11 @@ export const DiagnosticsService = {
     isStarted = true;
     window.addEventListener('error', onWindowError);
     window.addEventListener('unhandledrejection', onUnhandledRejection);
+  },
+
+  /** Register a remote error sink. Safe to call once at startup. */
+  setRemoteSink(sink: RemoteSink | null) {
+    remoteSink = sink;
   },
 
   recordInfo(source: string, message: string, meta?: Record<string, unknown>) {

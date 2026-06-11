@@ -80,9 +80,19 @@ class AnimationEngineClass {
   private visListenerBound = false;
   private adaptLockUntil = 0;
   private upgradeFrames = 0;
+  /** Cost tracking is opt-in. The dev overlay flips this on so production
+   *  builds don't pay the `performance.now()` cost twice per subscriber per
+   *  frame just to populate a map nobody reads. */
+  public costTrackingEnabled = false;
 
-  /** Active quality tier — broadcast to subscribers and CSS via data-tier */
+  /** Active quality tier — locked at ultra for the Capacitor visual build. */
   public tier: QualityTier = 'ultra';
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.tier = 'ultra';
+    }
+  }
 
   /**
    * Ring buffer of frame deltas (ms). Length 128 → ~1s of history at 120fps.
@@ -118,48 +128,28 @@ class AnimationEngineClass {
   unregister(id: string): void {
     this.subs.delete(id);
     this.costs.delete(id);
+    if (this.subs.size === 0) {
+      this.stop();
+    }
   }
 
-  /** Override tier externally (e.g. from settings or debug UI) */
   setTier(tier: QualityTier): void {
-    if (this.tier === tier) return;
+    if (this.tier === tier) {
+      this._publishTier(tier);
+      return;
+    }
     this.tier = tier;
-    this.upgradeFrames = 0;
     this._publishTier(tier);
   }
 
-  private _publishTier(tier: QualityTier): void {
+  private _publishTier(_tier: QualityTier): void {
     if (typeof document !== 'undefined') {
-      document.documentElement.dataset.tier = tier;
+      document.documentElement.dataset.tier = 'ultra';
     }
   }
 
-  private _adaptTier(fps: number, ts: number): void {
-    if (ts < this.adaptLockUntil) {
-      this.upgradeFrames = 0;
-      return;
-    }
-
-    const rank  = TIER_RANK[this.tier];
-    const tiers = TIER_SORTED;
-
-    if (fps < DOWNGRADE_FPS && rank > 0) {
-      this.upgradeFrames = 0;
-      const lower = tiers.find(t => TIER_RANK[t] === rank - 1)!;
-      this.tier = lower;
-      this._publishTier(lower);
-      this.adaptLockUntil = ts + DOWNGRADE_LOCK;
-    } else if (fps >= UPGRADE_FPS && rank < TIER_RANK['ultra']) {
-      if (++this.upgradeFrames >= UPGRADE_REQUIRED) {
-        this.upgradeFrames = 0;
-        const higher = tiers.find(t => TIER_RANK[t] === rank + 1)!;
-        this.tier = higher;
-        this._publishTier(higher);
-        this.adaptLockUntil = ts + UPGRADE_LOCK;
-      }
-    } else {
-      this.upgradeFrames = 0;
-    }
+  private _adaptTier(_fps: number, _ts: number): void {
+    // no-op: adaptive visual downgrade is disabled for the current mobile build.
   }
 
   private readonly loop = (ts: number): void => {
@@ -195,12 +185,17 @@ class AnimationEngineClass {
       this._cssDirty = false;
     }
 
+    const trackCost = this.costTrackingEnabled;
     for (const sub of this.subs.values()) {
       if (tierRank < TIER_RANK[sub.minTier]) continue;
 
-      const t0 = performance.now();
-      sub.tick(delta, ts, this.tier);
-      this.costs.set(sub.id, performance.now() - t0);
+      if (trackCost) {
+        const t0 = performance.now();
+        sub.tick(delta, ts, this.tier);
+        this.costs.set(sub.id, performance.now() - t0);
+      } else {
+        sub.tick(delta, ts, this.tier);
+      }
 
       // Collect CSS contributions
       if (sub.cssProps) {
@@ -246,9 +241,12 @@ class AnimationEngineClass {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         this.stop();
-      } else {
-        this.lastTs = performance.now(); // avoid spike on resume
-        this.running = false;
+      } else if (!this.running && this.subs.size > 0) {
+        // Reset the last-timestamp to avoid feeding a huge delta into the
+        // tick loop on resume. start() also writes lastTs but it does so
+        // BEFORE the first RAF callback, which is the wrong baseline for
+        // the next frame delta.
+        this.lastTs = performance.now();
         this.start();
       }
     });
@@ -256,8 +254,3 @@ class AnimationEngineClass {
 }
 
 export const AnimationEngine = new AnimationEngineClass();
-
-// Boot the engine immediately so the CSS tier attribute is set before first paint
-if (typeof document !== 'undefined') {
-  AnimationEngine.start();
-}

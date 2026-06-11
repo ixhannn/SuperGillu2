@@ -12,7 +12,9 @@ interface TiltCardProps {
   maxTilt?: number;
   glare?: boolean;
   scale?: number;
-  onClick?: () => void;
+  /** Click handler. Receives the event so callers can use currentTarget
+   *  for hooks like useTileOpen that need a DOM ref to animate. */
+  onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
   'data-coachmark'?: string;
 }
 

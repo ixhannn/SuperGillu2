@@ -22,13 +22,24 @@ const config: CapacitorConfig = {
     StatusBar: {
       // Edge-to-edge: transparent overlay so our gradient shows through
       overlaysWebView: true,
-      style: 'DARK',
+      // LIGHT means dark status-bar text/icons for the app's default light shell.
+      style: 'LIGHT',
       backgroundColor: '#00000000',
     },
     Keyboard: {
-      // Android: resize the viewport smoothly instead of panning
-      resize: 'body' as any,
-      resizeOnFullScreen: true,
+      // Keep the WebView frame stable. Android is handled by adjustNothing in
+      // the manifest/MainActivity; Capacitor's fullscreen resize workaround
+      // fights that overlay model and makes the fixed shell jump above IME.
+      resize: 'none' as any,
+      resizeOnFullScreen: false,
+      style: 'default' as any,
+    },
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
+    LocalNotifications: {
+      smallIcon: 'ic_notification',
+      iconColor: '#E91E8C',
     },
   },
 };

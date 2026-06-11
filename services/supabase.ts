@@ -18,6 +18,10 @@ const isMissingTableError = (error: unknown, tableName: string) => {
         || Boolean(candidate?.message?.includes(`public.${tableName}`));
 };
 
+const firstRpcRow = <T,>(data: T | T[] | null | undefined): T | null => (
+    Array.isArray(data) ? data[0] ?? null : data ?? null
+);
+
 export interface SupabaseRowEnvelope<T = any> {
     id: string;
     user_id?: string | null;
@@ -36,6 +40,38 @@ export interface SupabaseDeletionLedgerRow {
     deleted_at?: string;
     created_at?: string;
     updated_at?: string;
+}
+
+export interface PairInviteV2Row {
+    code: string;
+    expires_at: string;
+    couple_id: string;
+}
+
+export interface PairingStatusV2Row {
+    is_linked: boolean;
+    couple_id: string | null;
+    partner_user_id: string | null;
+    partner_name: string | null;
+    member_count: number;
+}
+
+export interface ClaimPairInviteV2Row {
+    ok: boolean;
+    error: string | null;
+    couple_id: string | null;
+    partner_user_id: string | null;
+    partner_name: string | null;
+}
+
+export interface MyRelationship {
+    coupleId: string;
+    status: string;
+    role: string;
+    partnerUserId: string | null;
+    partnerName: string | null;
+    onboardingDone: boolean;
+    memberCount: number;
 }
 
 export interface MediaAssetUploadInput {
@@ -70,7 +106,20 @@ export const SupabaseService = {
         const { url, anonKey: key } = SupabaseService.getProjectConfig();
         if (url && key && !SupabaseService.client) {
             try {
-                SupabaseService.client = createClient(url, key);
+                SupabaseService.client = createClient(url, key, {
+                    auth: {
+                        // PKCE is the secure modern OAuth flow — returns a
+                        // short-lived ?code= instead of putting access_token
+                        // in the URL fragment. Required for native callbacks
+                        // (Capacitor deep links) and recommended for web.
+                        flowType: 'pkce',
+                        // Supabase auto-detects the auth code in the return
+                        // URL and exchanges it for a session.
+                        detectSessionInUrl: true,
+                        persistSession: true,
+                        autoRefreshToken: true,
+                    },
+                });
                 return true;
             } catch (e) { return false; }
         }
@@ -95,6 +144,13 @@ export const SupabaseService = {
         }
         cachedUserId = normalizedUserId;
         if (!normalizedUserId) cachedCoupleId = null;
+        // Persist so lower-level modules (storage) can key per-user data (e.g.
+        // user_status) by a STABLE id instead of the mutable display name,
+        // without importing this module and creating a circular dependency.
+        try {
+            if (normalizedUserId) localStorage.setItem('lior_my_user_id', normalizedUserId);
+            else localStorage.removeItem('lior_my_user_id');
+        } catch { /* localStorage unavailable */ }
     },
 
     getSession: async (): Promise<Session | null> => {
@@ -143,9 +199,64 @@ export const SupabaseService = {
         }
     },
 
+    /**
+     * Authoritative relationship read (server-owned).
+     * Requires the 20260604_relationship_integrity migration. Throws if the RPC
+     * is not present yet, so callers can fall back to legacy resolution — the
+     * client is therefore safe to ship ahead of the migration.
+     */
+    getMyRelationship: async (): Promise<MyRelationship | null> => {
+        if (!SupabaseService.client) return null;
+        const { data, error } = await SupabaseService.client.rpc('get_my_relationship');
+        if (error) throw error; // RPC missing / not migrated → caller falls back
+        const row = firstRpcRow<any>(data);
+        if (!row?.couple_id) return null;
+        return {
+            coupleId: String(row.couple_id),
+            status: row.status ?? 'active',
+            role: row.role ?? 'partner',
+            partnerUserId: row.partner_user_id ? String(row.partner_user_id) : null,
+            partnerName: (row.partner_name ?? '').trim() || null,
+            onboardingDone: Boolean(row.onboarding_done),
+            memberCount: Number(row.member_count ?? 0),
+        };
+    },
+
+    /**
+     * Persists onboarding completion to the server (relationship_facts), so a
+     * reinstall / new device / relogin never re-triggers onboarding. Safe no-op
+     * if the relationship_integrity migration is not applied yet.
+     */
+    markOnboardingComplete: async (): Promise<void> => {
+        if (!SupabaseService.client) return;
+        try {
+            const coupleId = await SupabaseService.getCurrentCoupleId();
+            if (!coupleId) return;
+            await SupabaseService.client
+                .from('relationship_facts')
+                .upsert({ couple_id: coupleId, onboarding_done: true }, { onConflict: 'couple_id' });
+        } catch {
+            // Table not migrated yet — the device-local flag still governs.
+        }
+    },
+
     getCurrentCoupleId: async (): Promise<string | null> => {
         if (cachedCoupleId) return cachedCoupleId;
         if (!SupabaseService.client) return null;
+
+        // Authoritative path first — eliminates the client-side heuristic that
+        // let a device attach to the wrong/solo couple ("linked profiles
+        // unlink"). Silently falls back to legacy resolution if the
+        // get_my_relationship() migration has not been applied yet.
+        try {
+            const rel = await SupabaseService.getMyRelationship();
+            if (rel?.coupleId) {
+                cachedCoupleId = rel.coupleId;
+                return cachedCoupleId;
+            }
+        } catch {
+            // RPC not present yet — fall through to the legacy resolution below.
+        }
 
         try {
             const userId = await SupabaseService.getCurrentUserId();
@@ -263,12 +374,44 @@ export const SupabaseService = {
         }
     },
 
-    upsertItem: async (table: string, item: any) => {
-        if (!SupabaseService.client) return;
+    // Fetch the signed-in user's OWN display name from the cloud.
+    // Used on login to restore identity (myName) onto a fresh device where the
+    // name was never stored locally — couple_profile sync strips myName/partnerName,
+    // so this user_profiles read is the only way to recover one's own name.
+    fetchOwnDisplayName: async (): Promise<string | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const userId = await SupabaseService.getCurrentUserId();
+            if (!userId) return null;
+
+            const { data, error } = await SupabaseService.client
+                .from('user_profiles')
+                .select('display_name')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (error) {
+                if (isMissingTableError(error, 'user_profiles')) return null;
+                console.warn('Supabase fetchOwnDisplayName failed:', error);
+                return null;
+            }
+            const name = data?.display_name ? String(data.display_name).trim() : '';
+            return name || null;
+        } catch (e) {
+            console.warn('Supabase fetchOwnDisplayName exception:', e);
+            return null;
+        }
+    },
+
+    // Returns true on success, false on any failure. Existing callers that
+    // ignore the return value are unaffected; the sync outbox uses it to decide
+    // whether a queued write must be retried.
+    upsertItem: async (table: string, item: any): Promise<boolean> => {
+        if (!SupabaseService.client) return false;
         try {
             const userId = await SupabaseService.getCurrentUserId();
             const coupleId = await SupabaseService.getCurrentCoupleId();
-            if (!userId || !coupleId) return;
+            if (!userId || !coupleId) return false;
 
             const { error } = await SupabaseService.client.from(table).upsert({
                 id: buildTenantRowId(coupleId, item.id),
@@ -276,9 +419,14 @@ export const SupabaseService = {
                 couple_id: coupleId,
                 data: item
             });
-            if (error) console.warn(`Supabase upsert failed for ${table}:`, error);
+            if (error) {
+                console.warn(`Supabase upsert failed for ${table}:`, error);
+                return false;
+            }
+            return true;
         } catch (e) {
             console.warn(`Supabase upsert exception for ${table}:`, e);
+            return false;
         }
     },
 
@@ -335,7 +483,7 @@ export const SupabaseService = {
         // existing rows with empty local data.
         if (!coupleId) return null;
 
-        const { data, error } = await SupabaseService.client.from(table).select('*');
+        const { data, error } = await SupabaseService.client.from(table).select('*').eq('couple_id', coupleId);
         if (error) return null; // Return null so we know it failed (e.g. table missing)
         if (!data) return [];
         return data.map((row: any) => row.data);
@@ -346,7 +494,7 @@ export const SupabaseService = {
         const coupleId = await SupabaseService.getCurrentCoupleId();
         if (!coupleId) return null;
 
-        const { data, error } = await SupabaseService.client.from(table).select('*');
+        const { data, error } = await SupabaseService.client.from(table).select('*').eq('couple_id', coupleId);
         if (error) return null;
         return (data ?? []) as SupabaseRowEnvelope[];
     },
@@ -359,6 +507,7 @@ export const SupabaseService = {
         const { data, error } = await SupabaseService.client
             .from(DELETION_LEDGER_TABLE)
             .select('*')
+            .eq('couple_id', coupleId)
             .order('deleted_at', { ascending: false });
         if (error) return null;
         return (data ?? []) as SupabaseDeletionLedgerRow[];
@@ -477,6 +626,57 @@ export const SupabaseService = {
         return data ?? [];
     },
 
+    createPairInviteV2: async (input: { forceRotate?: boolean; displayName?: string | null }): Promise<PairInviteV2Row | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const { data, error } = await SupabaseService.client.rpc('create_pair_invite_v2', {
+                force_rotate: Boolean(input.forceRotate),
+                display_name: input.displayName ?? null,
+            });
+            if (error) {
+                console.warn('Supabase create_pair_invite_v2 failed:', error);
+                return null;
+            }
+            return firstRpcRow<PairInviteV2Row>(data);
+        } catch (e) {
+            console.warn('Supabase create_pair_invite_v2 exception:', e);
+            return null;
+        }
+    },
+
+    claimPairInviteV2: async (input: { code: string; displayName?: string | null }): Promise<ClaimPairInviteV2Row | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const { data, error } = await SupabaseService.client.rpc('claim_pair_invite_v2', {
+                invite_code: input.code,
+                display_name: input.displayName ?? null,
+            });
+            if (error) {
+                console.warn('Supabase claim_pair_invite_v2 failed:', error);
+                return null;
+            }
+            return firstRpcRow<ClaimPairInviteV2Row>(data);
+        } catch (e) {
+            console.warn('Supabase claim_pair_invite_v2 exception:', e);
+            return null;
+        }
+    },
+
+    getPairingStatusV2: async (): Promise<PairingStatusV2Row | null> => {
+        if (!SupabaseService.client) return null;
+        try {
+            const { data, error } = await SupabaseService.client.rpc('get_pairing_status_v2');
+            if (error) {
+                console.warn('Supabase get_pairing_status_v2 failed:', error);
+                return null;
+            }
+            return firstRpcRow<PairingStatusV2Row>(data);
+        } catch (e) {
+            console.warn('Supabase get_pairing_status_v2 exception:', e);
+            return null;
+        }
+    },
+
     backfillRowsToCouple: async (coupleId: string) => {
         if (!SupabaseService.client || !coupleId) return false;
         try {
@@ -523,6 +723,33 @@ export const SupabaseService = {
             return { partnerUserId, partnerName };
         } catch (e) {
             console.warn('Supabase getLinkedPartner exception:', e);
+            return null;
+        }
+    },
+
+    restorePairFromClaimedInvite: async (): Promise<{ coupleId: string; partnerUserId: string | null; partnerName: string | null } | null> => {
+        if (!SupabaseService.client) return null;
+
+        try {
+            const { data, error } = await SupabaseService.client.rpc('restore_pair_from_claimed_invite');
+            if (error) {
+                const message = error.message || '';
+                if (error.code === 'PGRST202' || isMissingTableError(error, 'restore_pair_from_claimed_invite') || message.includes('restore_pair_from_claimed_invite')) return null;
+                console.warn('Supabase restore_pair_from_claimed_invite failed:', error);
+                return null;
+            }
+
+            const row = Array.isArray(data) ? data[0] : data;
+            const coupleId = row?.couple_id ? String(row.couple_id) : '';
+            if (!coupleId) return null;
+
+            return {
+                coupleId,
+                partnerUserId: row?.partner_user_id ? String(row.partner_user_id) : null,
+                partnerName: row?.partner_name ? String(row.partner_name).trim() || null : null,
+            };
+        } catch (e) {
+            console.warn('Supabase restore_pair_from_claimed_invite exception:', e);
             return null;
         }
     }

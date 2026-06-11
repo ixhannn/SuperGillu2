@@ -44,7 +44,8 @@ import {
 } from './adminApi';
 import './admin.css';
 
-type AdminView = 'overview' | 'users' | 'couples' | 'media' | 'alerts' | 'jobs' | 'integrity' | 'capacity' | 'activity' | 'access';
+type AdminView = 'pulse' | 'library' | 'issues' | 'system';
+type LibraryTab = 'media' | 'users' | 'couples';
 type UserSort = 'activity' | 'storage' | 'media' | 'rows' | 'issues' | 'email';
 
 type FilterState = {
@@ -89,17 +90,28 @@ const NAV_ITEMS: Array<{
   icon: React.ComponentType<{ size?: number }>;
   kicker: string;
 }> = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard, kicker: 'Live state' },
-  { id: 'users', label: 'Users', icon: Users, kicker: 'People and data' },
-  { id: 'couples', label: 'Couples', icon: Folder, kicker: 'Pair health' },
-  { id: 'media', label: 'Media Explorer', icon: Eye, kicker: 'Browse previews' },
-  { id: 'alerts', label: 'Alerts', icon: AlertTriangle, kicker: 'Resolve issues' },
-  { id: 'jobs', label: 'Jobs', icon: Clock3, kicker: 'Cleanup queue' },
-  { id: 'integrity', label: 'Integrity', icon: ShieldAlert, kicker: 'Broken paths' },
-  { id: 'capacity', label: 'Capacity', icon: BarChart3, kicker: 'Usage and quota' },
-  { id: 'activity', label: 'Activity', icon: Waves, kicker: 'Events and jobs' },
-  { id: 'access', label: 'Access', icon: LockKeyhole, kicker: 'Worker connection' },
+  { id: 'pulse', label: 'Pulse', icon: LayoutDashboard, kicker: 'Health & capacity' },
+  { id: 'library', label: 'Library', icon: Eye, kicker: 'Media · Users · Couples' },
+  { id: 'issues', label: 'Issues', icon: AlertTriangle, kicker: 'Alerts · Jobs · Integrity' },
+  { id: 'system', label: 'System', icon: Server, kicker: 'Activity & access' },
 ];
+
+// Internal tabs for Library view — gives the dashboard an object-centric
+// browser instead of three sibling sidebar items that fragmented the
+// natural drill-down (user → couple → their media).
+const LIBRARY_TABS: Array<{
+  id: LibraryTab;
+  label: string;
+  icon: React.ComponentType<{ size?: number }>;
+}> = [
+  { id: 'media', label: 'Media', icon: ImageIcon },
+  { id: 'users', label: 'Users', icon: Users },
+  { id: 'couples', label: 'Couples', icon: Folder },
+];
+
+// Filter bar only makes sense in object browsers (Library/Media + Users).
+// Hiding it on Pulse / Issues / System removes irrelevant chrome.
+const VIEWS_WITH_FILTERS = new Set<AdminView>(['library']);
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
@@ -222,7 +234,8 @@ export const AdminApp: React.FC = () => {
   const [snapshot, setSnapshot] = useState<AdminDashboardSnapshot | null>(null);
   const [mediaGallery, setMediaGallery] = useState<AdminMediaGallery | null>(null);
   const [usersSnapshot, setUsersSnapshot] = useState<AdminUsersSnapshot | null>(null);
-  const [activeView, setActiveView] = useState<AdminView>('overview');
+  const [activeView, setActiveView] = useState<AdminView>('pulse');
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>('media');
   const [activeMediaSection, setActiveMediaSection] = useState<AdminMediaSection | 'all'>('all');
   const [selectedMediaItem, setSelectedMediaItem] = useState<AdminMediaItem | null>(null);
   const [selectedUser, setSelectedUser] = useState<AdminUserSummary | null>(null);
@@ -574,7 +587,16 @@ export const AdminApp: React.FC = () => {
 
   const selectView = (view: AdminView) => {
     setActiveView(view);
-    if (view !== 'media') setSelectedMediaItem(null);
+    if (view !== 'library') setSelectedMediaItem(null);
+  };
+
+  // Helper used by inline cross-links throughout the dashboard so a click
+  // on "view media" / "view users" / "view couples" jumps to the right
+  // tab inside the Library view in one go (rather than a stale activeView
+  // value pointing at the old sidebar IDs).
+  const jumpToLibrary = (tab: LibraryTab) => {
+    setActiveView('library');
+    setLibraryTab(tab);
   };
 
   const refreshDashboardData = async () => {
@@ -770,7 +792,7 @@ export const AdminApp: React.FC = () => {
                 key={tab.id}
                 className="mini-stat-card"
                 onClick={() => {
-                  setActiveView('media');
+                  jumpToLibrary('media');
                   setActiveMediaSection(tab.id as AdminMediaSection);
                 }}
               >
@@ -887,35 +909,37 @@ export const AdminApp: React.FC = () => {
             <EmptyState title="No matching media" copy="Try widening the filters or switching to another tab." icon={<ImageIcon size={28} />} />
           )}
           {filteredMedia.length > 0 && (
-            <div className="media-grid">
+            <div className="media-gallery">
               {filteredMedia.map((item) => {
                 const previewUrl = getMediaPreviewUrl(config.workerUrl, item);
                 return (
                   <button
                     type="button"
-                    className="media-grid-card"
+                    className={`media-thumb media-thumb-${item.mediaKind}`}
                     key={item.id}
                     onClick={() => setSelectedMediaItem(item)}
+                    title={`${item.title || item.logicalId || 'Untitled'} · ${formatBytes(item.byteSize || 0)} · ${folderLabel(item.ownerFolder)}`}
                   >
-                    <div className="media-grid-preview">
+                    <div className="media-thumb-image">
                       {renderMediaPreview(item)}
-                      <span className={`media-status status-${item.status}`}>{mediaStatusLabel(item)}</span>
+                      <span className="media-thumb-kind" aria-hidden="true">
+                        {mediaIconForKind(item.mediaKind)}
+                      </span>
+                      <span className="media-thumb-size">{formatBytes(item.byteSize || 0)}</span>
+                      {item.status !== 'r2-key' && (
+                        <span className={`media-thumb-flag status-${item.status}`} title={mediaStatusLabel(item)}>
+                          {item.status === 'missing-object' ? 'Missing'
+                            : item.status === 'inline-base64' ? 'Inline'
+                            : mediaStatusLabel(item)}
+                        </span>
+                      )}
+                      {!previewUrl && (
+                        <span className="media-thumb-no-preview">No preview</span>
+                      )}
                     </div>
-                    <div className="media-grid-body">
-                      <div className="stack-row">
-                        <strong title={item.title}>{item.title || item.logicalId || 'Untitled media'}</strong>
-                        <span className="badge neutral">{item.assetRole}</span>
-                      </div>
-                      <p>{item.caption || `${item.sourceTable || item.feature} · ${folderLabel(item.ownerFolder)}`}</p>
-                      <div className="compact-meta">
-                        <span>{folderLabel(item.ownerFolder)}</span>
-                        <span>{formatBytes(item.byteSize || 0)}</span>
-                        <span>{shortId(item.coupleId)}</span>
-                      </div>
-                      <div className="media-card-footer">
-                        <span>{formatDateTime(item.updatedAt || item.createdAt || item.uploadedAt)}</span>
-                        {previewUrl && <span className="open-pill">Previewable</span>}
-                      </div>
+                    <div className="media-thumb-caption">
+                      <strong title={item.title}>{item.title || item.logicalId || 'Untitled'}</strong>
+                      <span>{folderLabel(item.ownerFolder)}</span>
                     </div>
                   </button>
                 );
@@ -1085,7 +1109,7 @@ export const AdminApp: React.FC = () => {
                   className="action-tile"
                   onClick={() => {
                     setFilters((prev) => ({ ...prev, owner: selectedUser.id }));
-                    setActiveView('media');
+                    jumpToLibrary('media');
                   }}
                 >
                   <Eye size={16} />
@@ -1096,7 +1120,7 @@ export const AdminApp: React.FC = () => {
                   className="action-tile"
                   onClick={() => {
                     setFilters((prev) => ({ ...prev, owner: selectedUser.id }));
-                    setActiveView('integrity');
+                    setActiveView('issues');
                   }}
                 >
                   <ShieldAlert size={16} />
@@ -1190,7 +1214,7 @@ export const AdminApp: React.FC = () => {
                     className="ghost-button drawer-link"
                     onClick={() => {
                       setFilters((prev) => ({ ...prev, couple: couple.coupleId }));
-                      setActiveView('media');
+                      jumpToLibrary('media');
                     }}
                   >
                     Media <ArrowUpRight size={14} />
@@ -1200,7 +1224,7 @@ export const AdminApp: React.FC = () => {
                     className="ghost-button drawer-link"
                     onClick={() => {
                       setFilters((prev) => ({ ...prev, couple: couple.coupleId }));
-                      setActiveView('users');
+                      jumpToLibrary('users');
                     }}
                   >
                     Users <ArrowUpRight size={14} />
@@ -1287,7 +1311,7 @@ export const AdminApp: React.FC = () => {
                       className="ghost-button drawer-link"
                       onClick={() => {
                         setFilters((prev) => ({ ...prev, couple: alert.couple_id || 'all' }));
-                        setActiveView('media');
+                        jumpToLibrary('media');
                       }}
                     >
                       Inspect media <ArrowUpRight size={14} />
@@ -1383,7 +1407,7 @@ export const AdminApp: React.FC = () => {
                     className="ghost-button drawer-link"
                     onClick={() => {
                       setFilters((prev) => ({ ...prev, couple: task.couple_id || 'all' }));
-                      setActiveView('media');
+                      jumpToLibrary('media');
                     }}
                   >
                     Related media <ArrowUpRight size={14} />
@@ -1451,7 +1475,7 @@ export const AdminApp: React.FC = () => {
             {integrityItems.map((item) => (
               <button key={item.id} type="button" className="stack-card actionable-card" onClick={() => {
                 setSelectedMediaItem(item);
-                setActiveView('media');
+                jumpToLibrary('media');
               }}>
                 <div className="stack-row">
                   <strong>{item.title || item.logicalId || item.id}</strong>
@@ -1565,7 +1589,7 @@ export const AdminApp: React.FC = () => {
           <div className="stack-list tall-list">
             {largestItems.map((item) => (
               <button type="button" className="stack-card actionable-card" key={item.id} onClick={() => {
-                setActiveView('media');
+                jumpToLibrary('media');
                 setSelectedMediaItem(item);
               }}>
                 <div className="stack-row">
@@ -1846,7 +1870,9 @@ export const AdminApp: React.FC = () => {
   );
 
   const renderCurrentView = () => {
-    if (!hasSnapshot && activeView !== 'access') {
+    // Always allow the System view to render — that's where the worker
+    // connection setup lives, so the user can fix the missing snapshot.
+    if (!hasSnapshot && activeView !== 'system') {
       return (
         <section className="admin-panel section-card">
           <div className="section-head">
@@ -1876,17 +1902,73 @@ export const AdminApp: React.FC = () => {
       );
     }
 
-    if (activeView === 'users') return renderUsers();
-    if (activeView === 'couples') return renderCouples();
-    if (activeView === 'media') return renderMediaExplorer();
-    if (activeView === 'alerts') return renderAlerts();
-    if (activeView === 'jobs') return renderJobs();
-    if (activeView === 'integrity') return renderIntegrity();
-    if (activeView === 'capacity') return renderCapacity();
-    if (activeView === 'activity') return renderActivity();
-    if (activeView === 'access') return renderAccess();
-    return renderOverview();
+    if (activeView === 'library') return renderLibrary();
+    if (activeView === 'issues') return renderIssues();
+    if (activeView === 'system') return renderSystem();
+    return renderPulse();
   };
+
+  // ── Composed views — wrap the original section renderers so the old
+  // logic keeps working unchanged, but the dashboard is presented as a
+  // small set of object-centric workspaces instead of 10 sibling tabs.
+
+  const renderPulse = () => (
+    <>
+      {renderOverview()}
+      {renderCapacity()}
+    </>
+  );
+
+  const renderLibrary = () => (
+    <div className="library-view">
+      <div className="library-tabs" role="tablist" aria-label="Library section">
+        {LIBRARY_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const active = libraryTab === tab.id;
+          const count = tab.id === 'media'
+            ? mediaItems.length
+            : tab.id === 'users'
+              ? users.length
+              : coupleCards.length;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`library-tab ${active ? 'active' : ''}`}
+              onClick={() => setLibraryTab(tab.id)}
+            >
+              <Icon size={16} />
+              <span>{tab.label}</span>
+              <strong className="library-tab-count">{count}</strong>
+            </button>
+          );
+        })}
+      </div>
+      <div className="library-tab-panel">
+        {libraryTab === 'media' && renderMediaExplorer()}
+        {libraryTab === 'users' && renderUsers()}
+        {libraryTab === 'couples' && renderCouples()}
+      </div>
+    </div>
+  );
+
+  const renderIssues = () => (
+    <>
+      {renderAlerts()}
+      {renderJobs()}
+      {renderIntegrity()}
+    </>
+  );
+
+  const renderSystem = () => (
+    <>
+      {renderActivity()}
+      {renderAccess()}
+    </>
+  );
+
 
   return (
     <div className="admin-shell">
@@ -1946,8 +2028,10 @@ export const AdminApp: React.FC = () => {
         <main className="admin-main">
           <header className="admin-topbar">
             <div>
-              <p className="section-kicker">Workspace</p>
-              <h2>{NAV_ITEMS.find((item) => item.id === activeView)?.label || 'Overview'}</h2>
+              <p className="section-kicker">
+                {activeView === 'library' ? `Library · ${LIBRARY_TABS.find((tab) => tab.id === libraryTab)?.label || ''}` : 'Workspace'}
+              </p>
+              <h2>{NAV_ITEMS.find((item) => item.id === activeView)?.label || 'Pulse'}</h2>
             </div>
             <div className="topbar-meta">
               <div className="topbar-chip">
@@ -1961,6 +2045,7 @@ export const AdminApp: React.FC = () => {
             </div>
           </header>
 
+          {VIEWS_WITH_FILTERS.has(activeView) && (
           <section className="filter-bar">
             <div className="filter-lead">
               <Filter size={16} />
@@ -2011,6 +2096,7 @@ export const AdminApp: React.FC = () => {
               Reset
             </button>
           </section>
+          )}
 
           {renderCurrentView()}
 
@@ -2087,7 +2173,7 @@ export const AdminApp: React.FC = () => {
                 type="button"
                 className="ghost-button drawer-link"
                 onClick={() => {
-                  setActiveView('integrity');
+                  setActiveView('issues');
                   setSelectedMediaItem(null);
                 }}
               >

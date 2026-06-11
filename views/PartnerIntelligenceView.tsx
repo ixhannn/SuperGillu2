@@ -309,9 +309,6 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
   const [showPulse, setShowPulse] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  // Charts (recharts — the app's single largest chunk at ~330KB) stay
-  // deferred behind a tap on mobile-class devices so opening this view never
-  // stalls on chunk parse + chart layout. Desktop-class devices load eagerly.
   const [visualsEnabled, setVisualsEnabled] = useState(() => !shouldGateHeavyView());
 
   const names = getProfileNames();

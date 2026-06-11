@@ -157,7 +157,11 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
                   placeholder="One line is enough..."
                   maxLength={120}
                   rows={2}
-                  className="w-full rounded-2xl px-4 py-3 text-sm resize-none outline-none"
+                  inputMode="text"
+                  enterKeyHint="next"
+                  autoCapitalize="sentences"
+                  autoCorrect="on"
+                  className="w-full rounded-2xl px-4 py-3 text-[16px] resize-none outline-none"
                   style={{
                     background: 'rgba(var(--theme-particle-2-rgb), 0.06)',
                     border: '1px solid rgba(var(--theme-particle-2-rgb), 0.1)',
@@ -211,7 +215,11 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
                   placeholder="Made me laugh, checked on me, listened..."
                   maxLength={100}
                   rows={2}
-                  className="w-full rounded-2xl px-4 py-3 text-sm resize-none outline-none"
+                  inputMode="text"
+                  enterKeyHint="done"
+                  autoCapitalize="sentences"
+                  autoCorrect="on"
+                  className="w-full rounded-2xl px-4 py-3 text-[16px] resize-none outline-none"
                   style={{
                     background: 'rgba(var(--theme-particle-2-rgb), 0.06)',
                     border: '1px solid rgba(var(--theme-particle-2-rgb), 0.1)',

@@ -15,6 +15,14 @@ const budgets = {
   },
 };
 
+const hotChunkBudgets = [
+  { pattern: /^App-.*\.js$/, raw: 180 * kib, gzip: 52 * kib },
+  { pattern: /^Sync-.*\.js$/, raw: 190 * kib, gzip: 64 * kib },
+  { pattern: /^index-.*\.js$/, raw: 190 * kib, gzip: 60 * kib },
+  { pattern: /^storage-.*\.js$/, raw: 100 * kib, gzip: 30 * kib },
+  { pattern: /^supabase-.*\.js$/, raw: 170 * kib, gzip: 44 * kib },
+];
+
 const formatKib = (bytes) => `${(bytes / kib).toFixed(1)} KiB`;
 
 if (!existsSync(assetsDir)) {
@@ -43,6 +51,16 @@ for (const file of files) {
 
   if (gzipBytes.length > budget.gzip) {
     failures.push(`${file} gzip ${formatKib(gzipBytes.length)} exceeds ${formatKib(budget.gzip)}`);
+  }
+
+  for (const hotBudget of hotChunkBudgets) {
+    if (!hotBudget.pattern.test(file)) continue;
+    if (bytes.length > hotBudget.raw) {
+      failures.push(`${file} hot raw ${formatKib(bytes.length)} exceeds ${formatKib(hotBudget.raw)}`);
+    }
+    if (gzipBytes.length > hotBudget.gzip) {
+      failures.push(`${file} hot gzip ${formatKib(gzipBytes.length)} exceeds ${formatKib(hotBudget.gzip)}`);
+    }
   }
 }
 

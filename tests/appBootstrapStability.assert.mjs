@@ -31,14 +31,14 @@ assert.match(
 
 assert.match(
   syncSource,
-  /public reset\(\)\s*\{\s*this\.cleanupRealtimeState\(\);\s*this\.isConnected = false;\s*this\.status = 'Offline';/s,
+  /public reset\(\)\s*\{[\s\S]*?this\.cleanupRealtimeState\(\);\s*this\.isConnected = false;\s*this\.status = 'Offline';/s,
   'Expected SyncService to expose a reset path so startup and sign-out can cleanly tear down realtime state',
 );
 
 assert.match(
   syncSource,
-  /if \(localProfileBeforeCoupleLookup\.coupleId\) \{[\s\S]*SupabaseService\.setCachedCoupleId\(localProfileBeforeCoupleLookup\.coupleId\);[\s\S]*\}[\s\S]*const coupleId = await SupabaseService\.getCurrentCoupleId\(\);/,
-  'Expected sync bootstrap to preserve the existing linked couple id before asking Supabase for a couple id',
+  /if \(localProfileBeforeCoupleLookup\.coupleId && localProfileBeforeCoupleLookup\.partnerUserId\) \{[\s\S]*SupabaseService\.setCachedCoupleId\(localProfileBeforeCoupleLookup\.coupleId\);[\s\S]*\} else \{[\s\S]*SupabaseService\.setCachedCoupleId\(null\);[\s\S]*\}[\s\S]*let coupleId = await SupabaseService\.getCurrentCoupleId\(\);/,
+  'Expected sync bootstrap to preserve only a complete linked couple id before asking Supabase for a couple id',
 );
 
 assert.match(

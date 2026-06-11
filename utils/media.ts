@@ -40,12 +40,11 @@ const clampDimensions = (
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-import imageCompression from 'browser-image-compression';
-
 /**
  * Compress an image file to a JPEG data-URL.
  */
 export const compressImage = async (file: File): Promise<string> => {
+    const { default: imageCompression } = await import('browser-image-compression');
     const options = {
         maxSizeMB: 0.2, // ~200KB
         maxWidthOrHeight: IMAGE_MAX_SIZE,

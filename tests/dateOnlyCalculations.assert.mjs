@@ -85,7 +85,8 @@ const sourceChecks = [
   ['../views/BonsaiBloom.tsx', /daysTogetherFrom\(/],
   ['../services/partnerIntelligence.ts', /daysTogetherFrom\(/],
   ['../services/relationshipModel.ts', /daysTogetherFrom\(/],
-  ['../views/Countdowns.tsx', /daysUntilDate\(/],
+  ['../shared/countdowns.js', /daysUntilDate\(/],
+  ['../views/Countdowns.tsx', /buildCountdownEvents\(/],
   ['../views/SpecialDates.tsx', /daysUntilDate\(/],
 ];
 

@@ -11,7 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Playwright run output (ephemeral). Snapshot baselines under
+# tests/**/__snapshots__ / *-snapshots are tracked separately and NOT ignored.
+test-results/
+playwright-report/
 android/local.properties
+android/keystore.properties
+android/app/*.jks
+android/app/*.keystore
 
 # Editor directories and files
 .vscode/*

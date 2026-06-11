@@ -205,10 +205,10 @@
   z-index: 1;
   margin: 18px 0 0;
   max-width: 12ch;
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 7vw, 3.2rem);
   line-height: 0.96;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .recap-cover__names {
@@ -237,10 +237,10 @@
 
 .recap-numbers__value {
   display: block;
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 8vw, 3rem);
   line-height: 0.92;
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
 }
 
 .recap-numbers__label {
@@ -325,7 +325,7 @@
 
 .recap-highlight__title {
   margin: 14px 0 0;
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.6rem, 6vw, 2.2rem);
   line-height: 1.02;
 }
@@ -397,7 +397,7 @@
 }
 
 .recap-insight__text {
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.1rem, 4.6vw, 1.4rem);
   line-height: 1.45;
 }
@@ -448,7 +448,7 @@
 
 .recap-share__headline {
   margin: 12px 42px 0 0;
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.6rem, 6vw, 2.2rem);
   line-height: 1.05;
 }
@@ -550,10 +550,10 @@
 .dv-today__title {
   margin: 10px 0 0;
   max-width: 12ch;
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 7vw, 3rem);
   line-height: 0.98;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .dv-today__sub {
@@ -609,9 +609,9 @@
 .dv-past__label,
 .film-player__title {
   margin: 6px 0 0;
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   line-height: 1.05;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .dv-cycle__title,
@@ -766,7 +766,7 @@
 }
 
 .dv-strip__day {
-  font-family: 'Lora', Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.2rem;
   line-height: 1;
 }
@@ -1108,7 +1108,7 @@
 }
 
 .recap-headline__text {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 1.4rem;
   line-height: 1.35;
   margin: 0 0 8px;
@@ -1305,7 +1305,7 @@
 }
 
 .recap-prompt__heading {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 1.1rem;
   font-weight: 600;
   margin: 0 0 14px;
@@ -1313,7 +1313,7 @@
 }
 
 .recap-prompt__text {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 1.05rem;
   line-height: 1.5;
   font-style: italic;

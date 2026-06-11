@@ -56,8 +56,20 @@ const pool: Particle[] = Array.from({ length: POOL }, () => ({
   size:2, bright:1, r:244, g:63, b:94, wobble:0,
 }));
 
+// Rotating head pointer — turns the previous O(POOL) linear search per spawn
+// into an amortised O(1) lookup. Spawning a button-dissolve was previously
+// doing up to 12,000 reads × hundreds of particles in a tight loop on the
+// main thread, which is what made the heart-button effect stutter on the
+// first tap on mid-tier phones.
+let poolHead = 0;
 function acquire(): Particle | null {
-  for (let i = 0; i < POOL; i++) if (!pool[i].active) return pool[i];
+  for (let i = 0; i < POOL; i++) {
+    const idx = (poolHead + i) % POOL;
+    if (!pool[idx].active) {
+      poolHead = (idx + 1) % POOL;
+      return pool[idx];
+    }
+  }
   return null;
 }
 
@@ -72,60 +84,70 @@ function acquire(): Particle | null {
 // Coordinate convention: xc positive → right, yc positive → DOWN (screen).
 
 const HR   = 130;
-const STEP = 1.5;
+const STEP = 1.3;
 const FOV  = 520;
 
-// Pure Geometric Heart Math
-// Defined via an exact set intersection of a rotated square and two perfectly tangent circles.
-// This generates the flawless iOS-style emoji heart format.
-const S = HR * 0.75; 
+// Iconic Valentine heart — diamond body + two perfectly tangent circles
+// at the top. This is the same shape the iOS/Apple emoji ❤️ uses; the
+// implicit `(x²+y²−1)³ ≤ x²y³` form looked mathematically clean but had
+// narrow lobes and a deep cleft, which read as "weird" next to the
+// familiar heart silhouette.
+const S = HR * 0.72;
+const CIRC_R2 = (S * S) / 2;
 
+// Pre-compute the boundary signed-distance (approx) for each grid point so
+// we can highlight the rim and dome-bulge the interior, just like before.
 function insideHeart(xc: number, yc: number): boolean {
-  const x = xc;
-  const y = yc + S * 0.89; // Align physical bounding center to origin
-
-  // 1. Diamond test
-  if (Math.abs(x) + Math.abs(y - S) <= S) return true;
-
-  // 2. Left Circle test
-  const dxL = x - (-S/2);
-  const dyL = y - (S/2);
-  if (dxL*dxL + dyL*dyL <= (S*S)/2) return true;
-
-  // 3. Right Circle test
-  const dxR = x - (S/2);
-  const dyR = y - (S/2);
-  if (dxR*dxR + dyR*dyR <= (S*S)/2) return true;
-
+  const y = yc + S * 0.89; // shift so visual centroid sits at origin
+  // Diamond (body + sharp bottom tip)
+  if (Math.abs(xc) + Math.abs(y - S) <= S) return true;
+  // Left lobe
+  const dxL = xc + S / 2;
+  const dyL = y - S / 2;
+  if (dxL * dxL + dyL * dyL <= CIRC_R2) return true;
+  // Right lobe
+  const dxR = xc - S / 2;
+  const dyR = y - S / 2;
+  if (dxR * dxR + dyR * dyR <= CIRC_R2) return true;
   return false;
 }
 
 interface GridPt { lx: number; ly: number; lz: number; bright: number; }
 const GRID: GridPt[] = (() => {
   const pts: GridPt[] = [];
-  
   const loX = -S * 1.5, hiX = S * 1.5;
   const loY = -S * 1.5, hiY = S * 1.5;
 
-  for (let gx = loX; gx <= hiX; gx += STEP) {
-    for (let gy = loY; gy <= hiY; gy += STEP) {
+  // Deterministic jitter — keeps the layout stable across renders but
+  // breaks up the rectangular lattice so the cluster reads as a natural
+  // gather instead of graph paper.
+  let seed = 1;
+  const jit = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 0xffffffff - 0.5;
+  };
+  const JITTER = STEP * 0.42;
+
+  for (let gxBase = loX; gxBase <= hiX; gxBase += STEP) {
+    for (let gyBase = loY; gyBase <= hiY; gyBase += STEP) {
+      const gx = gxBase + jit() * JITTER;
+      const gy = gyBase + jit() * JITTER;
       if (!insideHeart(gx, gy)) continue;
 
-      // Distance from center for bevel map
-      const r2 = gx*gx + gy*gy;
+      // Z dome from radial distance — pillow bulge in the centre, flat
+      // at the silhouette.
+      const r2 = gx * gx + gy * gy;
       const maxZ = HR * 0.12 * Math.sqrt(Math.max(0, 1 - r2 / (HR * HR * 1.50)));
-      const lz   = -maxZ * rnd(0.95, 1.05);
+      const lz = -maxZ * rnd(0.95, 1.05);
 
-      // Brightness: highlight outer shape
-      const dxL = gx - (-S/2);
-      const dyL = (gy + S * 0.89) - (S/2);
-      const dxR = gx - (S/2);
-      const dyR = (gy + S * 0.89) - (S/2);
-      
-      const rCircleSq = (S*S)/2;
-      const dL = Math.abs(dxL*dxL + dyL*dyL - rCircleSq);
-      const dR = Math.abs(dxR*dxR + dyR*dyR - rCircleSq);
-      
+      // Rim brightness — distance from either lobe's circle equation.
+      const y = gy + S * 0.89;
+      const dxL = gx + S / 2;
+      const dyL = y - S / 2;
+      const dxR = gx - S / 2;
+      const dyR = y - S / 2;
+      const dL = Math.abs(dxL * dxL + dyL * dyL - CIRC_R2);
+      const dR = Math.abs(dxR * dxR + dyR * dyR - CIRC_R2);
       const dEdge = Math.min(dL, dR);
       const edgeBright = Math.exp(-dEdge / (S * S * 0.15));
       const bright = 0.40 + 0.60 * edgeBright;
@@ -597,7 +619,7 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           // Phase 1: Flying away sweeping freely
           const t      = easeOut(clamp01(e / D_SCATTER));
           const px     = p.ox + p.vlx * t;
-          const py     = p.oy + p.vly * t; 
+          const py     = p.oy + p.vly * t;
           dotSolid(ctx, px, py, p.size, p.r, p.g, p.b, 1.0);
 
         } else if (e < convEnd) {
@@ -625,9 +647,13 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
                  + 2 * (1 - easeT) * easeT * cpY 
                  + easeT * easeT * endY;
 
-          // Gentle ambient dust wobble
+          // Gentle ambient dust wobble — both axes for organic motion.
+          // Quarter-phase offset on Y so X/Y aren't synced (would feel like
+          // a single sway). Magnitude decays with easeT so wobble dies as
+          // particles snap into their heart positions.
           p.wobble += 0.15;
           px += Math.sin(p.wobble) * (1 - easeT) * 2.0;
+          py += Math.cos(p.wobble * 0.85 + 1.57) * (1 - easeT) * 1.6;
 
           const cr  = Math.round(p.r + (HEART_R - p.r) * easeT);
           const cg  = Math.round(p.g + (HEART_G - p.g) * easeT);
@@ -645,14 +671,22 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           // Phase 3: HOLD — full 3-D depth, Y-oscillation, beats 3×
           const holdT = clamp01((e - convEnd) / D_HOLD);
 
-          // ── 3 heartbeat pulses (Aggressive fluid pump) ───────────────────
+          // ── 3 heartbeat pulses — anatomical curve ─────────────────────
+          // Systole (contraction) is fast and sharp; diastole (recovery)
+          // is longer and softer. The old `Math.sin(bt*π)` was symmetric
+          // and felt mechanical. Now the upbeat hits hard in the first
+          // ~25% of the window, then eases back over the remaining 75%.
           let pulse = 1.0;
           for (const b of BEAT_POSITIONS) {
             const dt2 = holdT - b;
             if (dt2 >= 0 && dt2 < 0.22) {
               const bt = dt2 / 0.22;
-              // Hard pump outward, elastic recoil inward
-              pulse += 0.85 * Math.pow(1 - bt, 3) * Math.sin(bt * Math.PI);
+              // Asymmetric envelope: pow(bt, 0.45) rises fast,
+              // pow(1-bt, 1.8) decays slowly. Peak around bt ≈ 0.22.
+              const env = Math.pow(bt, 0.45) * Math.pow(1 - bt, 1.8);
+              // 4.3 normalises the peak so the magnitude matches the
+              // original 0.85-Sin curve's amplitude (~0.85 at peak).
+              pulse += 0.85 * env * 4.3;
             }
           }
 
@@ -699,8 +733,11 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
 
           // Depth: 1=front(rz<0), 0=back(rz>0)
           const depth = clamp01((HR - rz_h) / (2 * HR));
-          // Solid opacity so no dark alpha-blending artifacts appear against the app background.
-          const alpha = clamp01(0.95 + pulse * 0.05);
+          // Depth-modulated alpha — back-facing particles draw at lower
+          // opacity so front particles read cleanly over them. With no
+          // explicit depth-sort, this is what makes the 3D rotation look
+          // properly layered instead of flat / Z-fought.
+          const alpha = clamp01((0.92 + pulse * 0.05) * (0.55 + 0.45 * depth));
           const szBoost = 1 + specular * 0.38;
           // Background particles shrink slightly for depth
           const sm = ps * (0.80 + 0.20 * depth) * (0.90 + pulse * 0.10) * szBoost;

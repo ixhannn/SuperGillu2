@@ -21,6 +21,8 @@ function breath(t: number): number {
 
 let registered = false;
 let lastTs = 0; // stored by tick(), consumed by cssProps()
+let lastBreathVal = -1;
+let lastEmit: Record<string, string> = {};
 
 export function startBreathingRhythm(): void {
   if (registered) return;
@@ -37,8 +39,14 @@ export function startBreathingRhythm(): void {
     },
 
     cssProps() {
-      const b = breath(lastTs); // 0–1
-      return {
+      const bRaw = breath(lastTs); // 0–1
+      // The breath cycle is 4s long — we only need ~30 distinct samples per
+      // cycle for visually smooth output. Quantizing avoids emitting a fresh
+      // setProperty burst every frame for values that didn't visibly change.
+      const b = Math.round(bRaw * 200) / 200;
+      if (b === lastBreathVal) return lastEmit;
+      lastBreathVal = b;
+      lastEmit = {
         '--breath':              b.toFixed(4),
         '--breath-shadow-blur':  `${(24 + b * 14).toFixed(1)}px`,
         '--breath-shadow-y':     `${(6  + b * 4).toFixed(1)}px`,
@@ -47,6 +55,7 @@ export function startBreathingRhythm(): void {
         '--breath-scale':        (1 + b * 0.004).toFixed(5),
         '--breath-pad':          `${(b * 1.5).toFixed(2)}px`,
       };
+      return lastEmit;
     },
   });
 }
