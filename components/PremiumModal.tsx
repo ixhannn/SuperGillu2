@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence, animate, useMotionValue, type PanInfo } from 'framer-motion';
-import { CalendarHeart, ChevronRight, Clapperboard, Crown, Flame, Gift, Heart, Infinity as InfinityIcon, Sparkles, Video } from 'lucide-react';
+import { CalendarHeart, ChevronRight, Clapperboard, Crown, Flame, Gem, Gift, Heart, Infinity as InfinityIcon, Sparkles } from 'lucide-react';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { StorageService } from '../services/storage';
@@ -52,7 +52,7 @@ const SHEET_FEATURES = [
     { icon: Clapperboard, label: 'Our Story film', desc: 'Your whole relationship, retold as a premiere', tint: '#ff5c7c' },
     { icon: CalendarHeart, label: 'Date Studio, Depths & Duets', desc: 'Date decks, real-talk cards & a two-pen journal', tint: '#fb7185' },
     { icon: Flame, label: 'Love Missions', desc: 'Three small missions a week, tuned to them', tint: '#ec4899' },
-    { icon: Video, label: 'Video everywhere', desc: 'Timeline, keepsakes & daily moments', tint: '#a855f7' },
+    { icon: Gem, label: 'Heirlooms', desc: 'Collectible art, struck on your milestones', tint: '#e8c97d' },
     { icon: Gift, label: 'Unlimited everything', desc: 'Voice notes, letters, surprises & memories', tint: '#ff5c7c' },
 ];
 

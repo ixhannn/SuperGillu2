@@ -4,13 +4,10 @@ import {
     motion,
     AnimatePresence,
     LayoutGroup,
-    animate,
-    useInView,
     useMotionValue,
     useSpring,
     useTransform,
     useMotionTemplate,
-    useReducedMotion,
 } from 'framer-motion';
 import {
     ArrowLeft,
@@ -25,6 +22,7 @@ import {
     Feather,
     Film,
     Flame,
+    Gem,
     Gift,
     Heart,
     Infinity as InfinityIcon,
@@ -38,7 +36,8 @@ import type { CoupleProfile, DatePlan, ViewState } from '../types';
 import { StorageService } from '../services/storage';
 import { useAuroraParallax } from '../components/premium/GoldKit';
 import { PremiumFeaturesStore, mondayOf } from '../services/premiumFeatures';
-import { buildStoryFilm, runtimeLabel } from '../components/premium/our-story/chapters';
+import { buildHeirloomSchedule, getCollectedHeirloomIds } from '../services/heirlooms';
+import { buildStoryFilm } from '../components/premium/our-story/chapters';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { daysTogetherFrom } from '../shared/dateOnly.js';
@@ -47,6 +46,12 @@ import '../styles/premium-hub.css';
 interface PremiumViewProps {
     setView: (view: ViewState) => void;
 }
+
+/* ── Editorial numbers — small counts read as words, not metrics ────── */
+
+const NUM_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+const asWords = (n: number): string => (n >= 0 && n < NUM_WORDS.length ? NUM_WORDS[n] : n.toLocaleString());
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* ── Motion signatures (iOS-grade: soft springs, no jitter) ─────────── */
 
@@ -61,31 +66,6 @@ const sectionVariants = {
 const riseVariants = {
     hidden: { opacity: 0, y: 26, scale: 0.985 },
     visible: { opacity: 1, y: 0, scale: 1, transition: SOFT_SPRING },
-};
-
-/* ── Animated counter ───────────────────────────────────────────────── */
-
-const AnimatedNumber: React.FC<{ value: number; className?: string }> = ({ value, className }) => {
-    const ref = useRef<HTMLSpanElement>(null);
-    const inView = useInView(ref, { once: true, margin: '-30px' });
-    const reducedMotion = useReducedMotion();
-    const [display, setDisplay] = useState(0);
-
-    useEffect(() => {
-        if (!inView) return;
-        if (reducedMotion) {
-            setDisplay(value);
-            return;
-        }
-        const controls = animate(0, value, {
-            duration: 1.5,
-            ease: [0.22, 1, 0.36, 1],
-            onUpdate: (v) => setDisplay(Math.round(v)),
-        });
-        return () => controls.stop();
-    }, [inView, value, reducedMotion]);
-
-    return <span ref={ref} className={className}>{display.toLocaleString()}</span>;
 };
 
 /* ── Holographic membership card ────────────────────────────────────── */
@@ -210,51 +190,6 @@ const MemberCard: React.FC<{
     );
 };
 
-/* ── Usage meter (free-tier progress) ───────────────────────────────── */
-
-const UsageMeter: React.FC<{ used: number; limit: number; tint: string; isPremium: boolean }> = ({ used, limit, tint, isPremium }) => {
-    if (isPremium) {
-        return (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#ff5c7c' }}>
-                <InfinityIcon size={11} strokeWidth={2.6} />
-                Unlimited
-            </span>
-        );
-    }
-    const pct = Math.min(1, used / limit);
-    return (
-        <div className="w-full">
-            <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-semibold" style={{ color: 'rgba(255,248,248,0.4)' }}>
-                    {used} of {limit} free
-                </span>
-                {pct >= 1 && (
-                    <span className="text-[9px] font-bold uppercase tracking-[0.12em]" style={{ color: tint }}>Full</span>
-                )}
-            </div>
-            <div className="h-[5px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
-                <motion.div
-                    initial={{ width: 0 }}
-                    whileInView={{ width: `${Math.max(4, pct * 100)}%` }}
-                    viewport={{ once: true, margin: '-20px' }}
-                    transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
-                    className="h-full rounded-full"
-                    style={{ background: `linear-gradient(90deg, ${tint}, ${tint}cc)` }}
-                />
-            </div>
-        </div>
-    );
-};
-
-/* ── Byte formatting for the vault receipt ──────────────────────────── */
-
-const formatBytes = (bytes: number): string => {
-    if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
-    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-};
-
 /* ── Unlock burst ───────────────────────────────────────────────────── */
 
 const BURST_PARTICLES = Array.from({ length: 18 }, (_, i) => {
@@ -288,46 +223,41 @@ interface Experience {
     title: string;
     sub: string;
     tint: string;
-    hero?: boolean;
-    isNew?: boolean;
-    usageKey?: 'surprises' | 'capsules' | 'voiceNotes';
-    usageLimit?: number;
 }
 
-const NEW_EXPERIENCES: Experience[] = [
-    { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'Your whole relationship, retold as a private film premiere', tint: '#ff5c7c', hero: true, isNew: true },
-    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Draw tonight\'s date from the deck', tint: '#fb7185', isNew: true },
-    { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: 'One prompt, two pens — sealed until you both write', tint: '#c4b5fd', isNew: true },
-    { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: 'Conversation decks for real talk', tint: '#5eead4', isNew: true },
-    { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: 'Three small missions, every week', tint: '#ec4899', isNew: true },
+/**
+ * The collection: three experiences get the cinematic treatment, the rest
+ * stay quiet. One star at a time — that is what makes anything feel
+ * important.
+ */
+const MARQUEE_EXPERIENCES: Experience[] = [
+    { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck from your real life, on the days that matter.', tint: '#e8c97d' },
+    { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'A film only you two could make — cut from your real days.', tint: '#ff5c7c' },
+    { key: 'daily-video', view: 'daily-video', icon: Video, title: 'Daily Video Moments', sub: 'Five seconds a day. A film every fortnight.', tint: '#a855f7' },
 ];
 
-const EXPERIENCES: Experience[] = [
-    { key: 'daily-video', view: 'daily-video', icon: Video, title: 'Daily Video Moments', sub: '5 seconds a day, woven into a film of your fortnight', tint: '#a855f7', hero: true },
-    { key: 'weekly-recap', view: 'weekly-recap', icon: Film, title: 'Weekly Story', sub: 'Your week together, retold like an editorial', tint: '#818cf8', hero: true },
-    { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: 'Patterns, love languages & gentle nudges', tint: '#ec4899', hero: true },
-    { key: 'surprises', view: 'surprises', icon: Gift, title: 'Surprises', sub: 'Scheduled moments of joy', tint: '#8b5cf6', usageKey: 'surprises', usageLimit: 3 },
-    { key: 'future-letters', view: 'time-capsule', icon: Lock, title: 'Future Letters', sub: 'Sealed until the day arrives', tint: '#f59e0b', usageKey: 'capsules', usageLimit: 3 },
-    { key: 'voice-notes', view: 'voice-notes', icon: Mic, title: 'Voice Notes', sub: 'Your voices, kept forever', tint: '#f43f5e', usageKey: 'voiceNotes', usageLimit: 5 },
-    { key: 'video-memories', view: 'add-memory', icon: Camera, title: 'Video Memories', sub: 'Video in your timeline & keepsakes', tint: '#e879f9' },
+const QUIET_EXPERIENCES: Experience[] = [
+    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: '', tint: '#fb7185' },
+    { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: '', tint: '#c4b5fd' },
+    { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: '', tint: '#5eead4' },
+    { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: '', tint: '#ec4899' },
+    { key: 'weekly-recap', view: 'weekly-recap', icon: Film, title: 'Weekly Story', sub: '', tint: '#818cf8' },
+    { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: '', tint: '#d96aff' },
+    { key: 'surprises', view: 'surprises', icon: Gift, title: 'Surprises', sub: '', tint: '#8b5cf6' },
+    { key: 'future-letters', view: 'time-capsule', icon: Lock, title: 'Future Letters', sub: '', tint: '#f59e0b' },
+    { key: 'voice-notes', view: 'voice-notes', icon: Mic, title: 'Voice Notes', sub: '', tint: '#f43f5e' },
+    { key: 'video-memories', view: 'add-memory', icon: Camera, title: 'Video Memories', sub: '', tint: '#e879f9' },
 ];
 
-/* ── Free vs Gold comparison ────────────────────────────────────────── */
+/* ── Free vs Gold — five lines, written like a person ───────────────── */
 
 const COMPARE_ROWS: Array<{ label: string; free: string; gold: string }> = [
-    { label: 'Memories', free: '50', gold: 'Unlimited' },
-    { label: 'Voice notes', free: '5', gold: 'Unlimited' },
-    { label: 'Future letters', free: '3', gold: 'Unlimited' },
-    { label: 'Surprises', free: '3', gold: 'Unlimited' },
-    { label: 'Video uploads', free: '—', gold: 'Everywhere' },
-    { label: 'Our Story film', free: '3 chapters', gold: 'The whole film' },
-    { label: 'Date Studio', free: 'Card draws', gold: 'Full planner' },
-    { label: 'Duet Journal', free: '3 duets', gold: 'Unlimited' },
-    { label: 'Depths decks', free: '1 deck', gold: 'All six' },
-    { label: 'Love Missions', free: '1 a week', gold: 'All 3 + streaks' },
-    { label: 'Fortnight films', free: 'Preview', gold: 'Included' },
-    { label: 'Weekly stories', free: 'Preview', gold: 'Included' },
-    { label: 'Love Tracker insights', free: 'Preview', gold: 'Included' },
+    { label: 'Heirlooms', free: 'The first', gold: 'Every strike' },
+    { label: 'Your vault', free: 'First fifty', gold: 'Everything, forever' },
+    { label: 'Voices, letters & surprises', free: 'A few', gold: 'Unlimited' },
+    { label: 'Video', free: '—', gold: 'Everywhere' },
+    { label: 'Films, stories & insights', free: 'Previews', gold: 'All of it' },
+    { label: 'Whatever we build next', free: '—', gold: 'Included' },
 ];
 
 /* ── Plans ──────────────────────────────────────────────────────────── */
@@ -335,9 +265,9 @@ const COMPARE_ROWS: Array<{ label: string; free: string; gold: string }> = [
 type PlanId = 'monthly' | 'yearly' | 'forever';
 
 const PLANS: Array<{ id: PlanId; name: string; price: string; cadence: string; note?: string; badge?: string }> = [
-    { id: 'monthly', name: 'Monthly', price: '$2.99', cadence: '/ month', note: '≈ one coffee' },
-    { id: 'yearly', name: 'Yearly', price: '$19.99', cadence: '/ year', note: '$1.67 a month', badge: 'Most loved' },
-    { id: 'forever', name: 'Forever', price: '$49.99', cadence: 'once', note: 'One date night, once' },
+    { id: 'monthly', name: 'Monthly', price: '$2.99', cadence: '/ month' },
+    { id: 'yearly', name: 'Yearly', price: '$19.99', cadence: '/ year', badge: 'Most loved' },
+    { id: 'forever', name: 'Forever', price: '$49.99', cadence: 'once' },
 ];
 
 const PLAN_VALUE_LINE: Record<PlanId, string> = {
@@ -408,28 +338,46 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         const missionsDone = weekActive ? weekActive.missions.filter((m) => m.completedAt).length : 0;
         const weekStreak = missionState?.weekStreak ?? 0;
 
+        const missionsLeft = weekActive ? Math.max(0, 3 - missionsDone) : 3;
+
+        const heirloomSchedule = buildHeirloomSchedule();
+        const collectedIds = getCollectedHeirloomIds();
+        const sealedHeirloom = heirloomSchedule.arrived.find((h) => !collectedIds.has(h.id));
+        const nextHeirloom = heirloomSchedule.next;
+
         return {
+            sealedHeirloom,
+            nextHeirloom,
+            heirlooms: sealedHeirloom
+                ? `${sealedHeirloom.title} is struck and sealed.`
+                : nextHeirloom
+                    ? (nextHeirloom.daysUntil === 0
+                        ? `${nextHeirloom.title} arrives today.`
+                        : nextHeirloom.daysUntil === 1
+                            ? `${nextHeirloom.title} arrives tomorrow.`
+                            : `${nextHeirloom.title} arrives in ${nextHeirloom.daysUntil} days.`)
+                    : 'Art struck from your real life.',
             storyChapters: story.chapters.length,
-            ourStory: `${story.chapters.length} scenes ready · ${runtimeLabel(story.chapters.length)}`,
+            ourStory: `Your film has ${asWords(story.chapters.length)} scene${story.chapters.length === 1 ? '' : 's'} now.`,
             dateStudio: upcomingPlan
-                ? `${upcomingPlan.emoji} ${upcomingPlan.title} — ${inDaysLabel(upcomingPlan.scheduledFor as string)}`
-                : '72 ideas waiting in the deck',
+                ? `${upcomingPlan.emoji} ${upcomingPlan.title} — ${inDaysLabel(upcomingPlan.scheduledFor as string)}.`
+                : 'The deck is shuffled. Draw one.',
             duetJournal: openDuet
-                ? (duetWaitingOn ? `Sealed — waiting on ${duetWaitingOn}` : 'Both sealed — ready to reveal')
+                ? (duetWaitingOn ? `Sealed — only ${duetWaitingOn}’s pen is missing.` : 'Both sealed. Reveal it together.')
                 : duetsRevealed > 0
-                    ? `${duetsRevealed} duet${duetsRevealed === 1 ? '' : 's'} on the shelf`
-                    : 'One prompt, two pens — start tonight',
-            depths: depthsState.completedSessions > 0 || depthsState.favorites.length > 0
-                ? `${depthsState.favorites.length} kept · ${depthsState.completedSessions} night${depthsState.completedSessions === 1 ? '' : 's'} played`
-                : 'Six decks, light to deep',
+                    ? 'Your duets are on the shelf.'
+                    : 'One prompt, two pens.',
+            depths: 'Six decks, light to deep.',
             loveMissions: weekActive
-                ? `${missionsDone} of 3 this week${weekStreak > 0 ? ` · 🔥 ${weekStreak}` : ''}`
-                : 'Three new missions every Monday',
+                ? (missionsDone === 3
+                    ? 'All three done. See you Monday.'
+                    : `${capitalize(asWords(missionsLeft))} mission${missionsLeft === 1 ? '' : 's'} left this week.`)
+                : 'Three small missions, every Monday.',
             upcomingPlan,
             upcomingPlanLabel: upcomingPlan ? inDaysLabel(upcomingPlan.scheduledFor as string) : null,
             duetWaitingOn,
             duetsRevealed,
-            missionsLeft: weekActive ? Math.max(0, 3 - missionsDone) : 3,
+            missionsLeft,
             plansMade: plans.length,
         };
     }, [profile]);
@@ -457,8 +405,24 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         return () => { cancelled = true; };
     }, []);
 
+    // The vault, written as a sentence — not a ledger.
+    const vaultProse = useMemo(() => {
+        const parts: string[] = [];
+        if (counts.memories > 0) parts.push(`${counts.memories.toLocaleString()} ${counts.memories === 1 ? 'memory' : 'memories'}`);
+        const mins = Math.round(counts.voiceSeconds / 60);
+        if (mins > 0) parts.push(`${asWords(mins)} minute${mins === 1 ? '' : 's'} of your voices`);
+        if (counts.capsules > 0) parts.push(`${asWords(counts.capsules)} letter${counts.capsules === 1 ? '' : 's'} waiting for their day`);
+        if (counts.surprises > 0) parts.push(`${asWords(counts.surprises)} surprise${counts.surprises === 1 ? '' : 's'} on the way`);
+        if (live.duetsRevealed > 0) parts.push(`${asWords(live.duetsRevealed)} duet${live.duetsRevealed === 1 ? '' : 's'} revealed`);
+        if (live.plansMade > 0) parts.push(`${asWords(live.plansMade)} date${live.plansMade === 1 ? '' : 's'} on the books`);
+        if (parts.length === 0) return 'Your first memory starts the vault.';
+        const last = parts.pop() as string;
+        const lead = parts.length > 0 ? `${parts.join(', ')} and ${last}` : last;
+        return `${capitalize(lead)} — all of it synced to both of you.`;
+    }, [counts, live.duetsRevealed, live.plansMade]);
     const liveFor = useCallback((key: string): string | null => {
         switch (key) {
+            case 'heirlooms': return live.heirlooms;
             case 'our-story': return live.ourStory;
             case 'date-studio': return live.dateStudio;
             case 'duet-journal': return live.duetJournal;
@@ -467,40 +431,33 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
             case 'daily-video':
                 if (recordedToday === null) return null;
                 return recordedToday
-                    ? `Tonight's scene is in the can${scenesShot ? ` · ${scenesShot} shot` : ''}`
-                    : 'Tonight’s scene: 5 seconds, still unshot';
+                    ? 'Tonight’s scene is in the can.'
+                    : 'Tonight’s scene is still unshot.';
             default: return null;
         }
-    }, [live, recordedToday, scenesShot]);
-
-    // ── Tonight: what Gold can do for you right now ─────────────────────
-    const tonight = useMemo(() => {
-        const items: Array<{ key: string; view: ViewState; icon: Experience['icon']; tint: string; title: string; sub: string }> = [];
-        if (recordedToday === false) {
-            items.push({ key: 'shoot', view: 'daily-video', icon: Video, tint: '#a855f7', title: 'Shoot today’s scene', sub: '5 seconds, sound on' });
-        }
-        if (live.duetWaitingOn) {
-            items.push({ key: 'duet', view: 'duet-journal', icon: Feather, tint: '#c4b5fd', title: 'A seal is waiting', sub: `${live.duetWaitingOn}’s pen is due` });
-        }
-        if (live.missionsLeft > 0 && live.missionsLeft < 3) {
-            items.push({ key: 'mission', view: 'love-missions', icon: Flame, tint: '#ec4899', title: 'Finish a mission', sub: `${live.missionsLeft} left this week` });
-        }
-        if (live.upcomingPlan) {
-            items.push({ key: 'plan', view: 'date-studio', icon: CalendarHeart, tint: '#fb7185', title: `${live.upcomingPlan.emoji} ${live.upcomingPlan.title}`, sub: live.upcomingPlanLabel ?? 'planned' });
-        } else {
-            items.push({ key: 'draw', view: 'date-studio', icon: CalendarHeart, tint: '#fb7185', title: 'Draw tonight’s date', sub: '72 ideas in the deck' });
-        }
-        items.push({ key: 'story', view: 'our-story', icon: Clapperboard, tint: '#ff5c7c', title: 'Screen Our Story', sub: `${live.storyChapters} scenes, cut from real life` });
-        items.push({ key: 'depths', view: 'depths', icon: MessagesSquare, tint: '#5eead4', title: 'Go three questions deep', sub: 'pass the phone' });
-        return items.slice(0, 4);
     }, [live, recordedToday]);
 
-    const usageFor = useCallback((exp: Experience): number => {
-        if (exp.usageKey === 'surprises') return counts.surprises;
-        if (exp.usageKey === 'capsules') return counts.capsules;
-        if (exp.usageKey === 'voiceNotes') return counts.voiceNotes;
-        return 0;
-    }, [counts]);
+    // ── Tonight: ONE thing, chosen for right now ────────────────────────
+    const spotlight = useMemo(() => {
+        const items: Array<{ key: string; view: ViewState; icon: Experience['icon']; tint: string; title: string; sub: string }> = [];
+        if (live.sealedHeirloom) {
+            items.push({ key: 'heirloom', view: 'heirlooms', icon: Gem, tint: '#e8c97d', title: `${live.sealedHeirloom.title} is waiting`, sub: 'An heirloom, struck and sealed. Break the wax together.' });
+        }
+        if (live.duetWaitingOn) {
+            items.push({ key: 'duet', view: 'duet-journal', icon: Feather, tint: '#c4b5fd', title: 'A seal is waiting', sub: `Only ${live.duetWaitingOn}’s pen is missing. Finish it, and the page opens.` });
+        }
+        if (live.upcomingPlan) {
+            items.push({ key: 'plan', view: 'date-studio', icon: CalendarHeart, tint: '#fb7185', title: `${live.upcomingPlan.emoji} ${live.upcomingPlan.title}`, sub: `Your date night is ${live.upcomingPlanLabel}. It’s on the books.` });
+        }
+        if (recordedToday === false) {
+            items.push({ key: 'shoot', view: 'daily-video', icon: Video, tint: '#a855f7', title: 'Shoot tonight’s scene', sub: 'Five seconds of right now, before it slips away.' });
+        }
+        if (live.missionsLeft > 0 && live.missionsLeft < 3) {
+            items.push({ key: 'mission', view: 'love-missions', icon: Flame, tint: '#ec4899', title: 'Finish a mission', sub: `${capitalize(asWords(live.missionsLeft))} left before Monday. Small, deliberate, theirs.` });
+        }
+        items.push({ key: 'story', view: 'our-story', icon: Clapperboard, tint: '#ff5c7c', title: 'Screen Our Story', sub: 'The film of you two — re-cut from everything you’ve kept.' });
+        return items[0];
+    }, [live, recordedToday]);
 
     const handleUnlock = useCallback(() => {
         if (isPremium) return;
@@ -519,21 +476,13 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         setView(view);
     }, [setView]);
 
-    const heroExperiences = EXPERIENCES.filter((e) => e.hero);
-    const gridExperiences = EXPERIENCES.filter((e) => !e.hero);
-
-    // Live-aware card sublines: real state when we have it, brochure copy
-    // only as the cold-start fallback.
+    // Live-aware card sublines: real state when we have it, editorial copy
+    // as the cold-start fallback. Sentences, not metrics.
     const renderSub = (exp: Experience, className: string, color: string) => {
         const liveLine = liveFor(exp.key);
         return (
             <p className={className} style={{ color }}>
-                {liveLine ? (
-                    <>
-                        <span className="lp-live-dot lp-live-dot--inline" aria-hidden="true" />
-                        {liveLine}
-                    </>
-                ) : exp.sub}
+                {liveLine ?? exp.sub}
             </p>
         );
     };
@@ -624,7 +573,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             <span className="lp-shimmer-text">every way to love</span>
                         </h1>
                         <p className="mt-4 max-w-[32ch] text-[14px] leading-relaxed" style={{ color: 'rgba(255,248,248,0.52)' }}>
-                            Your film, date nights, duets, missions — and an unlimited vault for everything you are.
+                            Everything we make for the two of you — the film, the nights, the rituals, the endless vault. Nothing held back.
                         </p>
                         <div className="mt-5 flex items-center gap-2.5" aria-hidden="true">
                             <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,92,124,0.5))' }} />
@@ -648,139 +597,44 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                         <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
                     </motion.div>
 
-                    <motion.div
-                        variants={riseVariants}
-                        className="lq-track flex gap-2 overflow-x-auto"
-                        style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
-                    >
-                        {tonight.map((item) => {
-                            const Icon = item.icon;
-                            return (
-                                <motion.button
-                                    key={item.key}
-                                    whileTap={{ scale: 0.95 }}
-                                    transition={PRESS_SPRING}
-                                    onClick={() => handleOpen(item.view)}
-                                    className="lq lq-press shrink-0 flex items-center gap-3 pl-2.5 pr-4 py-2.5 rounded-[1.35rem] text-left"
-                                    style={{ maxWidth: '15rem' }}
-                                >
-                                    <span
-                                        className="flex w-9 h-9 shrink-0 items-center justify-center rounded-xl"
-                                        style={{ background: `linear-gradient(140deg, ${item.tint} 0%, ${item.tint}c8 100%)`, boxShadow: `0 6px 14px ${item.tint}4d` }}
-                                    >
-                                        <Icon size={16} style={{ color: '#ffffff' }} />
+                    {(() => {
+                        const SpotIcon = spotlight.icon;
+                        return (
+                            <motion.button
+                                variants={riseVariants}
+                                whileTap={{ scale: 0.98 }}
+                                transition={PRESS_SPRING}
+                                onClick={() => handleOpen(spotlight.view)}
+                                className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.8rem] p-6 text-left"
+                                style={{ background: `linear-gradient(135deg, ${spotlight.tint}29 0%, rgba(255,255,255,0.02) 62%)` }}
+                            >
+                                <SpotIcon size={148} strokeWidth={1} className="lq-ghost" style={{ color: spotlight.tint }} aria-hidden="true" />
+                                <div className="relative z-10 max-w-[24rem]">
+                                    <p className="font-serif text-[1.55rem] font-bold leading-[1.08]" style={{ color: 'rgba(255,251,250,0.97)', letterSpacing: '-0.02em' }}>
+                                        {spotlight.title}
+                                    </p>
+                                    <p className="mt-2 text-[13.5px] leading-relaxed" style={{ color: 'rgba(255,248,248,0.55)' }}>
+                                        {spotlight.sub}
+                                    </p>
+                                    <span className="mt-4 inline-flex items-center gap-1 text-[13.5px] font-bold" style={{ color: spotlight.tint }}>
+                                        Open
+                                        <ChevronRight size={15} strokeWidth={2.6} />
                                     </span>
-                                    <span className="min-w-0">
-                                        <span className="block text-[12.5px] font-semibold leading-tight truncate" style={{ color: 'rgba(255,251,250,0.93)' }}>
-                                            {item.title}
-                                        </span>
-                                        <span className="block text-[10.5px] mt-0.5 truncate" style={{ color: 'rgba(255,248,248,0.42)' }}>
-                                            {item.sub}
-                                        </span>
-                                    </span>
-                                </motion.button>
-                            );
-                        })}
-                    </motion.div>
+                                </div>
+                            </motion.button>
+                        );
+                    })()}
 
-                    {/* ── New this season ───────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                    {/* ── The collection: three stars, the rest quiet ── */}
+                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-baseline gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            New this season
+                            The collection
                         </span>
-                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
+                        <div className="flex-1 h-px self-center" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
                     </motion.div>
 
                     <div className="flex flex-col gap-3">
-                        {NEW_EXPERIENCES.filter((e) => e.hero).map((exp) => {
-                            const Icon = exp.icon;
-                            return (
-                                <motion.button
-                                    key={exp.key}
-                                    variants={riseVariants}
-                                    whileTap={{ scale: 0.975 }}
-                                    transition={PRESS_SPRING}
-                                    onClick={() => handleOpen(exp.view)}
-                                    className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
-                                    style={{ background: 'linear-gradient(145deg, rgba(255,92,124,0.12) 0%, rgba(255,255,255,0.02) 55%)' }}
-                                >
-                                    <Icon size={118} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                    <div
-                                        className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
-                                        style={{ background: `radial-gradient(circle, ${exp.tint}38 0%, transparent 70%)` }}
-                                    />
-                                    <span
-                                        className="absolute top-3.5 right-3.5 z-10 px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase tracking-[0.2em]"
-                                        style={{ background: '#ff5c7c', color: '#ffffff', boxShadow: '0 4px 12px rgba(255,92,124,0.4)' }}
-                                    >
-                                        New
-                                    </span>
-                                    <div className="relative z-10 flex items-center gap-4">
-                                        <div
-                                            className="flex w-12 h-12 shrink-0 items-center justify-center rounded-2xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 8px 18px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={22} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div className="flex-1 min-w-0 pr-8">
-                                            <h3 className="font-serif text-[1.15rem] leading-tight" style={{ color: 'rgba(255,251,250,0.95)' }}>
-                                                {exp.title}
-                                            </h3>
-                                            {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,248,248,0.45)')}
-                                        </div>
-                                        <ChevronRight size={17} style={{ color: 'rgba(255,248,248,0.28)' }} />
-                                    </div>
-                                </motion.button>
-                            );
-                        })}
-
-                        <div className="grid grid-cols-2 gap-3">
-                            {NEW_EXPERIENCES.filter((e) => !e.hero).map((exp) => {
-                                const Icon = exp.icon;
-                                return (
-                                    <motion.button
-                                        key={exp.key}
-                                        variants={riseVariants}
-                                        whileTap={{ scale: 0.96 }}
-                                        transition={PRESS_SPRING}
-                                        onClick={() => handleOpen(exp.view)}
-                                        className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
-                                    >
-                                        <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                        <span
-                                            className="absolute top-3 right-3 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-[0.18em]"
-                                            style={{ background: '#ff5c7c', color: '#ffffff', boxShadow: '0 4px 12px rgba(255,92,124,0.4)' }}
-                                        >
-                                            New
-                                        </span>
-                                        <div
-                                            className="flex w-10 h-10 items-center justify-center rounded-xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 6px 14px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={18} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.92)' }}>
-                                                {exp.title}
-                                            </h4>
-                                            {renderSub(exp, 'mt-0.5 text-[10.5px] leading-snug', 'rgba(255,248,248,0.38)')}
-                                        </div>
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* ── Experiences ───────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
-                        <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            {isPremium ? 'Your experiences' : 'The collection'}
-                        </span>
-                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
-                    </motion.div>
-
-                    <div className="flex flex-col gap-3">
-                        {heroExperiences.map((exp) => {
+                        {MARQUEE_EXPERIENCES.map((exp) => {
                             const Icon = exp.icon;
                             return (
                                 <motion.button
@@ -791,10 +645,10 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                     onClick={() => handleOpen(exp.view)}
                                     className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
                                 >
-                                    <Icon size={104} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
+                                    <Icon size={112} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
                                     <div
                                         className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
-                                        style={{ background: `radial-gradient(circle, ${exp.tint}2e 0%, transparent 70%)` }}
+                                        style={{ background: `radial-gradient(circle, ${exp.tint}30 0%, transparent 70%)` }}
                                     />
                                     <div className="relative z-10 flex items-center gap-4">
                                         <div
@@ -804,10 +658,10 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                             <Icon size={22} style={{ color: '#ffffff' }} />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h3 className="text-[15px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.94)' }}>
+                                            <h3 className="font-serif text-[1.15rem] font-bold leading-tight" style={{ color: 'rgba(255,251,250,0.95)', letterSpacing: '-0.01em' }}>
                                                 {exp.title}
                                             </h3>
-                                            {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,248,248,0.42)')}
+                                            {renderSub(exp, 'mt-1 text-[12px] leading-snug', 'rgba(255,248,248,0.5)')}
                                         </div>
                                         <ChevronRight size={17} style={{ color: 'rgba(255,248,248,0.28)' }} />
                                     </div>
@@ -815,92 +669,57 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             );
                         })}
 
-                        <div className="grid grid-cols-2 gap-3">
-                            {gridExperiences.map((exp) => {
-                                const Icon = exp.icon;
-                                return (
-                                    <motion.button
-                                        key={exp.key}
-                                        variants={riseVariants}
-                                        whileTap={{ scale: 0.96 }}
-                                        transition={PRESS_SPRING}
-                                        onClick={() => handleOpen(exp.view)}
-                                        className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
-                                    >
-                                        <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                        <div
-                                            className="flex w-10 h-10 items-center justify-center rounded-xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 6px 14px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={18} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.92)' }}>
-                                                {exp.title}
-                                            </h4>
-                                            {renderSub(exp, 'mt-0.5 text-[10.5px] leading-snug', 'rgba(255,248,248,0.38)')}
-                                        </div>
-                                        {exp.usageKey && exp.usageLimit ? (
-                                            <UsageMeter used={usageFor(exp)} limit={exp.usageLimit} tint={exp.tint} isPremium={isPremium} />
-                                        ) : (
-                                            <span
-                                                className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em]"
-                                                style={{ color: isPremium ? '#ff5c7c' : 'rgba(255,248,248,0.35)' }}
-                                            >
-                                                {isPremium ? <><Check size={11} strokeWidth={3} /> Unlocked</> : <><Lock size={10} /> Gold only</>}
-                                            </span>
-                                        )}
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
+                        {/* The rest of the collection, kept quiet on purpose */}
+                        <motion.div variants={riseVariants} className="lq rounded-[1.6rem] overflow-hidden">
+                            {QUIET_EXPERIENCES.map((exp, i) => (
+                                <button
+                                    key={exp.key}
+                                    onClick={() => handleOpen(exp.view)}
+                                    className="lq-press w-full flex items-center gap-3.5 px-5 py-[15px] text-left"
+                                    style={{ borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}
+                                >
+                                    <span
+                                        className="w-2 h-2 rounded-full shrink-0"
+                                        style={{ background: exp.tint, boxShadow: `0 0 8px ${exp.tint}80` }}
+                                        aria-hidden="true"
+                                    />
+                                    <span className="flex-1 text-[14.5px] font-semibold" style={{ color: 'rgba(255,251,250,0.9)' }}>
+                                        {exp.title}
+                                    </span>
+                                    <ChevronRight size={15} style={{ color: 'rgba(255,248,248,0.3)' }} />
+                                </button>
+                            ))}
+                        </motion.div>
                     </div>
 
-                    {/* ── The vault receipt ─────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                    {/* ── The vault: one statement, not a ledger ────── */}
+                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-baseline gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            What you’ve already built
+                            Already yours
                         </span>
-                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
+                        <div className="flex-1 h-px self-center" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
                     </motion.div>
 
                     <motion.div
                         variants={riseVariants}
-                        className="lq lq--blur lq--sheen relative overflow-hidden rounded-[1.6rem] px-5 pt-5 pb-4"
+                        className="lq lq--blur lq--sheen relative overflow-hidden rounded-[1.8rem] p-6"
                     >
-                        <Crown size={120} strokeWidth={0.8} className="lq-ghost" style={{ color: '#ff5c7c' }} aria-hidden="true" />
-                        <div className="relative flex flex-col gap-2.5">
-                            {[
-                                { label: 'Memories kept', value: counts.memories, always: true },
-                                { label: 'Voice notes', value: counts.voiceNotes, always: true, suffix: counts.voiceSeconds >= 60 ? `${Math.round(counts.voiceSeconds / 60)} min` : undefined },
-                                { label: 'Letters sealed for later', value: counts.capsules },
-                                { label: 'Surprises waiting', value: counts.surprises },
-                                { label: 'Duets revealed', value: live.duetsRevealed },
-                                { label: 'Dates planned', value: live.plansMade },
-                                { label: 'Days together', value: days, always: true },
-                            ].filter((row) => row.always || row.value > 0).map((row) => (
-                                <div key={row.label} className="flex items-baseline gap-2.5">
-                                    <span className="text-[12px] shrink-0" style={{ color: 'rgba(255,248,248,0.55)' }}>{row.label}</span>
-                                    <span className="flex-1 translate-y-[-3px]" style={{ borderBottom: '1px dotted rgba(255,248,248,0.16)' }} />
-                                    {row.suffix && (
-                                        <span className="text-[10.5px] shrink-0" style={{ color: 'rgba(255,248,248,0.35)' }}>{row.suffix}</span>
-                                    )}
-                                    <AnimatedNumber value={row.value} className="lp-num-gold font-serif text-[1.2rem] leading-none shrink-0" />
-                                </div>
-                            ))}
+                        <Crown size={130} strokeWidth={0.8} className="lq-ghost" style={{ color: '#ff5c7c' }} aria-hidden="true" />
+                        <div className="relative z-10">
+                            <p className="font-serif text-[1.7rem] font-bold leading-[1.1]" style={{ color: 'rgba(255,251,250,0.97)', letterSpacing: '-0.02em' }}>
+                                {days > 0
+                                    ? <>{days.toLocaleString()} days.<br />All of it kept.</>
+                                    : <>Everything you make,<br />kept for good.</>}
+                            </p>
+                            <p className="mt-3 text-[13px] leading-relaxed max-w-[26rem]" style={{ color: 'rgba(255,248,248,0.55)' }}>
+                                {vaultProse}
+                            </p>
+                            <p className="mt-4 pt-3 text-[12px] leading-relaxed" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: isPremium ? '#ff8fa6' : 'rgba(255,248,248,0.45)' }}>
+                                {isPremium
+                                    ? 'No caps. Nothing expires. Synced to both of you.'
+                                    : 'Free keeps the first fifty memories. Gold keeps your whole life.'}
+                            </p>
                         </div>
-
-                        <div className="mt-4 pt-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,92,124,0.16)' }}>
-                            <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'rgba(255,248,248,0.38)' }}>
-                                In your vault
-                            </span>
-                            <span className="font-serif text-[13.5px]" style={{ color: '#f3cd86' }}>{formatBytes(counts.vaultBytes)}</span>
-                        </div>
-                        <p className="mt-2.5 text-[11.5px] leading-relaxed" style={{ color: isPremium ? 'rgba(255,92,124,0.75)' : 'rgba(255,248,248,0.45)' }}>
-                            {isPremium
-                                ? 'No caps. Nothing expires. Synced to both of you.'
-                                : 'Free keeps your first 50 memories — Gold keeps every single one, forever.'}
-                        </p>
                     </motion.div>
 
                     {/* ── Free vs Gold ──────────────────────────────── */}

@@ -4,6 +4,7 @@ import type {
     DatePlan,
     DepthsState,
     DuetEntry,
+    HeirloomState,
     MissionState,
 } from '../types';
 
@@ -77,6 +78,16 @@ export const PremiumFeaturesStore = {
 
     saveDepthsState: (state: DepthsState): void => {
         mutateProfile((p) => ({ ...p, depthsState: state }));
+    },
+
+    // ── Heirlooms ───────────────────────────────────────────────────
+    getHeirloomState: (): HeirloomState => {
+        const stored = StorageService.getCoupleProfile().heirloomState;
+        return stored ?? { collected: [] };
+    },
+
+    saveHeirloomState: (state: HeirloomState): void => {
+        mutateProfile((p) => ({ ...p, heirloomState: state }));
     },
 
     // ── Shared ──────────────────────────────────────────────────────

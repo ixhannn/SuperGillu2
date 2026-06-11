@@ -76,6 +76,7 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   'duet-journal': lazyNamedView(() => import('./DuetJournal'), 'DuetJournalView'),
   depths: lazyNamedView(() => import('./Depths'), 'DepthsView'),
   'love-missions': lazyNamedView(() => import('./LoveMissions'), 'LoveMissionsView'),
+  heirlooms: lazyNamedView(() => import('./Heirlooms'), 'HeirloomsView'),
 };
 
 export const getViewComponent = (view: ViewState): PreloadableViewComponent =>
