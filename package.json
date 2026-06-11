@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:e2e": "vite --mode e2e",
     "dev:admin": "npm --prefix admin-dashboard run dev",
     "build": "vite build && node scripts/check-bundle-budget.mjs",
     "build:admin": "npm --prefix admin-dashboard run build",
