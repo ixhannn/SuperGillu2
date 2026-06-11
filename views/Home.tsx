@@ -15,7 +15,6 @@ import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
 import { buildRelationshipMilestones } from '../shared/countdowns.js';
-import { LiveTogetherCounter } from '../components/LiveTogetherCounter';
 import { springSmooth, springSnappy } from '../utils/motion';
 import { toast } from '../utils/toast';
 import { NotificationsService } from '../services/notifications';
@@ -727,14 +726,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     </TiltCard>
                 </div>
             </ScrollReveal>
-
-            {/* ── OUR TIME TOGETHER — a live, ticking counter (day-one substance) ─ */}
-            {profile.anniversaryDate && (
-                <LiveTogetherCounter
-                    anniversaryDate={profile.anniversaryDate}
-                    onOpenCountdowns={() => setView('countdowns')}
-                />
-            )}
 
             {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
             <ScrollReveal variant="popIn">
