@@ -4,4 +4,8 @@
     <string name="title_activity_main">Lior</string>
     <string name="package_name">com.lior.app</string>
     <string name="custom_url_scheme">com.lior.app</string>
+    <string name="shortcut_add_memory_short">Add memory</string>
+    <string name="shortcut_add_memory_long">Add a new memory</string>
+    <string name="shortcut_daily_moment_short">Daily moment</string>
+    <string name="shortcut_daily_moment_long">Share a daily moment</string>
 </resources>

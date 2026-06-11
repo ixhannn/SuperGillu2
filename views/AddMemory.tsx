@@ -12,6 +12,7 @@ import { feedback } from '../utils/feedback';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { useConfetti } from '../components/Layout';
 import { MediaForge, ForgeFrame } from '../components/MediaForge';
+import { ShareTargetService, SHARE_TARGET_EVENT } from '../services/shareTarget';
 
 interface AddMemoryProps {
   setView: (view: ViewState) => void;
@@ -175,6 +176,44 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       ? Math.round(((url.length - (url.indexOf(',') + 1)) * 3) / 4)
       : undefined
   );
+
+  // ── System share target ──────────────────────────────────────────────────
+  // A photo shared into Lior from another app is staged in the Forge exactly
+  // like a picked photo (same compression, same review step). Checked on
+  // mount for cold starts; the window event covers shares that arrive while
+  // this view is already mounted.
+  useEffect(() => {
+    let cancelled = false;
+    const applySharedImage = async () => {
+      const dataUrl = ShareTargetService.consumePendingImage();
+      if (!dataUrl) return;
+      setIsProcessingMedia('photo');
+      try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], 'shared-photo', { type: blob.type || 'image/jpeg' });
+        const compressed = await compressImage(file);
+        if (cancelled) return;
+        setForgePending({
+          kind: 'photo',
+          image: compressed,
+          video: null,
+          bytes: approxDataUrlBytes(compressed),
+        });
+      } catch {
+        toast.show("Couldn't import the shared photo.", 'error');
+      } finally {
+        if (!cancelled) setIsProcessingMedia(null);
+      }
+    };
+    void applySharedImage();
+    const handler = () => { void applySharedImage(); };
+    window.addEventListener(SHARE_TARGET_EVENT, handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SHARE_TARGET_EVENT, handler);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

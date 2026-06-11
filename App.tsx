@@ -55,8 +55,32 @@ import { InternalAdminService } from './services/internalAdmin';
 import { scheduleIdleTask } from './utils/scheduler';
 import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
 import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
+import { ShareTargetService } from './services/shareTarget';
+import { Capacitor } from '@capacitor/core';
 
 const hasCompletedOnboarding = () => StorageService.hasCompletedOnboarding();
+
+// ── Cold-launch state restoration ──────────────────────────────────────────
+// Native apps reopen where you left them, even after process death. Persist
+// the last root tab and boot straight into it. Non-tab views (push/pop
+// destinations) intentionally fall back to their parent tab.
+const LAST_TAB_KEY = 'lior_last_root_tab';
+
+const restoreLastRootTab = (): ViewState => {
+  if (isE2EAppMode()) return 'home';
+  try {
+    const stored = window.localStorage.getItem(LAST_TAB_KEY) as ViewState | null;
+    return stored && ROOT_TABS.includes(stored) ? stored : 'home';
+  } catch {
+    return 'home';
+  }
+};
+
+// Launcher shortcut / deep-link routes: com.lior.app://shortcut/<key>
+const SHORTCUT_VIEWS: Partial<Record<string, ViewState>> = {
+  'add-memory': 'add-memory',
+  'daily-moments': 'daily-moments',
+};
 
 const WhatsNew = React.lazy(() =>
   import('./components/WhatsNew').then((module) => ({ default: module.WhatsNew })),
@@ -170,7 +194,8 @@ KeepAliveTabShell.displayName = 'KeepAliveTabShell';
 // Main App Component with Default Export
 const App = () => {
   const e2eMode = isE2EAppMode();
-  const [currentView, setCurrentView] = useState<ViewState>('home');
+  const [initialView] = useState<ViewState>(restoreLastRootTab);
+  const [currentView, setCurrentView] = useState<ViewState>(initialView);
   const historyStack = useRef<ViewState[]>([]);
   const scrollPositions = useRef<Record<string, number>>({});
   const pendingScrollRestore = useRef<{ view: ViewState; y: number } | null>(null);
@@ -180,7 +205,7 @@ const App = () => {
   const pendingNavigationMetricRef = useRef<{ view: ViewState; direction: TransitionDirection; startedAt: number } | null>(null);
   // Tracks current view synchronously for pre-transition direction calculation.
   // Must be updated BEFORE state changes so direction is resolved correctly.
-  const currentViewRef = useRef<ViewState>('home');
+  const currentViewRef = useRef<ViewState>(initialView);
 
   // ── Keep-alive tab cache ────────────────────────────────────────────────
   // Every ROOT_TAB visited at least once stays mounted in the DOM. Switching
@@ -188,8 +213,8 @@ const App = () => {
   // re-render of the just-mounted tree, no Suspense boundary work, no
   // fresh useState/useEffect cost. Same React instance survives every
   // back-and-forth (Home → Us → Home is now genuinely free).
-  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => new Set(['home']));
-  const mountedTabsRef = useRef<Set<ViewState>>(new Set(['home']));
+  const [mountedTabs, setMountedTabs] = useState<Set<ViewState>>(() => new Set([initialView]));
+  const mountedTabsRef = useRef<Set<ViewState>>(new Set([initialView]));
   const markTabMounted = useCallback((view: ViewState) => {
     if (!ROOT_TABS.includes(view)) return;
     setMountedTabs((prev) => {
@@ -477,6 +502,54 @@ const App = () => {
       cancelers.forEach((cancel) => cancel());
     };
   }, [e2eMode, isAuthenticated, isInitialized, showOnboarding]);
+
+  // ── Persist the active root tab for cold-launch restoration ─────────────
+  useEffect(() => {
+    if (e2eMode || !ROOT_TABS.includes(currentView)) return;
+    try {
+      window.localStorage.setItem(LAST_TAB_KEY, currentView);
+    } catch {
+      // Storage quota/private-mode failures must never break navigation.
+    }
+  }, [currentView, e2eMode]);
+
+  // ── Native entry points: launcher shortcuts + system share target ───────
+  useEffect(() => {
+    if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
+    if (!Capacitor.isNativePlatform()) return;
+
+    const routeUrl = (url: string) => {
+      const match = url.match(/^com\.lior\.app:\/\/shortcut\/([\w-]+)/);
+      const view = match ? SHORTCUT_VIEWS[match[1]] : undefined;
+      if (view) navigateTo(view);
+    };
+
+    // Photos shared into Lior land in Add Memory with the image staged.
+    const stopShareTarget = ShareTargetService.start(() => navigateTo('add-memory'));
+
+    let disposed = false;
+    let urlListener: { remove: () => Promise<void> } | null = null;
+    void (async () => {
+      try {
+        const { App: CapacitorApp } = await import('@capacitor/app');
+        // Cold start from a shortcut: the URL arrives as the launch URL,
+        // before any listener could have been attached.
+        const launch = await CapacitorApp.getLaunchUrl();
+        if (!disposed && launch?.url) routeUrl(launch.url);
+        const handle = await CapacitorApp.addListener('appUrlOpen', (event) => routeUrl(event.url));
+        if (disposed) void handle.remove();
+        else urlListener = handle;
+      } catch (error: unknown) {
+        DiagnosticsService.recordError('shortcuts.url_listener', error);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      stopShareTarget();
+      void urlListener?.remove();
+    };
+  }, [e2eMode, isAuthenticated, isInitialized, showOnboarding, navigateTo]);
 
   useEffect(() => {
     if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
