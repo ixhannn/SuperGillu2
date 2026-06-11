@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Gift, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, Brain, Video, Film, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, ChevronRight } from 'lucide-react';
+import { motion, useInView } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -305,7 +305,6 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
     const [isDissolving, setIsDissolving] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
-    const [premiumOpen, setPremiumOpen] = useState(false);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
@@ -1107,168 +1106,57 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                     </motion.div>
                 </div>
 
-                {/* ── PREMIUM DRAWER ────────────────────────────────────── */}
+                {/* ── LIOR GOLD ─────────────────────────────────────────── */}
                 <div className="home-reveal-item col-span-2 mt-3">
-                    {/* Trigger row */}
-                    <motion.button
-                        onClick={() => setPremiumOpen(prev => !prev)}
-                        className="w-full"
+                    <motion.div
                         whileTap={{ scale: 0.97 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                        transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                        onClick={() => setView('premium')}
+                        className="w-full cursor-pointer"
                     >
                         <div
-                            className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
+                            className="relative overflow-hidden rounded-[1.75rem] p-5 spring-press"
                             style={{
-                                background: premiumOpen
-                                    ? 'linear-gradient(135deg, #1c0d28 0%, #2e1447 100%)'
-                                    : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,248,235,0.9) 100%)',
-                                border: premiumOpen
-                                    ? '1px solid rgba(245,158,11,0.22)'
-                                    : '1px solid rgba(245,158,11,0.18)',
-                                boxShadow: premiumOpen
-                                    ? '0 4px 16px rgba(0,0,0,0.2)'
-                                    : 'inset 0 1px 0 rgba(255,255,255,0.9), 0 2px 8px rgba(245,158,11,0.06)',
-                                transition: 'all 0.3s ease',
+                                background: 'radial-gradient(130% 120% at 85% 0%, rgba(94,48,84,0.55) 0%, transparent 55%), linear-gradient(140deg, #221026 0%, #150a18 60%, #1f0f22 100%)',
+                                border: '1px solid rgba(246,199,104,0.28)',
+                                boxShadow: '0 10px 36px rgba(20,8,24,0.26), inset 0 1px 0 rgba(253,238,201,0.08)',
                             }}
                         >
-                            <div className="flex items-center gap-2.5">
-                                <div
-                                    className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                            <div
+                                className="absolute -top-12 -right-10 w-40 h-40 rounded-full blur-3xl pointer-events-none"
+                                style={{ background: 'radial-gradient(circle, rgba(246,199,104,0.2) 0%, transparent 70%)' }}
+                            />
+                            <div className="relative z-10 flex items-center gap-4">
+                                <motion.div
+                                    animate={{ scale: [1, 1.05, 1] }}
+                                    transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
+                                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
                                     style={{
-                                        background: premiumOpen
-                                            ? 'rgba(245,158,11,0.15)'
-                                            : 'rgba(245,158,11,0.08)',
-                                        border: '1px solid rgba(245,158,11,0.2)',
+                                        background: 'linear-gradient(140deg, rgba(246,199,104,0.2), rgba(185,138,62,0.32))',
+                                        border: '1px solid rgba(246,199,104,0.4)',
+                                        boxShadow: '0 8px 22px rgba(246,199,104,0.14), inset 0 1px 0 rgba(255,246,222,0.22)',
                                     }}
                                 >
-                                    <Crown size={14} className="text-amber-400" fill="currentColor" />
-                                </div>
-                                <div className="text-left">
-                                    <span className={`text-[12px] font-bold leading-none block ${premiumOpen ? 'text-amber-300' : 'text-gray-600'}`}>
-                                        Premium features
-                                    </span>
-                                    <span className={`text-[10px] mt-0.5 block ${premiumOpen ? 'text-amber-400/50' : 'text-gray-400'}`}>
-                                        {premiumOpen ? 'Tap any to open' : '6 exclusive experiences'}
-                                    </span>
-                                </div>
-                            </div>
-                            <motion.div
-                                animate={{ rotate: premiumOpen ? 180 : 0 }}
-                                transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-                                className="opacity-40"
-                            >
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                    <path d="M4 6l4 4 4-4" stroke={premiumOpen ? '#f59e0b' : '#6b7280'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                            </motion.div>
-                        </div>
-                    </motion.button>
-
-                    {/* Expanded cards */}
-                    <AnimatePresence>
-                        {premiumOpen && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.8 }}
-                                style={{ overflow: 'hidden' }}
-                            >
-                                <motion.div
-                                    className="grid grid-cols-2 gap-2.5 pt-3"
-                                    initial="hidden"
-                                    animate="visible"
-                                    variants={{ visible: { transition: { staggerChildren: 0.05, delayChildren: 0.04 } } }}
-                                >
-                                    {/* Surprises */}
-                                    <motion.div variants={gridItemVariants}>
-                                        <motion.div whileTap={{ scale: 0.92, y: 2 }} transition={{ type: 'spring', stiffness: 600, damping: 26 }} onClick={() => setView('surprises')} className="w-full h-full cursor-pointer">
-                                            <div className="bento-card p-4 flex flex-col items-center text-center h-full relative overflow-hidden spring-press">
-                                                <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-2.5" style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.2)' }}>
-                                                    <Gift size={20} style={{ color: '#8b5cf6' }} />
-                                                </div>
-                                                <span className="font-semibold text-[13px] text-gray-800 leading-tight">Surprises</span>
-                                                <span className="text-[10px] text-gray-400 mt-0.5 leading-snug">Plan moments</span>
-                                            </div>
-                                        </motion.div>
-                                    </motion.div>
-
-                                    {/* Future Letters */}
-                                    <motion.div variants={gridItemVariants}>
-                                        <motion.div whileTap={{ scale: 0.92, y: 2 }} transition={{ type: 'spring', stiffness: 600, damping: 26 }} onClick={() => setView('time-capsule')} className="w-full h-full cursor-pointer">
-                                            <div className="bento-card p-4 flex flex-col items-center text-center h-full relative overflow-hidden spring-press">
-                                                <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-2.5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.18)' }}>
-                                                    <Lock size={20} style={{ color: '#d97706' }} />
-                                                </div>
-                                                <span className="font-semibold text-[13px] text-gray-800 leading-tight">Future Letters</span>
-                                                <span className="text-[10px] text-gray-400 mt-0.5 leading-snug">Open later</span>
-                                            </div>
-                                        </motion.div>
-                                    </motion.div>
-
-                                    {/* Daily Video Moments — hero card */}
-                                    <motion.div variants={gridItemVariants} className="col-span-2">
-                                        <motion.div whileTap={{ scale: 0.97, y: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 26 }} onClick={() => setView('daily-video')} className="w-full cursor-pointer">
-                                            <div className="relative overflow-hidden p-5 rounded-[1.75rem] spring-press" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%)', border: '1px solid rgba(168, 85, 247, 0.2)', boxShadow: '0 8px 32px rgba(168, 85, 247, 0.12)' }}>
-                                                <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.18) 0%, transparent 70%)' }} />
-                                                <div className="relative z-10 flex items-center gap-4">
-                                                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(168,85,247,0.18)', border: '1px solid rgba(168,85,247,0.28)' }}>
-                                                        <Video size={22} className="text-purple-400" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="font-semibold text-[15px] text-white leading-tight">Daily Video Moments</h3>
-                                                        <p className="text-[11px] text-purple-200/50 font-medium mt-0.5">10 seconds of your day, compiled monthly</p>
-                                                    </div>
-                                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="flex-shrink-0 opacity-30">
-                                                        <path d="M7.5 5l5 5-5 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                                    </svg>
-                                                </div>
-                                            </div>
-                                        </motion.div>
-                                    </motion.div>
-
-                                    {/* Weekly Recap */}
-                                    <motion.div variants={gridItemVariants} className="col-span-2">
-                                        <motion.div whileTap={{ scale: 0.97, y: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 26 }} onClick={() => setView('weekly-recap')} className="w-full cursor-pointer">
-                                            <div className="relative overflow-hidden p-5 rounded-[1.75rem] spring-press" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: '0 8px 32px rgba(99, 102, 241, 0.12)' }}>
-                                                <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(129,140,248,0.18) 0%, transparent 70%)' }} />
-                                                <div className="relative z-10 flex items-center gap-4">
-                                                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(129,140,248,0.18)', border: '1px solid rgba(129,140,248,0.28)' }}>
-                                                        <Film size={22} className="text-indigo-400" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="font-semibold text-[15px] text-white leading-tight">Weekly Story</h3>
-                                                        <p className="text-[11px] text-indigo-200/50 mt-0.5">Your week, beautifully told</p>
-                                                    </div>
-                                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="flex-shrink-0 opacity-30">
-                                                        <path d="M7.5 5l5 5-5 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                                    </svg>
-                                                </div>
-                                            </div>
-                                        </motion.div>
-                                    </motion.div>
-
-                                    {/* Partner Intelligence */}
-                                    <motion.div variants={gridItemVariants} className="col-span-2">
-                                        <motion.div whileTap={{ scale: 0.97, y: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 26 }} onClick={() => setView('partner-intelligence')} className="w-full cursor-pointer">
-                                            <div className="bento-card p-5 flex items-center gap-4 relative overflow-hidden spring-press">
-                                                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                                                    <Brain size={22} style={{ color: '#8b5cf6' }} />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <span className="font-semibold text-[15px] text-gray-800 block leading-tight">Love Tracker</span>
-                                                    <span className="text-[11px] text-gray-400 mt-0.5">Understand & show love better</span>
-                                                </div>
-                                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="flex-shrink-0 opacity-20">
-                                                    <path d="M7.5 5l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                                </svg>
-                                            </div>
-                                        </motion.div>
-                                    </motion.div>
+                                    <Crown size={21} strokeWidth={1.8} style={{ color: '#f6c768' }} />
                                 </motion.div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                                <div className="flex-1 min-w-0 text-left">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-serif text-[1.05rem] font-semibold leading-tight" style={{ color: 'rgba(255,250,242,0.95)' }}>Lior Gold</h3>
+                                        <span
+                                            className="px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-[0.14em]"
+                                            style={{ background: 'rgba(246,199,104,0.14)', border: '1px solid rgba(246,199,104,0.3)', color: '#f3cd86' }}
+                                        >
+                                            Premium
+                                        </span>
+                                    </div>
+                                    <p className="mt-0.5 text-[11px]" style={{ color: 'rgba(255,246,230,0.45)' }}>
+                                        Your film, date nights, duets & unlimited everything
+                                    </p>
+                                </div>
+                                <ChevronRight size={16} style={{ color: 'rgba(246,199,104,0.55)' }} />
+                            </div>
+                        </div>
+                    </motion.div>
                 </div>
             </div>
         </div>

@@ -1,110 +1,142 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Play, Pause } from 'lucide-react';
-import { BiweeklyFilm } from '../../types';
+import { X, Play } from 'lucide-react';
+import type { BiweeklyFilm } from '../../types';
 import { VideoMomentsService } from '../../services/videoMoments';
+import { feedback } from '../../utils/feedback';
+import { GOLD, GOLD_PRESS_SPRING } from '../premium/GoldKit';
 
 interface FilmPlayerProps {
-  film: BiweeklyFilm;
-  onClose: () => void;
+    film: BiweeklyFilm;
+    onClose: () => void;
 }
 
+/**
+ * The screening room. Playback logic is untouched — chrome restaged
+ * in the gold language (glass close chip, serif title card).
+ */
 export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [videoUrl, setVideoUrl] = useState<string | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    let createdUrl: string | null = null;
-    VideoMomentsService.getFilmVideoUrl(film).then((url) => {
-      if (cancelled) {
-        if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
-        return;
-      }
-      createdUrl = url;
-      setVideoUrl(url);
-    });
-    return () => {
-      cancelled = true;
-      if (createdUrl && createdUrl.startsWith('blob:')) URL.revokeObjectURL(createdUrl);
+    useEffect(() => {
+        let cancelled = false;
+        let createdUrl: string | null = null;
+        VideoMomentsService.getFilmVideoUrl(film).then((url) => {
+            if (cancelled) {
+                if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+                return;
+            }
+            createdUrl = url;
+            setVideoUrl(url);
+        });
+        return () => {
+            cancelled = true;
+            if (createdUrl && createdUrl.startsWith('blob:')) URL.revokeObjectURL(createdUrl);
+        };
+    }, [film.id, film.videoId]);
+
+    const toggle = () => {
+        const video = videoRef.current;
+        if (!video) return;
+        if (video.paused) {
+            video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+        } else {
+            video.pause();
+            setIsPlaying(false);
+        }
     };
-  }, [film.id, film.videoId]);
 
-  const toggle = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (video.paused) {
-      video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-    } else {
-      video.pause();
-      setIsPlaying(false);
-    }
-  };
+    const title = formatTitle(film.cycleStart, film.cycleEnd);
 
-  const title = formatTitle(film.cycleStart, film.cycleEnd);
+    return (
+        <div className="gdv-cinema">
+            <div className="gdv-cinema__stage cursor-pointer" onClick={toggle}>
+                {videoUrl && (
+                    <video
+                        ref={videoRef}
+                        src={videoUrl}
+                        className="gdv-cinema__video"
+                        playsInline
+                        onLoadedData={() => setLoaded(true)}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        onEnded={() => setIsPlaying(false)}
+                    />
+                )}
+                <AnimatePresence>
+                    {!isPlaying && loaded && (
+                        <motion.div
+                            key="play-overlay"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 flex items-center justify-center"
+                        >
+                            <div
+                                className="lp-glass flex w-[78px] h-[78px] items-center justify-center rounded-full"
+                                style={{ color: '#f3cd86', border: '1px solid rgba(246,199,104,0.4)' }}
+                            >
+                                <Play size={28} fill="currentColor" strokeWidth={0} style={{ marginLeft: 3 }} />
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
 
-  return (
-    <motion.div
-      className="film-player"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <button className="film-player__close" onClick={onClose} aria-label="Close">
-        <X size={22} />
-      </button>
-      <div className="film-player__stage" onClick={toggle}>
-        {videoUrl && (
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            className="film-player__video"
-            playsInline
-            onLoadedData={() => setLoaded(true)}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            onEnded={() => setIsPlaying(false)}
-          />
-        )}
-        <AnimatePresence>
-          {!isPlaying && loaded && (
-            <motion.div
-              className="film-player__play-overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <div className="film-player__play-btn">
-                <Play size={30} />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-      <div className="film-player__meta">
-        <h2 className="film-player__title">{title}</h2>
-        <p className="film-player__sub">
-          {film.clipCount} {film.clipCount === 1 ? 'clip' : 'clips'} · {formatDuration(film.durationMs)}
-        </p>
-      </div>
-    </motion.div>
-  );
+            <div className="gdv-cinema__hairline" />
+
+            <div className="gdv-cinema__chrome-top">
+                <span
+                    className="text-[10px] font-bold uppercase tracking-[0.3em]"
+                    style={{ color: GOLD.eyebrow }}
+                >
+                    A Lior film
+                </span>
+                <motion.button
+                    whileTap={{ scale: 0.86 }}
+                    transition={GOLD_PRESS_SPRING}
+                    onClick={() => { feedback.tap(); onClose(); }}
+                    aria-label="Close"
+                    className="lp-glass w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ color: 'rgba(255,246,230,0.85)' }}
+                >
+                    <X size={18} strokeWidth={2.2} />
+                </motion.button>
+            </div>
+
+            <div className="gdv-cinema__bottom">
+                <h2
+                    className="font-serif text-[1.45rem] leading-tight"
+                    style={{ color: GOLD.textHigh, letterSpacing: '-0.02em' }}
+                >
+                    {title}
+                </h2>
+                <p
+                    className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.18em]"
+                    style={{ color: 'rgba(246,199,104,0.7)' }}
+                >
+                    {film.clipCount} {film.clipCount === 1 ? 'scene' : 'scenes'} · {formatDuration(film.durationMs)}
+                </p>
+            </div>
+        </div>
+    );
 }
 
 function formatTitle(cycleStart: string, cycleEnd: string): string {
-  const s = new Date(cycleStart + 'T00:00:00');
-  const e = new Date(cycleEnd + 'T00:00:00');
-  const startLabel = s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const endLabel = e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  return `${startLabel} – ${endLabel}`;
+    const s = new Date(cycleStart + 'T00:00:00');
+    const e = new Date(cycleEnd + 'T00:00:00');
+    const startLabel = s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const endLabel = e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${startLabel} – ${endLabel}`;
 }
 
 function formatDuration(ms: number): string {
-  const seconds = Math.round(ms / 1000);
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m === 0) return `${s}s`;
-  return `${m}m ${s.toString().padStart(2, '0')}s`;
+    const seconds = Math.round(ms / 1000);
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m === 0) return `${s}s`;
+    return `${m}m ${s.toString().padStart(2, '0')}s`;
 }

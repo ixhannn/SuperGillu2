@@ -1,0 +1,327 @@
+/* ─────────────────────────────────────────────────────────────────────
+   Lior Premium — "Gold" surfaces
+   Shared by views/Premium.tsx (hub) and components/PremiumModal.tsx (sheet).
+   Every ambient loop animates transform/opacity only (GPU-composited)
+   and is disabled under prefers-reduced-motion.
+   ──────────────────────────────────────────────────────────────────── */
+
+.lp-stage {
+  position: relative;
+  isolation: isolate;
+  color: rgba(255, 251, 244, 0.92);
+  background:
+    radial-gradient(120% 60% at 50% 0%, #241129 0%, transparent 60%),
+    linear-gradient(180deg, #160a18 0%, #0f0712 52%, #140a16 100%);
+}
+
+/* ── Aurora ─────────────────────────────────────────────────────────── */
+
+.lp-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.lp-aurora__blob {
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.32;
+  will-change: transform;
+}
+
+.lp-aurora__blob--gold {
+  top: -140px;
+  left: -90px;
+  background: radial-gradient(circle, rgba(246, 199, 104, 0.55) 0%, transparent 65%);
+  animation: lp-drift-a 26s ease-in-out infinite alternate;
+}
+
+.lp-aurora__blob--rose {
+  top: 120px;
+  right: -160px;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.30) 0%, transparent 65%);
+  animation: lp-drift-b 32s ease-in-out infinite alternate;
+}
+
+.lp-aurora__blob--violet {
+  top: 460px;
+  left: -120px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.26) 0%, transparent 65%);
+  animation: lp-drift-c 38s ease-in-out infinite alternate;
+}
+
+@keyframes lp-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(70px, 50px, 0) scale(1.15); }
+}
+
+@keyframes lp-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.05); }
+  to   { transform: translate3d(-60px, 80px, 0) scale(0.92); }
+}
+
+@keyframes lp-drift-c {
+  from { transform: translate3d(0, 0, 0) scale(0.95); }
+  to   { transform: translate3d(50px, -60px, 0) scale(1.12); }
+}
+
+/* ── Film grain (static, dirt cheap) ────────────────────────────────── */
+
+.lp-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+
+/* ── Gold shimmer headline ──────────────────────────────────────────── */
+
+.lp-shimmer-text {
+  background: linear-gradient(
+    110deg,
+    #e9b765 8%,
+    #fdeec9 26%,
+    #f6c768 42%,
+    #b98a3e 58%,
+    #fde8b8 78%,
+    #e9b765 92%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: lp-text-sheen 5.2s ease-in-out infinite;
+}
+
+@keyframes lp-text-sheen {
+  0%   { background-position: 120% 0; }
+  55%  { background-position: -60% 0; }
+  100% { background-position: -60% 0; }
+}
+
+/* ── Emblem breathing glow + orbiting sparks ────────────────────────── */
+
+.lp-emblem {
+  position: relative;
+  animation: lp-breathe 4.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes lp-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.045); }
+}
+
+.lp-orbit {
+  position: absolute;
+  inset: -14px;
+  pointer-events: none;
+  animation: lp-rotate 11s linear infinite;
+  will-change: transform;
+}
+
+.lp-orbit--reverse {
+  inset: -24px;
+  animation: lp-rotate 17s linear infinite reverse;
+}
+
+@keyframes lp-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.lp-orbit__spark {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 999px;
+  background: #fde9b8;
+  box-shadow: 0 0 8px 2px rgba(246, 199, 104, 0.65);
+}
+
+.lp-orbit--reverse .lp-orbit__spark {
+  width: 3px;
+  height: 3px;
+  opacity: 0.7;
+}
+
+/* ── Gold foil border (gradient ring via padding hack) ──────────────── */
+
+.lp-foil {
+  position: relative;
+  border-radius: 28px;
+  padding: 1.5px;
+  background: linear-gradient(
+    135deg,
+    rgba(246, 199, 104, 0.85) 0%,
+    rgba(185, 138, 62, 0.25) 28%,
+    rgba(253, 238, 201, 0.9) 50%,
+    rgba(185, 138, 62, 0.25) 72%,
+    rgba(246, 199, 104, 0.85) 100%
+  );
+  background-size: 300% 300%;
+  animation: lp-foil-flow 7s ease-in-out infinite;
+}
+
+@keyframes lp-foil-flow {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* ── Holographic sheen sweep (member card) ──────────────────────────── */
+
+.lp-holo-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.lp-holo-sheen::after {
+  content: '';
+  position: absolute;
+  top: -60%;
+  bottom: -60%;
+  left: -80%;
+  width: 55%;
+  transform: rotate(18deg) translateX(0);
+  background: linear-gradient(
+    100deg,
+    transparent 18%,
+    rgba(255, 246, 222, 0.10) 38%,
+    rgba(255, 246, 222, 0.22) 50%,
+    rgba(255, 246, 222, 0.10) 62%,
+    transparent 82%
+  );
+  animation: lp-sheen-sweep 6.5s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+@keyframes lp-sheen-sweep {
+  0%   { transform: rotate(18deg) translateX(-40%); }
+  46%  { transform: rotate(18deg) translateX(460%); }
+  100% { transform: rotate(18deg) translateX(460%); }
+}
+
+/* ── CTA shimmer sweep ──────────────────────────────────────────────── */
+
+.lp-cta {
+  position: relative;
+  overflow: hidden;
+}
+
+.lp-cta::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  left: 0;
+  width: 42%;
+  transform: skewX(-22deg) translateX(-160%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 100%
+  );
+  animation: lp-cta-sweep 3.4s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+  will-change: transform;
+  pointer-events: none;
+}
+
+@keyframes lp-cta-sweep {
+  0%   { transform: skewX(-22deg) translateX(-160%); }
+  52%  { transform: skewX(-22deg) translateX(420%); }
+  100% { transform: skewX(-22deg) translateX(420%); }
+}
+
+/* ── Unlock burst particles ─────────────────────────────────────────── */
+
+.lp-burst {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.lp-burst__p {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 35%, #fdeec9, #e9a94f);
+  box-shadow: 0 0 10px rgba(246, 199, 104, 0.8);
+  opacity: 0;
+  animation: lp-burst-fly 1.05s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes lp-burst-fly {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.4);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx, 0px), var(--dy, -80px), 0) scale(1);
+  }
+}
+
+/* ── Soft float for decorative icons ────────────────────────────────── */
+
+.lp-float {
+  animation: lp-float 5.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes lp-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+/* ── Frosted chips on dark ──────────────────────────────────────────── */
+
+.lp-glass {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+
+/* ── Reduced motion: freeze every ambient loop ──────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-aurora__blob,
+  .lp-shimmer-text,
+  .lp-emblem,
+  .lp-orbit,
+  .lp-orbit--reverse,
+  .lp-foil,
+  .lp-holo-sheen::after,
+  .lp-cta::after,
+  .lp-burst__p,
+  .lp-float {
+    animation: none !important;
+  }
+
+  .lp-shimmer-text {
+    background-position: 50% 0;
+  }
+}

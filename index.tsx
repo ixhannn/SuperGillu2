@@ -7,6 +7,7 @@ import './styles/root-fixes.css';
 import './styles/premium-features.css';
 import './styles/native-polish.css';
 import './styles/performance.css';
+import './styles/premium-hub.css';
 import { initGlobalGestures } from './utils/gesture';
 import { startRevealSafety } from './utils/revealSafety';
 
