@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { Crown, Lock } from 'lucide-react';
@@ -36,6 +36,39 @@ export const goldStagger: Variants = {
 export const goldRise: Variants = {
     hidden: { opacity: 0, y: 26, scale: 0.985 },
     visible: { opacity: 1, y: 0, scale: 1, transition: GOLD_SOFT_SPRING },
+};
+
+/**
+ * Aurora parallax: drifts the ambient blob layer at a fraction of the
+ * page scroll so the stage reads as a deeper plane than the content.
+ * Transform-only writes, rAF-throttled, disabled for reduced motion.
+ */
+export const useAuroraParallax = (factor = -0.12): React.RefObject<HTMLDivElement | null> => {
+    const layerRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const wrapper = document.querySelector<HTMLElement>('.lenis-wrapper');
+        if (!wrapper) return;
+
+        let raf = 0;
+        const apply = () => {
+            raf = 0;
+            const el = layerRef.current;
+            if (el) el.style.transform = `translate3d(0, ${Math.round(wrapper.scrollTop * factor)}px, 0)`;
+        };
+        const onScroll = () => {
+            if (!raf) raf = requestAnimationFrame(apply);
+        };
+        wrapper.addEventListener('scroll', onScroll, { passive: true });
+        return () => {
+            wrapper.removeEventListener('scroll', onScroll);
+            if (raf) cancelAnimationFrame(raf);
+        };
+    }, [factor]);
+
+    return layerRef;
 };
 
 /** Eyebrow label + gold hairline — section divider used across all gold views. */

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { feedback } from '../../utils/feedback';
 import { useNavigation } from '../../App';
-import { GOLD, GOLD_SOFT_SPRING } from './GoldKit';
+import { GOLD, GOLD_SOFT_SPRING, useAuroraParallax } from './GoldKit';
 import '../../styles/premium-hub.css';
 
 /**
@@ -31,6 +31,7 @@ interface GoldShellProps {
 export const GoldShell: React.FC<GoldShellProps> = ({ eyebrow, onBack, accent, rightSlot, fullBleed, children }) => {
     const { goBack } = useNavigation();
     const handleBack = onBack ?? goBack;
+    const auroraRef = useAuroraParallax();
 
     // Portaled to body like the app's vh-shell: lenis-content has
     // contain:paint, so a fixed header rendered inline would anchor to the
@@ -75,7 +76,7 @@ export const GoldShell: React.FC<GoldShellProps> = ({ eyebrow, onBack, accent, r
         >
             {/* Fixed ambient backdrop — the page scrolls natively above it */}
             <div className="lp-backdrop lp-stage" aria-hidden="true">
-                <div className="lp-aurora">
+                <div className="lp-aurora" ref={auroraRef}>
                     <div className="lp-aurora__blob lp-aurora__blob--gold" />
                     <div className="lp-aurora__blob lp-aurora__blob--rose" />
                     <div

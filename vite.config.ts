@@ -40,6 +40,12 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react(), devCspPlugin()],
     build: {
+      // Vite 8's default CSS minifier (LightningCSS) fuses adjacent filter
+      // functions into "blur(18px)saturate(140%)" — invalid CSS that Chrome
+      // ignores — and drops the unprefixed backdrop-filter, silently
+      // disabling every multi-function glass blur in production. esbuild
+      // minifies these correctly.
+      cssMinify: 'esbuild',
       chunkSizeWarningLimit: 760,
       rollupOptions: {
         output: {

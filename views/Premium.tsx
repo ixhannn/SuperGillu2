@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import type { CoupleProfile, DatePlan, ViewState } from '../types';
 import { StorageService } from '../services/storage';
+import { useAuroraParallax } from '../components/premium/GoldKit';
 import { PremiumFeaturesStore, mondayOf } from '../services/premiumFeatures';
 import { buildStoryFilm, runtimeLabel } from '../components/premium/our-story/chapters';
 import { feedback } from '../utils/feedback';
@@ -283,7 +284,7 @@ const UnlockBurst: React.FC = () => (
 interface Experience {
     key: string;
     view: ViewState;
-    icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string }>;
+    icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string; strokeWidth?: number; 'aria-hidden'?: React.AriaAttributes['aria-hidden'] }>;
     title: string;
     sub: string;
     tint: string;
@@ -348,6 +349,7 @@ const PLAN_VALUE_LINE: Record<PlanId, string> = {
 /* ── Main view ──────────────────────────────────────────────────────── */
 
 export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
+    const auroraRef = useAuroraParallax();
     const [profile, setProfile] = useState<CoupleProfile>(() => StorageService.getCoupleProfile());
     const [selectedPlan, setSelectedPlan] = useState<PlanId>('yearly');
     const [justUnlocked, setJustUnlocked] = useState(false);
@@ -576,7 +578,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         >
             {/* Fixed ambient backdrop — the page scrolls natively above it */}
             <div className="lp-backdrop lp-stage" aria-hidden="true">
-                <div className="lp-aurora">
+                <div className="lp-aurora" ref={auroraRef}>
                     <div className="lp-aurora__blob lp-aurora__blob--gold" />
                     <div className="lp-aurora__blob lp-aurora__blob--rose" />
                     <div className="lp-aurora__blob lp-aurora__blob--violet" />
@@ -596,7 +598,12 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     className="px-5 mx-auto w-full max-w-[480px]"
                 >
                     {/* ── Hero ──────────────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="flex flex-col items-center text-center pt-9 pb-9">
+                    <motion.div variants={riseVariants} className="relative flex flex-col items-center text-center pt-9 pb-9">
+                        <div
+                            aria-hidden="true"
+                            className="absolute left-1/2 top-6 -translate-x-1/2 w-[130%] h-56 pointer-events-none"
+                            style={{ background: 'radial-gradient(55% 60% at 50% 42%, rgba(246,199,104,0.13) 0%, rgba(236,72,153,0.05) 55%, transparent 75%)', filter: 'blur(10px)' }}
+                        />
                         <div className="lp-emblem mb-7">
                             <div className="lp-orbit"><span className="lp-orbit__spark" /></div>
                             <div className="lp-orbit lp-orbit--reverse"><span className="lp-orbit__spark" /></div>
@@ -644,7 +651,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
 
                     <motion.div
                         variants={riseVariants}
-                        className="-mx-5 px-5 flex gap-2.5 overflow-x-auto pb-1"
+                        className="lq-track flex gap-2 overflow-x-auto"
                         style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
                     >
                         {tonight.map((item) => {
@@ -655,12 +662,8 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                     whileTap={{ scale: 0.95 }}
                                     transition={PRESS_SPRING}
                                     onClick={() => handleOpen(item.view)}
-                                    className="shrink-0 flex items-center gap-3 pl-2.5 pr-4 py-2.5 rounded-2xl text-left"
-                                    style={{
-                                        background: 'linear-gradient(150deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.025) 100%)',
-                                        border: `1px solid ${item.tint}38`,
-                                        maxWidth: '15rem',
-                                    }}
+                                    className="lq lq-press shrink-0 flex items-center gap-3 pl-2.5 pr-4 py-2.5 rounded-[1.35rem] text-left"
+                                    style={{ maxWidth: '15rem' }}
                                 >
                                     <span
                                         className="flex w-9 h-9 shrink-0 items-center justify-center rounded-xl"
@@ -699,12 +702,10 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                     whileTap={{ scale: 0.975 }}
                                     transition={PRESS_SPRING}
                                     onClick={() => handleOpen(exp.view)}
-                                    className="lp-holo-sheen relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
-                                    style={{
-                                        background: 'linear-gradient(145deg, rgba(246,199,104,0.1) 0%, rgba(255,255,255,0.02) 55%)',
-                                        border: `1px solid ${exp.tint}45`,
-                                    }}
+                                    className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
+                                    style={{ background: 'linear-gradient(145deg, rgba(246,199,104,0.12) 0%, rgba(255,255,255,0.02) 55%)' }}
                                 >
+                                    <Icon size={118} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
                                     <div
                                         className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
                                         style={{ background: `radial-gradient(circle, ${exp.tint}38 0%, transparent 70%)` }}
@@ -744,12 +745,9 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                         whileTap={{ scale: 0.96 }}
                                         transition={PRESS_SPRING}
                                         onClick={() => handleOpen(exp.view)}
-                                        className="relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
-                                        style={{
-                                            background: 'linear-gradient(150deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.018) 100%)',
-                                            border: `1px solid ${exp.tint}30`,
-                                        }}
+                                        className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
                                     >
+                                        <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
                                         <span
                                             className="absolute top-3 right-3 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-[0.18em]"
                                             style={{ background: 'rgba(246,199,104,0.14)', border: '1px solid rgba(246,199,104,0.35)', color: '#f6c768' }}
@@ -792,12 +790,9 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                     whileTap={{ scale: 0.975 }}
                                     transition={PRESS_SPRING}
                                     onClick={() => handleOpen(exp.view)}
-                                    className="relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
-                                    style={{
-                                        background: 'linear-gradient(145deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 100%)',
-                                        border: `1px solid ${exp.tint}33`,
-                                    }}
+                                    className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
                                 >
+                                    <Icon size={104} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
                                     <div
                                         className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
                                         style={{ background: `radial-gradient(circle, ${exp.tint}2e 0%, transparent 70%)` }}
@@ -831,12 +826,9 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                         whileTap={{ scale: 0.96 }}
                                         transition={PRESS_SPRING}
                                         onClick={() => handleOpen(exp.view)}
-                                        className="relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
-                                        style={{
-                                            background: 'linear-gradient(150deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.018) 100%)',
-                                            border: '1px solid rgba(255,255,255,0.08)',
-                                        }}
+                                        className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
                                     >
+                                        <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
                                         <div
                                             className="flex w-10 h-10 items-center justify-center rounded-xl"
                                             style={{ background: `${exp.tint}1c`, border: `1px solid ${exp.tint}38` }}
@@ -875,13 +867,10 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
 
                     <motion.div
                         variants={riseVariants}
-                        className="relative overflow-hidden rounded-[1.6rem] px-5 pt-5 pb-4"
-                        style={{
-                            background: 'linear-gradient(150deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.018) 100%)',
-                            border: '1px solid rgba(246,199,104,0.18)',
-                        }}
+                        className="lq lq--blur lq--sheen relative overflow-hidden rounded-[1.6rem] px-5 pt-5 pb-4"
                     >
-                        <div className="flex flex-col gap-2.5">
+                        <Crown size={120} strokeWidth={0.8} className="lq-ghost" style={{ color: '#f6c768' }} aria-hidden="true" />
+                        <div className="relative flex flex-col gap-2.5">
                             {[
                                 { label: 'Memories kept', value: counts.memories, always: true },
                                 { label: 'Voice notes', value: counts.voiceNotes, always: true, suffix: counts.voiceSeconds >= 60 ? `${Math.round(counts.voiceSeconds / 60)} min` : undefined },
@@ -897,7 +886,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                     {row.suffix && (
                                         <span className="text-[10.5px] shrink-0" style={{ color: 'rgba(255,246,230,0.35)' }}>{row.suffix}</span>
                                     )}
-                                    <AnimatedNumber value={row.value} className="font-serif text-[1.15rem] leading-none shrink-0" />
+                                    <AnimatedNumber value={row.value} className="lp-num-gold font-serif text-[1.2rem] leading-none shrink-0" />
                                 </div>
                             ))}
                         </div>
@@ -925,8 +914,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
 
                     <motion.div
                         variants={riseVariants}
-                        className="rounded-[1.6rem] overflow-hidden"
-                        style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        className="lq rounded-[1.6rem] overflow-hidden"
                     >
                         <div className="grid grid-cols-[1.4fr_0.8fr_1fr] px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                             <span />
@@ -975,10 +963,11 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                             whileTap={{ scale: 0.95 }}
                                             transition={PRESS_SPRING}
                                             onClick={() => { setSelectedPlan(plan.id); feedback.tap(); }}
-                                            className="relative rounded-[1.3rem] px-3 pt-5 pb-4 text-center"
+                                            className="lq lq-press relative rounded-[1.3rem] px-3 pt-5 pb-4 text-center"
                                             style={{
-                                                background: selected ? 'rgba(246,199,104,0.07)' : 'rgba(255,255,255,0.035)',
-                                                border: '1px solid rgba(255,255,255,0.07)',
+                                                background: selected
+                                                    ? 'linear-gradient(160deg, rgba(246,199,104,0.13) 0%, rgba(246,199,104,0.04) 100%)'
+                                                    : undefined,
                                             }}
                                         >
                                             {selected && (
@@ -1122,8 +1111,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             return (
                                 <div
                                     key={row.title}
-                                    className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl"
-                                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                                    className="lq flex items-center gap-3.5 px-4 py-3.5 rounded-2xl"
                                 >
                                     <div
                                         className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl"
