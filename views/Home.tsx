@@ -623,7 +623,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
 
             {/* ── DAYS TOGETHER — Hero Card ────────────────────────────── */}
             <ScrollReveal variant="fadeScale">
-                <div ref={heroRef}>
+                {/* scroll-recede: compositor-scrubbed sink/dim as the hero
+                    leaves the viewport — this plain div is framer-free, so
+                    the CSS animation owns its transform without conflicts. */}
+                <div ref={heroRef} className="scroll-recede">
                     <TiltCard
                         maxTilt={12}
                         glare
@@ -703,7 +706,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             </ScrollReveal>
 
             {/* ── STATUS PILLS ─────────────────────────────────────────── */}
-            <div className="flex gap-3 mb-5 relative z-10">
+            {/* scroll-recede-FLAT: the pills carry backdrop-filter, and an
+                ancestor opacity animation would kill their frosted glass
+                (backdrop root). Transform-only recede keeps the frost. */}
+            <div className="flex gap-3 mb-5 relative z-10 scroll-recede-flat">
                 {/* Partner status pill */}
                 <div
                     className="flex-1 flex items-center gap-2.5 px-4 py-4"

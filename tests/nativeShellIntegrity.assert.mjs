@@ -33,8 +33,8 @@ assert.match(
 
 assert.match(
   appSource,
-  /NativeShellService\.start\(\{[\s\S]*onHardwareBack:[\s\S]*lior:hardware-back[\s\S]*runNavigation\(destination, 'pop'\)[\s\S]*NativeShellService\.minimizeApp\(\)/,
-  'Expected App to route hardware back through modal dismissal, app navigation, then minimize.',
+  /NativeShellService\.start\(\{[\s\S]*onHardwareBack:[\s\S]*lior:hardware-back[\s\S]*runNavigation\(destination, prev === 'add-memory' \? 'modal-close' : 'pop'\)[\s\S]*NativeShellService\.minimizeApp\(\)/,
+  'Expected App to route hardware back through modal dismissal, app navigation (sheet-aware pop), then minimize.',
 );
 
 assert.match(

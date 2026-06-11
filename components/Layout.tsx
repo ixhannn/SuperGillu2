@@ -47,6 +47,15 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
     // Pass the wrapper to App.tsx so navigation can restore scroll position.
     if (registerScrollRef) registerScrollRef(wrapper);
 
+    // NOTE deliberately NOT wired: attachRubberBand (utils/gesture.ts). Under
+    // touch-action: pan-y the browser owns vertical pans — pointermove
+    // preventDefault can't suppress them and pointercancel kills the stream,
+    // so a JS bounce here either no-ops or fights TransitionEngine's edge
+    // swipe and View Transition snapshots. The wrapper's
+    // overscroll-behavior-y: contain already permits the NATIVE Android 12+
+    // stretch affordance (contain blocks chaining, not the local effect),
+    // which runs on the compositor and is strictly better than a JS spring.
+
     return () => {
       if (registerScrollRef) registerScrollRef(null);
     };

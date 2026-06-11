@@ -841,7 +841,7 @@ export interface WeeklyRecapInsight {
   generatedAt: string;
 }
 
-export type TransitionDirection = 'push' | 'pop' | 'tab' | 'modal';
+export type TransitionDirection = 'push' | 'pop' | 'tab' | 'modal' | 'modal-close';
 
 export const ROOT_TABS: ViewState[] = ['home', 'us', 'timeline', 'daily-moments', 'profile'];
 

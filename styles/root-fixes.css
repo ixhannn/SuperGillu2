@@ -28,15 +28,6 @@ html[data-transitioning="1"] *::after {
   animation-play-state: paused !important;
 }
 
-/* The keep-alive crossfade IS the transition — it must keep running while
-   data-transitioning is set (runTabTransition sets the flag for the same
-   140ms window the fade plays in). Without this exemption the incoming tab
-   sits frozen at opacity:0 for the whole window, reading as a blank flash
-   on every tab switch. */
-html[data-transitioning="1"] .keep-alive-shell.is-active {
-  animation-play-state: running !important;
-}
-
 /* Skip backdrop-filter compositing during the transition window — it's the
    single most expensive per-frame GPU op on mobile. */
 html[data-transitioning="1"] .skip-blur-on-transition,
@@ -75,34 +66,41 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
 }
 .keep-alive-shell.is-active {
   display: block;
-  /* Liquid float-in: opacity starts at 0.55 — content is visible from the
-     very first frame (starting at 0 read as a blank "hole" on every switch)
-     — plus a small translateY settle. Translate is safe where the earlier
-     scale attempt was jittery: scaling re-rasterizes every nested layer's
-     texture each frame, a translation just moves them. The main thread is
-     idle during switches now (stable element identities mean React
-     reconciles ~nothing), so the compositor owns the whole animation.
+}
+/* Liquid float-in — OPT-IN via the one-shot `is-entering` class, which only
+   the bottom-nav tab fast path grants (App.tsx shell-activation effect,
+   removed on animationend/animationcancel). Shells activated inside a View
+   Transition or gesture commit never get the class, so the motion can
+   neither capture mid-frame into the VT snapshot nor replay after it.
 
-     `both` is intentional: the final state is pinned on the shell itself so
-     there's no flash if the animation is interrupted by a rapid re-tap. */
+   TRANSFORM-ONLY on purpose, twice over:
+   1. Translate doesn't re-rasterize nested layers the way the earlier scale
+      attempt did — the compositor just moves them.
+   2. Animating opacity (or even will-change: opacity) on the shell turns it
+      into a backdrop root: every backdrop-filter surface inside the
+      incoming tab (.bento-card, .liquid-glass, the status pills) loses its
+      frost for the duration and the blur visibly pops back at animationend.
+      A pure translate keeps the glass frosted throughout.
+
+   `both` pins the final state on the shell so there's no flash if the
+   animation is interrupted by a rapid re-tap. */
+.keep-alive-shell.is-active.is-entering {
   animation: keep-alive-fade-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: transform, opacity;
+  will-change: transform;
 }
 
 @keyframes keep-alive-fade-in {
   from {
-    opacity: 0.55;
-    transform: translate3d(0, 10px, 0);
+    transform: translate3d(0, 12px, 0);
   }
   to {
-    opacity: 1;
     transform: translate3d(0, 0, 0);
   }
 }
 
 /* Reduced motion: instant snap, no fade */
 @media (prefers-reduced-motion: reduce) {
-  .keep-alive-shell.is-active {
+  .keep-alive-shell.is-active.is-entering {
     animation: none;
   }
 }
@@ -124,13 +122,17 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
   transform: translateZ(0) scale(1);
 }
 .bn-fab {
-  transform: translateZ(0) scale(1);
-  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateZ(0) scale(1) rotate(0deg);
+  /* Bouncy release: the orb springs back with a tiny overshoot wiggle. */
+  transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
   will-change: transform;
   backface-visibility: hidden;
 }
 .bn-fab:active {
-  transform: translateZ(0) scale(0.9);
+  /* Instant squish + playful tilt on touch-down. */
+  transform: translateZ(0) scale(0.86) rotate(-8deg);
+  transition-duration: 90ms;
+  transition-timing-function: cubic-bezier(0.36, 0.07, 0.19, 0.97);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

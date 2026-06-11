@@ -30,7 +30,10 @@ type WindowWithIdleCallback = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
-export const AmbientVisuals: React.FC<AmbientVisualsProps> = ({ paused = false }) => {
+// Memoized: Layout re-renders on every navigation (its children prop is a
+// fresh element tree), and without memo this re-reconciled the WebGL layer
+// hosts each time. Props are stable, so the bailout always holds.
+const AmbientVisualsImpl: React.FC<AmbientVisualsProps> = ({ paused = false }) => {
   const [ambientReady, setAmbientReady] = useState(false);
 
   useEffect(() => {
@@ -69,3 +72,5 @@ export const AmbientVisuals: React.FC<AmbientVisualsProps> = ({ paused = false }
     </>
   );
 };
+
+export const AmbientVisuals = React.memo(AmbientVisualsImpl);

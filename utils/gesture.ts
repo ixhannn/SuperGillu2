@@ -642,26 +642,47 @@ export function attachPinch(el: HTMLElement, opts: PinchOptions = {}): () => voi
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. RUBBER-BAND OVERSCROLL
-//    Applies iOS-style exponential resistance at scroll boundaries.
-//    Spring-returns on pointer release.
-//    Attach to the main scroll container in Layout.tsx.
+//    Applies iOS-style resistance at scroll boundaries; spring-returns on
+//    release.
+//
+//    ⚠ NOT CURRENTLY WIRED — and pointer events are the wrong primitive for
+//    a scroll container with touch-action: pan-y: the browser claims the
+//    vertical pan (pointercancel) before preventDefault on pointermove can
+//    do anything. Wiring this to a touch scroller requires NATIVE
+//    touchstart/touchmove listeners with { passive: false } — which makes
+//    every scroll on that element block on the main thread. Prefer the
+//    native Android 12+ stretch (enabled by overscroll-behavior: contain)
+//    or scoped non-scrolling surfaces.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function attachRubberBand(container: HTMLElement): () => void {
+export interface RubberBandOptions {
+  /**
+   * Consulted when an edge gesture begins. Return false to yield the edge —
+   * e.g. tabs embedding PullToRefresh own the top edge themselves, and a
+   * simultaneous container bounce would double the motion.
+   */
+  shouldEngage?: (edge: 'top' | 'bottom') => boolean;
+}
+
+export function attachRubberBand(container: HTMLElement, options: RubberBandOptions = {}): () => void {
   const spring = new SpringValue(0, SPRING_PRESETS.rubber);
   spring.onChange(v => {
-    container.style.transform = `translateY(${v.toFixed(2)}px)`;
+    // translateZ(0) keeps the container's compositor-layer promotion (the
+    // inline hint this write replaces).
+    container.style.transform = `translateZ(0) translateY(${v.toFixed(2)}px)`;
   });
 
   let pid: number | null = null;
   let startY = 0, dragging = false;
 
-  // iOS rubber-band formula approximation
+  // iOS rubber-band curve: slope ~0.55 at the origin (resists from the very
+  // first pixel), asymptotically approaching the container height. The
+  // previous formula had slope 2 at the origin — it AMPLIFIED small drags.
   const rubberBand = (dy: number): number => {
     const sign = dy >= 0 ? 1 : -1;
     const abs  = Math.abs(dy);
     const size = container.clientHeight;
-    return sign * (abs * size) / (abs + size * 0.5);
+    return sign * (1 - 1 / ((abs * 0.55) / size + 1)) * size;
   };
 
   const isAtTop    = () => container.scrollTop <= 0;
@@ -669,7 +690,7 @@ export function attachRubberBand(container: HTMLElement): () => void {
     container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
 
   const onDown = (e: PointerEvent): void => {
-    if (pid !== null) return;
+    if (pid !== null || e.pointerType === 'mouse') return;
     pid = e.pointerId;
     startY   = e.clientY;
     dragging = false;
@@ -681,6 +702,13 @@ export function attachRubberBand(container: HTMLElement): () => void {
     const dy = e.clientY - startY;
 
     if ((dy > 0 && isAtTop()) || (dy < 0 && isAtBottom())) {
+      const edge: 'top' | 'bottom' = dy > 0 ? 'top' : 'bottom';
+      if (!dragging && options.shouldEngage && !options.shouldEngage(edge)) {
+        // Keep the anchor fresh so a yielded edge gesture doesn't accumulate
+        // into our delta if the user later reverses direction.
+        startY = e.clientY;
+        return;
+      }
       dragging = true;
       spring.snap(rubberBand(dy));
       e.preventDefault(); // stop native scroll only at boundaries

@@ -18,14 +18,34 @@ const lazyNamedView = (
 ): PreloadableViewComponent => {
   let loadedModule: ViewModule | null = null;
   let loadPromise: Promise<ViewModule> | null = null;
-  const loader: ViewLoader = () => {
+  const load: ViewLoader = () => {
+    if (!loadPromise) {
+      loadPromise = loadModule().then(
+        (module) => {
+          loadedModule = { default: module[exportName] };
+          return loadedModule;
+        },
+        (error: unknown) => {
+          // Never cache a rejection: a 404 after a redeploy or a network blip
+          // must be retryable on the next tap, not poison the registry (and
+          // React.lazy's payload) for the rest of the session.
+          loadPromise = null;
+          throw error;
+        },
+      );
+    }
+    return loadPromise;
+  };
+  // React.lazy's ctor ONLY. Once loaded, this returns a synchronous thenable:
+  // lazy calls then() during initialization, and a synchronous resolve marks
+  // the payload Resolved BEFORE React checks it — so a preloaded view mounts
+  // in the same render pass with NO Suspense round-trip. (A plain
+  // Promise.resolve() still suspends for one microtask, which flashed the
+  // null fallback — a blank frame — on every first mount of a preloaded
+  // view.) Not exposed as `preload`, since this bare thenable has no
+  // .catch/.finally and must never leak to general promise consumers.
+  const lazyLoader: ViewLoader = () => {
     if (loadedModule) {
-      // Synchronous thenable: React.lazy calls then() during initialization,
-      // and a synchronous resolve marks the payload Resolved BEFORE React
-      // checks it — so an already-preloaded view mounts in the same render
-      // pass with NO Suspense round-trip. A plain Promise.resolve() here
-      // still suspends for one microtask, which used to flash the null
-      // fallback (a blank frame) on every first mount of a preloaded view.
       const resolved = loadedModule;
       return {
         then: (onFulfilled?: (value: ViewModule) => unknown) => {
@@ -34,16 +54,10 @@ const lazyNamedView = (
         },
       } as Promise<ViewModule>;
     }
-    if (!loadPromise) {
-      loadPromise = loadModule().then((module) => {
-        loadedModule = { default: module[exportName] };
-        return loadedModule;
-      });
-    }
-    return loadPromise;
+    return load();
   };
-  const Component = React.lazy(loader) as PreloadableViewComponent;
-  Component.preload = loader;
+  const Component = React.lazy(lazyLoader) as PreloadableViewComponent;
+  Component.preload = load;
   Component.isLoaded = () => loadedModule !== null;
   return Component;
 };

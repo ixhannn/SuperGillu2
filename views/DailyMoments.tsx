@@ -83,7 +83,6 @@ const PhotoCard = React.memo<{ photo: DailyPhoto, onSelect: (photo: DailyPhoto) 
     return (
         <>
         <motion.div
-            layoutId={`photo-${photo.id}`}
             onClick={() => onSelect(photo)}
             className="relative group overflow-hidden glass-card aspect-[3/4] cursor-pointer spring-press transition-transform"
         >

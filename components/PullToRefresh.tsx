@@ -72,8 +72,9 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
   };
 
   return (
-    <div 
+    <div
       ref={containerRef}
+      data-ptr="true"
       className="relative w-full h-full overflow-y-auto no-scrollbar"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
