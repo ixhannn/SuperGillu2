@@ -62,12 +62,6 @@ const WhatsNew = React.lazy(() =>
   import('./components/WhatsNew').then((module) => ({ default: module.WhatsNew })),
 );
 
-// Lazy so the tiny always-on overlay lands in its own chunk and doesn't bloat
-// the main App bundle (it loads immediately on the first tab render anyway).
-const SneakyPet = React.lazy(() =>
-  import('./components/SneakyPet').then((module) => ({ default: module.SneakyPet })),
-);
-
 const CORE_NAV_PRELOADS: ViewState[] = [
   'add-memory',
   'timeline',
@@ -825,11 +819,6 @@ const App = () => {
                 </Suspense>
               </Layout>
               <AuraSignalReceiver />
-              {ROOT_TABS.includes(currentView) && (
-                <Suspense fallback={null}>
-                  <SneakyPet onTap={() => navigateTo('coco-pet')} />
-                </Suspense>
-              )}
               <AnimatePresence>
                 {showLaunchOverlay && <AppLaunchOverlay />}
               </AnimatePresence>
