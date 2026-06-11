@@ -14,12 +14,12 @@ interface SneakyPetProps {
 }
 
 type Edge = 'bottom' | 'left' | 'right' | 'top';
-type Transform = { x?: number; y?: number; rotate?: number; scale: number; opacity?: number };
+type Frame = Record<string, number | string>;
 
 const PET_STATE_KEY = 'lior_coco_pet_state_v1';
-const PET_W = 72;
-const PET_H = 86;
-const TILE_OVERLAP = 0.3; // fraction of the pet that laps DOWN over the tile's lip
+const PET_W = 76;
+const PET_H = 90;
+const TILE_REVEAL = 52; // how much of the head peeks ABOVE the tile's top edge (rest hidden behind it)
 const TILE_SELECTOR = '.bento-card, .glass-card, [data-coachmark]';
 
 const REACTING_TABLES = new Set([
@@ -47,12 +47,13 @@ interface PeekTarget {
     id: number;
     mode: 'tile' | 'edge';
     look: PetLook;
-    anchor: React.CSSProperties;     // initial fixed position
-    hidden: Transform;
-    peek: Transform;
-    exit: Transform;
-    el?: HTMLElement;                // tile to stay glued to
-    xFrac?: number;                  // horizontal grip point along the tile
+    anchor: React.CSSProperties;
+    hidden: Frame;
+    peek: Frame;
+    exit: Frame;
+    transformOrigin: string;
+    el?: HTMLElement;
+    xFrac?: number;
 }
 
 const collectTiles = (): HTMLElement[] => {
@@ -61,59 +62,64 @@ const collectTiles = (): HTMLElement[] => {
     const vw = window.innerWidth;
     return Array.from(document.querySelectorAll<HTMLElement>(TILE_SELECTOR)).filter((el) => {
         const r = el.getBoundingClientRect();
-        // Visible, big enough to perch on, and its top edge sits comfortably in view.
-        return r.width >= 92 && r.height >= 64
-            && r.top >= 14 && r.top <= vh - 96
+        // Big enough to hide behind, with its top edge comfortably in view.
+        return r.width >= 92 && r.height >= 70
+            && r.top >= 60 && r.top <= vh - 80
             && r.right > 24 && r.left < vw - 24;
     });
 };
 
-const tileTopFor = (r: DOMRect) => r.top - PET_H * (1 - TILE_OVERLAP);
 const tileLeftFor = (r: DOMRect, xFrac: number) => {
     const cx = r.left + xFrac * r.width;
-    return Math.max(r.left - 8, Math.min(cx - PET_W / 2, r.right - PET_W + 8));
+    return Math.max(r.left - 6, Math.min(cx - PET_W / 2, r.right - PET_W + 6));
 };
+const tileTopFor = (r: DOMRect) => r.top - TILE_REVEAL; // body sits below the lip; clip reveals only TILE_REVEAL px
+
+// Clip the bottom of the pet box so only the top `reveal` px show; the rest is
+// "behind the tile". Emerge by opening the clip from nothing → reveal.
+const clip = (reveal: number) => `inset(0px 0px ${Math.round(PET_H - reveal)}px 0px)`;
 
 const buildTileTarget = (id: number, look: PetLook, el: HTMLElement): PeekTarget => {
-    const xFrac = 0.22 + Math.random() * 0.56;
+    const xFrac = 0.2 + Math.random() * 0.6;
     const r = el.getBoundingClientRect();
     return {
         id, mode: 'tile', look, el, xFrac,
-        anchor: { left: tileLeftFor(r, xFrac), top: tileTopFor(r) },
-        hidden: { y: 20, scale: 0.45, opacity: 0 },   // tucked low, as if rising from behind the lip
-        peek: { y: 0, scale: 1, opacity: 1 },
-        exit: { y: 22, scale: 0.5, opacity: 0 },
+        anchor: { left: tileLeftFor(r, xFrac), top: tileTopFor(r), width: PET_W, height: PET_H },
+        transformOrigin: '50% 100%',
+        hidden: { clipPath: clip(0), scale: 0.86 },
+        peek: { clipPath: clip(TILE_REVEAL), scale: 1 },
+        exit: { clipPath: clip(0), scale: 0.86 },
     };
 };
 
 const buildEdgeTarget = (id: number, look: PetLook): PeekTarget => {
     const edge = EDGE_BAG[Math.floor(Math.random() * EDGE_BAG.length)];
     const along = 16 + Math.random() * 68;
-    const common = { id, mode: 'edge' as const, look };
+    const base = { id, mode: 'edge' as const, look, transformOrigin: '50% 50%' };
     switch (edge) {
         case 'top':
-            return { ...common, anchor: { left: `${along}%`, top: 0, marginLeft: -PET_W / 2 },
-                hidden: { y: -(PET_H + 18), rotate: 180, scale: 0.9 }, peek: { y: -38, rotate: 180, scale: 1 }, exit: { y: -(PET_H + 18), rotate: 180, scale: 0.9 } };
+            return { ...base, anchor: { left: `${along}%`, top: 0, marginLeft: -PET_W / 2, width: PET_W, height: PET_H },
+                hidden: { y: -(PET_H + 16), rotate: 180, scale: 0.9 }, peek: { y: -42, rotate: 180, scale: 1 }, exit: { y: -(PET_H + 16), rotate: 180, scale: 0.9 } };
         case 'left':
-            return { ...common, anchor: { top: `${along}%`, left: 0, marginTop: -PET_H / 2 },
-                hidden: { x: -(PET_W + 18), rotate: 10, scale: 0.9 }, peek: { x: -28, rotate: 8, scale: 1 }, exit: { x: -(PET_W + 18), rotate: 10, scale: 0.9 } };
+            return { ...base, anchor: { top: `${along}%`, left: 0, marginTop: -PET_H / 2, width: PET_W, height: PET_H },
+                hidden: { x: -(PET_W + 16), rotate: 10, scale: 0.9 }, peek: { x: -30, rotate: 8, scale: 1 }, exit: { x: -(PET_W + 16), rotate: 10, scale: 0.9 } };
         case 'right':
-            return { ...common, anchor: { top: `${along}%`, right: 0, marginTop: -PET_H / 2 },
-                hidden: { x: PET_W + 18, rotate: -10, scale: 0.9 }, peek: { x: 28, rotate: -8, scale: 1 }, exit: { x: PET_W + 18, rotate: -10, scale: 0.9 } };
+            return { ...base, anchor: { top: `${along}%`, right: 0, marginTop: -PET_H / 2, width: PET_W, height: PET_H },
+                hidden: { x: PET_W + 16, rotate: -10, scale: 0.9 }, peek: { x: 30, rotate: -8, scale: 1 }, exit: { x: PET_W + 16, rotate: -10, scale: 0.9 } };
         case 'bottom':
         default:
-            return { ...common, anchor: { left: `${along}%`, bottom: 72, marginLeft: -PET_W / 2 },
-                hidden: { y: PET_H + 18, scale: 0.9 }, peek: { y: 32, scale: 1 }, exit: { y: PET_H + 18, scale: 0.9 } };
+            return { ...base, anchor: { left: `${along}%`, bottom: 70, marginLeft: -PET_W / 2, width: PET_W, height: PET_H },
+                hidden: { y: PET_H + 16, scale: 0.9 }, peek: { y: 34, scale: 1 }, exit: { y: PET_H + 16, scale: 0.9 } };
     }
 };
 
 /**
  * A small living creature that inhabits the app. Every so often (and when a
- * lovely moment happens) the user's actual pet sneaks out — usually perching on
- * a random tile, rising from behind its top edge with its paws lapping over the
- * front lip (grounded by a soft contact shadow), and occasionally peeking from a
- * screen edge. It stays glued to its tile as you scroll, looks around, then ducks
- * back. Tap it to open the full pet.
+ * lovely moment happens) the user's actual pet sneaks out — usually hiding
+ * BEHIND a random tile and peeking its head over the top edge (the body is
+ * clipped at the lip so it reads as truly behind), and occasionally peering in
+ * from a screen edge. It stays glued to its tile as you scroll, then ducks back.
+ * Tap it to open the full pet.
  *
  * Reflective, never demanding: never decays or nags. The heavy art only mounts
  * while peeking, timers pause while the tab is hidden, event-peeks are throttled,
@@ -155,7 +161,7 @@ export const SneakyPet: React.FC<SneakyPetProps> = ({ onTap }) => {
         const id = idRef.current++;
         const look = readPetLook();
         const tiles = collectTiles();
-        const target = (tiles.length && Math.random() < 0.78)
+        const target = (tiles.length && Math.random() < 0.82)
             ? buildTileTarget(id, look, tiles[Math.floor(Math.random() * tiles.length)])
             : buildEdgeTarget(id, look);
         setPeek(target);
@@ -216,7 +222,7 @@ export const SneakyPet: React.FC<SneakyPetProps> = ({ onTap }) => {
         };
     }, [appear, popHeart]);
 
-    // Stay glued to the tile while perched (follows scroll/resize); retreat if it leaves.
+    // Stay glued to the tile while peeking (follows scroll/resize); retreat if it leaves.
     useEffect(() => {
         if (!peek || peek.mode !== 'tile' || !peek.el) return;
         let raf = 0;
@@ -250,7 +256,7 @@ export const SneakyPet: React.FC<SneakyPetProps> = ({ onTap }) => {
 
     const emergeTransition = prefersReducedMotion
         ? { duration: 0.32, ease: 'easeOut' as const }
-        : { type: 'spring' as const, stiffness: 260, damping: 16, mass: 0.8 };
+        : { type: 'spring' as const, stiffness: 250, damping: 18, mass: 0.8 };
 
     return (
         <AnimatePresence>
@@ -259,27 +265,20 @@ export const SneakyPet: React.FC<SneakyPetProps> = ({ onTap }) => {
                     key={peek.id}
                     ref={wrapRef}
                     className="sneaky-pet"
-                    style={{ position: 'fixed', width: PET_W, height: PET_H, zIndex: 30, pointerEvents: 'none', ...peek.anchor }}
+                    style={{ position: 'fixed', zIndex: 24, pointerEvents: 'none', transformOrigin: peek.transformOrigin, ...peek.anchor }}
                     initial={peek.hidden}
                     animate={{ ...peek.peek, transition: emergeTransition }}
-                    exit={{ ...peek.exit, transition: { duration: 0.38, ease: 'easeIn' } }}
+                    exit={{ ...peek.exit, transition: { duration: 0.36, ease: 'easeIn' } }}
                 >
-                    {peek.mode === 'tile' && (
-                        <div
-                            className="sneaky-pet-contact"
-                            style={{ top: PET_H * (1 - TILE_OVERLAP) - 3 }}
-                            aria-hidden="true"
-                        />
-                    )}
                     <AnimatePresence>
                         {hearts.map((id) => (
                             <motion.div
                                 key={id}
                                 initial={{ opacity: 0, y: 0, scale: 0.5 }}
-                                animate={{ opacity: 1, y: -34, scale: 1 }}
+                                animate={{ opacity: 1, y: -30, scale: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 1.4, ease: 'easeOut' }}
-                                style={{ position: 'absolute', top: 2, left: '50%', marginLeft: -6, pointerEvents: 'none' }}
+                                style={{ position: 'absolute', top: -2, left: '50%', marginLeft: -6, pointerEvents: 'none', zIndex: 2 }}
                             >
                                 <Heart size={12} className="text-lior-400" fill="currentColor" />
                             </motion.div>
