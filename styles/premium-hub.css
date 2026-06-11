@@ -10,8 +10,8 @@
   isolation: isolate;
   color: rgba(255, 251, 244, 0.92);
   background:
-    radial-gradient(120% 60% at 50% 0%, #241129 0%, transparent 60%),
-    linear-gradient(180deg, #160a18 0%, #0f0712 52%, #140a16 100%);
+    radial-gradient(120% 60% at 50% 0%, #17151f 0%, transparent 60%),
+    linear-gradient(180deg, #0c0b12 0%, #08080d 52%, #0d0b13 100%);
 }
 
 /* ── Aurora ─────────────────────────────────────────────────────────── */
@@ -37,21 +37,21 @@
 .lp-aurora__blob--gold {
   top: -140px;
   left: -90px;
-  background: radial-gradient(circle, rgba(246, 199, 104, 0.55) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(255, 92, 124, 0.5) 0%, transparent 65%);
   animation: lp-drift-a 26s ease-in-out infinite alternate;
 }
 
 .lp-aurora__blob--rose {
   top: 120px;
   right: -160px;
-  background: radial-gradient(circle, rgba(236, 72, 153, 0.30) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(124, 92, 255, 0.34) 0%, transparent 65%);
   animation: lp-drift-b 32s ease-in-out infinite alternate;
 }
 
 .lp-aurora__blob--violet {
   top: 460px;
   left: -120px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.26) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(62, 139, 255, 0.3) 0%, transparent 65%);
   animation: lp-drift-c 38s ease-in-out infinite alternate;
 }
 
@@ -86,12 +86,12 @@
 .lp-shimmer-text {
   background: linear-gradient(
     110deg,
-    #e9b765 8%,
-    #fdeec9 26%,
-    #f6c768 42%,
-    #b98a3e 58%,
-    #fde8b8 78%,
-    #e9b765 92%
+    #ff8fa6 8%,
+    #ffffff 26%,
+    #ff5c7c 42%,
+    #8b5cf6 58%,
+    #ffd9e1 78%,
+    #ff8fa6 92%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
@@ -146,8 +146,8 @@
   height: 4px;
   margin-left: -2px;
   border-radius: 999px;
-  background: #fde9b8;
-  box-shadow: 0 0 8px 2px rgba(246, 199, 104, 0.65);
+  background: #ffffff;
+  box-shadow: 0 0 8px 2px rgba(255, 92, 124, 0.7);
 }
 
 .lp-orbit--reverse .lp-orbit__spark {
@@ -164,11 +164,11 @@
   padding: 1.5px;
   background: linear-gradient(
     135deg,
-    rgba(246, 199, 104, 0.85) 0%,
-    rgba(185, 138, 62, 0.25) 28%,
-    rgba(253, 238, 201, 0.9) 50%,
-    rgba(185, 138, 62, 0.25) 72%,
-    rgba(246, 199, 104, 0.85) 100%
+    rgba(255, 92, 124, 0.85) 0%,
+    rgba(124, 92, 255, 0.32) 28%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(62, 139, 255, 0.32) 72%,
+    rgba(255, 92, 124, 0.85) 100%
   );
   background-size: 300% 300%;
   animation: lp-foil-flow 7s ease-in-out infinite;
@@ -264,8 +264,8 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: radial-gradient(circle at 35% 35%, #fdeec9, #e9a94f);
-  box-shadow: 0 0 10px rgba(246, 199, 104, 0.8);
+  background: radial-gradient(circle at 35% 35%, #ffffff, #ff5c7c);
+  box-shadow: 0 0 10px rgba(255, 92, 124, 0.8);
   opacity: 0;
   animation: lp-burst-fly 1.05s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -355,8 +355,8 @@
   gap: 0.5rem;
   padding: 0.4rem 0.45rem;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(28, 14, 32, 0.78), rgba(18, 9, 22, 0.66));
-  border: 1px solid rgba(246, 199, 104, 0.16);
+  background: linear-gradient(180deg, rgba(22, 21, 30, 0.78), rgba(12, 11, 17, 0.66));
+  border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow:
     0 14px 44px rgba(8, 3, 12, 0.42),
     inset 0 1px 0 rgba(255, 246, 222, 0.08);
@@ -431,10 +431,10 @@
   padding: 1px;
   background: linear-gradient(
     135deg,
-    rgba(255, 246, 222, 0.34) 0%,
-    rgba(246, 199, 104, 0.14) 26%,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 92, 124, 0.12) 26%,
     rgba(255, 255, 255, 0.04) 52%,
-    rgba(246, 199, 104, 0.2) 100%
+    rgba(124, 92, 255, 0.14) 100%
   );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -503,7 +503,7 @@
 
 /* Gold-foil numerals (vault receipt, stats). */
 .lp-num-gold {
-  background: linear-gradient(160deg, #fdeec9 0%, #f6c768 52%, #d99c3e 100%);
+  background: linear-gradient(160deg, #ffffff 0%, #ffb3c2 48%, #ff5c7c 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

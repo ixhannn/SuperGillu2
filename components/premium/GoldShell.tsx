@@ -72,7 +72,7 @@ export const GoldShell: React.FC<GoldShellProps> = ({ eyebrow, onBack, accent, r
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="relative w-full min-h-screen"
-            style={{ background: '#0f0712', color: 'rgba(255,251,244,0.92)' }}
+            style={{ background: '#09090e', color: 'rgba(255,251,250,0.94)' }}
         >
             {/* Fixed ambient backdrop — the page scrolls natively above it */}
             <div className="lp-backdrop lp-stage" aria-hidden="true">

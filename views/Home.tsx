@@ -1117,14 +1117,14 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                         <div
                             className="relative overflow-hidden rounded-[1.75rem] p-5 spring-press"
                             style={{
-                                background: 'radial-gradient(130% 120% at 85% 0%, rgba(94,48,84,0.55) 0%, transparent 55%), linear-gradient(140deg, #221026 0%, #150a18 60%, #1f0f22 100%)',
-                                border: '1px solid rgba(246,199,104,0.28)',
+                                background: 'radial-gradient(130% 120% at 85% 0%, rgba(124,92,255,0.3) 0%, transparent 55%), linear-gradient(140deg, #17151f 0%, #0b0a10 60%, #15131c 100%)',
+                                border: '1px solid rgba(255,92,124,0.28)',
                                 boxShadow: '0 10px 36px rgba(20,8,24,0.26), inset 0 1px 0 rgba(253,238,201,0.08)',
                             }}
                         >
                             <div
                                 className="absolute -top-12 -right-10 w-40 h-40 rounded-full blur-3xl pointer-events-none"
-                                style={{ background: 'radial-gradient(circle, rgba(246,199,104,0.2) 0%, transparent 70%)' }}
+                                style={{ background: 'radial-gradient(circle, rgba(255,92,124,0.2) 0%, transparent 70%)' }}
                             />
                             <div className="relative z-10 flex items-center gap-4">
                                 <motion.div
@@ -1132,19 +1132,19 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                     transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
                                     className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
                                     style={{
-                                        background: 'linear-gradient(140deg, rgba(246,199,104,0.2), rgba(185,138,62,0.32))',
-                                        border: '1px solid rgba(246,199,104,0.4)',
-                                        boxShadow: '0 8px 22px rgba(246,199,104,0.14), inset 0 1px 0 rgba(255,246,222,0.22)',
+                                        background: 'linear-gradient(140deg, #ff5c7c, #8b5cf6)',
+                                        border: '1px solid rgba(255,92,124,0.4)',
+                                        boxShadow: '0 8px 22px rgba(255,92,124,0.14), inset 0 1px 0 rgba(255,246,222,0.22)',
                                     }}
                                 >
-                                    <Crown size={21} strokeWidth={1.8} style={{ color: '#f6c768' }} />
+                                    <Crown size={21} strokeWidth={1.8} style={{ color: '#ffffff' }} />
                                 </motion.div>
                                 <div className="flex-1 min-w-0 text-left">
                                     <div className="flex items-center gap-2">
                                         <h3 className="font-serif text-[1.05rem] font-semibold leading-tight" style={{ color: 'rgba(255,250,242,0.95)' }}>Lior Gold</h3>
                                         <span
                                             className="px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-[0.14em]"
-                                            style={{ background: 'rgba(246,199,104,0.14)', border: '1px solid rgba(246,199,104,0.3)', color: '#f3cd86' }}
+                                            style={{ background: 'rgba(255,92,124,0.14)', border: '1px solid rgba(255,92,124,0.3)', color: '#ffb3c2' }}
                                         >
                                             Premium
                                         </span>
@@ -1153,7 +1153,7 @@ export const Home: React.FC<HomeProps> = ({ setView }) => {
                                         Your film, date nights, duets & unlimited everything
                                     </p>
                                 </div>
-                                <ChevronRight size={16} style={{ color: 'rgba(246,199,104,0.55)' }} />
+                                <ChevronRight size={16} style={{ color: 'rgba(255,92,124,0.55)' }} />
                             </div>
                         </div>
                     </motion.div>
