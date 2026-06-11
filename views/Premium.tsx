@@ -13,7 +13,6 @@ import {
     ArrowLeft,
     Brain,
     CalendarHeart,
-    Camera,
     Check,
     ChevronRight,
     Clapperboard,
@@ -38,6 +37,7 @@ import { useAuroraParallax } from '../components/premium/GoldKit';
 import { PremiumFeaturesStore, mondayOf } from '../services/premiumFeatures';
 import { buildHeirloomSchedule, getCollectedHeirloomIds } from '../services/heirlooms';
 import { buildStoryFilm } from '../components/premium/our-story/chapters';
+import { scheduleIdleTask } from '../utils/scheduler';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { daysTogetherFrom } from '../shared/dateOnly.js';
@@ -58,15 +58,14 @@ const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 const SOFT_SPRING = { type: 'spring', stiffness: 280, damping: 32, mass: 0.9 } as const;
 const PRESS_SPRING = { type: 'spring', stiffness: 560, damping: 30 } as const;
 
-const sectionVariants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: 0.055, delayChildren: 0.04 } },
-};
-
 const riseVariants = {
     hidden: { opacity: 0, y: 26, scale: 0.985 },
     visible: { opacity: 1, y: 0, scale: 1, transition: SOFT_SPRING },
 };
+
+// Sections reveal as they enter the viewport (once) instead of all
+// animating at mount — cheaper first paint, alive while scrolling.
+const VIEWPORT_ONCE = { once: true, margin: '0px 0px -48px 0px' } as const;
 
 /* ── Holographic membership card ────────────────────────────────────── */
 
@@ -261,28 +260,23 @@ interface Experience {
     sub: string;
     tint: string;
     hero?: boolean;
-    isNew?: boolean;
     usageKey?: 'surprises' | 'capsules' | 'voiceNotes';
     usageLimit?: number;
 }
 
-const NEW_EXPERIENCES: Experience[] = [
-    { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck from your real life, on the days that matter', tint: '#e8c97d', hero: true, isNew: true },
-    { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'Your whole relationship, retold as a private film premiere', tint: '#ff5c7c', hero: true, isNew: true },
-    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Draw tonight\'s date from the deck', tint: '#fb7185', isNew: true },
-    { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: 'One prompt, two pens — sealed until you both write', tint: '#c4b5fd', isNew: true },
-    { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: 'Conversation decks for real talk', tint: '#5eead4', isNew: true },
-    { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: 'Three small missions, every week', tint: '#ec4899', isNew: true },
-];
-
 const EXPERIENCES: Experience[] = [
+    { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck from your real life, on the days that matter', tint: '#e8c97d', hero: true },
+    { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'Your whole relationship, retold as a private film premiere', tint: '#ff5c7c', hero: true },
     { key: 'daily-video', view: 'daily-video', icon: Video, title: 'Daily Video Moments', sub: '5 seconds a day, woven into a film of your fortnight', tint: '#a855f7', hero: true },
+    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Draw tonight\'s date from the deck', tint: '#fb7185' },
+    { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: 'One prompt, two pens — sealed until you both write', tint: '#c4b5fd' },
+    { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: 'Conversation decks for real talk', tint: '#5eead4' },
+    { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: 'Three small missions, every week', tint: '#ec4899' },
     { key: 'weekly-recap', view: 'weekly-recap', icon: Film, title: 'Weekly Story', sub: 'Your week together, retold like an editorial', tint: '#818cf8', hero: true },
-    { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: 'Patterns, love languages & gentle nudges', tint: '#ec4899', hero: true },
+    { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: 'Patterns, love languages & gentle nudges', tint: '#d96aff' },
     { key: 'surprises', view: 'surprises', icon: Gift, title: 'Surprises', sub: 'Scheduled moments of joy', tint: '#8b5cf6', usageKey: 'surprises', usageLimit: 3 },
     { key: 'future-letters', view: 'time-capsule', icon: Lock, title: 'Future Letters', sub: 'Sealed until the day arrives', tint: '#f59e0b', usageKey: 'capsules', usageLimit: 3 },
     { key: 'voice-notes', view: 'voice-notes', icon: Mic, title: 'Voice Notes', sub: 'Your voices, kept forever', tint: '#f43f5e', usageKey: 'voiceNotes', usageLimit: 5 },
-    { key: 'video-memories', view: 'add-memory', icon: Camera, title: 'Video Memories', sub: 'Video in your timeline & keepsakes', tint: '#e879f9' },
 ];
 
 /* ── Free vs Gold — five lines, written like a person ───────────────── */
@@ -307,47 +301,19 @@ const PLANS: Array<{ id: PlanId; name: string; price: string; cadence: string; n
 ];
 
 const PLAN_VALUE_LINE: Record<PlanId, string> = {
-    monthly: 'All twelve experiences and an unlimited vault — for the price of one coffee a month.',
+    monthly: 'Every experience and an unlimited vault — for the price of one coffee a month.',
     yearly: 'Everything Gold does, every single day, for about five cents a day.',
     forever: 'Pay once. Every experience — and every future one — for the rest of your story.',
 };
 
-/* ── Main view ──────────────────────────────────────────────────────── */
+/* ── Live pulse, computed off the critical path ─────────────────────
+   Heavy reads (story chapters, heirloom mint, profile stores) run in an
+   idle slot after first paint so opening the tab never stutters. ────── */
 
-export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
-    const auroraRef = useAuroraParallax();
-    const [profile, setProfile] = useState<CoupleProfile>(() => StorageService.getCoupleProfile());
-    const [selectedPlan, setSelectedPlan] = useState<PlanId>('yearly');
-    const [justUnlocked, setJustUnlocked] = useState(false);
-    const unlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    useEffect(() => () => {
-        if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current);
-    }, []);
-
-    const counts = useMemo(() => {
-        const voiceNotes = StorageService.getVoiceNotes();
-        const memories = StorageService.getMemories();
-        return {
-            memories: memories.length,
-            memoriesWithMedia: memories.filter((m) => m.imageId || m.image || m.storagePath || m.videoId || m.videoStoragePath).length,
-            voiceNotes: voiceNotes.length,
-            voiceSeconds: voiceNotes.reduce((sum, n) => sum + (Number.isFinite(n.duration) ? n.duration : 0), 0),
-            capsules: StorageService.getTimeCapsules().length,
-            surprises: StorageService.getSurprises().filter((s) => !s.delivered).length,
-            vaultBytes: StorageService.getManagedStorageStats().totalBytes,
-        };
-    }, []);
-
-    const isPremium = !!profile.isPremium;
-    const days = useMemo(() => daysTogetherFrom(profile.anniversaryDate), [profile.anniversaryDate]);
-
-    // ── Live pulse: the real, current state of every experience ────────
-    const live = useMemo(() => {
+function buildLiveState(profile: CoupleProfile) {
         const story = buildStoryFilm();
         const plans = PremiumFeaturesStore.getDatePlans();
         const duets = PremiumFeaturesStore.getDuetEntries();
-        const depthsState = PremiumFeaturesStore.getDepthsState();
         const missionState = PremiumFeaturesStore.getMissionState();
         const myName = profile.myName?.trim() || 'You';
         const partnerName = profile.partnerName?.trim() || 'Your love';
@@ -381,7 +347,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         const sealedHeirloom = heirloomSchedule.arrived.find((h) => !collectedIds.has(h.id));
         const nextHeirloom = heirloomSchedule.next;
 
-        return {
+    return {
             sealedHeirloom,
             nextHeirloom,
             heirlooms: sealedHeirloom
@@ -416,7 +382,44 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
             missionsLeft,
             plansMade: plans.length,
         };
-    }, [profile]);
+}
+
+type LiveState = ReturnType<typeof buildLiveState>;
+
+/* ── Main view ──────────────────────────────────────────────────────── */
+
+export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
+    const auroraRef = useAuroraParallax();
+    const [profile, setProfile] = useState<CoupleProfile>(() => StorageService.getCoupleProfile());
+    const [selectedPlan, setSelectedPlan] = useState<PlanId>('yearly');
+    const [justUnlocked, setJustUnlocked] = useState(false);
+    const unlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => () => {
+        if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current);
+    }, []);
+
+    const counts = useMemo(() => {
+        const voiceNotes = StorageService.getVoiceNotes();
+        const memories = StorageService.getMemories();
+        return {
+            memories: memories.length,
+            memoriesWithMedia: memories.filter((m) => m.imageId || m.image || m.storagePath || m.videoId || m.videoStoragePath).length,
+            voiceNotes: voiceNotes.length,
+            voiceSeconds: voiceNotes.reduce((sum, n) => sum + (Number.isFinite(n.duration) ? n.duration : 0), 0),
+            capsules: StorageService.getTimeCapsules().length,
+            surprises: StorageService.getSurprises().filter((s) => !s.delivered).length,
+            vaultBytes: StorageService.getManagedStorageStats().totalBytes,
+        };
+    }, []);
+
+    const isPremium = !!profile.isPremium;
+    const days = useMemo(() => daysTogetherFrom(profile.anniversaryDate), [profile.anniversaryDate]);
+
+    // Live pulse arrives in an idle slot — the view paints instantly and
+    // sublines upgrade from brochure copy to real state a beat later.
+    const [live, setLive] = useState<LiveState | null>(null);
+    useEffect(() => scheduleIdleTask(() => setLive(buildLiveState(profile)), { timeout: 500 }), [profile]);
 
     // Daily video is async (IndexedDB) — load it lazily so the hub chunk
     // stays lean; copy falls back gracefully until it arrives.
@@ -449,14 +452,17 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         if (mins > 0) parts.push(`${asWords(mins)} minute${mins === 1 ? '' : 's'} of your voices`);
         if (counts.capsules > 0) parts.push(`${asWords(counts.capsules)} letter${counts.capsules === 1 ? '' : 's'} waiting for their day`);
         if (counts.surprises > 0) parts.push(`${asWords(counts.surprises)} surprise${counts.surprises === 1 ? '' : 's'} on the way`);
-        if (live.duetsRevealed > 0) parts.push(`${asWords(live.duetsRevealed)} duet${live.duetsRevealed === 1 ? '' : 's'} revealed`);
-        if (live.plansMade > 0) parts.push(`${asWords(live.plansMade)} date${live.plansMade === 1 ? '' : 's'} on the books`);
+        const duetsRevealed = live?.duetsRevealed ?? 0;
+        const plansMade = live?.plansMade ?? 0;
+        if (duetsRevealed > 0) parts.push(`${asWords(duetsRevealed)} duet${duetsRevealed === 1 ? '' : 's'} revealed`);
+        if (plansMade > 0) parts.push(`${asWords(plansMade)} date${plansMade === 1 ? '' : 's'} on the books`);
         if (parts.length === 0) return 'Your first memory starts the vault.';
         const last = parts.pop() as string;
         const lead = parts.length > 0 ? `${parts.join(', ')} and ${last}` : last;
         return `${capitalize(lead)} — all of it synced to both of you.`;
-    }, [counts, live.duetsRevealed, live.plansMade]);
+    }, [counts, live]);
     const liveFor = useCallback((key: string): string | null => {
+        if (!live) return null;
         switch (key) {
             case 'heirlooms': return live.heirlooms;
             case 'our-story': return live.ourStory;
@@ -484,6 +490,9 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
     // ── Tonight: ONE thing, chosen for right now ────────────────────────
     const spotlight = useMemo(() => {
         const items: Array<{ key: string; view: ViewState; icon: Experience['icon']; tint: string; title: string; sub: string }> = [];
+        if (!live) {
+            return { key: 'story', view: 'our-story' as ViewState, icon: Clapperboard, tint: '#ff5c7c', title: 'Screen Our Story', sub: 'The film of you two — re-cut from everything you’ve kept.' };
+        }
         if (live.sealedHeirloom) {
             items.push({ key: 'heirloom', view: 'heirlooms', icon: Gem, tint: '#e8c97d', title: `${live.sealedHeirloom.title} is waiting`, sub: 'An heirloom, struck and sealed. Break the wax together.' });
         }
@@ -587,14 +596,9 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
             <div className="lp-shell-spacer" aria-hidden="true" />
 
             <div className="relative z-10 pb-10">
-                <motion.div
-                    initial="hidden"
-                    animate="visible"
-                    variants={sectionVariants}
-                    className="px-5 mx-auto w-full max-w-[480px]"
-                >
+                <motion.div className="px-5 mx-auto w-full max-w-[480px]">
                     {/* ── Hero ──────────────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="relative flex flex-col items-center text-center pt-9 pb-9">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="relative flex flex-col items-center text-center pt-9 pb-9">
                         <div
                             aria-hidden="true"
                             className="absolute left-1/2 top-6 -translate-x-1/2 w-[130%] h-56 pointer-events-none"
@@ -630,13 +634,13 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     </motion.div>
 
                     {/* ── Membership card ───────────────────────────── */}
-                    <motion.div variants={riseVariants} className="relative">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="relative">
                         {justUnlocked && <UnlockBurst />}
                         <MemberCard profile={profile} isPremium={isPremium} days={days} />
                     </motion.div>
 
                     {/* ── Tonight: live, doable right now ───────────── */}
-                    <motion.div variants={riseVariants} className="mt-8 mb-3 flex items-center gap-3">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-8 mb-3 flex items-center gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
                             Tonight
                         </span>
@@ -648,7 +652,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                         const SpotIcon = spotlight.icon;
                         return (
                             <motion.button
-                                variants={riseVariants}
+                                variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
                                 whileTap={{ scale: 0.98 }}
                                 transition={PRESS_SPRING}
                                 onClick={() => handleOpen(spotlight.view)}
@@ -672,98 +676,10 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                         );
                     })()}
 
-                    {/* ── New this season ───────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
-                        <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            New this season
-                        </span>
-                        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
-                    </motion.div>
-
-                    <div className="flex flex-col gap-3">
-                        {NEW_EXPERIENCES.filter((e) => e.hero).map((exp) => {
-                            const Icon = exp.icon;
-                            return (
-                                <motion.button
-                                    key={exp.key}
-                                    variants={riseVariants}
-                                    whileTap={{ scale: 0.975 }}
-                                    transition={PRESS_SPRING}
-                                    onClick={() => handleOpen(exp.view)}
-                                    className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
-                                    style={{ background: 'linear-gradient(145deg, rgba(255,92,124,0.12) 0%, rgba(255,255,255,0.02) 55%)' }}
-                                >
-                                    <Icon size={118} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                    <div
-                                        className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
-                                        style={{ background: `radial-gradient(circle, ${exp.tint}38 0%, transparent 70%)` }}
-                                    />
-                                    <span
-                                        className="absolute top-3.5 right-3.5 z-10 px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase tracking-[0.2em]"
-                                        style={{ background: '#ff5c7c', color: '#ffffff', boxShadow: '0 4px 12px rgba(255,92,124,0.4)' }}
-                                    >
-                                        New
-                                    </span>
-                                    <div className="relative z-10 flex items-center gap-4">
-                                        <div
-                                            className="flex w-12 h-12 shrink-0 items-center justify-center rounded-2xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 8px 18px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={22} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div className="flex-1 min-w-0 pr-8">
-                                            <h3 className="font-serif text-[1.15rem] leading-tight" style={{ color: 'rgba(255,251,250,0.95)' }}>
-                                                {exp.title}
-                                            </h3>
-                                            {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,248,248,0.45)')}
-                                        </div>
-                                        <ChevronRight size={17} style={{ color: 'rgba(255,248,248,0.28)' }} />
-                                    </div>
-                                </motion.button>
-                            );
-                        })}
-
-                        <div className="grid grid-cols-2 gap-3">
-                            {NEW_EXPERIENCES.filter((e) => !e.hero).map((exp) => {
-                                const Icon = exp.icon;
-                                return (
-                                    <motion.button
-                                        key={exp.key}
-                                        variants={riseVariants}
-                                        whileTap={{ scale: 0.96 }}
-                                        transition={PRESS_SPRING}
-                                        onClick={() => handleOpen(exp.view)}
-                                        className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
-                                    >
-                                        <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                        <span
-                                            className="absolute top-3 right-3 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-[0.18em]"
-                                            style={{ background: '#ff5c7c', color: '#ffffff', boxShadow: '0 4px 12px rgba(255,92,124,0.4)' }}
-                                        >
-                                            New
-                                        </span>
-                                        <div
-                                            className="flex w-10 h-10 items-center justify-center rounded-xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 6px 14px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={18} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.92)' }}>
-                                                {exp.title}
-                                            </h4>
-                                            {renderSub(exp, 'mt-0.5 text-[10.5px] leading-snug', 'rgba(255,248,248,0.38)')}
-                                        </div>
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
                     {/* ── Experiences ───────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-center gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            {isPremium ? 'Your experiences' : 'The collection'}
+                            {isPremium ? 'Your experiences' : 'What Gold unlocks'}
                         </span>
                         <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
                     </motion.div>
@@ -774,7 +690,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             return (
                                 <motion.button
                                     key={exp.key}
-                                    variants={riseVariants}
+                                    variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
                                     whileTap={{ scale: 0.975 }}
                                     transition={PRESS_SPRING}
                                     onClick={() => handleOpen(exp.view)}
@@ -810,7 +726,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                 return (
                                     <motion.button
                                         key={exp.key}
-                                        variants={riseVariants}
+                                        variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
                                         whileTap={{ scale: 0.96 }}
                                         transition={PRESS_SPRING}
                                         onClick={() => handleOpen(exp.view)}
@@ -846,7 +762,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     </div>
 
                     {/* ── The vault: one statement, not a ledger ────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-baseline gap-3">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-baseline gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
                             Already yours
                         </span>
@@ -854,7 +770,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     </motion.div>
 
                     <motion.div
-                        variants={riseVariants}
+                        variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
                         className="lq lq--blur lq--sheen relative overflow-hidden rounded-[1.8rem] p-6"
                     >
                         <Crown size={130} strokeWidth={0.8} className="lq-ghost" style={{ color: '#ff5c7c' }} aria-hidden="true" />
@@ -876,7 +792,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     </motion.div>
 
                     {/* ── Free vs Gold ──────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-center gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
                             Free vs Gold
                         </span>
@@ -884,7 +800,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     </motion.div>
 
                     <motion.div
-                        variants={riseVariants}
+                        variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
                         className="lq rounded-[1.6rem] overflow-hidden"
                     >
                         <div className="grid grid-cols-[1.4fr_0.8fr_1fr] px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -917,7 +833,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     {/* ── Plans + CTA ───────────────────────────────── */}
                     {!isPremium && (
                         <>
-                            <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                            <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-center gap-3">
                                 <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
                                     Choose your pace
                                 </span>
@@ -925,7 +841,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             </motion.div>
 
                             <LayoutGroup id="lp-plans">
-                            <motion.div variants={riseVariants} className="grid grid-cols-3 gap-2.5">
+                            <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="grid grid-cols-3 gap-2.5">
                                 {PLANS.map((plan) => {
                                     const selected = selectedPlan === plan.id;
                                     return (
@@ -980,7 +896,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             </motion.div>
                             </LayoutGroup>
 
-                            <motion.div variants={riseVariants} className="mt-3.5 px-2 text-center" style={{ minHeight: '2.3rem' }}>
+                            <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-3.5 px-2 text-center" style={{ minHeight: '2.3rem' }}>
                                 <AnimatePresence mode="wait" initial={false}>
                                     <motion.p
                                         key={selectedPlan}
@@ -997,7 +913,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             </motion.div>
 
                             <motion.div
-                                variants={riseVariants}
+                                variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
                                 className="mt-3 flex items-start gap-2.5 px-4 py-3.5 rounded-2xl"
                                 style={{ background: 'rgba(255,92,124,0.06)', border: '1px solid rgba(255,92,124,0.16)' }}
                             >
@@ -1007,7 +923,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                 </p>
                             </motion.div>
 
-                            <motion.div variants={riseVariants} className="mt-5">
+                            <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-5">
                                 <motion.button
                                     whileTap={{ scale: 0.97 }}
                                     transition={PRESS_SPRING}
@@ -1037,14 +953,13 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
 
                     {isPremium && (
                         <motion.div
-                            variants={riseVariants}
                             initial={justUnlocked ? { opacity: 0, scale: 0.92 } : undefined}
                             animate={justUnlocked ? { opacity: 1, scale: 1, transition: SOFT_SPRING } : undefined}
                             className="lp-foil mt-8"
                         >
                             <div
                                 className="flex items-center gap-4 px-5 py-5 rounded-[27px]"
-                                style={{ background: 'linear-gradient(150deg, #221026 0%, #160a18 100%)' }}
+                                style={{ background: 'linear-gradient(150deg, #1a1822 0%, #0d0c13 100%)' }}
                             >
                                 <div
                                     className="flex w-11 h-11 shrink-0 items-center justify-center rounded-full"
@@ -1065,14 +980,14 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     )}
 
                     {/* ── The Gold promise ──────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 mb-4 flex items-center gap-3">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-center gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
                             The Gold promise
                         </span>
                         <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
                     </motion.div>
 
-                    <motion.div variants={riseVariants} className="flex flex-col gap-2.5">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="flex flex-col gap-2.5">
                         {[
                             { icon: InfinityIcon, title: 'Every future experience, included', sub: 'New Gold features land inside your membership — never a higher tier.' },
                             { icon: Download, title: 'Your story is yours', sub: 'Export everything, anytime — photos, letters, voices, all of it.' },
@@ -1100,7 +1015,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     </motion.div>
 
                     {/* ── Footer ────────────────────────────────────── */}
-                    <motion.div variants={riseVariants} className="mt-10 flex items-center justify-center gap-2">
+                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 flex items-center justify-center gap-2">
                         <Heart size={11} style={{ color: 'rgba(236,72,153,0.6)' }} fill="currentColor" strokeWidth={0} />
                         <span className="text-[11px]" style={{ color: 'rgba(255,248,248,0.3)' }}>
                             Built for the two of you. Always.
