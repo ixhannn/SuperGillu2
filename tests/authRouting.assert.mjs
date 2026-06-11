@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// Normalize line endings: literal `\n` anchors below false-fail on CRLF
-// working copies (fresh Windows checkouts/worktrees after merges).
+// Normalize CRLF→LF so the literal "\n" markers below match regardless of the
+// platform's checkout line endings (Windows checks out App.tsx with CRLF).
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 const authRenderBlock = appSource.slice(

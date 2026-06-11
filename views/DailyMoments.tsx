@@ -14,7 +14,7 @@ import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { springSmooth } from '../utils/motion';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { PremiumModal } from '../components/PremiumModal';
+import { PremiumModal, type PremiumFeatureContext } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { getDailyMomentCountdown, isDailyMomentExpired } from '../shared/mediaRetention.js';
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
@@ -540,6 +540,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     const [caption, setCaption] = useState('');
     const [selectedPhoto, setSelectedPhoto] = useState<DailyPhoto | null>(null);
     const [showPremiumModal, setShowPremiumModal] = useState(false);
+    const [premiumContext, setPremiumContext] = useState<PremiumFeatureContext>('video');
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoInputRef = useRef<HTMLInputElement>(null);
@@ -658,6 +659,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
             const file = e.target.files[0];
             const profile = StorageService.getCoupleProfile();
             if (!profile.isPremium) {
+                setPremiumContext('video');
                 setShowPremiumModal(true);
                 return;
             }
@@ -685,6 +687,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
         if (!newImage && !newVideo) return;
 
         if (StorageService.hasReachedDailyLimit()) {
+            setPremiumContext('daily');
             setShowPremiumModal(true);
             return;
         }
@@ -874,7 +877,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
                 )}
             </AnimatePresence>
             </div>
-            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+            <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} featureContext={premiumContext} />
         </PullToRefresh>
     );
 };

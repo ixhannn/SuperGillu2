@@ -98,6 +98,13 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   'daily-video': lazyNamedView(() => import('./DailyVideoView'), 'DailyVideoView'),
   'weekly-recap': lazyNamedView(() => import('./WeeklyRecapView'), 'WeeklyRecapView'),
   'storage-console': lazyNamedView(() => import('./StorageConsole'), 'StorageConsoleView'),
+  premium: lazyNamedView(() => import('./Premium'), 'PremiumView'),
+  'our-story': lazyNamedView(() => import('./OurStory'), 'OurStoryView'),
+  'date-studio': lazyNamedView(() => import('./DateStudio'), 'DateStudioView'),
+  'duet-journal': lazyNamedView(() => import('./DuetJournal'), 'DuetJournalView'),
+  depths: lazyNamedView(() => import('./Depths'), 'DepthsView'),
+  'love-missions': lazyNamedView(() => import('./LoveMissions'), 'LoveMissionsView'),
+  heirlooms: lazyNamedView(() => import('./Heirlooms'), 'HeirloomsView'),
 };
 
 export const getViewComponent = (view: ViewState): PreloadableViewComponent =>

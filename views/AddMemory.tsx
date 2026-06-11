@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Camera, X, Video, Mic, Square, Play, Pause, Trash2, Sparkles, ImagePlus } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
-import { PremiumModal } from '../components/PremiumModal';
+import { PremiumModal, type PremiumFeatureContext } from '../components/PremiumModal';
 import { ViewState, Memory } from '../types';
 import { StorageService } from '../services/storage';
 import { NativeMediaService } from '../services/nativeMedia';
@@ -54,6 +54,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   } | null>(null);
   const [selectedMood, setSelectedMood] = useState('love');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [premiumContext, setPremiumContext] = useState<PremiumFeatureContext>('video');
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const confetti = useConfetti();
@@ -225,6 +226,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     if (!file) return;
     const profile = StorageService.getCoupleProfile();
     if (!profile.isPremium) {
+      setPremiumContext('video');
       setShowPremiumModal(true);
       return;
     }
@@ -327,6 +329,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     if (!text.trim() && !image && !video && !pendingAudio) return;
 
     if (StorageService.hasReachedMemoryLimit()) {
+      setPremiumContext('memory');
       setShowPremiumModal(true);
       return;
     }
@@ -965,7 +968,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         )}
       </AnimatePresence>
 
-      <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+      <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} featureContext={premiumContext} />
 
       {/* Full-screen Forge — opens on every photo/video pick before commit */}
       <MediaForge

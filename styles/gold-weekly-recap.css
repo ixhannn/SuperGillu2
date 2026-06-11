@@ -1,0 +1,375 @@
+/* ─────────────────────────────────────────────────────────────────────
+   Weekly Story — "the editorial, after dark"
+   Gold magazine restage of the weekly recap. Builds ON TOP of the shared
+   lp-* stage classes in premium-hub.css — this file only adds layout and
+   the few recap-specific surfaces (grc- prefix). Animations here touch
+   opacity only and are frozen under prefers-reduced-motion.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* ── Document rhythm ────────────────────────────────────────────────── */
+
+.grc-doc {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 1.5rem;
+}
+
+/* Bleed past GoldShell's px-5 column for full-width modules. */
+.grc-bleed {
+  margin-left: -1.25rem;
+  margin-right: -1.25rem;
+}
+
+/* ── Week navigation pill ───────────────────────────────────────────── */
+
+.grc-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px;
+  border-radius: 999px;
+}
+
+.grc-nav__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 246, 230, 0.78);
+}
+
+.grc-nav__btn:disabled {
+  opacity: 0.32;
+}
+
+.grc-nav__label {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(246, 199, 104, 0.8);
+}
+
+/* ── Issue cover ────────────────────────────────────────────────────── */
+
+.grc-cover {
+  position: relative;
+  overflow: hidden;
+  padding: 3.1rem 1.5rem 2.4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.grc-cover__glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.grc-cover__headline {
+  font-size: clamp(2.2rem, 10.5vw, 3rem);
+  line-height: 1.03;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.grc-rule {
+  width: 46px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(246, 199, 104, 0.9), rgba(246, 199, 104, 0.05));
+}
+
+/* ── Numbers — asymmetric editorial grid ────────────────────────────── */
+
+.grc-numbers__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 1.05rem 0.25rem;
+}
+
+.grc-numbers__row:nth-child(even) {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.grc-numbers__row + .grc-numbers__row {
+  border-top: 1px solid rgba(246, 199, 104, 0.12);
+}
+
+.grc-numbers__value {
+  font-size: clamp(2.5rem, 11vw, 3.3rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+
+/* ── Carousel — foil-framed cards ───────────────────────────────────── */
+
+.grc-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 2px 2px 6px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.grc-track::-webkit-scrollbar {
+  display: none;
+}
+
+/* Static foil frame — same gradient family as lp-foil but without the
+   ambient loop, so a row of five cards stays cheap on low-end WebViews. */
+.grc-frame {
+  flex: 0 0 76%;
+  scroll-snap-align: center;
+  border-radius: 26px;
+  padding: 1.5px;
+  background: linear-gradient(
+    135deg,
+    rgba(246, 199, 104, 0.6) 0%,
+    rgba(185, 138, 62, 0.18) 30%,
+    rgba(253, 238, 201, 0.55) 52%,
+    rgba(185, 138, 62, 0.18) 74%,
+    rgba(246, 199, 104, 0.55) 100%
+  );
+}
+
+.grc-frame__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 25px;
+  background: linear-gradient(150deg, #221026 0%, #160a18 100%);
+}
+
+.grc-frame__media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+.grc-frame__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.grc-frame__media-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 55%, rgba(13, 6, 15, 0.55) 100%);
+}
+
+/* ── Headline moment ────────────────────────────────────────────────── */
+
+.grc-headline__hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 27px;
+  aspect-ratio: 4 / 5;
+  background: #160a18;
+}
+
+.grc-headline__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.grc-headline__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 5, 12, 0) 32%, rgba(10, 5, 12, 0.52) 66%, rgba(10, 5, 12, 0.92) 100%);
+}
+
+.grc-headline__content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 1.25rem 1.35rem 1.35rem;
+}
+
+/* ── Film strip — sprocket rails ────────────────────────────────────── */
+
+.grc-film__strip {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 14px 2px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.grc-film__strip::-webkit-scrollbar {
+  display: none;
+}
+
+.grc-film__strip::before,
+.grc-film__strip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 5px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 246, 230, 0.16) 0 7px,
+    transparent 7px 18px
+  );
+  pointer-events: none;
+}
+
+.grc-film__strip::before { top: 2px; }
+.grc-film__strip::after  { bottom: 2px; }
+
+.grc-film__frame {
+  flex: 0 0 auto;
+  width: 88px;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.grc-film__frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.grc-film__frame-empty {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.07), rgba(246, 199, 104, 0.06));
+}
+
+/* ── Streak — a chain of gold coins ─────────────────────────────────── */
+
+.grc-streak__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px;
+}
+
+.grc-streak__row::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(246, 199, 104, 0.28), transparent);
+  pointer-events: none;
+}
+
+.grc-coin {
+  position: relative;
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.grc-coin.is-filled {
+  border: 1px solid rgba(253, 238, 201, 0.55);
+  background: radial-gradient(circle at 32% 28%, #fdeec9 0%, #eab456 55%, #b9802f 100%);
+  box-shadow:
+    0 4px 14px rgba(246, 199, 104, 0.35),
+    inset 0 1px 0 rgba(255, 250, 235, 0.7);
+}
+
+/* ── Pull-quote insight ─────────────────────────────────────────────── */
+
+.grc-insight__mark {
+  position: absolute;
+  top: 2px;
+  left: 16px;
+  font-size: 4.6rem;
+  line-height: 1;
+  color: rgba(246, 199, 104, 0.22);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Letter-to-next-week input ──────────────────────────────────────── */
+
+.grc-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 250, 242, 0.94);
+  font-size: 13px;
+  outline: none;
+}
+
+.grc-input::placeholder {
+  color: rgba(255, 246, 230, 0.3);
+}
+
+.grc-input:focus {
+  border-color: rgba(246, 199, 104, 0.45);
+}
+
+/* ── Loading skeleton ───────────────────────────────────────────────── */
+
+.grc-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 1.25rem;
+}
+
+.grc-skeleton__cover,
+.grc-skeleton__row {
+  border-radius: 1.6rem;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  animation: grc-pulse 1.8s ease-in-out infinite;
+}
+
+.grc-skeleton__cover {
+  height: 220px;
+}
+
+.grc-skeleton__row {
+  height: 88px;
+}
+
+.grc-skeleton__row--wide {
+  height: 150px;
+}
+
+@keyframes grc-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .grc-skeleton__cover,
+  .grc-skeleton__row {
+    animation: none !important;
+  }
+}
