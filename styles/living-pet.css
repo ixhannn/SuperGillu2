@@ -7,6 +7,20 @@
 .sneaky-pet .coco-wrap { width: 100%; height: 100%; position: relative; }
 .sneaky-pet .coco-shadow { display: none; }
 
+/* Soft contact shadow where the pet grips the tile lip — grounds the perch. */
+.sneaky-pet-contact {
+  position: absolute;
+  left: 50%;
+  width: 56%;
+  height: 9px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(74, 20, 38, 0.32), transparent 70%);
+  filter: blur(2.5px);
+  pointer-events: none;
+  z-index: -1;
+}
+
 .sneaky-pet .coco-float {
   width: 100%; height: 100%;
   transform-origin: center bottom;
