@@ -82,6 +82,14 @@ const SHORTCUT_VIEWS: Partial<Record<string, ViewState>> = {
   'daily-moments': 'daily-moments',
 };
 
+// Views a notification tap may navigate to. Payload values outside this
+// list (malformed pushes, future kinds) fall back to doing nothing.
+const NOTIFICATION_VIEWS = new Set<ViewState>([
+  'home', 'us', 'timeline', 'daily-moments', 'profile', 'add-memory',
+  'weekly-recap', 'daily-video', 'open-when', 'surprises', 'time-capsule',
+  'mood-calendar', 'voice-notes', 'partner-intelligence',
+]);
+
 const WhatsNew = React.lazy(() =>
   import('./components/WhatsNew').then((module) => ({ default: module.WhatsNew })),
 );
@@ -529,6 +537,7 @@ const App = () => {
 
     let disposed = false;
     let urlListener: { remove: () => Promise<void> } | null = null;
+    let stopNotificationTaps: (() => void) | null = null;
     void (async () => {
       try {
         const { App: CapacitorApp } = await import('@capacitor/app');
@@ -544,9 +553,24 @@ const App = () => {
       }
     })();
 
+    // Tapping a reminder or partner push lands on the relevant screen
+    // instead of wherever the app last was.
+    void (async () => {
+      try {
+        const stop = await NotificationsService.bindTapRouting((view) => {
+          if (NOTIFICATION_VIEWS.has(view as ViewState)) navigateTo(view as ViewState);
+        });
+        if (disposed) stop();
+        else stopNotificationTaps = stop;
+      } catch (error: unknown) {
+        DiagnosticsService.recordError('notifications.tap_routing', error);
+      }
+    })();
+
     return () => {
       disposed = true;
       stopShareTarget();
+      stopNotificationTaps?.();
       void urlListener?.remove();
     };
   }, [e2eMode, isAuthenticated, isInitialized, showOnboarding, navigateTo]);
