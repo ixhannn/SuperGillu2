@@ -1,0 +1,65 @@
+/*
+ * Idle motion for the sneaking companion. Scoped under .sneaky-pet so it only
+ * styles the reused <CocoPet> art when it is peeking — it never touches the
+ * full pet screen (which has its own copy of these keyframes in coco-pet.css).
+ * Kept faithful to the original so the creature feels identical.
+ */
+.sneaky-pet .coco-wrap { width: 100%; height: 100%; position: relative; }
+.sneaky-pet .coco-shadow { display: none; }
+
+.sneaky-pet .coco-float {
+  width: 100%; height: 100%;
+  transform-origin: center bottom;
+  animation: sneakyFloat 3s ease-in-out infinite;
+}
+@keyframes sneakyFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-6px) scale(1.01); }
+}
+
+.sneaky-pet .coco-head {
+  transform-origin: 160px 220px;
+  animation: sneakyHeadBob 4s ease-in-out infinite;
+}
+@keyframes sneakyHeadBob {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-2deg); }
+  75% { transform: rotate(2deg); }
+}
+
+.sneaky-pet .coco-arm-l { animation: sneakyArm 4s ease-in-out infinite; }
+.sneaky-pet .coco-arm-r { animation: sneakyArm 4s ease-in-out infinite reverse; }
+@keyframes sneakyArm {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-4deg); }
+}
+
+.sneaky-pet .coco-wave { animation: sneakyWave 1.6s ease-in-out !important; }
+@keyframes sneakyWave {
+  0% { transform: rotate(0); }
+  20% { transform: rotate(-60deg); }
+  50% { transform: rotate(-65deg); }
+  80% { transform: rotate(-60deg); }
+  100% { transform: rotate(0); }
+}
+
+.sneaky-pet .coco-sparkle { animation: sneakyTwinkle 2.5s ease-in-out infinite; }
+@keyframes sneakyTwinkle {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.sneaky-pet .coco-horn { transform-origin: center; animation: sneakyHorn 3s ease-in-out infinite; }
+@keyframes sneakyHorn {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(232, 90, 114, 0.3)); }
+  50% { filter: drop-shadow(0 0 9px rgba(232, 90, 114, 0.6)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sneaky-pet .coco-float,
+  .sneaky-pet .coco-head,
+  .sneaky-pet .coco-arm-l,
+  .sneaky-pet .coco-arm-r,
+  .sneaky-pet .coco-sparkle,
+  .sneaky-pet .coco-horn { animation: none !important; }
+}

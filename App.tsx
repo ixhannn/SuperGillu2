@@ -64,8 +64,8 @@ const WhatsNew = React.lazy(() =>
 
 // Lazy so the tiny always-on overlay lands in its own chunk and doesn't bloat
 // the main App bundle (it loads immediately on the first tab render anyway).
-const LivingCompanion = React.lazy(() =>
-  import('./components/LivingCompanion').then((module) => ({ default: module.LivingCompanion })),
+const SneakyPet = React.lazy(() =>
+  import('./components/SneakyPet').then((module) => ({ default: module.SneakyPet })),
 );
 
 const CORE_NAV_PRELOADS: ViewState[] = [
@@ -827,7 +827,7 @@ const App = () => {
               <AuraSignalReceiver />
               {ROOT_TABS.includes(currentView) && (
                 <Suspense fallback={null}>
-                  <LivingCompanion onTap={() => navigateTo('coco-pet')} />
+                  <SneakyPet onTap={() => navigateTo('coco-pet')} />
                 </Suspense>
               )}
               <AnimatePresence>
