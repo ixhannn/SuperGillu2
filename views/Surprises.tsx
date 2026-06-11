@@ -11,6 +11,7 @@ import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { useConfetti } from '../components/Layout';
 import { useSheetDismiss } from '../hooks/useSheetDismiss';
+import { useDraft } from '../hooks/useDraft';
 
 interface SurprisesViewProps {
     setView: (view: ViewState) => void;
@@ -85,9 +86,9 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
     const formSheetDismiss = useSheetDismiss(() => setShowForm(false));
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [activeSurprise, setActiveSurprise] = useState<Surprise | null>(null);
-    const [title, setTitle] = useState('');
-    const [message, setMessage] = useState('');
-    const [scheduledFor, setScheduledFor] = useState('');
+    const [title, setTitle, clearTitleDraft] = useDraft('surprises.title', '');
+    const [message, setMessage, clearMessageDraft] = useDraft('surprises.message', '');
+    const [scheduledFor, setScheduledFor, clearScheduleDraft] = useDraft('surprises.scheduledFor', '');
     const [selectedEmoji, setSelectedEmoji] = useState('🎁');
     const [isSaving, setIsSaving] = useState(false);
 
@@ -132,6 +133,7 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
         setSurprises(StorageService.getSurprises());
 
         setTitle(''); setMessage(''); setScheduledFor(''); setSelectedEmoji('🎁');
+        clearTitleDraft(); clearMessageDraft(); clearScheduleDraft();
         setShowForm(false);
         setIsSaving(false);
         feedback.tap();

@@ -10,6 +10,7 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { useSheetDismiss } from '../hooks/useSheetDismiss';
+import { useDraft } from '../hooks/useDraft';
 import { compressImage } from '../utils/media';
 import { useConfetti } from '../components/Layout';
 import { useLiorMedia } from '../hooks/useLiorImage';
@@ -156,9 +157,9 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
     const formSheetDismiss = useSheetDismiss(() => setShowForm(false));
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-    const [title, setTitle] = useState('');
-    const [message, setMessage] = useState('');
-    const [unlockDate, setUnlockDate] = useState('');
+    const [title, setTitle, clearTitleDraft] = useDraft('time-capsule.title', '');
+    const [message, setMessage, clearMessageDraft] = useDraft('time-capsule.message', '');
+    const [unlockDate, setUnlockDate, clearDateDraft] = useDraft('time-capsule.unlockDate', '');
     const [image, setImage] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -214,6 +215,9 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
         setMessage('');
         setUnlockDate('');
         setImage(null);
+        clearTitleDraft();
+        clearMessageDraft();
+        clearDateDraft();
     };
 
     const handleSave = async () => {

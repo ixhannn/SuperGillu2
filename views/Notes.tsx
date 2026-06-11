@@ -7,6 +7,7 @@ import { StorageService } from '../services/storage';
 import { RelationshipSignals } from '../services/relationshipSignals';
 import { feedback } from '../utils/feedback';
 import { useNativeShell } from '../hooks/useNativeShell';
+import { useDraft } from '../hooks/useDraft';
 
 const staggerContainer = {
   hidden: {},
@@ -30,7 +31,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
   const { keyboardOpen, keyboardHeight } = useNativeShell();
   const [notes, setNotes] = useState<Note[]>([]);
   const [isEditing, setIsEditing] = useState(false);
-  const [currentNote, setCurrentNote] = useState('');
+  const [currentNote, setCurrentNote, clearNoteDraft] = useDraft('notes.compose', '');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [longPressId, setLongPressId] = useState<string | null>(null);
   const [reacted, setReacted] = useState<Set<string>>(new Set());
@@ -78,6 +79,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
     feedback.celebrate();
     setNotes(prev => [note, ...prev]);
     setCurrentNote('');
+    clearNoteDraft();
     setIsEditing(false);
   };
 

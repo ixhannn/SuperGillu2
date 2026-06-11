@@ -8,6 +8,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { Envelope, ViewState } from '../types';
 import { feedback } from '../utils/feedback';
 import { generateId } from '../utils/ids';
+import { useDraft } from '../hooks/useDraft';
 
 const staggerContainer: Variants = {
   hidden: {},
@@ -182,8 +183,9 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [label, setLabel] = useState('');
-  const [content, setContent] = useState('');
+  // Letters are the most painful thing to lose mid-write — draft both fields.
+  const [label, setLabel, clearLabelDraft] = useDraft('open-when.label', '');
+  const [content, setContent, clearContentDraft] = useDraft('open-when.content', '');
   const labelInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -237,6 +239,8 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
     setIsCreating(false);
     setLabel('');
     setContent('');
+    clearLabelDraft();
+    clearContentDraft();
   };
 
   const handleDelete = (id: string, event: React.MouseEvent<HTMLButtonElement>) => {

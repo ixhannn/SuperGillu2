@@ -19,6 +19,7 @@ import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils
 import { getDailyMomentCountdown, isDailyMomentExpired } from '../shared/mediaRetention.js';
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
 import { useSheetDismiss } from '../hooks/useSheetDismiss';
+import { useDraft } from '../hooks/useDraft';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -536,7 +537,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [newImage, setNewImage] = useState<string | null>(null);
     const [newVideo, setNewVideo] = useState<string | null>(null);
-    const [caption, setCaption] = useState('');
+    const [caption, setCaption, clearCaptionDraft] = useDraft('daily-moments.caption', '');
     const [selectedPhoto, setSelectedPhoto] = useState<DailyPhoto | null>(null);
     const [showPremiumModal, setShowPremiumModal] = useState(false);
 
@@ -706,6 +707,7 @@ export const DailyMoments: React.FC<DailyMomentsProps> = ({ setView }) => {
             setNewImage(null);
             setNewVideo(null);
             setCaption('');
+            clearCaptionDraft();
             feedback.celebrate();
             toast.show("Moment added successfully!", "success");
         } catch (error: any) {

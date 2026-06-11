@@ -13,6 +13,7 @@ import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils
 import { useConfetti } from '../components/Layout';
 import { MediaForge, ForgeFrame } from '../components/MediaForge';
 import { ShareTargetService, SHARE_TARGET_EVENT } from '../services/shareTarget';
+import { useDraft } from '../hooks/useDraft';
 
 interface AddMemoryProps {
   setView: (view: ViewState) => void;
@@ -37,7 +38,8 @@ function formatDuration(seconds: number): string {
 type MediaMeta = { kind: 'photo' | 'video'; bytes?: number; durationSec?: number; fileName?: string };
 
 export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
-  const [text, setText] = useState('');
+  // Draft survives process death — losing a written memory hurts here.
+  const [text, setText, clearTextDraft] = useDraft('add-memory.text', '');
   const [image, setImage] = useState<string | null>(null);
   const [video, setVideo] = useState<string | null>(null);
   const [mediaMeta, setMediaMeta] = useState<MediaMeta | null>(null);
@@ -414,6 +416,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       toast.show(e?.message || 'Memory could not be saved.', 'error');
       return;
     }
+    clearTextDraft();
     feedback.celebrate();
     confetti.trigger();
     setView('timeline');
