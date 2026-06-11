@@ -25,6 +25,20 @@ function devCspPlugin(): Plugin {
   };
 }
 
+/**
+ * Ignore a directory only when it sits at the project root. A match-anywhere
+ * glob for .claude would also match when the dev server itself runs inside a
+ * Claude worktree (.claude/worktrees/<name>), which silently disables file
+ * watching/HMR for every source file in that checkout.
+ */
+function ignoreRootDir(dirName: string): (watchedPath: string) => boolean {
+  const abs = path.resolve(__dirname, dirName).replace(/\\/g, '/').toLowerCase();
+  return (watchedPath) => {
+    const normalized = watchedPath.replace(/\\/g, '/').toLowerCase();
+    return normalized === abs || normalized.startsWith(`${abs}/`);
+  };
+}
+
 export default defineConfig(({ mode }) => {
   loadEnv(mode, '.', '');
   return {
@@ -32,7 +46,7 @@ export default defineConfig(({ mode }) => {
       port: 3002,
       host: '0.0.0.0',
       watch: {
-        ignored: ['**/android/**', '**/graphify-out/**', '**/.claude/**', '**/dist/**'],
+        ignored: ['**/android/**', '**/graphify-out/**', ignoreRootDir('.claude'), '**/dist/**'],
       },
     },
     optimizeDeps: {
