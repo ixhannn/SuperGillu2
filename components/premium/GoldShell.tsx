@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { feedback } from '../../utils/feedback';
 import { useNavigation } from '../../App';
-import { GOLD, GOLD_SOFT_SPRING, useAuroraParallax } from './GoldKit';
+import { GOLD, GOLD_SOFT_SPRING, StarField, useAuroraParallax } from './GoldKit';
 import '../../styles/premium-hub.css';
 
 /**
@@ -76,6 +76,7 @@ export const GoldShell: React.FC<GoldShellProps> = ({ eyebrow, onBack, accent, r
         >
             {/* Fixed ambient backdrop — the page scrolls natively above it */}
             <div className="lp-backdrop lp-stage" aria-hidden="true">
+                <StarField />
                 <div className="lp-aurora" ref={auroraRef}>
                     <div className="lp-aurora__blob lp-aurora__blob--gold" />
                     <div className="lp-aurora__blob lp-aurora__blob--rose" />

@@ -76,6 +76,41 @@
   to   { transform: translate3d(50px, -60px, 0) scale(1.12); }
 }
 
+/* ── Starfield (static tile, dirt cheap) ────────────────────────────────
+   One small canvas tile rendered once at module init and repeated as a
+   background-image — the GPU tiles it for free across the whole backdrop.
+   Twinkle lives on a handful of separate sparks (compositor-only opacity). */
+
+.lp-stars {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: repeat;
+  opacity: 0.85;
+}
+
+.lp-star-spark {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: #fff7ea;
+  box-shadow: 0 0 8px 1px rgba(255, 240, 214, 0.8);
+  opacity: 0.2;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lp-star-spark {
+    animation: lp-twinkle 4.6s ease-in-out infinite;
+  }
+}
+
+@keyframes lp-twinkle {
+  0%, 100% { opacity: 0.12; }
+  50%      { opacity: 0.85; }
+}
+
 /* ── Film grain (static, dirt cheap) ────────────────────────────────── */
 
 .lp-grain {
@@ -325,6 +360,7 @@
   .lp-holo-sheen::after,
   .lp-cta::after,
   .lp-burst__p,
+  .lp-star-spark,
   .lp-float {
     animation: none !important;
   }
@@ -521,6 +557,52 @@
   transform: rotate(-12deg);
   pointer-events: none;
   z-index: 0;
+}
+
+/* ── Sealed-art veil — the artwork glows through frosted glass ──────── */
+
+.lp-veil {
+  position: relative;
+  overflow: hidden;
+}
+
+/* The frost itself is baked into the canvas pixels (tiny render
+   stretched up) — this layer only crops the overscan. Tint/dim rides
+   an inline color-matrix filter per art style; no blur kernels here. */
+.lp-veil__art {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(1.14);
+}
+
+.lp-veil__scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(80% 55% at 50% 38%, transparent 0%, rgba(7, 6, 10, 0.38) 100%),
+    linear-gradient(180deg, rgba(7, 6, 10, 0.04) 0%, rgba(7, 6, 10, 0.14) 55%, rgba(7, 6, 10, 0.58) 100%);
+  pointer-events: none;
+}
+
+/* Style chip — names the artwork's edition on a card. Solid-enough
+   plate; backdrop-filter is deliberately absent (N chips would mean
+   N per-frame blur surfaces under Lenis scroll). */
+.lp-style-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: rgba(10, 8, 14, 0.78);
+  border: 1px solid rgba(232, 201, 125, 0.32);
+  color: #e8c97d;
 }
 
 /* Gold-foil numerals (vault receipt, stats). */

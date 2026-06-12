@@ -33,7 +33,8 @@ import {
 } from 'lucide-react';
 import type { CoupleProfile, DatePlan, ViewState } from '../types';
 import { StorageService } from '../services/storage';
-import { useAuroraParallax } from '../components/premium/GoldKit';
+import { StarField, useAuroraParallax } from '../components/premium/GoldKit';
+import { HeirloomThumb, buildHeirloomRenderData } from '../components/premium/heirlooms/HeirloomThumb';
 import { PremiumFeaturesStore, mondayOf } from '../services/premiumFeatures';
 import { buildHeirloomSchedule, getCollectedHeirloomIds } from '../services/heirlooms';
 import { buildStoryFilm } from '../components/premium/our-story/chapters';
@@ -346,10 +347,12 @@ function buildLiveState(profile: CoupleProfile) {
         const collectedIds = getCollectedHeirloomIds();
         const sealedHeirloom = heirloomSchedule.arrived.find((h) => !collectedIds.has(h.id));
         const nextHeirloom = heirloomSchedule.next;
+        const collectedHeirloom = heirloomSchedule.arrived.find((h) => collectedIds.has(h.id));
 
     return {
             sealedHeirloom,
             nextHeirloom,
+            collectedHeirloom,
             heirlooms: sealedHeirloom
                 ? `${sealedHeirloom.title} is struck and sealed.`
                 : nextHeirloom
@@ -512,6 +515,21 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         return items[0];
     }, [live, recordedToday]);
 
+    // Heirloom showcase for the catalogue — the artwork itself sells it.
+    // Sealed piece first (action), then the newest opened one (beauty),
+    // then the next strike (anticipation).
+    const heirloomShowcase = useMemo(() => {
+        if (!live) return null;
+        if (live.sealedHeirloom) return { milestone: live.sealedHeirloom, sealed: true };
+        if (live.collectedHeirloom) return { milestone: live.collectedHeirloom, sealed: false };
+        if (live.nextHeirloom) return { milestone: live.nextHeirloom, sealed: true };
+        return null;
+    }, [live]);
+    const heirloomArt = useMemo(
+        () => (heirloomShowcase ? buildHeirloomRenderData(heirloomShowcase.milestone) : null),
+        [heirloomShowcase],
+    );
+
     const handleUnlock = useCallback(() => {
         if (isPremium) return;
         const current = StorageService.getCoupleProfile();
@@ -583,6 +601,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         >
             {/* Fixed ambient backdrop — the page scrolls natively above it */}
             <div className="lp-backdrop lp-stage" aria-hidden="true">
+                <StarField />
                 <div className="lp-aurora" ref={auroraRef}>
                     <div className="lp-aurora__blob lp-aurora__blob--gold" />
                     <div className="lp-aurora__blob lp-aurora__blob--rose" />
@@ -687,6 +706,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                     <div className="flex flex-col gap-3">
                         {heroExperiences.map((exp) => {
                             const Icon = exp.icon;
+                            const showArt = exp.key === 'heirlooms' && heirloomArt !== null;
                             return (
                                 <motion.button
                                     key={exp.key}
@@ -695,13 +715,45 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                     transition={PRESS_SPRING}
                                     onClick={() => handleOpen(exp.view)}
                                     className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
+                                    style={{
+                                        background: `linear-gradient(135deg, ${exp.tint}1f 0%, rgba(255,255,255,0.02) 58%)`,
+                                        border: `1px solid ${exp.tint}2e`,
+                                    }}
                                 >
                                     <Icon size={104} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
                                     <div
                                         className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
                                         style={{ background: `radial-gradient(circle, ${exp.tint}2e 0%, transparent 70%)` }}
                                     />
-                                    <div className="relative z-10 flex items-center gap-4">
+                                    {/* The artwork itself — a small framed print tucked into the
+                                        row. Sealed pieces stay frosted: the reveal belongs to the
+                                        seal-breaking ceremony, and locked strikes are what Gold
+                                        sells — never shown in the clear on the free hub. */}
+                                    {showArt && heirloomArt && (
+                                        <div
+                                            className="absolute right-4 top-1/2 pointer-events-none"
+                                            aria-hidden="true"
+                                            style={{ transform: 'translateY(-50%) rotate(5deg)' }}
+                                        >
+                                            <div className="lp-foil" style={{ borderRadius: 11, padding: 1.5 }}>
+                                                <div
+                                                    className="overflow-hidden"
+                                                    style={{
+                                                        borderRadius: 10,
+                                                        width: 58,
+                                                        filter: heirloomShowcase?.sealed
+                                                            ? (heirloomShowcase.milestone.style === 'letterpress'
+                                                                ? 'saturate(1.1) brightness(0.7)'
+                                                                : 'saturate(1.45) brightness(1.3)')
+                                                            : undefined,
+                                                    }}
+                                                >
+                                                    <HeirloomThumb data={heirloomArt} scale={0.12} veil={heirloomShowcase?.sealed} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className={`relative z-10 flex items-center gap-4 ${showArt ? 'pr-[76px]' : ''}`}>
                                         <div
                                             className="flex w-12 h-12 shrink-0 items-center justify-center rounded-2xl"
                                             style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 8px 18px ${exp.tint}4d` }}
@@ -714,7 +766,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                             </h3>
                                             {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,248,248,0.42)')}
                                         </div>
-                                        <ChevronRight size={17} style={{ color: 'rgba(255,248,248,0.28)' }} />
+                                        <ChevronRight size={17} className={showArt ? '-mr-1' : ''} style={{ color: 'rgba(255,248,248,0.28)' }} />
                                     </div>
                                 </motion.button>
                             );
@@ -731,6 +783,10 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                                         transition={PRESS_SPRING}
                                         onClick={() => handleOpen(exp.view)}
                                         className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
+                                        style={{
+                                            background: `linear-gradient(150deg, ${exp.tint}17 0%, rgba(255,255,255,0.015) 62%)`,
+                                            border: `1px solid ${exp.tint}26`,
+                                        }}
                                     >
                                         <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
                                         <div

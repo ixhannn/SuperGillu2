@@ -15,11 +15,11 @@ import {
     type HeirloomMilestone,
     type HeirloomStrikeStats,
 } from '../services/heirlooms';
-import { renderHeirloom, type HeirloomRenderData, HEIRLOOM_W, HEIRLOOM_H } from '../components/premium/heirlooms/heirloomArt';
+import { renderHeirloom, HEIRLOOM_W, type HeirloomRenderData } from '../components/premium/heirlooms/heirloomArt';
+import { HeirloomThumb, buildHeirloomRenderData } from '../components/premium/heirlooms/HeirloomThumb';
 import { GoldShell } from '../components/premium/GoldShell';
-import { GOLD, GOLD_PRESS_SPRING, GOLD_SOFT_SPRING, goldRise, goldStagger } from '../components/premium/GoldKit';
+import { GOLD, GOLD_PRESS_SPRING, GOLD_SOFT_SPRING, goldRise, goldStagger, useCardTilt } from '../components/premium/GoldKit';
 import { PremiumModal } from '../components/PremiumModal';
-import { daysTogetherFrom } from '../shared/dateOnly.js';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 
@@ -28,35 +28,6 @@ const ACCENT = '#e8c97d';
 interface HeirloomsViewProps {
     setView: (view: ViewState) => void;
 }
-
-/* ── Canvas thumbnail (deterministic, renders once fonts are ready) ─── */
-
-const HeirloomThumb: React.FC<{ data: HeirloomRenderData; full?: boolean }> = ({ data, full }) => {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        const draw = () => {
-            if (cancelled || !canvasRef.current) return;
-            renderHeirloom(canvasRef.current, data, full ? 1 : 0.34);
-        };
-        if (typeof document !== 'undefined' && document.fonts?.ready) {
-            void document.fonts.ready.then(draw);
-        } else {
-            draw();
-        }
-        return () => { cancelled = true; };
-    }, [data, full]);
-
-    return (
-        <canvas
-            ref={canvasRef}
-            className="block w-full h-auto"
-            style={{ aspectRatio: `${HEIRLOOM_W} / ${HEIRLOOM_H}`, borderRadius: 'inherit' }}
-            aria-label={`${data.milestone.title} — heirloom artwork`}
-        />
-    );
-};
 
 /* ── Share / save straight from a freshly rendered canvas ───────────── */
 
@@ -105,6 +76,48 @@ const WaxSeal: React.FC<{ size?: number; still?: boolean }> = ({ size = 84, stil
     </div>
 );
 
+/* ── Veiled face — the artwork glowing through frosted glass ────────── */
+
+/** Color grade per art style: dark fields get their glow amplified;
+    the cream letterpress is DIMMED instead — brightening near-white
+    paper would clip it and drown the text above. */
+const veilFilterFor = (style: HeirloomMilestone['style'], locked: boolean): string => {
+    if (style === 'letterpress') {
+        return locked ? 'saturate(1.05) brightness(0.56)' : 'saturate(1.1) brightness(0.68)';
+    }
+    return locked ? 'saturate(1.35) brightness(1.1)' : 'saturate(1.45) brightness(1.32)';
+};
+
+const SealedFace: React.FC<{
+    data: HeirloomRenderData;
+    locked: boolean;
+    sealSize?: number;
+    scale?: number;
+    aspect?: string;
+    children?: React.ReactNode;
+}> = ({ data, locked, sealSize = 52, scale = 0.22, aspect = '3 / 4', children }) => (
+    <div className="lp-veil w-full" style={{ aspectRatio: aspect, borderRadius: 'inherit' }}>
+        <div
+            className="lp-veil__art"
+            style={{ filter: veilFilterFor(data.milestone.style, locked) }}
+            aria-hidden="true"
+        >
+            <HeirloomThumb data={data} scale={scale} veil />
+        </div>
+        <div className="lp-veil__scrim" aria-hidden="true" />
+        <span className="lp-style-chip absolute top-2.5 left-2.5 z-10">
+            {HEIRLOOM_STYLE_LABELS[data.milestone.style]}
+        </span>
+        <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center px-3"
+            style={{ background: 'radial-gradient(64% 60% at 50% 50%, rgba(7,6,10,0.5) 0%, rgba(7,6,10,0.26) 56%, transparent 80%)' }}
+        >
+            <WaxSeal size={sealSize} />
+            {children}
+        </div>
+    </div>
+);
+
 /* ── Plaque — edition line, engraving, stats at the strike ──────────── */
 
 const formatStrikeStats = (stats: HeirloomStrikeStats): string => {
@@ -147,8 +160,6 @@ const HeirloomPlaque: React.FC<{ milestone: HeirloomMilestone; delay?: number }>
 
 export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
     const profile = useMemo(() => StorageService.getCoupleProfile(), []);
-    const myName = profile.myName?.trim() || 'You';
-    const partnerName = profile.partnerName?.trim() || 'Your love';
 
     const schedule = useMemo(() => buildHeirloomSchedule(), []);
     const [collected, setCollected] = useState<Set<string>>(() => getCollectedHeirloomIds());
@@ -203,19 +214,18 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
         return () => window.removeEventListener('lior:hardware-back', handleBack);
     }, [ceremony, viewer]);
 
+    // Stable render-data identities — thumbnails draw once per milestone,
+    // not once per re-render (the gallery now shows a canvas in EVERY card).
+    const renderDataCache = useRef(new Map<string, HeirloomRenderData>());
     const renderDataFor = useCallback((m: HeirloomMilestone): HeirloomRenderData => {
-        const moods = StorageService.getMoodEntries().slice(-24).map((e) => e.mood);
-        return {
-            milestone: m,
-            myName,
-            partnerName,
-            dayCount: m.kind === 'days' ? m.value : Math.max(0, daysTogetherFrom(profile.anniversaryDate, m.date)),
-            moods,
-            // What the mint saw on the strike day — keeps the piece stable
-            // as new memories are added afterwards.
-            memoryCount: getHeirloomStatsAtDate(m.date).memories,
-        };
-    }, [myName, partnerName, profile.anniversaryDate]);
+        const cache = renderDataCache.current;
+        let data = cache.get(m.id);
+        if (!data) {
+            data = buildHeirloomRenderData(m);
+            cache.set(m.id, data);
+        }
+        return data;
+    }, []);
 
     const openSealed = useCallback((m: HeirloomMilestone) => {
         feedback.tap();
@@ -251,6 +261,23 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
         () => schedule.arrived.filter((m) => collected.has(m.id)).length,
         [schedule, collected],
     );
+
+    // Marquee: the newest opened piece in full glory — or, before anything
+    // is opened, the oldest sealed strike glowing through its veil.
+    const marquee = useMemo(() => {
+        const newestCollected = schedule.arrived.find((m) => collected.has(m.id));
+        if (newestCollected) return newestCollected;
+        return [...schedule.arrived].reverse().find((m) => !collected.has(m.id)) ?? null;
+    }, [schedule, collected]);
+    const marqueeIsSealed = !!marquee && !collected.has(marquee.id);
+    const tilt = useCardTilt(6, 8, reduceMotion);
+
+    // Crisp on high-DPI: back the marquee canvas with enough device pixels
+    // for its ~330 CSS px display width (the art bakes in its own caption).
+    const marqueeScale = useMemo(() => {
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+        return Math.min(1, (330 * dpr) / HEIRLOOM_W);
+    }, []);
 
     /* ── Overlays (portal rule: AnimatePresence INSIDE the portal) ──── */
 
@@ -367,7 +394,7 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                 </div>
                                 <div className="lp-foil">
                                     <div className="overflow-hidden rounded-[26px]">
-                                        <HeirloomThumb data={renderDataFor(ceremony)} full />
+                                        <HeirloomThumb data={renderDataFor(ceremony)} scale={1} />
                                     </div>
                                 </div>
                                 <HeirloomPlaque milestone={ceremony} delay={0.42} />
@@ -421,7 +448,7 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                         >
                             <div className="lp-foil">
                                 <div className="overflow-hidden rounded-[26px]">
-                                    <HeirloomThumb data={renderDataFor(viewer)} full />
+                                    <HeirloomThumb data={renderDataFor(viewer)} scale={1} />
                                 </div>
                             </div>
                             <HeirloomPlaque milestone={viewer} delay={0.12} />
@@ -469,27 +496,75 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
         <GoldShell eyebrow="Heirlooms" accent={ACCENT}>
             <motion.div initial="hidden" animate="visible" variants={goldStagger}>
                 {/* ── Hero ──────────────────────────────────────────── */}
-                <motion.div variants={goldRise} className="flex flex-col items-center text-center pt-7 pb-8">
-                    <div className="lp-emblem mb-6">
-                        <div
-                            className="relative flex items-center justify-center w-[76px] h-[76px] rounded-[24px]"
-                            style={{
-                                background: 'linear-gradient(140deg, #e8c97d 0%, #a8853e 100%)',
-                                boxShadow: '0 22px 60px rgba(232,201,125,0.3), inset 0 1px 0 rgba(255,250,230,0.5)',
-                            }}
-                        >
-                            <Gem size={34} strokeWidth={1.6} style={{ color: '#3d2d0f' }} />
-                        </div>
-                    </div>
+                <motion.div variants={goldRise} className="flex flex-col items-center text-center pt-6 pb-7">
                     <h1 className="font-serif font-bold leading-[1.05]" style={{ fontSize: 'clamp(2.1rem, 8.6vw, 2.5rem)', letterSpacing: '-0.025em', color: GOLD.textHigh }}>
                         Struck on the days
                         <br />
                         <span className="lp-shimmer-text">that matter</span>
                     </h1>
-                    <p className="mt-4 max-w-[31ch] text-[14px] leading-relaxed" style={{ color: GOLD.textMid }}>
+                    <p className="mt-3.5 max-w-[31ch] text-[14px] leading-relaxed" style={{ color: GOLD.textMid }}>
                         A piece of art, made from your real life, arrives on every milestone. No two couples ever strike the same one.
                     </p>
                 </motion.div>
+
+                {/* ── Marquee — the art itself leads the page ───────── */}
+                {marquee && (
+                    <motion.div variants={goldRise} className="mb-9" style={{ perspective: 1100 }}>
+                        <motion.div
+                            onPointerEnter={tilt.onPointerEnter}
+                            onPointerMove={tilt.onPointerMove}
+                            onPointerLeave={tilt.onPointerLeave}
+                            style={{ rotateX: tilt.rotateX, rotateY: tilt.rotateY, transformStyle: 'preserve-3d' }}
+                            className="lp-foil mx-auto w-full max-w-[330px]"
+                        >
+                            <motion.button
+                                whileTap={{ scale: 0.985 }}
+                                transition={GOLD_PRESS_SPRING}
+                                onClick={() => {
+                                    if (marqueeIsSealed) openSealed(marquee);
+                                    else { feedback.tap(); setViewer(marquee); }
+                                }}
+                                className="relative block w-full overflow-hidden rounded-[26px] text-left"
+                            >
+                                {marqueeIsSealed ? (
+                                    <SealedFace
+                                        data={renderDataFor(marquee)}
+                                        locked={!isHeirloomFree(marquee) && !isPremium}
+                                        sealSize={96}
+                                        scale={0.45}
+                                    >
+                                        <p className="font-serif mt-5 text-[1.45rem] font-bold leading-tight" style={{ color: GOLD.textHigh, letterSpacing: '-0.015em' }}>
+                                            {marquee.title}
+                                        </p>
+                                        <p className="mt-1.5 text-[12px]" style={{ color: GOLD.textMid }}>
+                                            Struck {marquee.dateLabel} · No. {String(marquee.strikeNo).padStart(3, '0')}
+                                        </p>
+                                        <p className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-bold tracking-wide" style={{ color: ACCENT }}>
+                                            {!isHeirloomFree(marquee) && !isPremium && <Lock size={11} strokeWidth={2.6} />}
+                                            {!isHeirloomFree(marquee) && !isPremium ? 'Gold breaks the seal' : 'Tap to break the seal'}
+                                        </p>
+                                    </SealedFace>
+                                ) : (
+                                    <>
+                                        <HeirloomThumb data={renderDataFor(marquee)} scale={marqueeScale} />
+                                        {/* The canvas captions itself — chrome stays on the top edge */}
+                                        <div className="absolute inset-x-0 top-0 flex items-start justify-between px-3 pt-3">
+                                            <span className="lp-style-chip">
+                                                {HEIRLOOM_STYLE_LABELS[marquee.style]} · No. {String(marquee.strikeNo).padStart(3, '0')}
+                                            </span>
+                                            <span
+                                                className="text-[10px] font-bold uppercase tracking-[0.14em] px-2.5 py-1 rounded-full"
+                                                style={{ color: ACCENT, background: 'rgba(10,8,14,0.55)', border: '1px solid rgba(232,201,125,0.32)' }}
+                                            >
+                                                View
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
+                            </motion.button>
+                        </motion.div>
+                    </motion.div>
+                )}
 
                 {!hasSchedule && (
                     <motion.div variants={goldRise} className="lq rounded-[1.6rem] p-6 text-center">
@@ -517,30 +592,65 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                         >
                             <Gem size={130} strokeWidth={1} className="lq-ghost" style={{ color: ACCENT }} aria-hidden="true" />
                             <div className="relative z-10 flex items-center gap-5">
-                                <WaxSeal size={72} />
-                                <div className="min-w-0">
-                                    <p className="font-serif text-[1.35rem] font-bold leading-tight" style={{ color: GOLD.textHigh, letterSpacing: '-0.015em' }}>
+                                <WaxSeal size={68} />
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-serif text-[1.3rem] font-bold leading-tight" style={{ color: GOLD.textHigh, letterSpacing: '-0.015em' }}>
                                         {schedule.next.title}
                                     </p>
-                                    <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: GOLD.textMid }}>
-                                        {schedule.next.daysUntil === 0
-                                            ? 'Arrives today.'
-                                            : schedule.next.daysUntil === 1
-                                                ? 'Arrives tomorrow.'
-                                                : `Arrives in ${schedule.next.daysUntil} days — ${schedule.next.dateLabel}.`}
-                                    </p>
+                                    <div className="mt-1.5 flex items-baseline gap-2">
+                                        {schedule.next.daysUntil <= 1 ? (
+                                            <span className="font-serif text-[1.9rem] font-bold leading-none" style={{ color: '#f3dca4' }}>
+                                                {schedule.next.daysUntil === 0 ? 'Today' : 'Tomorrow'}
+                                            </span>
+                                        ) : (
+                                            <>
+                                                <span className="font-serif text-[2.1rem] font-bold leading-none" style={{ color: '#f3dca4' }}>
+                                                    {schedule.next.daysUntil.toLocaleString()}
+                                                </span>
+                                                <span className="text-[12.5px] font-medium" style={{ color: GOLD.textMid }}>
+                                                    days away
+                                                </span>
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                                        <span className="lp-style-chip">
+                                            {HEIRLOOM_STYLE_LABELS[schedule.next.style]} · No. {String(schedule.next.strikeNo).padStart(3, '0')}
+                                        </span>
+                                        <span className="text-[11px]" style={{ color: GOLD.textLow }}>
+                                            {schedule.next.dateLabel}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                             {/* How far between the last strike and this one */}
                             <div className="relative z-10 mt-5" aria-hidden="true">
-                                <div className="h-[3px] w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                                <div className="relative h-[3px] w-full rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
                                     <motion.div
-                                        className="h-full w-full rounded-full"
-                                        style={{ transformOrigin: 'left', background: `linear-gradient(90deg, ${ACCENT} 0%, #ff8fa6 100%)` }}
-                                        initial={{ scaleX: reduceMotion ? schedule.progressToNext : 0 }}
-                                        whileInView={{ scaleX: schedule.progressToNext }}
+                                        className="absolute inset-y-0 left-0 rounded-full"
+                                        style={{
+                                            width: `${Math.max(2, schedule.progressToNext * 100)}%`,
+                                            transformOrigin: 'left',
+                                            background: `linear-gradient(90deg, ${ACCENT} 0%, #ff8fa6 100%)`,
+                                        }}
+                                        initial={{ scaleX: reduceMotion ? 1 : 0 }}
+                                        whileInView={{ scaleX: 1 }}
                                         viewport={{ once: true, amount: 0.4 }}
                                         transition={GOLD_SOFT_SPRING}
+                                    />
+                                    {/* Comet head riding the leading edge */}
+                                    <motion.span
+                                        className="absolute top-1/2 w-[7px] h-[7px] rounded-full"
+                                        style={{
+                                            left: `calc(${Math.max(2, schedule.progressToNext * 100)}% - 4px)`,
+                                            translateY: '-50%',
+                                            background: '#ffe9b8',
+                                            boxShadow: '0 0 12px 2px rgba(232,201,125,0.8)',
+                                        }}
+                                        initial={{ opacity: reduceMotion ? 1 : 0, scale: reduceMotion ? 1 : 0.4 }}
+                                        whileInView={{ opacity: 1, scale: 1 }}
+                                        viewport={{ once: true, amount: 0.4 }}
+                                        transition={{ ...GOLD_SOFT_SPRING, delay: reduceMotion ? 0 : 0.34 }}
                                     />
                                 </div>
                             </div>
@@ -595,22 +705,20 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                                                 </div>
                                                 <div className="px-2 pt-2 pb-1.5">
                                                     <p className="text-[12px] font-semibold truncate" style={{ color: 'rgba(255,251,250,0.9)' }}>{m.title}</p>
-                                                    <p className="text-[10px] mt-0.5" style={{ color: GOLD.textLow }}>No. {String(m.strikeNo).padStart(3, '0')}</p>
+                                                    <p className="text-[10px] mt-0.5" style={{ color: GOLD.textLow }}>
+                                                        {HEIRLOOM_STYLE_LABELS[m.style]} · No. {String(m.strikeNo).padStart(3, '0')}
+                                                    </p>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div
-                                                className="flex flex-col items-center justify-center text-center px-3"
-                                                style={{ aspectRatio: '3 / 4.35', background: 'linear-gradient(160deg, rgba(232,201,125,0.08) 0%, rgba(255,255,255,0.015) 70%)' }}
-                                            >
-                                                <WaxSeal size={58} />
-                                                <p className="mt-3.5 text-[12.5px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.9)' }}>{m.title}</p>
-                                                <p className="mt-1 text-[10px]" style={{ color: GOLD.textLow }}>{m.dateLabel}</p>
-                                                <p className="mt-3 inline-flex items-center gap-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: ACCENT }}>
+                                            <SealedFace data={renderDataFor(m)} locked={locked} sealSize={52} aspect="3 / 4.35">
+                                                <p className="mt-3 text-[12.5px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.92)' }}>{m.title}</p>
+                                                <p className="mt-1 text-[10px]" style={{ color: 'rgba(255,248,248,0.5)' }}>{m.dateLabel}</p>
+                                                <p className="mt-2.5 inline-flex items-center gap-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: ACCENT }}>
                                                     {locked && <Lock size={10} strokeWidth={2.6} />}
                                                     {locked ? 'Gold opens it' : 'Sealed — tap to open'}
                                                 </p>
-                                            </div>
+                                            </SealedFace>
                                         )}
                                     </motion.button>
                                 );

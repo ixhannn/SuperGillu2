@@ -144,7 +144,14 @@ const drawCaption = (
     ctx.fillText(`L I O R   ·   No. ${String(m.strikeNo).padStart(3, '0')}`, cx, HEIRLOOM_H - 46);
 };
 
+// Grain is the LAST rng consumer in every style, so skipping it at small
+// scales never shifts the random state that shaped the artwork itself —
+// the piece stays deterministic. Below ~0.3 the speckle is sub-pixel
+// (and usually veiled), so the 2,600 fillRects are pure waste there.
+let grainScale = 1;
+
 const drawGrain = (ctx: CanvasRenderingContext2D, rng: () => number, strength: number) => {
+    if (grainScale < 0.3) return;
     ctx.save();
     ctx.globalAlpha = strength;
     for (let i = 0; i < 2600; i++) {
@@ -669,6 +676,7 @@ export function renderHeirloom(canvas: HTMLCanvasElement, data: HeirloomRenderDa
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
+    grainScale = pixelScale;
 
     const rng = mulberry32(data.milestone.seed);
     if (data.milestone.style === 'rings') renderRings(ctx, data, rng);
