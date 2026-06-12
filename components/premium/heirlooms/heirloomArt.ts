@@ -144,6 +144,39 @@ const drawCaption = (
     ctx.fillText(`L I O R   ·   No. ${String(m.strikeNo).padStart(3, '0')}`, cx, HEIRLOOM_H - 46);
 };
 
+/** Soft radial darkening toward the edges — gives every piece depth. */
+const drawVignette = (ctx: CanvasRenderingContext2D, strength = 0.42, tint = '2,1,5') => {
+    const g = ctx.createRadialGradient(
+        HEIRLOOM_W / 2, HEIRLOOM_H * 0.42, HEIRLOOM_H * 0.22,
+        HEIRLOOM_W / 2, HEIRLOOM_H * 0.48, HEIRLOOM_H * 0.8,
+    );
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(${tint},${strength})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, HEIRLOOM_W, HEIRLOOM_H);
+};
+
+/** Four-point diffraction spike — the photographic star glint. */
+const drawSpike = (ctx: CanvasRenderingContext2D, x: number, y: number, len: number, color: string) => {
+    const arm = (dx: number, dy: number, l: number) => {
+        const g = ctx.createLinearGradient(x, y, x + dx * l, y + dy * l);
+        g.addColorStop(0, color);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.strokeStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + dx * l, y + dy * l);
+        ctx.stroke();
+    };
+    ctx.save();
+    ctx.lineWidth = 1.8;
+    arm(1, 0, len); arm(-1, 0, len); arm(0, 1, len); arm(0, -1, len);
+    ctx.lineWidth = 1.1;
+    const d = len * 0.45;
+    arm(0.707, 0.707, d); arm(-0.707, 0.707, d); arm(0.707, -0.707, d); arm(-0.707, -0.707, d);
+    ctx.restore();
+};
+
 // Grain is the LAST rng consumer in every style, so skipping it at small
 // scales never shifts the random state that shaped the artwork itself —
 // the piece stays deterministic. Below ~0.3 the speckle is sub-pixel
@@ -177,6 +210,24 @@ const renderConstellation = (ctx: CanvasRenderingContext2D, data: HeirloomRender
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, HEIRLOOM_W, HEIRLOOM_H);
 
+    // Milky way — a soft band of light crossing the sky diagonally
+    ctx.save();
+    ctx.translate(HEIRLOOM_W / 2, 520);
+    ctx.rotate(-0.52 + rng() * 0.14);
+    ctx.scale(1, 0.22);
+    const band = ctx.createRadialGradient(0, 0, 0, 0, 0, 760);
+    band.addColorStop(0, 'rgba(236,228,255,0.085)');
+    band.addColorStop(0.55, 'rgba(220,206,245,0.045)');
+    band.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(-800, -800, 1600, 1600);
+    const core = ctx.createRadialGradient(120, 0, 0, 120, 0, 320);
+    core.addColorStop(0, 'rgba(255,244,229,0.07)');
+    core.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
+    ctx.fillRect(-800, -800, 1600, 1600);
+    ctx.restore();
+
     // Nebula breaths
     for (let i = 0; i < 3; i++) {
         const gx = 200 + rng() * (HEIRLOOM_W - 400);
@@ -189,28 +240,89 @@ const renderConstellation = (ctx: CanvasRenderingContext2D, data: HeirloomRender
         ctx.fillRect(0, 0, HEIRLOOM_W, HEIRLOOM_H);
     }
 
-    // Distant stars
+    // Distant stars — a few of the brightest get photographic glints
     for (let i = 0; i < 340; i++) {
         const x = 70 + rng() * (HEIRLOOM_W - 140);
         const y = 70 + rng() * (HEIRLOOM_H - 360);
         const r = rng() * 1.5 + 0.3;
-        ctx.fillStyle = `rgba(255,250,242,${0.12 + rng() * 0.3})`;
+        const a = 0.12 + rng() * 0.3;
+        ctx.fillStyle = `rgba(255,250,242,${a})`;
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
+        if (i % 47 === 0 && r > 1.1) {
+            drawSpike(ctx, x, y, 10 + r * 6, `rgba(255,250,242,${a * 0.8})`);
+        }
     }
+
+    // One shooting star, caught mid-fall
+    {
+        const sx = 180 + rng() * 500;
+        const sy = 160 + rng() * 220;
+        const len = 150 + rng() * 110;
+        const streak = ctx.createLinearGradient(sx, sy, sx + len, sy + len * 0.42);
+        streak.addColorStop(0, 'rgba(0,0,0,0)');
+        streak.addColorStop(0.8, 'rgba(255,250,240,0.5)');
+        streak.addColorStop(1, 'rgba(255,255,252,0.9)');
+        ctx.save();
+        ctx.strokeStyle = streak;
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + len, sy + len * 0.42);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,252,0.95)';
+        ctx.beginPath();
+        ctx.arc(sx + len, sy + len * 0.42, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Dark hills along the horizon — the sky belongs to somewhere real
+    const hill = (base: number, amp: number, phase: number, fill: string, rim: string) => {
+        ctx.beginPath();
+        ctx.moveTo(0, HEIRLOOM_H);
+        for (let x = 0; x <= HEIRLOOM_W; x += 12) {
+            const y = base
+                + Math.sin((x / HEIRLOOM_W) * Math.PI * 1.7 + phase) * amp
+                + Math.sin((x / HEIRLOOM_W) * Math.PI * 4.3 + phase * 2) * amp * 0.3;
+            ctx.lineTo(x, y);
+        }
+        ctx.lineTo(HEIRLOOM_W, HEIRLOOM_H);
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        ctx.strokeStyle = rim;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let x = 0; x <= HEIRLOOM_W; x += 12) {
+            const y = base
+                + Math.sin((x / HEIRLOOM_W) * Math.PI * 1.7 + phase) * amp
+                + Math.sin((x / HEIRLOOM_W) * Math.PI * 4.3 + phase * 2) * amp * 0.3;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+    };
+    const hillPhase = rng() * Math.PI * 2;
+    hill(1006, 26, hillPhase, '#0b0a13', 'rgba(196,181,253,0.10)');
+    hill(1046, 20, hillPhase + 1.6, '#080710', 'rgba(232,201,125,0.08)');
 
     // Their stars — one per memory (clamped), strung on a winding path
     const starCount = Math.max(7, Math.min(18, data.memoryCount || 9));
     const stars: Array<{ x: number; y: number; r: number }> = [];
     let px = 170 + rng() * 120;
-    let py = 980 - rng() * 80;
+    let py = 920 - rng() * 80;
     for (let i = 0; i < starCount; i++) {
         const t = i / (starCount - 1);
         px = 150 + t * (HEIRLOOM_W - 300) + (rng() - 0.5) * 130;
-        py = 950 - t * 660 + Math.sin(t * Math.PI * (2 + rng())) * 130 + (rng() - 0.5) * 70;
+        py = 880 - t * 600 + Math.sin(t * Math.PI * (2 + rng())) * 120 + (rng() - 0.5) * 70;
         px = Math.max(120, Math.min(HEIRLOOM_W - 120, px));
-        py = Math.max(150, Math.min(1030, py));
+        py = Math.max(150, Math.min(950, py));
         stars.push({ x: px, y: py, r: 4 + rng() * 6 });
     }
 
@@ -235,7 +347,9 @@ const renderConstellation = (ctx: CanvasRenderingContext2D, data: HeirloomRender
 
     // The stars themselves
     stars.forEach((s, i) => {
-        const tint = i === 0 ? '#ffffff' : palette[i % palette.length];
+        const isFirst = i === 0;
+        const isLast = i === stars.length - 1;
+        const tint = isFirst ? '#ffffff' : isLast ? '#e8c97d' : palette[i % palette.length];
         const halo = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 5);
         halo.addColorStop(0, withAlpha(tint, 0.55));
         halo.addColorStop(1, 'rgba(0,0,0,0)');
@@ -244,24 +358,17 @@ const renderConstellation = (ctx: CanvasRenderingContext2D, data: HeirloomRender
         ctx.arc(s.x, s.y, s.r * 5, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = i === 0 ? '#fffdf7' : withAlpha(tint, 0.95);
+        ctx.fillStyle = isFirst ? '#fffdf7' : withAlpha(tint, 0.95);
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
 
-        // First star gets the cross sparkle — where it all began
-        if (i === 0) {
-            ctx.strokeStyle = 'rgba(255,253,247,0.85)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(s.x - s.r * 4.6, s.y);
-            ctx.lineTo(s.x + s.r * 4.6, s.y);
-            ctx.moveTo(s.x, s.y - s.r * 4.6);
-            ctx.lineTo(s.x, s.y + s.r * 4.6);
-            ctx.stroke();
-        }
+        // Where it began and where they are now both get the glint
+        if (isFirst) drawSpike(ctx, s.x, s.y, s.r * 5.4, 'rgba(255,253,247,0.85)');
+        if (isLast) drawSpike(ctx, s.x, s.y, s.r * 4.6, 'rgba(243,220,164,0.8)');
     });
 
+    drawVignette(ctx, 0.4);
     drawGrain(ctx, rng, 0.05);
     drawFrame(ctx, '#fffaf0');
     drawCaption(ctx, data, '#fffaf0', '#e8c97d');
@@ -283,6 +390,16 @@ const renderRings = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rn
     const months = Math.max(6, Math.min(26, Math.ceil(data.dayCount / 30)));
     const maxR = 420;
 
+    // Warm core the strata grow out of
+    {
+        const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 220);
+        coreGlow.addColorStop(0, withAlpha(palette[0], 0.22));
+        coreGlow.addColorStop(0.55, withAlpha(palette[1], 0.08));
+        coreGlow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = coreGlow;
+        ctx.fillRect(0, 0, HEIRLOOM_W, HEIRLOOM_H);
+    }
+
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < months; i++) {
@@ -292,20 +409,48 @@ const renderRings = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rn
         const wobbleSeed = rng() * Math.PI * 2;
         const wobbleAmp = 3 + rng() * 9;
         const lobes = 3 + Math.floor(rng() * 4);
+        const isYearRing = (i + 1) % 12 === 0;
 
-        ctx.strokeStyle = withAlpha(tint, 0.34 - t * 0.1);
-        ctx.shadowColor = withAlpha(tint, 0.5);
-        ctx.shadowBlur = 16;
-        ctx.lineWidth = 2.6 + (1 - t) * 2;
-        ctx.beginPath();
-        for (let a = 0; a <= Math.PI * 2 + 0.05; a += 0.04) {
-            const r = baseR + Math.sin(a * lobes + wobbleSeed) * wobbleAmp + Math.sin(a * 11 + wobbleSeed * 2) * 2;
-            const x = cx + Math.cos(a) * r;
-            const y = cy + Math.sin(a) * r * 0.96;
-            if (a === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
+        const trace = () => {
+            ctx.beginPath();
+            for (let a = 0; a <= Math.PI * 2 + 0.05; a += 0.04) {
+                const r = baseR + Math.sin(a * lobes + wobbleSeed) * wobbleAmp + Math.sin(a * 11 + wobbleSeed * 2) * 2;
+                const x = cx + Math.cos(a) * r;
+                const y = cy + Math.sin(a) * r * 0.96;
+                if (a === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+        };
+
+        // Pass 1 — broad glow
+        ctx.strokeStyle = withAlpha(tint, 0.2 - t * 0.06);
+        ctx.shadowColor = withAlpha(tint, 0.55);
+        ctx.shadowBlur = 22;
+        ctx.lineWidth = 3.4 + (1 - t) * 2;
+        trace();
         ctx.stroke();
+
+        // Pass 2 — crisp filament riding the glow; year rings strike gold
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = isYearRing
+            ? 'rgba(243,220,164,0.6)'
+            : withAlpha(tint, 0.34 - t * 0.08);
+        ctx.lineWidth = isYearRing ? 1.8 : 1.1;
+        trace();
+        ctx.stroke();
+    }
+
+    // Dust between the strata — the years have texture
+    for (let i = 0; i < 150; i++) {
+        const a = rng() * Math.PI * 2;
+        const rr = 60 + rng() * (maxR - 40);
+        const x = cx + Math.cos(a) * rr;
+        const y = cy + Math.sin(a) * rr * 0.96;
+        const tint = palette[Math.floor(rng() * palette.length)];
+        ctx.fillStyle = withAlpha(tint, 0.05 + rng() * 0.2);
+        ctx.beginPath();
+        ctx.arc(x, y, 0.5 + rng() * 1.4, 0, Math.PI * 2);
+        ctx.fill();
     }
     ctx.restore();
 
@@ -322,6 +467,7 @@ const renderRings = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rn
     ctx.font = `600 30px ${SANS}`;
     ctx.fillText(data.milestone.kind === 'year' ? (data.milestone.value === 1 ? 'YEAR' : 'YEARS') : 'DAYS', cx, cy + 104);
 
+    drawVignette(ctx, 0.44);
     drawGrain(ctx, rng, 0.05);
     drawFrame(ctx, '#fffaf0');
     drawCaption(ctx, data, '#fffaf0', palette[0]);
@@ -357,12 +503,58 @@ const renderLetterpress = (ctx: CanvasRenderingContext2D, data: HeirloomRenderDa
     const cx = HEIRLOOM_W / 2;
     ctx.textAlign = 'center';
 
+    // Corner flourishes — pressed double angles, the printer's signature
+    const flourish = (x: number, y: number, sx: number, sy: number) => {
+        ctx.save();
+        ctx.strokeStyle = withAlpha(ink, 0.55);
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(x + 54 * sx, y);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x, y + 54 * sy);
+        ctx.stroke();
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x + 40 * sx, y + 12 * sy);
+        ctx.lineTo(x + 12 * sx, y + 12 * sy);
+        ctx.lineTo(x + 12 * sx, y + 40 * sy);
+        ctx.stroke();
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.arc(x + 12 * sx, y + 12 * sy, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    };
+    flourish(96, 96, 1, 1);
+    flourish(HEIRLOOM_W - 96, 96, -1, 1);
+    flourish(96, HEIRLOOM_H - 96, 1, -1);
+    flourish(HEIRLOOM_W - 96, HEIRLOOM_H - 96, -1, -1);
+
     // Top ornament
     ctx.fillStyle = withAlpha(ink, 0.75);
     ctx.font = `600 30px ${SANS}`;
     ctx.fillText('— ✦ —', cx, 220);
     ctx.font = `700 32px ${SANS}`;
     ctx.fillText('T O G E T H E R', cx, 290);
+
+    // Double rules framing the numeral block, in pressed red
+    const rule = (y: number) => {
+        ctx.save();
+        ctx.strokeStyle = withAlpha(accent, 0.55);
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(cx - 190, y);
+        ctx.lineTo(cx + 190, y);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx - 190, y + 7);
+        ctx.lineTo(cx + 190, y + 7);
+        ctx.stroke();
+        ctx.restore();
+    };
+    rule(352);
+    rule(800);
 
     // The numeral, pressed deep
     const numeral = data.milestone.kind === 'year' ? String(data.milestone.value) : data.dayCount.toLocaleString();
@@ -392,6 +584,12 @@ const renderLetterpress = (ctx: CanvasRenderingContext2D, data: HeirloomRenderDa
     ctx.font = `700 26px ${SERIF}`;
     ctx.fillText('L', cx, 890);
 
+    // Quiet ornament row before the caption block
+    ctx.fillStyle = withAlpha(ink, 0.45);
+    ctx.font = `600 24px ${SANS}`;
+    ctx.fillText('✦   ✦   ✦', cx, 1010);
+
+    drawVignette(ctx, 0.14, '64,46,20');
     drawGrain(ctx, rng, 0.04);
     drawFrame(ctx, ink);
     drawCaption(ctx, data, ink, accent);
@@ -420,6 +618,24 @@ const renderOrbit = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rn
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
+    }
+
+    // Two far galaxies — other stories, very far away
+    for (let i = 0; i < 2; i++) {
+        const gx = 160 + rng() * (HEIRLOOM_W - 320);
+        const gy = 140 + rng() * 420;
+        const rot = rng() * Math.PI;
+        ctx.save();
+        ctx.translate(gx, gy);
+        ctx.rotate(rot);
+        ctx.scale(1, 0.36);
+        const gal = ctx.createRadialGradient(0, 0, 0, 0, 0, 54);
+        gal.addColorStop(0, 'rgba(243,228,255,0.16)');
+        gal.addColorStop(0.45, 'rgba(206,196,240,0.07)');
+        gal.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gal;
+        ctx.fillRect(-60, -60, 120, 120);
+        ctx.restore();
     }
 
     // Two elliptical paths around a shared center, tilted against each other
@@ -490,6 +706,22 @@ const renderOrbit = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rn
     drawTrail(1, uStar - gap, 1, ROSE);
     drawTrail(-1, -uStar + gap, -1, VIOLET);
 
+    // Dust shed along each trail — travel leaves traces
+    const shedDust = (sign: 1 | -1, head: number, dir: 1 | -1, tint: string) => {
+        for (let i = 0; i < 16; i++) {
+            const t = rng();
+            const p = pointOn(sign, head - dir * span * (1 - t));
+            const jx = (rng() - 0.5) * 26;
+            const jy = (rng() - 0.5) * 26;
+            ctx.fillStyle = withAlpha(tint, Math.pow(t, 1.4) * 0.4 + 0.03);
+            ctx.beginPath();
+            ctx.arc(p.x + jx, p.y + jy, 0.7 + rng() * 1.6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    };
+    shedDust(1, uStar - gap, 1, ROSE);
+    shedDust(-1, -uStar + gap, -1, VIOLET);
+
     // The two of them, holding just short of the meeting point
     const drawBody = (p: { x: number; y: number }, tint: string, r: number) => {
         const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 6);
@@ -532,6 +764,16 @@ const renderOrbit = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rn
     ctx.beginPath();
     ctx.arc(meet.x, meet.y, 5, 0, Math.PI * 2);
     ctx.fill();
+    // Ripples spreading from the meeting point
+    ctx.strokeStyle = 'rgba(255,253,247,0.3)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(meet.x, meet.y, 24, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,253,247,0.12)';
+    ctx.beginPath();
+    ctx.arc(meet.x, meet.y, 42, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
 
     // Day numeral, small, at the shared center of gravity
@@ -543,6 +785,7 @@ const renderOrbit = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData, rn
     ctx.font = `700 26px ${SANS}`;
     ctx.fillText(label, cx, cy + 9);
 
+    drawVignette(ctx, 0.42);
     drawGrain(ctx, rng, 0.05);
     drawFrame(ctx, '#fffaf0');
     drawCaption(ctx, data, '#fffaf0', '#ff8fa6');
@@ -663,6 +906,7 @@ const renderTapestry = (ctx: CanvasRenderingContext2D, data: HeirloomRenderData,
         ctx.fill();
     }
 
+    drawVignette(ctx, 0.34);
     drawGrain(ctx, rng, 0.045);
     drawFrame(ctx, '#fffaf0');
     drawCaption(ctx, data, '#fffaf0', palette[0]);
