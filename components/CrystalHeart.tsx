@@ -11,6 +11,7 @@
  */
 
 import React, { useRef, useEffect } from 'react';
+import { readThemeRgbTriplet } from '../utils/themeVars';
 
 interface ParticleHeartProps {
   active: boolean;
@@ -74,10 +75,18 @@ const eIOC = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
 const eOE = (t: number) => (t === 1 ? 1 : 1 - 2 ** (-10 * t));
 
 // ── Palette ─────────────────────────────────────────────────────
-const PAL = [
-  [215, 48, 68], [225, 65, 82], [180, 35, 58],
-  [240, 110, 120], [250, 210, 150], [255, 250, 240],
-];
+// Built from the active theme each time the effect runs: deep/base pigments
+// from the lior ramp, a soft highlight from the heart token, plus warm whites.
+function buildPalette(): number[][] {
+  const parse = (name: string, fallback: string): number[] =>
+    readThemeRgbTriplet(name, fallback).split(',').map((v) => Number(v) | 0);
+  const deep = parse('--color-lior-600', '215,48,68');
+  const base = parse('--color-lior-500', '225,65,82');
+  const soft = parse('--theme-heart-a-rgb', '250,210,150');
+  const dark = deep.map((c) => Math.round(c * 0.82));
+  const light = base.map((c) => Math.min(255, Math.round(c + (255 - c) * 0.35)));
+  return [deep, base, dark, light, soft, [255, 250, 240]];
+}
 
 // ── Constants ───────────────────────────────────────────────────
 const N = 200;
@@ -133,6 +142,7 @@ export const ParticleHeart: React.FC<ParticleHeartProps> = ({ active, onComplete
       x.fillRect(0, 0, sz, sz);
       return c;
     };
+    const PAL = buildPalette();
     const cores = PAL.map(c => mkSpr(24, c[0], c[1], c[2], true));
     const glows = PAL.map(c => mkSpr(48, c[0], c[1], c[2], false));
 
@@ -212,12 +222,15 @@ export const ParticleHeart: React.FC<ParticleHeartProps> = ({ active, onComplete
       return o * o * a + 2 * o * t * c + t * t * b;
     };
 
-    // Pre-compute volumetric glow gradient
+    // Pre-compute volumetric glow gradient — tinted by the theme base pigment
+    const [gbR, gbG, gbB] = PAL[1];
+    const glowStop = (k: number) =>
+      `${Math.round(gbR * k)},${Math.round(gbG * k)},${Math.round(gbB * k)}`;
     const holdGlow = ctx.createRadialGradient(hCx, hCy + 20, 0, hCx, hCy + 20, 140);
-    holdGlow.addColorStop(0, 'rgba(225,55,75,0.26)');
-    holdGlow.addColorStop(0.35, 'rgba(210,45,65,0.12)');
-    holdGlow.addColorStop(0.7, 'rgba(190,35,55,0.03)');
-    holdGlow.addColorStop(1, 'rgba(170,25,45,0)');
+    holdGlow.addColorStop(0, `rgba(${glowStop(1)},0.26)`);
+    holdGlow.addColorStop(0.35, `rgba(${glowStop(0.93)},0.12)`);
+    holdGlow.addColorStop(0.7, `rgba(${glowStop(0.85)},0.03)`);
+    holdGlow.addColorStop(1, `rgba(${glowStop(0.78)},0)`);
 
     // ── Constellation network lines (Auros-style) ─────────
     const CLOSE2 = 22 * 22;
@@ -225,7 +238,9 @@ export const ParticleHeart: React.FC<ParticleHeartProps> = ({ active, onComplete
     const drawNet = (mul: number) => {
       if (mul < 0.01) return;
       ctx.lineWidth = 0.8;
-      ctx.strokeStyle = 'rgba(255,220,228,1)'; // warm white-pink
+      // Near-white tinted toward the theme's soft heart highlight
+      const [nsR, nsG, nsB] = PAL[4];
+      ctx.strokeStyle = `rgba(${Math.round((nsR + 255) / 2)},${Math.round((nsG + 255) / 2)},${Math.round((nsB + 255) / 2)},1)`;
 
       // Close connections (brighter)
       ctx.beginPath();

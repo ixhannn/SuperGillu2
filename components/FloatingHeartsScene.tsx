@@ -107,6 +107,11 @@ const DarkGlassMaterial = shaderMaterial(
     uFresnelPower: 2.4,
     uRimColor: new THREE.Color('#ffd6e8'),  /* Brighter pink rim */
     uAccentColor: new THREE.Color('#ffb3c1'), /* Warmer rose accent */
+    // Body + glow colors are re-derived from the active theme's accent in
+    // DarkGlassBlob — these are just the rose-theme defaults.
+    uDeepColor: new THREE.Color(0.42, 0.02, 0.14),
+    uWarmColor: new THREE.Color(0.78, 0.18, 0.42),
+    uGlowColor: new THREE.Color(0.92, 0.55, 0.72),
     uHeartBlend: 0.0,
   },
   // Vertex shader
@@ -155,6 +160,9 @@ const DarkGlassMaterial = shaderMaterial(
     uniform float uFresnelPower;
     uniform vec3 uRimColor;
     uniform vec3 uAccentColor;
+    uniform vec3 uDeepColor;
+    uniform vec3 uWarmColor;
+    uniform vec3 uGlowColor;
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -189,20 +197,18 @@ const DarkGlassMaterial = shaderMaterial(
       // with size attenuation), which doesn't alias and reads as soft sparkle.
 
       // Body modulated by noise — gives the surface a living, breathing
-      // gradient instead of a flat color. Deep crimson core fades into a
-      // warmer magenta where the noise displacement is highest.
-      vec3 deepCore = vec3(0.42, 0.02, 0.14);
-      vec3 warmFlush = vec3(0.78, 0.18, 0.42);
-      vec3 bodyColor = mix(deepCore, warmFlush, smoothstep(-0.4, 0.6, vNoise));
+      // gradient instead of a flat color. Deep theme core fades into a
+      // warmer flush where the noise displacement is highest.
+      vec3 bodyColor = mix(uDeepColor, uWarmColor, smoothstep(-0.4, 0.6, vNoise));
 
       vec3 rimLight     = uRimColor * fresnel * 1.15;
-      vec3 causticLight = vec3(1.0, 0.55, 0.7) * caustic * fresnel * 1.3;
+      vec3 causticLight = uGlowColor * caustic * fresnel * 1.3;
       vec3 specLight    = vec3(1.0, 0.92, 0.96) * (spec1 * 0.55 + spec2 * 0.4);
 
       // Soft inner aurora glow — second fresnel pass at a wider angle adds
       // depth without flattening the form.
       float innerGlow = pow(1.0 - abs(dot(normal, viewDir)), 1.6) * 0.35;
-      vec3 auroraGlow = vec3(0.92, 0.55, 0.72) * innerGlow;
+      vec3 auroraGlow = uGlowColor * innerGlow;
 
       vec3 color = bodyColor + rimLight + causticLight + specLight + accent + auroraGlow;
 
@@ -227,7 +233,7 @@ declare module '@react-three/fiber' {
 }
 
 // ── Concentric ring ripples ─────────────────────────────────────────────
-const RingRipple: React.FC<{ delay: number; maxScale: number }> = ({ delay, maxScale }) => {
+const RingRipple: React.FC<{ delay: number; maxScale: number; color: string }> = ({ delay, maxScale, color }) => {
   const ref = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
@@ -252,7 +258,7 @@ const RingRipple: React.FC<{ delay: number; maxScale: number }> = ({ delay, maxS
       {/* Slightly thicker ring band — reads better on retina at this opacity */}
       <ringGeometry args={[0.93, 1.0, 48]} />
       <meshBasicMaterial
-        color="#ffd6e8"
+        color={color}
         transparent
         opacity={0.18}
         side={THREE.DoubleSide}
@@ -334,6 +340,15 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
     if (!materialRef.current) return;
     materialRef.current.uRimColor = new THREE.Color(rimColor);
     materialRef.current.uAccentColor = new THREE.Color(accentColor);
+
+    // Derive the blob body + glow tints from the theme accent's hue so the
+    // surface itself re-themes (it used to stay crimson on every theme).
+    const hsl = { h: 0, s: 0, l: 0 };
+    new THREE.Color(accentColor).getHSL(hsl);
+    const sat = Math.min(1, hsl.s);
+    materialRef.current.uDeepColor = new THREE.Color().setHSL(hsl.h, sat, 0.16);
+    materialRef.current.uWarmColor = new THREE.Color().setHSL(hsl.h, sat, 0.44);
+    materialRef.current.uGlowColor = new THREE.Color().setHSL(hsl.h, sat * 0.75, 0.72);
   }, [rimColor, accentColor]);
 
   useFrame(({ clock }) => {
@@ -466,9 +481,9 @@ const Scene: React.FC<{ theme: FloatingThemeColors }> = ({ theme }) => (
 
     {/* Three concentric ring ripples — staggered phase creates a continuous
         breathing pulse outward instead of a single sweep that has dead time. */}
-    <RingRipple delay={0}    maxScale={3.0} />
-    <RingRipple delay={1.3}  maxScale={3.4} />
-    <RingRipple delay={2.6}  maxScale={3.8} />
+    <RingRipple delay={0}    maxScale={3.0} color={theme.rimColor} />
+    <RingRipple delay={1.3}  maxScale={3.4} color={theme.rimColor} />
+    <RingRipple delay={2.6}  maxScale={3.8} color={theme.rimColor} />
 
     {/* Three orbital wisps at different radii — adds the layered cosmic
         feeling (think aurora bands wrapping around the form). */}
