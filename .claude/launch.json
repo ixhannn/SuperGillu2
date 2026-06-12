@@ -8,6 +8,12 @@
       "port": 5173
     },
     {
+      "name": "Worktree E2E Dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:e2e", "--", "--port", "3013", "--strictPort"],
+      "port": 3013
+    },
+    {
       "name": "Tulika Preview Server",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview"],

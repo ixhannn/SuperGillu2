@@ -33,7 +33,8 @@ import {
 } from 'lucide-react';
 import type { CoupleProfile, DatePlan, ViewState } from '../types';
 import { StorageService } from '../services/storage';
-import { useAuroraParallax } from '../components/premium/GoldKit';
+import { StarField, useAuroraParallax } from '../components/premium/GoldKit';
+import { HeirloomThumb, buildHeirloomRenderData } from '../components/premium/heirlooms/HeirloomThumb';
 import { PremiumFeaturesStore, mondayOf } from '../services/premiumFeatures';
 import { buildHeirloomSchedule, getCollectedHeirloomIds } from '../services/heirlooms';
 import { buildStoryFilm } from '../components/premium/our-story/chapters';
@@ -189,43 +190,6 @@ const MemberCard: React.FC<{
     );
 };
 
-/* ── Usage meter (free-tier progress) ───────────────────────────────── */
-
-const UsageMeter: React.FC<{ used: number; limit: number; tint: string; isPremium: boolean }> = ({ used, limit, tint, isPremium }) => {
-    if (isPremium) {
-        return (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#ff5c7c' }}>
-                <InfinityIcon size={11} strokeWidth={2.6} />
-                Unlimited
-            </span>
-        );
-    }
-    const pct = Math.min(1, used / limit);
-    return (
-        <div className="w-full">
-            <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-semibold" style={{ color: 'rgba(255,248,248,0.4)' }}>
-                    {used} of {limit} free
-                </span>
-                {pct >= 1 && (
-                    <span className="text-[9px] font-bold uppercase tracking-[0.12em]" style={{ color: tint }}>Full</span>
-                )}
-            </div>
-            <div className="h-[5px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
-                <motion.div
-                    initial={{ width: 0 }}
-                    whileInView={{ width: `${Math.max(4, pct * 100)}%` }}
-                    viewport={{ once: true, margin: '-20px' }}
-                    transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
-                    className="h-full rounded-full"
-                    style={{ background: `linear-gradient(90deg, ${tint}, ${tint}cc)` }}
-                />
-            </div>
-        </div>
-    );
-};
-
-
 /* ── Unlock burst ───────────────────────────────────────────────────── */
 
 const BURST_PARTICLES = Array.from({ length: 18 }, (_, i) => {
@@ -250,33 +214,75 @@ const UnlockBurst: React.FC = () => (
     </div>
 );
 
-/* ── Experience catalogue ───────────────────────────────────────────── */
+/* ── Three pillars — less, but bottomless ───────────────────────────
+   The membership is three promises, not twelve features. Every
+   experience lives INSIDE the promise it serves, as a quiet row. */
 
-interface Experience {
+type ExpIcon = React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string; strokeWidth?: number; 'aria-hidden'?: React.AriaAttributes['aria-hidden'] }>;
+
+interface PillarChild {
     key: string;
     view: ViewState;
-    icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string; strokeWidth?: number; 'aria-hidden'?: React.AriaAttributes['aria-hidden'] }>;
+    icon: ExpIcon;
     title: string;
     sub: string;
-    tint: string;
-    hero?: boolean;
     usageKey?: 'surprises' | 'capsules' | 'voiceNotes';
     usageLimit?: number;
 }
 
-const EXPERIENCES: Experience[] = [
-    { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck from your real life, on the days that matter', tint: '#e8c97d', hero: true },
-    { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'Your whole relationship, retold as a private film premiere', tint: '#ff5c7c', hero: true },
-    { key: 'daily-video', view: 'daily-video', icon: Video, title: 'Daily Video Moments', sub: '5 seconds a day, woven into a film of your fortnight', tint: '#a855f7', hero: true },
-    { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Draw tonight\'s date from the deck', tint: '#fb7185' },
-    { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: 'One prompt, two pens — sealed until you both write', tint: '#c4b5fd' },
-    { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: 'Conversation decks for real talk', tint: '#5eead4' },
-    { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: 'Three small missions, every week', tint: '#ec4899' },
-    { key: 'weekly-recap', view: 'weekly-recap', icon: Film, title: 'Weekly Story', sub: 'Your week together, retold like an editorial', tint: '#818cf8', hero: true },
-    { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: 'Patterns, love languages & gentle nudges', tint: '#d96aff' },
-    { key: 'surprises', view: 'surprises', icon: Gift, title: 'Surprises', sub: 'Scheduled moments of joy', tint: '#8b5cf6', usageKey: 'surprises', usageLimit: 3 },
-    { key: 'future-letters', view: 'time-capsule', icon: Lock, title: 'Future Letters', sub: 'Sealed until the day arrives', tint: '#f59e0b', usageKey: 'capsules', usageLimit: 3 },
-    { key: 'voice-notes', view: 'voice-notes', icon: Mic, title: 'Voice Notes', sub: 'Your voices, kept forever', tint: '#f43f5e', usageKey: 'voiceNotes', usageLimit: 5 },
+interface Pillar {
+    key: 'studio' | 'rituals' | 'vault';
+    kicker: string;
+    title: string;
+    promise: string;
+    tint: string;
+    icon: ExpIcon;
+    children: PillarChild[];
+}
+
+const PILLARS: Pillar[] = [
+    {
+        key: 'studio',
+        kicker: 'The Studio',
+        title: 'Your life, made into art',
+        promise: 'Everything you keep comes back as films and gold-struck art.',
+        tint: '#e8c97d',
+        icon: Gem,
+        children: [
+            { key: 'heirlooms', view: 'heirlooms', icon: Gem, title: 'Heirlooms', sub: 'Art struck on your milestones' },
+            { key: 'our-story', view: 'our-story', icon: Clapperboard, title: 'Our Story', sub: 'Your whole story, as a film' },
+            { key: 'weekly-recap', view: 'weekly-recap', icon: Film, title: 'Weekly Story', sub: 'The week, retold' },
+            { key: 'daily-video', view: 'daily-video', icon: Video, title: 'Daily Video', sub: 'Five seconds a day' },
+        ],
+    },
+    {
+        key: 'rituals',
+        kicker: 'The Rituals',
+        title: 'Nights that actually happen',
+        promise: 'A reason to look at each other, every single week.',
+        tint: '#fb7185',
+        icon: Flame,
+        children: [
+            { key: 'date-studio', view: 'date-studio', icon: CalendarHeart, title: 'Date Studio', sub: 'Draw tonight\'s date' },
+            { key: 'depths', view: 'depths', icon: MessagesSquare, title: 'Depths', sub: 'Questions that go deep' },
+            { key: 'duet-journal', view: 'duet-journal', icon: Feather, title: 'Duet Journal', sub: 'One prompt, two pens' },
+            { key: 'love-missions', view: 'love-missions', icon: Flame, title: 'Love Missions', sub: 'Three a week' },
+            { key: 'love-tracker', view: 'partner-intelligence', icon: Brain, title: 'Love Tracker', sub: 'Patterns & gentle nudges' },
+        ],
+    },
+    {
+        key: 'vault',
+        kicker: 'The Vault',
+        title: 'Kept for good',
+        promise: 'Nothing the two of you make ever disappears.',
+        tint: '#8b5cf6',
+        icon: Lock,
+        children: [
+            { key: 'voice-notes', view: 'voice-notes', icon: Mic, title: 'Voice Notes', sub: 'Your voices, kept', usageKey: 'voiceNotes', usageLimit: 5 },
+            { key: 'future-letters', view: 'time-capsule', icon: Lock, title: 'Future Letters', sub: 'Sealed until their day', usageKey: 'capsules', usageLimit: 3 },
+            { key: 'surprises', view: 'surprises', icon: Gift, title: 'Surprises', sub: 'Joy, scheduled', usageKey: 'surprises', usageLimit: 3 },
+        ],
+    },
 ];
 
 /* ── Free vs Gold — five lines, written like a person ───────────────── */
@@ -346,10 +352,12 @@ function buildLiveState(profile: CoupleProfile) {
         const collectedIds = getCollectedHeirloomIds();
         const sealedHeirloom = heirloomSchedule.arrived.find((h) => !collectedIds.has(h.id));
         const nextHeirloom = heirloomSchedule.next;
+        const collectedHeirloom = heirloomSchedule.arrived.find((h) => collectedIds.has(h.id));
 
     return {
             sealedHeirloom,
             nextHeirloom,
+            collectedHeirloom,
             heirlooms: sealedHeirloom
                 ? `${sealedHeirloom.title} is struck and sealed.`
                 : nextHeirloom
@@ -423,19 +431,14 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
 
     // Daily video is async (IndexedDB) — load it lazily so the hub chunk
     // stays lean; copy falls back gracefully until it arrives.
-    const [scenesShot, setScenesShot] = useState<number | null>(null);
     const [recordedToday, setRecordedToday] = useState<boolean | null>(null);
     useEffect(() => {
         let cancelled = false;
         void (async () => {
             try {
                 const { VideoMomentsService } = await import('../services/videoMoments');
-                const [settings, already] = await Promise.all([
-                    VideoMomentsService.getSettings(),
-                    VideoMomentsService.hasRecordedToday(),
-                ]);
+                const already = await VideoMomentsService.hasRecordedToday();
                 if (cancelled) return;
-                setScenesShot(settings?.totalClips ?? 0);
                 setRecordedToday(already);
             } catch {
                 /* fallback copy stays */
@@ -461,35 +464,28 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         const lead = parts.length > 0 ? `${parts.join(', ')} and ${last}` : last;
         return `${capitalize(lead)} — all of it synced to both of you.`;
     }, [counts, live]);
-    const liveFor = useCallback((key: string): string | null => {
-        if (!live) return null;
-        switch (key) {
-            case 'heirlooms': return live.heirlooms;
-            case 'our-story': return live.ourStory;
-            case 'date-studio': return live.dateStudio;
-            case 'duet-journal': return live.duetJournal;
-            case 'depths': return live.depths;
-            case 'love-missions': return live.loveMissions;
-            case 'daily-video':
-                if (recordedToday === null) return null;
-                return recordedToday
-                    ? 'Tonight’s scene is in the can.'
-                    : 'Tonight’s scene is still unshot.';
-            default: return null;
+    // One live line per pillar — the promise, proven with real state.
+    const pillarLine = useCallback((key: Pillar['key']): string => {
+        const fallback = PILLARS.find((p) => p.key === key)?.promise ?? '';
+        if (key === 'studio') return live?.heirlooms ?? fallback;
+        if (key === 'rituals') {
+            if (!live) return fallback;
+            return live.upcomingPlan ? live.dateStudio : live.loveMissions;
         }
-    }, [live, recordedToday]);
+        return vaultProse;
+    }, [live, vaultProse]);
 
-    const usageFor = useCallback((exp: Experience): number => {
-        if (exp.usageKey === 'surprises') return counts.surprises;
-        if (exp.usageKey === 'capsules') return counts.capsules;
-        if (exp.usageKey === 'voiceNotes') return counts.voiceNotes;
+    const usageFor = useCallback((child: PillarChild): number => {
+        if (child.usageKey === 'surprises') return counts.surprises;
+        if (child.usageKey === 'capsules') return counts.capsules;
+        if (child.usageKey === 'voiceNotes') return counts.voiceNotes;
         return 0;
     }, [counts]);
 
 
     // ── Tonight: ONE thing, chosen for right now ────────────────────────
     const spotlight = useMemo(() => {
-        const items: Array<{ key: string; view: ViewState; icon: Experience['icon']; tint: string; title: string; sub: string }> = [];
+        const items: Array<{ key: string; view: ViewState; icon: ExpIcon; tint: string; title: string; sub: string }> = [];
         if (!live) {
             return { key: 'story', view: 'our-story' as ViewState, icon: Clapperboard, tint: '#ff5c7c', title: 'Screen Our Story', sub: 'The film of you two — re-cut from everything you’ve kept.' };
         }
@@ -512,6 +508,21 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         return items[0];
     }, [live, recordedToday]);
 
+    // Heirloom showcase for the catalogue — the artwork itself sells it.
+    // Sealed piece first (action), then the newest opened one (beauty),
+    // then the next strike (anticipation).
+    const heirloomShowcase = useMemo(() => {
+        if (!live) return null;
+        if (live.sealedHeirloom) return { milestone: live.sealedHeirloom, sealed: true };
+        if (live.collectedHeirloom) return { milestone: live.collectedHeirloom, sealed: false };
+        if (live.nextHeirloom) return { milestone: live.nextHeirloom, sealed: true };
+        return null;
+    }, [live]);
+    const heirloomArt = useMemo(
+        () => (heirloomShowcase ? buildHeirloomRenderData(heirloomShowcase.milestone) : null),
+        [heirloomShowcase],
+    );
+
     const handleUnlock = useCallback(() => {
         if (isPremium) return;
         const current = StorageService.getCoupleProfile();
@@ -528,20 +539,6 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         feedback.tap();
         setView(view);
     }, [setView]);
-
-    const heroExperiences = EXPERIENCES.filter((e) => e.hero);
-    const gridExperiences = EXPERIENCES.filter((e) => !e.hero);
-
-    // Live-aware card sublines: real state when we have it, editorial copy
-    // as the cold-start fallback. Sentences, not metrics.
-    const renderSub = (exp: Experience, className: string, color: string) => {
-        const liveLine = liveFor(exp.key);
-        return (
-            <p className={className} style={{ color }}>
-                {liveLine ?? exp.sub}
-            </p>
-        );
-    };
 
     // Portaled to body like the app's vh-shell: lenis-content has
     // contain:paint, so a fixed header rendered inline would anchor to the
@@ -583,6 +580,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
         >
             {/* Fixed ambient backdrop — the page scrolls natively above it */}
             <div className="lp-backdrop lp-stage" aria-hidden="true">
+                <StarField />
                 <div className="lp-aurora" ref={auroraRef}>
                     <div className="lp-aurora__blob lp-aurora__blob--gold" />
                     <div className="lp-aurora__blob lp-aurora__blob--rose" />
@@ -624,7 +622,7 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                             <span className="lp-shimmer-text">every way to love</span>
                         </h1>
                         <p className="mt-4 max-w-[32ch] text-[14px] leading-relaxed" style={{ color: 'rgba(255,248,248,0.52)' }}>
-                            Everything we make for the two of you — the film, the nights, the rituals, the endless vault. Nothing held back.
+                            Three doors: a studio that turns your life into art, rituals that keep your weeks alive, and a vault that never forgets.
                         </p>
                         <div className="mt-5 flex items-center gap-2.5" aria-hidden="true">
                             <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,92,124,0.5))' }} />
@@ -676,120 +674,125 @@ export const PremiumView: React.FC<PremiumViewProps> = ({ setView }) => {
                         );
                     })()}
 
-                    {/* ── Experiences ───────────────────────────────── */}
+                    {/* ── Three pillars — the whole membership, three promises ── */}
                     <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-center gap-3">
                         <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            {isPremium ? 'Your experiences' : 'What Gold unlocks'}
+                            {isPremium ? 'Yours, all open' : 'What Gold opens'}
                         </span>
                         <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
                     </motion.div>
 
-                    <div className="flex flex-col gap-3">
-                        {heroExperiences.map((exp) => {
-                            const Icon = exp.icon;
+                    <div className="flex flex-col gap-4">
+                        {PILLARS.map((pillar) => {
+                            const PillarIcon = pillar.icon;
+                            const showArt = pillar.key === 'studio' && heirloomArt !== null;
                             return (
-                                <motion.button
-                                    key={exp.key}
+                                <motion.div
+                                    key={pillar.key}
                                     variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
-                                    whileTap={{ scale: 0.975 }}
-                                    transition={PRESS_SPRING}
-                                    onClick={() => handleOpen(exp.view)}
-                                    className="lq lq--sheen lq-press relative overflow-hidden w-full rounded-[1.6rem] p-5 text-left"
+                                    className="lq lq--sheen relative overflow-hidden rounded-[1.8rem]"
+                                    style={{
+                                        background: `linear-gradient(150deg, ${pillar.tint}1c 0%, rgba(255,255,255,0.018) 58%)`,
+                                        border: `1px solid ${pillar.tint}2e`,
+                                    }}
                                 >
-                                    <Icon size={104} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                    <div
-                                        className="lp-float absolute -top-14 -right-14 w-44 h-44 rounded-full blur-3xl pointer-events-none"
-                                        style={{ background: `radial-gradient(circle, ${exp.tint}2e 0%, transparent 70%)` }}
-                                    />
-                                    <div className="relative z-10 flex items-center gap-4">
+                                    <PillarIcon size={150} strokeWidth={0.9} className="lq-ghost" style={{ color: pillar.tint }} aria-hidden="true" />
+
+                                    {/* The Studio leads with the artwork itself — a framed print.
+                                        Sealed pieces stay frosted: the reveal belongs to the
+                                        ceremony, and locked strikes are what Gold sells. */}
+                                    {showArt && heirloomArt && (
                                         <div
-                                            className="flex w-12 h-12 shrink-0 items-center justify-center rounded-2xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 8px 18px ${exp.tint}4d` }}
+                                            className="absolute right-5 top-5 pointer-events-none z-10"
+                                            aria-hidden="true"
+                                            style={{ transform: 'rotate(5deg)' }}
                                         >
-                                            <Icon size={22} style={{ color: '#ffffff' }} />
+                                            <div className="lp-foil" style={{ borderRadius: 12, padding: 1.5 }}>
+                                                <div
+                                                    className="overflow-hidden"
+                                                    style={{
+                                                        borderRadius: 11,
+                                                        width: 72,
+                                                        filter: heirloomShowcase?.sealed
+                                                            ? (heirloomShowcase.milestone.style === 'letterpress'
+                                                                ? 'saturate(1.1) brightness(0.7)'
+                                                                : 'saturate(1.45) brightness(1.3)')
+                                                            : undefined,
+                                                    }}
+                                                >
+                                                    <HeirloomThumb data={heirloomArt} scale={0.15} veil={heirloomShowcase?.sealed} />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="text-[15px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                                                {exp.title}
-                                            </h3>
-                                            {renderSub(exp, 'mt-1 text-[11.5px] leading-snug', 'rgba(255,248,248,0.42)')}
-                                        </div>
-                                        <ChevronRight size={17} style={{ color: 'rgba(255,248,248,0.28)' }} />
+                                    )}
+
+                                    <div className={`relative z-10 px-5 pt-5 pb-3 ${showArt ? 'pr-[108px]' : ''}`}>
+                                        <p className="text-[9.5px] font-bold uppercase tracking-[0.24em]" style={{ color: pillar.tint }}>
+                                            {pillar.kicker}
+                                        </p>
+                                        <h3 className="font-serif mt-1.5 text-[1.45rem] font-bold leading-[1.08]" style={{ color: 'rgba(255,251,250,0.95)', letterSpacing: '-0.02em' }}>
+                                            {pillar.title}
+                                        </h3>
+                                        <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: 'rgba(255,248,248,0.55)' }}>
+                                            {pillarLine(pillar.key)}
+                                        </p>
                                     </div>
-                                </motion.button>
+
+                                    <div className="relative z-10 px-2.5 pb-2.5 flex flex-col gap-0.5">
+                                        {pillar.children.map((child) => {
+                                            const ChildIcon = child.icon;
+                                            return (
+                                                <motion.button
+                                                    key={child.key}
+                                                    whileTap={{ scale: 0.98 }}
+                                                    transition={PRESS_SPRING}
+                                                    onClick={() => handleOpen(child.view)}
+                                                    className="lq-press flex items-center gap-3 px-3 py-2.5 rounded-[1.05rem] text-left"
+                                                >
+                                                    <div
+                                                        className="flex w-8 h-8 shrink-0 items-center justify-center rounded-[10px]"
+                                                        style={{ background: `${pillar.tint}1c`, border: `1px solid ${pillar.tint}33` }}
+                                                    >
+                                                        <ChildIcon size={15} style={{ color: pillar.tint }} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                                                        <span className="text-[13px] font-semibold shrink-0" style={{ color: 'rgba(255,251,250,0.9)' }}>
+                                                            {child.title}
+                                                        </span>
+                                                        <span className="text-[10.5px] truncate" style={{ color: 'rgba(255,248,248,0.35)' }}>
+                                                            {child.sub}
+                                                        </span>
+                                                    </div>
+                                                    {child.usageKey && child.usageLimit ? (
+                                                        isPremium ? (
+                                                            <InfinityIcon size={13} strokeWidth={2.4} style={{ color: '#ff5c7c' }} aria-label="Unlimited" />
+                                                        ) : (
+                                                            <span className="text-[10px] font-semibold shrink-0" style={{ color: 'rgba(255,248,248,0.4)' }}>
+                                                                {usageFor(child)} of {child.usageLimit}
+                                                            </span>
+                                                        )
+                                                    ) : (
+                                                        <ChevronRight size={14} style={{ color: 'rgba(255,248,248,0.25)' }} />
+                                                    )}
+                                                </motion.button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {pillar.key === 'vault' && (
+                                        <p
+                                            className="relative z-10 mx-5 mb-4 pt-3 text-[11.5px] leading-relaxed"
+                                            style={{ borderTop: '1px solid rgba(255,255,255,0.07)', color: isPremium ? '#ff8fa6' : 'rgba(255,248,248,0.45)' }}
+                                        >
+                                            {isPremium
+                                                ? 'No caps. Nothing expires. Synced to both of you.'
+                                                : 'Free keeps the first fifty memories. Gold keeps your whole life.'}
+                                        </p>
+                                    )}
+                                </motion.div>
                             );
                         })}
-
-                        <div className="grid grid-cols-2 gap-3">
-                            {gridExperiences.map((exp) => {
-                                const Icon = exp.icon;
-                                return (
-                                    <motion.button
-                                        key={exp.key}
-                                        variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
-                                        whileTap={{ scale: 0.96 }}
-                                        transition={PRESS_SPRING}
-                                        onClick={() => handleOpen(exp.view)}
-                                        className="lq lq-press relative overflow-hidden rounded-[1.4rem] p-4 text-left flex flex-col gap-3"
-                                    >
-                                        <Icon size={88} strokeWidth={1} className="lq-ghost" style={{ color: exp.tint }} aria-hidden="true" />
-                                        <div
-                                            className="flex w-10 h-10 items-center justify-center rounded-xl"
-                                            style={{ background: `linear-gradient(140deg, ${exp.tint} 0%, ${exp.tint}c8 100%)`, boxShadow: `0 6px 14px ${exp.tint}4d` }}
-                                        >
-                                            <Icon size={18} style={{ color: '#ffffff' }} />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-[13px] font-semibold leading-tight" style={{ color: 'rgba(255,251,250,0.92)' }}>
-                                                {exp.title}
-                                            </h4>
-                                            {renderSub(exp, 'mt-0.5 text-[10.5px] leading-snug', 'rgba(255,248,248,0.38)')}
-                                        </div>
-                                        {exp.usageKey && exp.usageLimit ? (
-                                            <UsageMeter used={usageFor(exp)} limit={exp.usageLimit} tint={exp.tint} isPremium={isPremium} />
-                                        ) : (
-                                            <span
-                                                className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em]"
-                                                style={{ color: isPremium ? '#ff5c7c' : 'rgba(255,248,248,0.35)' }}
-                                            >
-                                                {isPremium ? <><Check size={11} strokeWidth={3} /> Unlocked</> : <><Lock size={10} /> Gold only</>}
-                                            </span>
-                                        )}
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
                     </div>
-
-                    {/* ── The vault: one statement, not a ledger ────── */}
-                    <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-baseline gap-3">
-                        <span className="font-serif text-[17px] font-bold tracking-[-0.01em]" style={{ color: 'rgba(255,251,250,0.94)' }}>
-                            Already yours
-                        </span>
-                        <div className="flex-1 h-px self-center" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }} />
-                    </motion.div>
-
-                    <motion.div
-                        variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE}
-                        className="lq lq--blur lq--sheen relative overflow-hidden rounded-[1.8rem] p-6"
-                    >
-                        <Crown size={130} strokeWidth={0.8} className="lq-ghost" style={{ color: '#ff5c7c' }} aria-hidden="true" />
-                        <div className="relative z-10">
-                            <p className="font-serif text-[1.7rem] font-bold leading-[1.1]" style={{ color: 'rgba(255,251,250,0.97)', letterSpacing: '-0.02em' }}>
-                                {days > 0
-                                    ? <>{days.toLocaleString()} days.<br />All of it kept.</>
-                                    : <>Everything you make,<br />kept for good.</>}
-                            </p>
-                            <p className="mt-3 text-[13px] leading-relaxed max-w-[26rem]" style={{ color: 'rgba(255,248,248,0.55)' }}>
-                                {vaultProse}
-                            </p>
-                            <p className="mt-4 pt-3 text-[12px] leading-relaxed" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: isPremium ? '#ff8fa6' : 'rgba(255,248,248,0.45)' }}>
-                                {isPremium
-                                    ? 'No caps. Nothing expires. Synced to both of you.'
-                                    : 'Free keeps the first fifty memories. Gold keeps your whole life.'}
-                            </p>
-                        </div>
-                    </motion.div>
 
                     {/* ── Free vs Gold ──────────────────────────────── */}
                     <motion.div variants={riseVariants} initial="hidden" whileInView="visible" viewport={VIEWPORT_ONCE} className="mt-10 mb-4 flex items-center gap-3">

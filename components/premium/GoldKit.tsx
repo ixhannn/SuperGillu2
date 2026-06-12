@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { Crown, Lock } from 'lucide-react';
 import { PremiumModal, type PremiumFeatureContext } from '../PremiumModal';
 import { feedback } from '../../utils/feedback';
+import { scheduleIdleTask } from '../../utils/scheduler';
 import '../../styles/premium-hub.css';
 
 /**
@@ -73,6 +74,140 @@ export const useAuroraParallax = (factor = -0.12): React.RefObject<HTMLDivElemen
     }, [factor]);
 
     return layerRef;
+};
+
+/* ── Starfield ───────────────────────────────────────────────────────
+   One 360px canvas tile, drawn once per app life and repeated as a
+   background-image across the whole backdrop (the GPU tiles it for
+   free). Twinkle rides a handful of CSS sparks — compositor-only. */
+
+let starTileURL: string | null = null;
+
+const buildStarTile = (): string => {
+    if (starTileURL) return starTileURL;
+    const SIZE = 360;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE * 2;
+    canvas.height = SIZE * 2;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    ctx.scale(2, 2);
+
+    // Seeded so every visit renders the same sky.
+    let seed = 0x5f3759df;
+    const rng = () => {
+        seed |= 0;
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    const TINTS = ['#fff7ea', '#fff7ea', '#fff7ea', '#ffd9e1', '#e8c97d', '#c4b5fd'];
+    for (let i = 0; i < 54; i++) {
+        const x = rng() * SIZE;
+        const y = rng() * SIZE;
+        const r = 0.3 + rng() * 1.1;
+        const tint = TINTS[Math.floor(rng() * TINTS.length)];
+        ctx.globalAlpha = 0.18 + rng() * 0.5;
+        ctx.fillStyle = tint;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // A few brighter stars with a soft halo
+    for (let i = 0; i < 7; i++) {
+        const x = rng() * SIZE;
+        const y = rng() * SIZE;
+        const tint = TINTS[Math.floor(rng() * TINTS.length)];
+        const halo = ctx.createRadialGradient(x, y, 0, x, y, 5);
+        halo.addColorStop(0, tint);
+        halo.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(x, y, 0.9, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    starTileURL = canvas.toDataURL('image/png');
+    return starTileURL;
+};
+
+/** Deterministic spark positions (percent coords across the backdrop). */
+const SPARKS: Array<{ left: string; top: string; delay: string; scale: number }> = [
+    { left: '12%', top: '6%', delay: '0s', scale: 1 },
+    { left: '82%', top: '11%', delay: '1.3s', scale: 0.8 },
+    { left: '64%', top: '3%', delay: '2.6s', scale: 1.1 },
+    { left: '28%', top: '17%', delay: '0.8s', scale: 0.7 },
+    { left: '90%', top: '26%', delay: '3.4s', scale: 0.9 },
+    { left: '7%', top: '34%', delay: '1.9s', scale: 1 },
+    { left: '46%', top: '44%', delay: '2.9s', scale: 0.8 },
+    { left: '74%', top: '58%', delay: '0.4s', scale: 1.05 },
+    { left: '18%', top: '70%', delay: '3.9s', scale: 0.85 },
+    { left: '58%', top: '86%', delay: '1.6s', scale: 0.75 },
+];
+
+/** Static star tile + twinkling sparks. Mount inside `.lp-backdrop`. */
+export const StarField: React.FC = () => {
+    const [tile, setTile] = useState<string>('');
+    // The tile build ends in a synchronous PNG encode (~tens of ms on
+    // low-end devices) — defer past first paint so the entrance springs
+    // never hitch. Stars fading in a beat late reads as intentional.
+    useEffect(() => scheduleIdleTask(() => setTile(buildStarTile()), { timeout: 800 }), []);
+    if (!tile) return null;
+    return (
+        <div className="lp-stars" style={{ backgroundImage: `url(${tile})`, backgroundSize: '360px 360px' }} aria-hidden="true">
+            {SPARKS.map((s, i) => (
+                <span
+                    key={i}
+                    className="lp-star-spark"
+                    style={{ left: s.left, top: s.top, animationDelay: s.delay, transform: `scale(${s.scale})` }}
+                />
+            ))}
+        </div>
+    );
+};
+
+/* ── Pointer tilt — shared 3D card hover/touch response ─────────────── */
+
+export interface CardTilt {
+    rotateX: ReturnType<typeof useSpring>;
+    rotateY: ReturnType<typeof useSpring>;
+    onPointerEnter: (e: React.PointerEvent<HTMLElement>) => void;
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
+    onPointerLeave: () => void;
+}
+
+export const useCardTilt = (maxX = 7, maxY = 9, disabled = false): CardTilt => {
+    const mx = useMotionValue(0.5);
+    const my = useMotionValue(0.5);
+    const rotateX = useSpring(useTransform(my, [0, 1], [maxX, -maxX]), { stiffness: 170, damping: 18 });
+    const rotateY = useSpring(useTransform(mx, [0, 1], [-maxY, maxY]), { stiffness: 170, damping: 18 });
+    const rectRef = useRef<DOMRect | null>(null);
+
+    const onPointerEnter = (e: React.PointerEvent<HTMLElement>) => {
+        if (disabled) return;
+        rectRef.current = e.currentTarget.getBoundingClientRect();
+    };
+    const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+        if (disabled) return;
+        const rect = rectRef.current ?? e.currentTarget.getBoundingClientRect();
+        mx.set((e.clientX - rect.left) / rect.width);
+        my.set((e.clientY - rect.top) / rect.height);
+    };
+    const onPointerLeave = () => {
+        rectRef.current = null;
+        mx.set(0.5);
+        my.set(0.5);
+    };
+
+    return { rotateX, rotateY, onPointerEnter, onPointerMove, onPointerLeave };
 };
 
 /** Bold sentence-case section title — modern, no micro-uppercase. */
