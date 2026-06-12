@@ -2,18 +2,22 @@
  * HeartbeatParticles — premium button-to-heart particle effect.
  *
  * triggerButtonDissolve(rect, onDone):
- *   1. PEEL     — button surface lifts off as silk dust, left → right (0–700 ms)
- *   2. CONVERGE — particles stream along curved paths into a 3-D heart,
- *                 blooming centre-out with motion-blur trails (700–1550 ms)
- *   3. HOLD     — the heart beats "lub-dub" twice with shockwave rings,
- *                 champagne sparkles, a specular light sweep and a gentle
- *                 3-D sway (1550–3550 ms)
- *   4. RETURN   — particles release left → right and arc back, repainting
- *                 the button (3550–4370 ms)
+ *   1. IGNITE   — the button surface lifts off as fine dust on turbulent
+ *                 updrafts, left → right (0–700 ms)
+ *   2. VORTEX   — every grain spirals into the heart like a collapsing galaxy:
+ *                 one shared rotation, silky motion-blur arms (700–1550 ms)
+ *   3. HOLD     — stage lights dim; the 3-D heart beats "lub-dub" twice with
+ *                 shockwave rings, ember ejecta on each lub, a specular sweep
+ *                 and rim light (1550–3550 ms)
+ *   4. RELEASE  — the heart draws a breath in, then lets go: grains arc home
+ *                 and repaint the button while a volley of comets streaks off
+ *                 the top of the screen — the heartbeat travelling to the
+ *                 partner (3550–4370 ms)
  *   5. FADE     — particle layer crossfades into the real DOM button
  *
- * Rendering: DPR-aware canvas + pre-rendered soft-glow sprites from a single
- * rose→white palette LUT (no per-frame gradient allocation, no fillRect grid).
+ * Rendering: DPR-aware canvas + hard-edged stardust grains (crisp fillRect
+ * squares) coloured from a single rose→white palette LUT — no gradients,
+ * no soft sprites, no per-frame allocation.
  *
  * triggerSend / triggerReceive: legacy scatter-send and violet receive effects.
  */
@@ -134,7 +138,9 @@ const GRID: GridPt[] = (() => {
       );
       const bright = 0.40 + 0.60 * Math.exp(-dEdge / (S * S * 0.15));
 
-      pts.push({ lx: gx, ly: gy, lz, bright });
+      // jitter off the lattice — sharp grains on a perfect grid read as an
+      // LED matrix, not stardust
+      pts.push({ lx: gx + rnd(-0.45, 0.45) * STEP, ly: gy + rnd(-0.45, 0.45) * STEP, lz, bright });
     }
   }
   return pts;
@@ -186,39 +192,31 @@ const LUT: Array<[number, number, number]> = (() => {
 const SHADE_BTN_L = 0.68;  // rose-500
 const SHADE_BTN_R = 0.55;  // rose-600
 
-const CELL = 32;
-let atlas: HTMLCanvasElement | null = null;
+// Pre-built fillStyle strings — no gradients, no sprites: grains are drawn as
+// hard-edged squares so they stay razor sharp at any size.
+const COL_BASE: string[] = LUT.map(([r, g, b]) => `rgb(${r},${g},${b})`);
+const COL_HOT:  string[] = LUT.map((_, i) => {
+  const [r, g, b] = LUT[Math.min(LUT_N - 1, i + 5)];
+  return `rgb(${r},${g},${b})`;
+});
 
-function getAtlas(): HTMLCanvasElement {
-  if (atlas) return atlas;
-  const c = document.createElement('canvas');
-  c.width = CELL * LUT_N; c.height = CELL;
-  const g = c.getContext('2d')!;
-  for (let i = 0; i < LUT_N; i++) {
-    const [r, gg, b] = LUT[i];
-    const [lr, lg, lb] = LUT[Math.min(LUT_N - 1, i + 6)];
-    const cx = i * CELL + CELL / 2;
-    // Sharp stardust grain: hard luminous core, fast falloff, whisper of halo
-    const grad = g.createRadialGradient(cx, CELL / 2, 0, cx, CELL / 2, CELL / 2);
-    grad.addColorStop(0.00, `rgba(${lr},${lg},${lb},1)`);
-    grad.addColorStop(0.30, `rgba(${r},${gg},${b},1)`);
-    grad.addColorStop(0.50, `rgba(${r},${gg},${b},0.55)`);
-    grad.addColorStop(0.75, `rgba(${r},${gg},${b},0.10)`);
-    grad.addColorStop(1.00, `rgba(${r},${gg},${b},0)`);
-    g.fillStyle = grad;
-    g.fillRect(i * CELL, 0, CELL, CELL);
-  }
-  atlas = c;
-  return c;
-}
-
-// Soft luminous dot from the atlas. `size` ≈ solid-core radius in CSS px.
+// Sharp stardust grain. `size` = grain edge in CSS px. Fine grains are a single
+// crisp square; brighter motes (size > 1.15) get a hot core + faint halo square.
 function puff(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, shade: number, alpha: number) {
   if (alpha <= 0.01) return;
   const idx = Math.max(0, Math.min(LUT_N - 1, (shade * (LUT_N - 1)) | 0));
-  const d = size * 2.5;
+  const s = size < 0.5 ? 0.5 : size;
+  if (s > 1.15) {
+    const h = s * 2.2;
+    ctx.globalAlpha = alpha * 0.14;
+    ctx.fillStyle = COL_BASE[idx];
+    ctx.fillRect(x - h / 2, y - h / 2, h, h);
+    ctx.fillStyle = COL_HOT[idx];
+  } else {
+    ctx.fillStyle = COL_BASE[idx];
+  }
   ctx.globalAlpha = alpha;
-  ctx.drawImage(getAtlas(), idx * CELL, 0, CELL, CELL, x - d / 2, y - d / 2, d, d);
+  ctx.fillRect(x - s / 2, y - s / 2, s, s);
   ctx.globalAlpha = 1;
 }
 
@@ -264,12 +262,14 @@ const D_TOTAL    = FADE_START + D_FADE;        // 4710
 const H_ANG_X = 0.12;
 const H_COS_X = Math.cos(H_ANG_X), H_SIN_X = Math.sin(H_ANG_X);
 
-// "Lub-dub" heartbeat: two double-pulses within the hold (t = 0..1)
+// "Lub-dub" heartbeat: two double-pulses within the hold (t = 0..1),
+// then a slow inhale — the heart compresses before releasing the send.
 const BEATS = [
-  { t: 0.12, a: 0.16, w: 0.13, lub: true  },
-  { t: 0.26, a: 0.10, w: 0.11, lub: false },
-  { t: 0.58, a: 0.16, w: 0.13, lub: true  },
-  { t: 0.72, a: 0.10, w: 0.11, lub: false },
+  { t: 0.12, a:  0.16, w: 0.13, lub: true  },
+  { t: 0.26, a:  0.10, w: 0.11, lub: false },
+  { t: 0.58, a:  0.16, w: 0.13, lub: true  },
+  { t: 0.72, a:  0.10, w: 0.11, lub: false },
+  { t: 0.90, a: -0.07, w: 0.16, lub: false },
 ] as const;
 
 function pulseAt(hT: number): number {
@@ -342,7 +342,7 @@ function dissolveFallback() {
 }
 
 interface RingFx  { start: number; amp: number; }
-interface SparkFx { x: number; y: number; vx: number; vy: number; start: number; life: number; size: number; gold: boolean; phase: number; }
+interface SparkFx { x: number; y: number; vx: number; vy: number; start: number; life: number; size: number; gold: boolean; phase: number; comet: boolean; }
 const ringsFx: RingFx[] = [];
 const sparksFx: SparkFx[] = [];
 let beatSpawnMask = 0;
@@ -370,7 +370,7 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
   ringsFx.length   = 0;
   sparksFx.length  = 0;
 
-  const SPACING = 1.7;
+  const SPACING = 1.2;
   const cx = window.innerWidth / 2;
   const cy = window.innerHeight / 2 - 40;
   dissolveHcx = cx;
@@ -433,7 +433,7 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
     p.convergeEnd = 0; p.holdEnd = 0;
     p.lifetime = D_TOTAL;
     // fine stardust grains with a sprinkle of brighter motes
-    p.size   = Math.random() < 0.12 ? rnd(1.5, 2.0) : rnd(0.75, 1.25);
+    p.size   = Math.random() < 0.10 ? rnd(1.25, 1.7) : rnd(0.55, 1.0);
     p.bright = bright;
     p.shadeA = SHADE_BTN_L + (SHADE_BTN_R - SHADE_BTN_L) * tX;
     p.shadeB = 0.42 + (bright - 0.4) * 0.28;
@@ -718,22 +718,39 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           const bAbs = CONV_END + b.t * D_HOLD;
           if (dEt >= bAbs && !(beatSpawnMask & (1 << bi))) {
             beatSpawnMask |= 1 << bi;
-            ringsFx.push({ start: bAbs, amp: b.a });
+            if (b.a > 0) ringsFx.push({ start: bAbs, amp: b.a });
             if (b.lub) {
-              for (let k = 0; k < 16; k++) {
+              // ember ejecta — each lub spits fine sparks off the surface
+              for (let k = 0; k < 26; k++) {
                 const gp = GRID[(Math.random() * GRID.length) | 0];
                 const pr = projectHold(gp.lx, gp.ly, gp.lz);
                 const dxs = pr.sx - dissolveHcx, dys = pr.sy - dissolveHcy;
                 const dm = Math.sqrt(dxs*dxs + dys*dys) || 1;
-                const spd = rnd(0.015, 0.05);
+                const spd = rnd(0.02, 0.07);
                 sparksFx.push({
                   x: pr.sx + (dxs/dm)*rnd(2, 10), y: pr.sy + (dys/dm)*rnd(2, 10),
-                  vx: (dxs/dm)*spd, vy: (dys/dm)*spd - 0.012,
-                  start: dEt, life: rnd(480, 820), size: rnd(7, 15),
-                  gold: Math.random() < 0.7, phase: rnd(0, Math.PI*2),
+                  vx: (dxs/dm)*spd, vy: (dys/dm)*spd - 0.014,
+                  start: dEt, life: rnd(480, 820), size: rnd(4, 9),
+                  gold: Math.random() < 0.7, phase: rnd(0, Math.PI*2), comet: false,
                 });
               }
             }
+          }
+        }
+        // RELEASE — a volley of comets streaks off the top of the screen:
+        // the heartbeat leaving to reach the partner
+        if (dEt >= HOLD_END && !(beatSpawnMask & 64)) {
+          beatSpawnMask |= 64;
+          for (let k = 0; k < 46; k++) {
+            const gp = GRID[(Math.random() * GRID.length) | 0];
+            const pr = projectHold(gp.lx, gp.ly, gp.lz);
+            sparksFx.push({
+              x: pr.sx + rnd(-4, 4), y: pr.sy + rnd(-4, 4),
+              vx: (dissolveHcx - pr.sx) * 0.0009 + rnd(-0.012, 0.012),
+              vy: -rnd(0.30, 0.62),
+              start: dEt, life: rnd(520, 880), size: rnd(0.8, 1.7),
+              gold: false, phase: rnd(0, Math.PI*2), comet: true,
+            });
           }
         }
       }
@@ -744,6 +761,16 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
         const fadeIn  = clamp01((dEt - (CONV_END - 250)) / 350);
         const fadeOut = clamp01(1 - (dEt - HOLD_END) / 500);
         const gA = fadeIn * fadeOut;
+
+        // stage dim — house lights down while the heart beats
+        const vg = ctx.createRadialGradient(
+          dissolveHcx, dissolveHcy + bobY, HR,
+          dissolveHcx, dissolveHcy + bobY, Math.max(W, H) * 0.8,
+        );
+        vg.addColorStop(0, 'rgba(10,2,8,0)');
+        vg.addColorStop(1, `rgba(10,2,8,${(gA*0.32).toFixed(3)})`);
+        ctx.fillStyle = vg;
+        ctx.fillRect(0, 0, W, H);
 
         const gR = HR * 1.35 * bScale;
         const g1 = ctx.createRadialGradient(dissolveHcx, dissolveHcy + bobY, 0, dissolveHcx, dissolveHcy + bobY, gR);
@@ -774,8 +801,8 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
         const flyStart  = HOLD_END + p.fDelay;
 
         // grains are fine; oversize them while they sit as button pixels so
-        // the intact surface reads solid, not gappy
-        const solidSize = Math.max(p.size, 1.6);
+        // the intact surface reads solid, not gappy (button grid is 1.2px)
+        const solidSize = Math.max(p.size, 1.35);
 
         if (e < p.startAt) {
           // intact button surface with a barely-there shimmer
@@ -784,14 +811,17 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           p.prevX = p.ox; p.prevY = p.oy;
 
         } else if (e < convStart) {
-          // PEEL — silk-dust lift on a gentle wind field
+          // IGNITE — dust lifts off on layered turbulent updrafts
           if (p.ph < 1) {
             p.ph = 1;
             p.pvx = (Math.random() - 0.5) * 0.03 + (p.tX - 0.5) * 0.02;
-            p.pvy = -rnd(0.01, 0.04);
+            p.pvy = -rnd(0.01, 0.045);
           }
-          const ax = Math.sin(p.oy*0.05 + ts*0.0012) * 0.00010 + (p.tX - 0.5) * 0.00004;
-          const ay = -0.00016 - Math.cos(p.ox*0.04 + ts*0.0009) * 0.00006;
+          // two-octave swirl field sampled at the live position (cheap curl)
+          const ax = (Math.sin(p.py*0.045 + ts*0.0012) + 0.6*Math.sin(p.py*0.012 - ts*0.0005)) * 0.00011
+                   + (p.tX - 0.5) * 0.00005;
+          const ay = -0.00017
+                   - (Math.cos(p.px*0.05 + ts*0.0009) + 0.6*Math.cos(p.px*0.013 + ts*0.0006)) * 0.00007;
           const damp = Math.exp(-dt * 0.0008);
           p.pvx = (p.pvx + ax*dt) * damp;
           p.pvy = (p.pvy + ay*dt) * damp;
@@ -800,25 +830,30 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           puffTrail(ctx, p, p.px, p.py, p.size, p.shadeA, 1);
 
         } else if (e < CONV_END) {
-          // CONVERGE — curved stream into the heart, centre-out bloom
+          // VORTEX — grains spiral into the heart like a collapsing galaxy:
+          // polar in-spiral with one shared rotation direction, so the trails
+          // shear into silky arms
           if (p.ph < 2) {
             p.ph = 2;
-            p.scx = p.px; p.scy = p.py;
-            const dirX = p.endX - p.scx, dirY = p.endY - p.scy;
-            const len = Math.sqrt(dirX*dirX + dirY*dirY) || 1;
-            const side = p.ox < p.hcx ? 1 : -1;
-            const curl = len * 0.14 * side + rnd(-8, 8);
-            p.cpx = p.scx + p.pvx*220 + (-dirY/len)*curl;
-            p.cpy = p.scy + p.pvy*220 + ( dirX/len)*curl - 26;
+            const dx0 = p.px - p.hcx, dy0 = p.py - p.hcy;
+            p.scy = Math.sqrt(dx0*dx0 + dy0*dy0);                 // r0
+            p.scx = Math.atan2(dy0, dx0);                         // a0
+            const dxT = p.endX - p.hcx, dyT = p.endY - p.hcy;
+            p.cpy = Math.sqrt(dxT*dxT + dyT*dyT);                 // r target
+            let sweep = Math.atan2(dyT, dxT) - p.scx;
+            sweep -= Math.round(sweep / (Math.PI*2)) * Math.PI*2; // wrap (-π..π]
+            p.cpx = sweep - Math.PI*2 * (0.55 + Math.random()*0.35); // total sweep
           }
-          const t = clamp01((e - convStart) / p.cDur);
-          const u = quartInOut(t);
-          const m = 1 - u;
-          let px = m*m*p.scx + 2*m*u*p.cpx + u*u*p.endX;
-          const py = m*m*p.scy + 2*m*u*p.cpy + u*u*p.endY;
-          px += Math.sin(p.wobble + t*9) * m * 1.6;
-          const shade = p.shadeA + (p.shadeB - p.shadeA) * u;
-          puffTrail(ctx, p, px, py, p.size, shade, 0.98);
+          const t  = clamp01((e - convStart) / p.cDur);
+          const uA = easeOutCubic(t);                             // whip in, settle out
+          const uR = eio(t);
+          const ang = p.scx + p.cpx * uA;
+          const rad = p.scy + (p.cpy - p.scy) * uR + Math.sin(p.wobble + t*11) * (1-t) * 5;
+          const px = p.hcx + Math.cos(ang) * rad;
+          const py = p.hcy + Math.sin(ang) * rad;
+          // grains glint as they whip through the fastest part of the spiral
+          const shade = p.shadeA + (p.shadeB - p.shadeA) * uA + 0.10 * Math.sin(t*Math.PI);
+          puffTrail(ctx, p, px, py, p.size, clamp01(shade), 0.98);
 
         } else if (e < flyStart) {
           // HOLD — beating, swaying, lit 3-D heart
@@ -885,8 +920,29 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           const s = sparksFx[i];
           const age = dEt - s.start;
           if (age >= s.life) { sparksFx.splice(i, 1); continue; }
-          s.x += s.vx*dt; s.y += s.vy*dt;
           const lifeT = age / s.life;
+
+          if (s.comet) {
+            // comet — hot head with a tapering rose tail, racing upward
+            s.x += s.vx*dt; s.y += s.vy*dt;
+            const a = lifeT < 0.12 ? lifeT / 0.12 : 1 - (lifeT - 0.12) / 0.88;
+            if (a < 0.02 || s.y < -30) { sparksFx.splice(i, 1); continue; }
+            const tx = s.x - s.vx*95, ty = s.y - s.vy*95;
+            const gr = ctx.createLinearGradient(s.x, s.y, tx, ty);
+            gr.addColorStop(0,    `rgba(255,236,240,${(a*0.9).toFixed(3)})`);
+            gr.addColorStop(0.35, `rgba(251,113,133,${(a*0.5).toFixed(3)})`);
+            gr.addColorStop(1,    'rgba(225,29,72,0)');
+            ctx.strokeStyle = gr;
+            ctx.lineWidth = s.size;
+            ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(tx, ty); ctx.stroke();
+            ctx.fillStyle = `rgba(255,255,255,${(a*0.95).toFixed(3)})`;
+            ctx.fillRect(s.x - s.size*0.7, s.y - s.size*0.7, s.size*1.4, s.size*1.4);
+            continue;
+          }
+
+          // ember — drifts out, falls under gravity, twinkles
+          s.vy += 0.00018*dt;
+          s.x += s.vx*dt; s.y += s.vy*dt;
           const a = Math.max(0, Math.sin(lifeT*Math.PI) * (0.55 + 0.45*Math.sin(age*0.04 + s.phase)));
           if (a < 0.02) continue;
           const sz = s.size * (1 - lifeT*0.3);
