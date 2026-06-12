@@ -1,7 +1,9 @@
 .perf-list-item {
   content-visibility: auto;
   contain: layout paint style;
-  contain-intrinsic-size: 320px;
+  /* `auto` lets the browser reuse each card's last-rendered height once
+     known, so re-skipping offscreen cards never shifts scroll geometry. */
+  contain-intrinsic-size: auto 320px;
 }
 
 .perf-card-shell {

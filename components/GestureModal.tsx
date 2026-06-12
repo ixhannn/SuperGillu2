@@ -27,8 +27,11 @@ export const GestureModal: React.FC<GestureModalProps> = ({ isOpen, onClose, chi
         return () => window.removeEventListener('lior:hardware-back', handleBack);
     }, [isOpen, onClose]);
 
-    // Portal OUTSIDE AnimatePresence: React 19 portals are not valid elements,
-    // so AnimatePresence would silently drop a portal child and render nothing.
+    if (typeof document === 'undefined') return null;
+
+    // Portal OUTSIDE AnimatePresence: a ReactPortal is not a plain React
+    // element, so AnimatePresence's child tracking silently drops it and the
+    // modal never renders. (Same fix as ActionSheet.)
     return ReactDOM.createPortal(
         <AnimatePresence>
             {isOpen && (

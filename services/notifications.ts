@@ -18,12 +18,18 @@ import { SupabaseService } from './supabase';
 
 const CAP_NS = '@capacitor/local-notifications';
 
+type PluginListenerHandle = { remove: () => Promise<void> };
+
 type LocalNotifications = {
   checkPermissions: () => Promise<{ display: 'granted' | 'denied' | 'prompt' }>;
   requestPermissions: () => Promise<{ display: 'granted' | 'denied' | 'prompt' }>;
   schedule: (opts: { notifications: unknown[] }) => Promise<unknown>;
   cancel: (opts: { notifications: { id: number }[] }) => Promise<void>;
   getPending: () => Promise<{ notifications: { id: number }[] }>;
+  addListener?: (
+    event: 'localNotificationActionPerformed',
+    handler: (action: { notification?: { extra?: { view?: string } } }) => void,
+  ) => Promise<PluginListenerHandle>;
   createChannel?: (channel: {
     id: string;
     name: string;
@@ -66,7 +72,20 @@ type PushNotifications = {
   checkPermissions: () => Promise<{ receive: 'granted' | 'denied' | 'prompt' }>;
   requestPermissions: () => Promise<{ receive: 'granted' | 'denied' | 'prompt' }>;
   register: () => Promise<void>;
-  addListener: (event: 'registration', handler: (data: { value: string }) => void) => Promise<unknown>;
+  addListener: ((event: 'registration', handler: (data: { value: string }) => void) => Promise<unknown>)
+    & ((
+      event: 'pushNotificationActionPerformed',
+      handler: (action: { notification?: { data?: { view?: string } } }) => void,
+    ) => Promise<PluginListenerHandle>);
+};
+
+// Where a tap on each notification kind should land. Native apps take you
+// TO the thing, not just into the app.
+const KIND_VIEWS: Record<NotificationSchedule['kind'], string> = {
+  'daily-clip': 'daily-moments',
+  'recap-sunday': 'weekly-recap',
+  'film-ready': 'daily-video',
+  'cycle-3-days': 'us',
 };
 
 type NativePermissionState = 'granted' | 'denied' | 'prompt';
@@ -274,7 +293,8 @@ export const NotificationsService = {
         channelId: ANDROID_CHANNEL_ID,
         smallIcon: 'ic_notification',
         schedule: { at: new Date(s.fireAt), allowWhileIdle: true },
-        extra: { kind: s.kind, ...s.payload },
+        // `view` routes the tap to the relevant screen (see bindTapRouting).
+        extra: { kind: s.kind, view: KIND_VIEWS[s.kind], ...s.payload },
       }));
       if (payload.length > 0) await native.schedule({ notifications: payload });
     }
@@ -317,6 +337,7 @@ export const NotificationsService = {
           channelId: ANDROID_CHANNEL_ID,
           smallIcon: 'ic_notification',
           schedule: { at: new Date(Date.now() + 500) },
+          extra: { kind, view: KIND_VIEWS[kind] },
         }],
       });
       return;
@@ -328,6 +349,40 @@ export const NotificationsService = {
 
   listPending(): NotificationSchedule[] {
     return readSchedules();
+  },
+
+  /**
+   * Route notification taps to the relevant screen. Local reminders carry
+   * `extra.view` (set by applySchedule/fireImmediate); partner pushes may
+   * carry `data.view` from the Edge Function, defaulting to home. The
+   * caller validates the view name before navigating.
+   * Returns a cleanup function; resolves to a no-op on web.
+   */
+  async bindTapRouting(onNavigate: (view: string) => void): Promise<() => void> {
+    const handles: PluginListenerHandle[] = [];
+
+    const local = await getCapacitorLocalNotifications();
+    if (local && typeof local.addListener === 'function') {
+      try {
+        handles.push(await local.addListener('localNotificationActionPerformed', (action) => {
+          const view = action.notification?.extra?.view;
+          if (view) onNavigate(view);
+        }));
+      } catch { /* listener unsupported on this platform */ }
+    }
+
+    const push = await getCapacitorPushNotifications();
+    if (push) {
+      try {
+        handles.push(await push.addListener('pushNotificationActionPerformed', (action) => {
+          onNavigate(action.notification?.data?.view || 'home');
+        }));
+      } catch { /* listener unsupported on this platform */ }
+    }
+
+    return () => {
+      handles.forEach((handle) => { void handle.remove(); });
+    };
   },
 
   /**

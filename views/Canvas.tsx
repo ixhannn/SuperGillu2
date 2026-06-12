@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { ArrowLeft, Trash2, Eraser, Download, Undo2, Heart, BookmarkPlus, Check, X } from 'lucide-react';
+import { useSheetDismiss } from '../hooks/useSheetDismiss';
 import { ViewState, Memory } from '../types';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -39,6 +41,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
   const [showSaveSheet, setShowSaveSheet] = useState(false);
   const [saveCaption, setSaveCaption] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'done'>('idle');
+  const saveSheetDismiss = useSheetDismiss(() => { if (saveStatus === 'idle') setShowSaveSheet(false); });
   const undoStack = useRef<ImageData[]>([]);
   const profile = StorageService.getCoupleProfile();
 
@@ -542,15 +545,22 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
           style={{ background: 'rgba(49,31,42,0.42)', backdropFilter: 'blur(12px)' }}
           onClick={() => { if (saveStatus === 'idle') setShowSaveSheet(false); }}
         >
-          <div
-            className="w-full max-w-md rounded-t-[1.8rem] px-4 pb-10 pt-5"
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+            className="w-full max-w-md rounded-t-[1.8rem] px-4 pb-10 pt-2"
             style={{
               background: 'linear-gradient(160deg, #fffafd 0%, #f8edf5 100%)',
               border: '1px solid rgba(255,255,255,0.86)',
               boxShadow: '0 -16px 42px rgba(64,42,58,0.20), inset 0 1px 0 rgba(255,255,255,0.92)',
             }}
             onClick={e => e.stopPropagation()}
+            {...saveSheetDismiss.sheetDragProps}
           >
+            <div className="flex justify-center pb-2 pt-1" {...saveSheetDismiss.handleProps}>
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(122,72,90,0.22)' }} />
+            </div>
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
                 <BookmarkPlus size={16} style={{ color: '#c2557c' }} />
@@ -597,7 +607,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
                   : <><Heart size={14} fill="currentColor" /> Save Drawing</>
               }
             </button>
-          </div>
+          </motion.div>
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 package com.lior.app;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,7 +14,12 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Must run before super.onCreate so the bridge knows the plugin.
+        registerPlugin(ShareTargetPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // System share sheet → Lior (cold start delivery).
+        ShareTargetPlugin.handleSendIntent(getContentResolver(), getIntent());
 
         configureEdgeToEdgeSystemBars();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
@@ -47,6 +53,15 @@ public class MainActivity extends BridgeActivity {
         // Surface.setFrameRate requires Surface access; the safest approach for
         // Capacitor is to set it via WindowManager (done above). No additional
         // API call needed here.
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        // System share sheet → Lior while the app is already running
+        // (launchMode is singleTask, so warm shares arrive here).
+        ShareTargetPlugin.handleSendIntent(getContentResolver(), intent);
     }
 
     private void configureEdgeToEdgeSystemBars() {

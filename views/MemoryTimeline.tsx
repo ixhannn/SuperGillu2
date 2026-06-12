@@ -1,7 +1,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Trash2, Image as ImageIcon, PlayCircle, Plus, Calendar, Sparkles, Heart, X, Pause, Play, Volume2, VolumeX, Send, MessageCircle, CornerDownRight, Mic } from 'lucide-react';
+import { Trash2, Image as ImageIcon, PlayCircle, Plus, Calendar, Sparkles, Heart, X, Pause, Play, Volume2, VolumeX, Send, MessageCircle, CornerDownRight, Mic, Share2 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory, Note, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -10,6 +10,11 @@ import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { springSmooth, springSnappy } from '../utils/motion';
 import { useLiorMedia } from '../hooks/useLiorImage';
+import { useViewerGestures } from '../hooks/useViewerGestures';
+import { useLongPress } from '../hooks/useLongPress';
+import { ActionSheet } from '../components/ActionSheet';
+import { ShareService } from '../services/share';
+import { Haptics } from '../services/haptics';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -127,8 +132,10 @@ const MemoryCardBase: React.FC<{
     tilt?: number;
     onOpen: (memory: Memory) => void;
     onDelete: (id: string) => void;
-}> = ({ memory, index, featured = false, tilt = 0, onOpen, onDelete }) => {
+    onLongPress: (memory: Memory) => void;
+}> = ({ memory, index, featured = false, tilt = 0, onOpen, onDelete, onLongPress }) => {
     const deleteRequestScheduledRef = useRef(false);
+    const longPress = useLongPress(() => onLongPress(memory));
     const imageStoragePath = selectImageStoragePath(memory.storagePath, memory.imageMimeType);
     const videoStoragePath = selectVideoStoragePath(memory.videoStoragePath, memory.storagePath, memory.videoMimeType || memory.imageMimeType);
     const isVideo = !!(memory.video || memory.videoId || videoStoragePath);
@@ -165,13 +172,19 @@ const MemoryCardBase: React.FC<{
     };
 
     const staggerDelay = Math.min(index * 0.035, 0.32);
+    // Only the first viewport's worth of cards earns a JS entrance animation.
+    // Cards below the fold are skipped by content-visibility for paint, but
+    // framer would still drive their springs on the main thread — hundreds of
+    // simultaneous offscreen tweens on big timelines is a mount-jank burst.
+    const animateEntrance = index < 9;
     return (
         <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={animateEntrance ? { opacity: 0, y: 10 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => { feedback.light(); onOpen(memory); }}
+            {...longPress}
             data-memory-card="true"
             data-perf-list-item="true"
             className="perf-list-item relative overflow-hidden cursor-pointer group"
@@ -654,10 +667,14 @@ const CommentBubbleBase: React.FC<{
 const CommentBubble = React.memo(CommentBubbleBase);
 
 /* ─── Detail modal ─── */
-const MemoryDetailModal = ({ memory, onClose, onDelete }: {
+const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate, navDir }: {
     memory: Memory;
     onClose: () => void;
     onDelete: (id: string) => void;
+    onNavigate: (direction: 1 | -1) => void;
+    canNavigate: (direction: 1 | -1) => boolean;
+    /** Direction of the last swipe navigation; 0 on fresh open. */
+    navDir: number;
 }) => {
     const deleteRequestScheduledRef = useRef(false);
     const imageStoragePath = selectImageStoragePath(memory.storagePath, memory.imageMimeType);
@@ -692,6 +709,23 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
     const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // ── Native viewer gestures: pull-down dismiss, swipe prev/next, pinch ──
+    const gestures = useViewerGestures({
+        onDismiss: onClose,
+        onNavigate,
+        canNavigate,
+        zoomEnabled: mediaKind === 'image',
+    });
+
+    // Swiping to another memory keeps the sheet mounted — reset transient
+    // state so the new memory starts clean and scrolled to the top.
+    useEffect(() => {
+        gestures.resetAfterNavigate();
+        scrollRef.current?.scrollTo({ top: 0 });
+        setInputText('');
+        setReplyingTo(null);
+    }, [memory.id, gestures]);
     const profile = useMemo(() => StorageService.getCoupleProfile(), []);
     const myName = profile.myName;
 
@@ -763,6 +797,14 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
         }, 500);
     };
 
+    const shareMemory = async () => {
+        Haptics.tap();
+        const result = await ShareService.shareMemory(memory);
+        if (result.shared && result.via === 'clipboard') {
+            toast.show('Copied to clipboard', 'success');
+        }
+    };
+
     return ReactDOM.createPortal(
         <motion.div
             initial={{ opacity: 0 }}
@@ -773,12 +815,16 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
             style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
             onClick={onClose}
         >
+            {/* Gesture wrapper — follows the finger during pull-down dismiss.
+                Kept separate from the inner sheet so the enter/exit spring
+                and the live drag offset never fight over the same y. */}
+            <motion.div className="w-full max-w-md flex flex-col min-h-0" style={{ y: gestures.sheetY }}>
             <motion.div
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', stiffness: 340, damping: 34 }}
-                className="w-full max-w-md flex flex-col sm:rounded-[2rem] rounded-t-[2rem] overflow-hidden"
+                className="w-full flex flex-col min-h-0 sm:rounded-[2rem] rounded-t-[2rem] overflow-hidden"
                 style={{
                     // Warm wine-dark — same family as the Auth sheet, so the
                     // modal belongs to the app instead of the cold #111214
@@ -790,8 +836,12 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                 }}
                 onClick={e => e.stopPropagation()}
             >
-                {/* ── Drag handle ── */}
-                <div className="flex items-center justify-center pt-2.5 pb-2 shrink-0">
+                {/* ── Drag handle — pull down to dismiss ── */}
+                <div
+                    className="flex items-center justify-center pt-2.5 pb-2 shrink-0"
+                    style={{ touchAction: 'none' }}
+                    {...gestures.heroHandlers}
+                >
                     <span
                         aria-hidden
                         className="h-1.5 w-10 rounded-full"
@@ -801,13 +851,28 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
 
                 {/* ── Scrollable body — editorial scrapbook layout ── */}
                 <div ref={scrollRef} data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto overscroll-contain">
+                    {/* Keyed per memory: swiping to a neighbour slides the new
+                        content in from the swipe direction instead of
+                        remounting the whole sheet. */}
+                    <motion.div
+                        key={memory.id}
+                        initial={navDir !== 0 ? { x: navDir * 56, opacity: 0.4 } : false}
+                        animate={{ x: 0, opacity: 1 }}
+                        transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                    >
 
                     {/* HERO — photo is the surface. Floating X over the
                         photo. Mood as a placed sticker. No bordered header
-                        bar above to make it look like a generic media viewer. */}
-                    <div className="relative">
+                        bar above to make it look like a generic media viewer.
+                        All viewer gestures (pull-down dismiss, swipe between
+                        memories, pinch zoom) start here. */}
+                    <motion.div
+                        className="relative"
+                        style={{ x: gestures.heroX, touchAction: 'none' }}
+                        {...gestures.heroHandlers}
+                    >
                         <div
-                            className="w-full"
+                            className="w-full overflow-hidden"
                             style={{
                                 background: memory.frame === 'polaroid' ? '#fdfaf5'
                                     : memory.frame === 'film' ? 'linear-gradient(180deg, #1a1a1a, #0c0c0c)'
@@ -827,7 +892,8 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                             ) : mediaSrc ? (
                                 mediaKind === 'video'
                                     ? <InlineVideoPlayer src={mediaSrc} onError={handleVideoError} />
-                                    : <img src={mediaSrc} alt="Memory" onError={handleMediaError}
+                                    : <img ref={gestures.zoomTargetRef} src={mediaSrc} alt="Memory" onError={handleMediaError}
+                                        draggable={false}
                                         style={{
                                             display: 'block',
                                             width: '100%',
@@ -901,7 +967,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                                 <span style={{ fontSize: 22, lineHeight: 1 }}>{mood}</span>
                             </span>
                         )}
-                    </div>
+                    </motion.div>
 
                     {/* Voice note player */}
                     {hasAudio && <InlineAudioPlayer memory={memory} />}
@@ -1021,6 +1087,26 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                         </div>
                         <button
                             type="button"
+                            aria-label="Share memory"
+                            onClick={(e) => { e.stopPropagation(); void shareMemory(); }}
+                            className="w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform shrink-0"
+                            style={{
+                                WebkitTapHighlightColor: 'transparent',
+                                touchAction: 'manipulation',
+                            }}
+                        >
+                            <span
+                                className="w-9 h-9 rounded-full flex items-center justify-center"
+                                style={{
+                                    background: 'rgba(236,72,153,0.12)',
+                                    border: '1px solid rgba(236,72,153,0.22)',
+                                }}
+                            >
+                                <Share2 size={13} className="text-pink-300/90" />
+                            </span>
+                        </button>
+                        <button
+                            type="button"
                             aria-label="Delete memory"
                             data-memory-delete="true"
                             onPointerDownCapture={openMemoryDeleteConfirm}
@@ -1088,6 +1174,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                             </div>
                         ))}
                     </div>
+                    </motion.div>
                 </div>
 
                 {/* ── Input bar — pinned at bottom ── */}
@@ -1148,6 +1235,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete }: {
                         </div>
                     </div>
                 </div>
+            </motion.div>
             </motion.div>
         </motion.div>,
         document.body,
@@ -1244,8 +1332,25 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
     };
 
     const handleOpenMemory = useCallback((memory: Memory) => {
+        navDirRef.current = 0;
         setSelectedMemory(memory);
     }, []);
+
+    // ── Long-press context menu ──
+    const [menuMemory, setMenuMemory] = useState<Memory | null>(null);
+
+    const handleCardLongPress = useCallback((memory: Memory) => {
+        Haptics.press();
+        setMenuMemory(memory);
+    }, []);
+
+    const handleMenuShare = useCallback(async () => {
+        if (!menuMemory) return;
+        const result = await ShareService.shareMemory(menuMemory);
+        if (result.shared && result.via === 'clipboard') {
+            toast.show('Copied to clipboard', 'success');
+        }
+    }, [menuMemory]);
 
     const handleCloseMemory = useCallback(() => {
         setSelectedMemory(null);
@@ -1263,6 +1368,27 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
         [...memories].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         [memories]
     );
+
+    // ── Swipe navigation between memories in the detail viewer ──
+    // navDirRef carries the swipe direction into the next render so the
+    // incoming content slides in from the correct side.
+    const navDirRef = useRef<number>(0);
+
+    const handleNavigateMemory = useCallback((direction: 1 | -1) => {
+        feedback.light();
+        navDirRef.current = direction;
+        setSelectedMemory((current) => {
+            if (!current) return current;
+            const index = sorted.findIndex((m) => m.id === current.id);
+            return sorted[index + direction] ?? current;
+        });
+    }, [sorted]);
+
+    const canNavigateMemory = useCallback((direction: 1 | -1) => {
+        if (!selectedMemory) return false;
+        const index = sorted.findIndex((m) => m.id === selectedMemory.id);
+        return index !== -1 && !!sorted[index + direction];
+    }, [sorted, selectedMemory]);
 
     const grouped = useMemo(() => sorted.reduce((acc, m) => {
         const key = new Date(m.date).toLocaleString('default', { month: 'long', year: 'numeric' });
@@ -1490,6 +1616,7 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                         tilt={featuredTilt(groupIdx)}
                                                         onOpen={handleOpenMemory}
                                                         onDelete={requestDelete}
+                                                        onLongPress={handleCardLongPress}
                                                     />
                                                 </div>
                                             </AnimatePresence>
@@ -1506,6 +1633,7 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                                 tilt={gridTilt(groupIdx, i)}
                                                                 onOpen={handleOpenMemory}
                                                                 onDelete={requestDelete}
+                                                                onLongPress={handleCardLongPress}
                                                             />
                                                         ))}
                                                     </AnimatePresence>
@@ -1519,13 +1647,40 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                     </>
                 )}
 
+                <ActionSheet
+                    open={!!menuMemory}
+                    onClose={() => setMenuMemory(null)}
+                    title={menuMemory?.text?.trim() || 'Memory'}
+                    items={[
+                        {
+                            icon: <Share2 size={16} />,
+                            label: 'Share',
+                            sublabel: 'Send this memory outside Lior',
+                            onSelect: () => { void handleMenuShare(); },
+                        },
+                        {
+                            icon: <Trash2 size={16} />,
+                            label: 'Delete',
+                            sublabel: 'Removes it for both of you',
+                            destructive: true,
+                            onSelect: () => { if (menuMemory) requestDelete(menuMemory.id); },
+                        },
+                    ]}
+                />
+
                 <AnimatePresence>
                     {selectedMemory && (
                         <MemoryDetailModal
-                            key={selectedMemory.id}
+                            // Stable key: swiping between memories swaps the
+                            // content in place instead of replaying the whole
+                            // sheet's enter/exit animation.
+                            key="memory-detail"
                             memory={selectedMemory}
                             onClose={handleCloseMemory}
                             onDelete={requestDelete}
+                            onNavigate={handleNavigateMemory}
+                            canNavigate={canNavigateMemory}
+                            navDir={navDirRef.current}
                         />
                     )}
                 </AnimatePresence>

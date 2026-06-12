@@ -114,20 +114,23 @@ Deno.serve(async (req: Request) => {
   const who = senderName || 'Your partner';
   let title: string;
   let body: string;
+  let view: string;
   if (type === 'heartbeat') {
     // Short & playful.
     title = `\u{1F497} Heartbeat from ${who}`;
     body  = '\u{1F49E} Tap to send one back';
+    view  = 'home'; // heartbeat button lives on Home
   } else {
     title = '\u{1F495} Your partner is thinking of you';
     body  = "They just checked in \u2014 take a moment to share how you're feeling too.";
+    view  = 'partner-intelligence'; // pulse-check sheet lives here
   }
 
   const results: string[] = [];
 
   for (const { token, platform } of tokens) {
     if (platform === 'fcm') {
-      results.push(await sendFcm(token, title, body));
+      results.push(await sendFcm(token, title, body, view));
     } else if (platform === 'web') {
       results.push(await sendVapid(token, title, body));
     }
@@ -174,7 +177,7 @@ async function getFcmAccessToken(sa: ServiceAccount): Promise<string | null> {
   return data.access_token;
 }
 
-async function sendFcm(token: string, title: string, body: string): Promise<string> {
+async function sendFcm(token: string, title: string, body: string, view?: string): Promise<string> {
   const raw = Deno.env.get('FCM_SERVICE_ACCOUNT');
   if (!raw) return 'fcm_no_service_account';
 
@@ -202,6 +205,9 @@ async function sendFcm(token: string, title: string, body: string): Promise<stri
           message: {
             token,
             notification: { title, body },
+            // `view` routes the tap to the relevant screen in the app
+            // (NotificationsService.bindTapRouting reads data.view).
+            data: view ? { view } : undefined,
             android: {
               priority: 'high',
               notification: { channel_id: 'lior-reminders', sound: 'default' },

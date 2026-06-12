@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher long-press shortcuts. Each one deep-links into the app via the
+     custom scheme; the route is handled by the appUrlOpen listener in
+     App.tsx (shortcut host → in-app view). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add_memory"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_add_memory_short"
+        android:shortcutLongLabel="@string/shortcut_add_memory_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.lior.app"
+            android:targetClass="com.lior.app.MainActivity"
+            android:data="com.lior.app://shortcut/add-memory" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="daily_moment"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_daily_moment_short"
+        android:shortcutLongLabel="@string/shortcut_daily_moment_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.lior.app"
+            android:targetClass="com.lior.app.MainActivity"
+            android:data="com.lior.app://shortcut/daily-moments" />
+    </shortcut>
+</shortcuts>

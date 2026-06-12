@@ -18,6 +18,8 @@ import { PremiumModal, type PremiumFeatureContext } from '../components/PremiumM
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
 import { getDailyMomentCountdown, isDailyMomentExpired } from '../shared/mediaRetention.js';
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
+import { useSheetDismiss } from '../hooks/useSheetDismiss';
+import { useDraft } from '../hooks/useDraft';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -537,7 +539,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [newImage, setNewImage] = useState<string | null>(null);
     const [newVideo, setNewVideo] = useState<string | null>(null);
-    const [caption, setCaption] = useState('');
+    const [caption, setCaption, clearCaptionDraft] = useDraft('daily-moments.caption', '');
     const [selectedPhoto, setSelectedPhoto] = useState<DailyPhoto | null>(null);
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [premiumContext, setPremiumContext] = useState<PremiumFeatureContext>('video');
@@ -710,6 +712,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
             setNewImage(null);
             setNewVideo(null);
             setCaption('');
+            clearCaptionDraft();
             feedback.celebrate();
             toast.show("Moment added successfully!", "success");
         } catch (error: any) {
@@ -727,6 +730,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
         if (fileInputRef.current) fileInputRef.current.value = '';
         if (videoInputRef.current) videoInputRef.current.value = '';
     };
+    const uploadSheetDismiss = useSheetDismiss(cancelUpload);
 
     return (
         <PullToRefresh onRefresh={handleRefresh}>
@@ -811,8 +815,15 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
             {/* Upload Modal */}
             {isUploading && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-xl p-0 sm:p-4">
-                    <div className="w-full max-w-md max-h-[96dvh] flex flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px]" style={{ background: 'var(--color-surface)', animation: 'slideUp 0.35s cubic-bezier(0.23, 1, 0.32, 1) both', boxShadow: '0 -18px 48px rgba(45,31,37,0.18)' }}>
-                        <div className="px-4 py-3 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 86%, transparent)' }}>
+                    <motion.div
+                        initial={{ y: '100%' }}
+                        animate={{ y: 0 }}
+                        transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+                        className="w-full max-w-md max-h-[96dvh] flex flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px]"
+                        style={{ background: 'var(--color-surface)', boxShadow: '0 -18px 48px rgba(45,31,37,0.18)' }}
+                        {...uploadSheetDismiss.sheetDragProps}
+                    >
+                        <div className="px-4 py-3 flex items-center justify-between shrink-0" onPointerDown={uploadSheetDismiss.handleProps.onPointerDown} style={{ touchAction: 'none', borderBottom: '1px solid rgba(var(--theme-particle-2-rgb),0.12)', background: 'color-mix(in srgb, var(--color-surface) 86%, transparent)' }}>
                             <button type="button" onClick={cancelUpload} aria-label="Cancel upload" className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer spring-press focus-visible:ring-2 focus-visible:ring-lior-500 focus-visible:rounded-full focus-visible:ring-offset-2" style={{ color: 'var(--color-text-secondary)' }}><X size={22} /></button>
                             <span className="font-bold text-sm uppercase tracking-widest" style={{ color: 'var(--color-text-primary)' }}>Post Moment</span>
                             <div className="w-11" aria-hidden="true" />
@@ -862,7 +873,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
                             {isSaving ? 'Sharing...' : 'Share Moment'}
                         </button>
                     </div>
-                    </div>
+                    </motion.div>
                 </div>,
                 document.body
             )}
