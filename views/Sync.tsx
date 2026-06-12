@@ -16,6 +16,8 @@ import { NotificationsService } from '../services/notifications';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from '../utils/toast';
 import { PairingService, QR_PREFIX, PairInvite } from '../services/pairing';
+import { requestMediaStream, stopStream, MediaFailureReason } from '../utils/mediaPermissions';
+import { PermissionBanner } from '../components/PermissionBanner';
 
 interface SyncProps {
   setView: (view: ViewState) => void;
@@ -54,6 +56,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [countdown, setCountdown] = useState(0);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [scanMsg, setScanMsg]     = useState('');
+  const [cameraFailure, setCameraFailure] = useState<MediaFailureReason | null>(null);
   const [manualCode, setManualCode] = useState('');
   const [manualClaiming, setManualClaiming] = useState(false);
   const [linkedPartner, setLinkedPartner] = useState(() => getLinkedPartnerLabel());
@@ -242,7 +245,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const stopCamera = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      stopStream(streamRef.current);
       streamRef.current = null;
     }
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -251,43 +254,28 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const startCamera = async () => {
     setScanPhase('requesting');
     setScanMsg('');
+    setCameraFailure(null);
     claimingRef.current = false;
     stopCamera();
 
-    if (!navigator.mediaDevices?.getUserMedia) {
+    // Try rear camera first, then fall back to any available camera when a
+    // different constraint set could plausibly succeed. Skip the fallback for
+    // failures the second attempt can't fix (denied, insecure, unsupported,
+    // timeout) so the user isn't prompted or kept waiting twice.
+    let result = await requestMediaStream({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    if (!result.ok && (result.reason === 'unavailable' || result.reason === 'busy' || result.reason === 'unknown')) {
+      result = await requestMediaStream({ video: true, audio: false });
+    }
+    if (!result.ok) {
       setScanPhase('error');
-      setScanMsg('Camera API is not available in this environment. Open Lior in a regular browser and try again.');
+      setCameraFailure(result.reason);
       return;
     }
 
-    let stream: MediaStream;
-    try {
-      // Try rear camera first, then fallback to any available camera.
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
-          audio: false,
-        });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-      }
-    } catch (err: any) {
-      setScanPhase('error');
-      const name = err?.name || '';
-      if (name === 'NotAllowedError' || name === 'SecurityError') {
-        setScanMsg('Camera permission was blocked. Allow camera access (and if using IDE preview, try opening localhost in your browser).');
-      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-        setScanMsg('No compatible camera found. Try another device/browser.');
-      } else {
-        setScanMsg('Could not start camera preview. Try opening localhost in a regular browser.');
-      }
-      return;
-    }
-
-    streamRef.current = stream;
+    streamRef.current = result.stream;
     setScanPhase('scanning');
     lastScanAttemptRef.current = 0;
 
@@ -348,6 +336,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     setScanPhase('claiming');
     setScanMsg('Linking accounts…');
     setPairingUi({ phase: 'claiming', message: 'Confirming the shared space...' });
+    setCameraFailure(null);
 
     let result;
     try {
@@ -437,6 +426,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       stopCamera();
       setScanPhase('idle');
       setScanMsg('');
+      setCameraFailure(null);
     }
     setPairTab(tab);
   };
@@ -639,6 +629,43 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           style={{ color: 'var(--color-text-secondary)' }}>
           Scan again
         </button>
+      </div>
+    );
+
+    if (scanPhase === 'error' && cameraFailure) return (
+      <div className="flex flex-col gap-3 py-2">
+        <PermissionBanner
+          kind="camera"
+          reason={cameraFailure}
+          tone="light"
+          onRetry={startCamera}
+          onDismiss={() => { setScanPhase('idle'); setCameraFailure(null); }}
+        />
+        <div className="w-full">
+          <p className="text-[10px] uppercase tracking-widest text-center mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            or enter code manually
+          </p>
+          <div className="flex gap-2">
+            <input
+              id="partner-code-camera-error"
+              aria-label="Partner code"
+              value={manualCode}
+              onChange={(e) => setManualCode(normalizeCode(e.target.value))}
+              placeholder="8-char code"
+              className="flex-1 px-3 py-2 rounded-lg text-xs font-mono tracking-wider uppercase"
+              style={{ background: 'rgba(var(--theme-particle-3-rgb),0.10)', color: 'var(--color-text-primary)' }}
+              maxLength={8}
+            />
+            <button
+              onClick={handleManualClaim}
+              disabled={manualClaiming}
+              className="liquid-glass-btn liquid-glass-btn--rose px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-60"
+              style={{ color: '#fff' }}
+            >
+              {manualClaiming ? 'Linking…' : 'Link'}
+            </button>
+          </div>
+        </div>
       </div>
     );
 

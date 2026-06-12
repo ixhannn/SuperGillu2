@@ -4,7 +4,6 @@ import {
     AlertTriangle,
     Archive,
     Camera,
-    Fingerprint,
     Image as ImageIcon,
     LockKeyhole,
     Mic,
@@ -16,7 +15,11 @@ import {
     X,
 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
+import { PinPad } from '../components/PinPad';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { PrivacyLock, PIN_LENGTH } from '../services/privacyLock';
+import { feedback } from '../utils/feedback';
 import { PrivateSpaceItem, PrivateSpaceItemKind, ViewState } from '../types';
 
 interface PrivateSpaceProps {
@@ -186,9 +189,19 @@ const PrivateMediaPreview: React.FC<{ item: PrivateSpaceItem; mode?: 'card' | 'd
     );
 };
 
+type LockMode = 'setup' | 'confirm' | 'enter';
+
 export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     const profile = StorageService.getCoupleProfile();
-    const [locked, setLocked] = useState(true);
+    const [locked, setLocked] = useState(() => !PrivacyLock.isSessionUnlocked());
+    const [lockMode, setLockMode] = useState<LockMode>(() => (PrivacyLock.hasPin() ? 'enter' : 'setup'));
+    const [pinEntry, setPinEntry] = useState('');
+    const [firstPin, setFirstPin] = useState('');
+    const [pinError, setPinError] = useState('');
+    const [pinShake, setPinShake] = useState(0);
+    const [pinBusy, setPinBusy] = useState(false);
+    const [lockoutMs, setLockoutMs] = useState(() => PrivacyLock.getLockoutRemainingMs());
+    const [showPinReset, setShowPinReset] = useState(false);
     const [items, setItems] = useState<PrivateSpaceItem[]>(() => StorageService.getPrivateSpaceItems());
     const [filter, setFilter] = useState<Filter>('all');
     const [showComposer, setShowComposer] = useState(false);
@@ -325,6 +338,93 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
         if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
     }, []);
 
+    // Tick down the failed-attempt cooldown while the pad is locked out.
+    useEffect(() => {
+        if (!locked || lockoutMs <= 0) return;
+        const interval = window.setInterval(() => {
+            const remaining = PrivacyLock.getLockoutRemainingMs();
+            setLockoutMs(remaining);
+            if (remaining <= 0) setPinError('');
+        }, 1000);
+        return () => window.clearInterval(interval);
+    }, [locked, lockoutMs]);
+
+    const failPinEntry = (message: string) => {
+        feedback.error();
+        setPinError(message);
+        setPinShake((value) => value + 1);
+        setPinEntry('');
+    };
+
+    const submitPin = async (pin: string) => {
+        if (lockMode === 'setup') {
+            setFirstPin(pin);
+            setPinEntry('');
+            setPinError('');
+            setLockMode('confirm');
+            return;
+        }
+
+        if (lockMode === 'confirm') {
+            if (pin !== firstPin) {
+                setFirstPin('');
+                setLockMode('setup');
+                failPinEntry("PINs didn't match — start again");
+                return;
+            }
+            setPinBusy(true);
+            try {
+                await PrivacyLock.setPin(pin);
+                feedback.celebrate();
+                setPinEntry('');
+                setPinError('');
+                setLocked(false);
+            } catch {
+                failPinEntry("Couldn't save your PIN — try again");
+            } finally {
+                setPinBusy(false);
+            }
+            return;
+        }
+
+        setPinBusy(true);
+        try {
+            const result = await PrivacyLock.verifyPin(pin);
+            if (result.ok) {
+                feedback.tap();
+                setPinEntry('');
+                setPinError('');
+                setLocked(false);
+                return;
+            }
+            if (result.lockedForMs && result.lockedForMs > 0) {
+                setLockoutMs(result.lockedForMs);
+                failPinEntry('Too many tries');
+                return;
+            }
+            const remaining = result.remainingAttempts ?? 0;
+            failPinEntry(`Wrong PIN — ${remaining} ${remaining === 1 ? 'try' : 'tries'} left`);
+        } finally {
+            setPinBusy(false);
+        }
+    };
+
+    const handlePinChange = (next: string) => {
+        setPinEntry(next);
+        if (pinError && lockoutMs <= 0) setPinError('');
+        if (next.length === PIN_LENGTH) void submitPin(next);
+    };
+
+    const resetPin = () => {
+        PrivacyLock.clearPin();
+        setShowPinReset(false);
+        setFirstPin('');
+        setPinEntry('');
+        setPinError('');
+        setLockoutMs(0);
+        setLockMode('setup');
+    };
+
     const confirmDelete = () => {
         const item = deleteCandidate;
         if (!item) return;
@@ -354,70 +454,98 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     };
 
     if (locked) {
+        const lockedOut = lockoutMs > 0;
+        const lockCopy: Record<LockMode, { title: string; sub: string }> = {
+            setup: { title: 'Create a PIN', sub: `Set a ${PIN_LENGTH}-digit PIN to keep this shelf just for you two.` },
+            confirm: { title: 'Confirm your PIN', sub: 'Type the same digits once more.' },
+            enter: { title: 'Only you two.', sub: 'Enter your PIN to open the shelf.' },
+        };
+
         return (
             <div className="relative min-h-[100dvh] overflow-hidden" style={neuBgStyle}>
                 <div className="absolute inset-0 opacity-60" style={neuDotPattern} />
-                <div className="absolute left-1/2 top-[30%] h-80 w-80 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(232,200,230,0.35),transparent_70%)] blur-2xl" />
-                <ViewHeader title="Private Space" subtitle="locked" onBack={() => setView('home')} tone="romance" />
+                <div className="absolute left-1/2 top-[26%] h-80 w-80 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(232,200,230,0.35),transparent_70%)] blur-2xl" />
+                <ViewHeader title="" onBack={() => setView('home')} tone="romance" />
 
-                <div className="relative z-10 flex min-h-[84vh] flex-col items-center justify-center px-6">
+                <div className="relative z-10 flex min-h-[84vh] flex-col items-center justify-center px-6 pb-10">
                     <motion.div
                         initial={{ opacity: 0, y: 22 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ type: 'spring', stiffness: 220, damping: 24 }}
                         className="flex w-full max-w-[22rem] flex-col items-center text-center"
                     >
-                        <motion.button
-                            onClick={() => setLocked(false)}
-                            whileTap={{ scale: 0.94 }}
-                            className="relative mb-10 flex h-[11rem] w-[11rem] items-center justify-center rounded-full"
-                            style={neuRaisedStyle}
-                            aria-label="Unlock Private Space"
-                        >
+                        <div className="relative mb-6 flex h-[4.6rem] w-[4.6rem] items-center justify-center rounded-full" style={neuRaisedStyle}>
                             <motion.span
-                                className="pointer-events-none absolute inset-[-26%] rounded-full"
-                                animate={{ opacity: [0.55, 0.85, 0.55], scale: [1, 1.06, 1] }}
+                                className="pointer-events-none absolute inset-[-30%] rounded-full"
+                                animate={{ opacity: [0.5, 0.8, 0.5], scale: [1, 1.06, 1] }}
                                 transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
                                 style={{
                                     background: 'radial-gradient(circle at 30% 30%, rgba(200,220,255,0.55), transparent 55%), radial-gradient(circle at 70% 70%, rgba(255,200,220,0.55), transparent 55%)',
-                                    filter: 'blur(22px)',
+                                    filter: 'blur(18px)',
                                 }}
                             />
-                            <Fingerprint size={52} strokeWidth={1.6} style={{ color: NEU_LILAC }} />
-                        </motion.button>
+                            <LockKeyhole size={26} strokeWidth={1.7} style={{ color: NEU_LILAC }} />
+                        </div>
 
                         <p className="text-[0.6rem] font-bold uppercase tracking-[0.26em]" style={{ color: NEU_INK_SOFT }}>
                             Private Space
                         </p>
-                        <h1 className="mt-3 font-serif text-[2.05rem] font-bold leading-[1.02] tracking-[-0.04em]" style={{ color: NEU_INK }}>
-                            Only you two.
+                        <h1 className="mt-2 font-serif text-[1.85rem] font-bold leading-[1.05] tracking-[-0.04em]" style={{ color: NEU_INK }}>
+                            {lockCopy[lockMode].title}
                         </h1>
-                        <p className="mt-3 max-w-[18rem] text-[0.86rem] leading-6" style={{ color: NEU_INK_SOFT }}>
-                            A quiet shelf, kept out of memories, recaps, and the timeline.
+                        <p className="mt-2 mb-8 max-w-[18rem] text-[0.84rem] leading-6" style={{ color: NEU_INK_SOFT }}>
+                            {lockCopy[lockMode].sub}
                         </p>
 
-                        <div className="mt-8 flex items-center gap-2.5 rounded-full px-4 py-2" style={neuInsetStyle}>
-                            <div className="flex -space-x-1.5">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full text-[0.58rem] font-bold" style={{ ...neuRaisedSoftStyle, color: NEU_LILAC }}>
-                                    {(profile.myName || 'Y').charAt(0).toUpperCase()}
-                                </div>
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full text-[0.58rem] font-bold" style={{ ...neuRaisedSoftStyle, color: NEU_LILAC }}>
-                                    {(profile.partnerName || 'P').charAt(0).toUpperCase()}
-                                </div>
-                            </div>
-                            <span className="text-[0.66rem] font-semibold" style={{ color: NEU_INK_SOFT }}>
-                                Shared with {profile.partnerName || 'your partner'}
-                            </span>
+                        <div className="w-full" style={{ color: NEU_LILAC }}>
+                            <PinPad
+                                value={pinEntry}
+                                onChange={handlePinChange}
+                                length={PIN_LENGTH}
+                                disabled={pinBusy || lockedOut}
+                                errorSignal={pinShake}
+                                keyStyle={{ ...neuRaisedSoftStyle, color: NEU_INK }}
+                                dotStyle={{ background: 'rgba(142,120,162,0.22)' }}
+                                filledDotStyle={{ background: NEU_LILAC }}
+                            />
                         </div>
 
-                        <p className="mt-8 text-[0.68rem] font-semibold uppercase tracking-[0.22em]" style={{ color: NEU_LILAC }}>
-                            Tap to unlock
-                        </p>
-                        <p className="mt-1.5 text-[0.68rem]" style={{ color: NEU_INK_SOFT }}>
-                            Re-locks when you close Lior
+                        <div className="mt-5 min-h-[1.4rem]" role="status" aria-live="polite">
+                            {lockedOut ? (
+                                <p className="text-[0.8rem] font-semibold" style={{ color: '#b8526b' }}>
+                                    Too many tries — wait {Math.ceil(lockoutMs / 1000)}s
+                                </p>
+                            ) : pinError ? (
+                                <p className="text-[0.8rem] font-semibold" style={{ color: '#b8526b' }}>{pinError}</p>
+                            ) : null}
+                        </div>
+
+                        {lockMode === 'enter' && (
+                            <button
+                                onClick={() => setShowPinReset(true)}
+                                className="mt-2 min-h-11 rounded-full px-4 text-[0.72rem] font-bold uppercase tracking-[0.18em] transition-transform active:scale-[0.97]"
+                                style={{ color: NEU_INK_SOFT }}
+                            >
+                                Forgot PIN?
+                            </button>
+                        )}
+
+                        <p className="mt-4 text-[0.68rem]" style={{ color: NEU_INK_SOFT }}>
+                            Shared with {profile.partnerName || 'your partner'} · Re-locks after a few minutes away
                         </p>
                     </motion.div>
                 </div>
+
+                <ConfirmModal
+                    isOpen={showPinReset}
+                    title="Reset your PIN?"
+                    message="This removes the current PIN so you can create a new one. Your sealed items stay safe."
+                    confirmLabel="Reset PIN"
+                    cancelLabel="Keep current PIN"
+                    variant="danger"
+                    onConfirm={resetPin}
+                    onCancel={() => setShowPinReset(false)}
+                />
             </div>
         );
     }
@@ -448,14 +576,31 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                             Hidden from memories and recaps.
                         </p>
                     </div>
-                    {counts.all > 0 && (
-                        <div
-                            className="shrink-0 rounded-full px-3.5 py-2 text-[0.66rem] font-bold"
-                            style={{ ...neuRaisedSoftStyle, color: NEU_INK_SOFT }}
+                    <div className="flex shrink-0 items-center gap-2">
+                        {counts.all > 0 && (
+                            <div
+                                className="rounded-full px-3.5 py-2 text-[0.66rem] font-bold"
+                                style={{ ...neuRaisedSoftStyle, color: NEU_INK_SOFT }}
+                            >
+                                {counts.all} sealed
+                            </div>
+                        )}
+                        <button
+                            onClick={() => {
+                                feedback.tap();
+                                PrivacyLock.relock();
+                                setPinEntry('');
+                                setPinError('');
+                                setLockMode(PrivacyLock.hasPin() ? 'enter' : 'setup');
+                                setLocked(true);
+                            }}
+                            aria-label="Lock Private Space now"
+                            className="flex h-11 w-11 items-center justify-center rounded-full transition-transform active:scale-95"
+                            style={{ ...neuRaisedSoftStyle, color: NEU_LILAC }}
                         >
-                            {counts.all} sealed
-                        </div>
-                    )}
+                            <LockKeyhole size={17} strokeWidth={2.1} />
+                        </button>
+                    </div>
                 </motion.section>
 
                 {visibleItems.length > 0 && (

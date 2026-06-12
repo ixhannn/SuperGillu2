@@ -30,6 +30,16 @@ assert.ok(
 );
 
 assert.ok(
-  privateSpaceSource.includes('Tap to unlock') && privateSpaceSource.includes('Re-locks when you close Lior'),
-  'Expected Private Space to clearly describe the current soft-lock privacy level',
+  privateSpaceSource.includes('PrivacyLock.verifyPin') && privateSpaceSource.includes('<PinPad'),
+  'Expected Private Space unlock to be gated behind real PIN verification',
+);
+
+assert.ok(
+  !privateSpaceSource.includes('Tap to unlock'),
+  'Expected the old tap-anywhere soft unlock to be removed',
+);
+
+assert.ok(
+  privateSpaceSource.includes('Re-locks after a few minutes away'),
+  'Expected Private Space to describe its relock behavior honestly',
 );

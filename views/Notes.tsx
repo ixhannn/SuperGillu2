@@ -8,6 +8,7 @@ import { RelationshipSignals } from '../services/relationshipSignals';
 import { feedback } from '../utils/feedback';
 import { useNativeShell } from '../hooks/useNativeShell';
 import { useDraft } from '../hooks/useDraft';
+import { toast } from '../utils/toast';
 
 const staggerContainer = {
   hidden: {},
@@ -33,6 +34,9 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentNote, setCurrentNote, clearNoteDraft] = useDraft('notes.compose', '');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  // Notes hidden optimistically while their undo toast is open. The real
+  // delete only happens in the toast's onExpire (deferred commit).
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
   const [longPressId, setLongPressId] = useState<string | null>(null);
   const [reacted, setReacted] = useState<Set<string>>(new Set());
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,6 +68,9 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
     setNotes(StorageService.getNotes());
   }, []);
 
+  // Leaving the view commits any pending deferred delete right away.
+  useEffect(() => () => toast.hide(), []);
+
   const handleSave = () => {
     if (!currentNote.trim()) {
         setIsEditing(false);
@@ -83,17 +90,42 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
     setIsEditing(false);
   };
 
+  const clearPendingDelete = (id: string) => setPendingDeleteIds(prev => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  });
+
   const handleDelete = (id: string) => {
+    if (pendingDeleteIds.has(id)) return;
     setDeleteTarget(id);
   };
 
   const confirmDelete = () => {
-    if (deleteTarget) {
-        StorageService.deleteNote(deleteTarget);
-        setNotes(prev => prev.filter(n => n.id !== deleteTarget));
-        setDeleteTarget(null);
-    }
+    const id = deleteTarget;
+    if (!id) return;
+    setDeleteTarget(null);
+    const note = notes.find(n => n.id === id);
+    if (!note || pendingDeleteIds.has(id)) return;
+    setPendingDeleteIds(prev => new Set([...prev, id]));
+    const label = note.content.length > 30 ? `${note.content.slice(0, 30)}…` : note.content;
+    toast.showUndo(`Deleted "${label}"`, {
+      onUndo: () => clearPendingDelete(id),
+      onExpire: () => {
+        StorageService.deleteNote(id)
+          .then(() => {
+            clearPendingDelete(id);
+            setNotes(StorageService.getNotes());
+          })
+          .catch(() => {
+            clearPendingDelete(id);
+            toast.show("Couldn't delete — it's back", 'error');
+          });
+      },
+    });
   };
+
+  const visibleNotes = notes.filter(n => !pendingDeleteIds.has(n.id));
 
   return (
     <div className="pb-32 min-h-screen">
@@ -168,7 +200,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
       </AnimatePresence>
 
       <motion.div className="grid grid-cols-2 gap-4" variants={staggerContainer} initial="hidden" animate="show">
-        {notes.map((note) => (
+        {visibleNotes.map((note) => (
           <motion.div
             key={note.id}
             variants={staggerItem}
@@ -223,7 +255,7 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
         ))}
       </motion.div>
       
-      {notes.length === 0 && (
+      {visibleNotes.length === 0 && (
           <div className="flex flex-col items-center justify-center mt-20 animate-fade-in">
               <div className="relative mb-6">
                   <div className="absolute inset-0 bg-yellow-500/10 rounded-full blur-2xl animate-breathe-glow" />

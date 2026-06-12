@@ -35,28 +35,32 @@ export const DynamicToast: React.FC = () => {
     }
   };
 
+  const hasAction = Boolean(currentToast?.action);
+
   return (
     <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none px-4 pt-safe sm:pt-4">
       <AnimatePresence mode="wait">
         {currentToast && (
           <motion.div
             key={currentToast.id}
+            role="status"
+            aria-live="polite"
             initial={{ y: -44, scale: 0.92, opacity: 0, filter: 'blur(6px)' }}
-            animate={{ 
-              y: 12, 
-              scale: 1, 
-              opacity: 1, 
+            animate={{
+              y: 12,
+              scale: 1,
+              opacity: 1,
               filter: 'blur(0px)',
               transition: { type: 'spring', damping: 20, stiffness: 280 }
             }}
-            exit={{ 
-              y: -40, 
-              scale: 0.9, 
-              opacity: 0, 
+            exit={{
+              y: -40,
+              scale: 0.9,
+              opacity: 0,
               filter: 'blur(4px)',
               transition: { duration: 0.2 }
             }}
-            className="pointer-events-auto flex items-center gap-3 glass-card backdrop-blur-xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] px-4 py-3 rounded-full"
+            className="pointer-events-auto relative overflow-hidden flex items-center gap-3 glass-card backdrop-blur-xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] px-4 py-3 rounded-full"
           >
             {/* Dynamic shape expansion animation */}
             <motion.div
@@ -66,9 +70,9 @@ export const DynamicToast: React.FC = () => {
             >
               {getIcon(currentToast.type)}
             </motion.div>
-            
+
             <motion.span
-              className="text-sm font-medium pr-1 truncate max-w-[200px]"
+              className={`text-sm font-medium truncate ${hasAction ? 'max-w-[170px]' : 'max-w-[200px] pr-1'}`}
               style={{ color: 'var(--color-text-primary)' }}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -77,6 +81,31 @@ export const DynamicToast: React.FC = () => {
             >
               {currentToast.message}
             </motion.span>
+
+            {currentToast.action && (
+              <button
+                onClick={() => toast.runAction()}
+                className="shrink-0 min-h-[2.4rem] px-3.5 rounded-full text-[13px] font-bold active:scale-95 transition-transform"
+                style={{
+                  background: 'rgba(var(--theme-particle-2-rgb), 0.14)',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                {currentToast.action.label}
+              </button>
+            )}
+
+            {/* Countdown for action toasts — shows how long the undo window stays open */}
+            {currentToast.action && (
+              <motion.div
+                aria-hidden="true"
+                className="absolute bottom-0 left-5 right-5 h-[2.5px] rounded-full origin-left"
+                style={{ background: 'rgba(var(--theme-particle-2-rgb), 0.4)' }}
+                initial={{ scaleX: 1 }}
+                animate={{ scaleX: 0 }}
+                transition={{ duration: (currentToast.duration ?? 6000) / 1000, ease: 'linear' }}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>

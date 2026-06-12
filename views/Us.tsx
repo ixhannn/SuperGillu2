@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { toast } from '../utils/toast';
 
 interface UsProps { setView: (view: ViewState) => void; }
 
@@ -43,6 +44,19 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
     const profile = StorageService.getCoupleProfile();
     const [activeTab, setActiveTab] = useState<Tab>('bucket');
 
+    // Items hidden optimistically while their undo toast is open. The real
+    // storage delete only happens in the toast's onExpire (deferred commit).
+    const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
+    const markPendingDelete = (id: string) => setPendingDeleteIds(prev => new Set([...prev, id]));
+    const clearPendingDelete = (id: string) => setPendingDeleteIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+    });
+
+    // Leaving the view commits any pending deferred delete right away.
+    useEffect(() => () => toast.hide(), []);
+
     useEffect(() => {
         const onStorage = (event: Event) => {
             const detail = (event as CustomEvent).detail;
@@ -73,10 +87,28 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
     };
     const addBucketItem = () => { const t = bucketInput.trim(); if (!t) return; saveBucket([{ id: Date.now().toString(), text: t, addedBy: profile.myName }, ...bucketItems]); setBucketInput(''); };
     const toggleBucket = (id: string) => saveBucket(bucketItems.map(i => i.id === id ? { ...i, completedAt: i.completedAt ? undefined : new Date().toISOString() } : i));
-    const deleteBucket = (id: string) => saveBucket(bucketItems.filter(i => i.id !== id));
-    const pending = bucketItems.filter(i => !i.completedAt);
-    const completed = bucketItems.filter(i => i.completedAt);
-    const pct = bucketItems.length > 0 ? Math.round((completed.length / bucketItems.length) * 100) : 0;
+    const deleteBucket = (id: string) => {
+        const item = bucketItems.find(i => i.id === id);
+        if (!item || pendingDeleteIds.has(id)) return;
+        markPendingDelete(id);
+        toast.showUndo(`Deleted "${item.text}"`, {
+            onUndo: () => clearPendingDelete(id),
+            onExpire: () => {
+                try {
+                    StorageService.deleteUsBucketItem(id);
+                    clearPendingDelete(id);
+                    setBucketItems(StorageService.getUsBucketItems());
+                } catch {
+                    clearPendingDelete(id);
+                    toast.show("Couldn't delete — it's back", 'error');
+                }
+            },
+        });
+    };
+    const visibleBucket = bucketItems.filter(i => !pendingDeleteIds.has(i.id));
+    const pending = visibleBucket.filter(i => !i.completedAt);
+    const completed = visibleBucket.filter(i => i.completedAt);
+    const pct = visibleBucket.length > 0 ? Math.round((completed.length / visibleBucket.length) * 100) : 0;
 
     // ── Wishlist ─────────────────────────────────────────────────────────
     const [wishItems, setWishItems] = useState<UsWishlistItem[]>(() => StorageService.getUsWishlistItems());
@@ -96,9 +128,27 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
         saveWish([...wishItems, { id: Date.now().toString(), text: text.trim(), ownerName }]);
     };
     const toggleGifted = (id: string) => saveWish(wishItems.map(i => i.id === id ? { ...i, gifted: !i.gifted } : i));
-    const deleteWish = (id: string) => saveWish(wishItems.filter(i => i.id !== id));
-    const myWishes = wishItems.filter(i => i.ownerName === profile.myName);
-    const partnerWishes = wishItems.filter(i => i.ownerName === profile.partnerName);
+    const deleteWish = (id: string) => {
+        const item = wishItems.find(i => i.id === id);
+        if (!item || pendingDeleteIds.has(id)) return;
+        markPendingDelete(id);
+        toast.showUndo(`Deleted "${item.text}"`, {
+            onUndo: () => clearPendingDelete(id),
+            onExpire: () => {
+                try {
+                    StorageService.deleteUsWishlistItem(id);
+                    clearPendingDelete(id);
+                    setWishItems(StorageService.getUsWishlistItems());
+                } catch {
+                    clearPendingDelete(id);
+                    toast.show("Couldn't delete — it's back", 'error');
+                }
+            },
+        });
+    };
+    const visibleWishes = wishItems.filter(i => !pendingDeleteIds.has(i.id));
+    const myWishes = visibleWishes.filter(i => i.ownerName === profile.myName);
+    const partnerWishes = visibleWishes.filter(i => i.ownerName === profile.partnerName);
 
     // ── Milestones ───────────────────────────────────────────────────────
     const [milestones, setMilestones] = useState<UsMilestone[]>(() => {
@@ -124,12 +174,30 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
         saveMilestones(updated);
         setShowMsForm(false); setMsTitle(''); setMsDate(''); setMsEmoji('✨'); setMsDesc('');
     };
-    const deleteMilestone = (id: string) => saveMilestones(milestones.filter(m => m.id !== id));
-    const datedMilestones = milestones.filter(m => m.date);
+    const deleteMilestone = (id: string) => {
+        const item = milestones.find(m => m.id === id);
+        if (!item || pendingDeleteIds.has(id)) return;
+        markPendingDelete(id);
+        toast.showUndo(`Deleted "${item.title}"`, {
+            onUndo: () => clearPendingDelete(id),
+            onExpire: () => {
+                try {
+                    StorageService.deleteUsMilestone(id);
+                    clearPendingDelete(id);
+                    const synced = StorageService.getUsMilestones();
+                    setMilestones(synced.length ? synced : DEFAULT_MILESTONES);
+                } catch {
+                    clearPendingDelete(id);
+                    toast.show("Couldn't delete — it's back", 'error');
+                }
+            },
+        });
+    };
+    const datedMilestones = milestones.filter(m => m.date && !pendingDeleteIds.has(m.id));
 
     const TABS = [
         { id: 'bucket' as Tab, Icon: Compass, label: 'Bucket List', count: pending.length },
-        { id: 'wishlist' as Tab, Icon: Gift, label: 'Wishlist', count: wishItems.length },
+        { id: 'wishlist' as Tab, Icon: Gift, label: 'Wishlist', count: visibleWishes.length },
         { id: 'milestones' as Tab, Icon: Milestone, label: 'Milestones', count: datedMilestones.length },
     ];
 
@@ -294,10 +362,10 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                     <motion.div key="bucket" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.18 }} className="px-5">
 
                         {/* Progress */}
-                        {bucketItems.length > 0 && (
+                        {visibleBucket.length > 0 && (
                             <div className="mb-4">
                                 <div className="flex justify-between mb-1.5">
-                                    <p className="text-[0.7rem] text-gray-400">{completed.length} of {bucketItems.length} done</p>
+                                    <p className="text-[0.7rem] text-gray-400">{completed.length} of {visibleBucket.length} done</p>
                                     <p className="text-[0.7rem] font-bold text-lior-400">{pct}%</p>
                                 </div>
                                 <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(236,72,153,0.1)' }}>
@@ -338,7 +406,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                         </div>
 
                         {/* Empty */}
-                        {bucketItems.length === 0 && (
+                        {visibleBucket.length === 0 && (
                             <div className="text-center py-16">
                                 <div className="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center"
                                     style={{ background: 'rgba(236,72,153,0.10)', border: '1px solid rgba(236,72,153,0.18)' }}>

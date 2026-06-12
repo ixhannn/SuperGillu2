@@ -1,4 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  requestMediaStream,
+  stopStream as releaseStream,
+  describeMediaFailure,
+  MediaFailureReason,
+} from '../utils/mediaPermissions';
 
 interface VideoRecorderResult {
   blob: Blob;
@@ -12,10 +18,14 @@ interface UseVideoRecorderReturn {
   videoPreviewRef: React.RefObject<HTMLVideoElement>;
   hasPermission: boolean | null;
   error: string | null;
+  /** Typed failure reason so UIs can render specific, recoverable states. */
+  errorReason: MediaFailureReason | null;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<VideoRecorderResult | null>;
   cancelRecording: () => void;
   switchCamera: () => Promise<void>;
+  /** Re-attempts the camera preview after a failure (e.g. denied permission). */
+  restartPreview: () => Promise<void>;
   isFrontCamera: boolean;
 }
 
@@ -26,6 +36,7 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
   const [recordingTime, setRecordingTime] = useState(0);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorReason, setErrorReason] = useState<MediaFailureReason | null>(null);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
 
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
@@ -47,7 +58,7 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      releaseStream(streamRef.current);
       streamRef.current = null;
     }
     if (videoPreviewRef.current) {
@@ -55,44 +66,58 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
     }
   }, []);
 
+  const failWith = useCallback((reason: MediaFailureReason) => {
+    setHasPermission(false);
+    setErrorReason(reason);
+    setError(describeMediaFailure(reason, 'camera').title);
+  }, []);
+
   const initCamera = useCallback(async (facingMode: 'user' | 'environment' = 'user') => {
-    try {
-      stopStream();
+    stopStream();
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode,
-          width: { ideal: 1080 },
-          height: { ideal: 1920 },
-          frameRate: { ideal: 30 }
-        },
-        audio: true
-      });
+    const result = await requestMediaStream({
+      video: {
+        facingMode,
+        width: { ideal: 1080 },
+        height: { ideal: 1920 },
+        frameRate: { ideal: 30 }
+      },
+      audio: true
+    });
 
-      streamRef.current = stream;
-      setHasPermission(true);
-      setError(null);
-
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream;
-        videoPreviewRef.current.muted = true;
-        await videoPreviewRef.current.play();
-      }
-
-      return stream;
-    } catch (err) {
-      setHasPermission(false);
-      const message = err instanceof Error ? err.message : 'Camera access denied';
-      setError(message);
+    if (!result.ok) {
+      failWith(result.reason);
       return null;
     }
-  }, [stopStream]);
+
+    streamRef.current = result.stream;
+    setHasPermission(true);
+    setError(null);
+    setErrorReason(null);
+
+    if (videoPreviewRef.current) {
+      videoPreviewRef.current.srcObject = result.stream;
+      videoPreviewRef.current.muted = true;
+      try {
+        await videoPreviewRef.current.play();
+      } catch {
+        // Autoplay can be interrupted (tab switch, quick unmount).
+        // The muted preview recovers on the next interaction — not fatal.
+      }
+    }
+
+    return result.stream;
+  }, [stopStream, failWith]);
 
   const switchCamera = useCallback(async () => {
     const newFacing = isFrontCamera ? 'environment' : 'user';
     setIsFrontCamera(!isFrontCamera);
     await initCamera(newFacing);
   }, [isFrontCamera, initCamera]);
+
+  const restartPreview = useCallback(async () => {
+    await initCamera(isFrontCamera ? 'user' : 'environment');
+  }, [initCamera, isFrontCamera]);
 
   const generateThumbnail = useCallback((videoBlob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -131,7 +156,15 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
 
   const startRecording = useCallback(async () => {
     setError(null);
+    setErrorReason(null);
     chunksRef.current = [];
+
+    // Some browsers expose getUserMedia but not MediaRecorder — fail
+    // with a typed reason instead of throwing at record time.
+    if (typeof MediaRecorder === 'undefined') {
+      failWith('unsupported');
+      return;
+    }
 
     // Initialize camera if not already
     let stream = streamRef.current;
@@ -177,7 +210,7 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
         mediaRecorderRef.current.stop();
       }
     }, MAX_DURATION);
-  }, [initCamera, isFrontCamera]);
+  }, [initCamera, isFrontCamera, failWith]);
 
   const stopRecording = useCallback(async (): Promise<VideoRecorderResult | null> => {
     if (timerRef.current) {
@@ -251,10 +284,12 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
     videoPreviewRef,
     hasPermission,
     error,
+    errorReason,
     startRecording,
     stopRecording,
     cancelRecording,
     switchCamera,
+    restartPreview,
     isFrontCamera
   };
 }

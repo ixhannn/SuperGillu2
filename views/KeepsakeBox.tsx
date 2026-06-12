@@ -12,6 +12,7 @@ import { generateId } from '../utils/ids';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PremiumModal } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
+import { MediaErrorCard } from '../components/MediaErrorCard';
 import { ViewHeader } from '../components/ViewHeader';
 import { SectionDivider } from './Home';
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
@@ -21,6 +22,14 @@ interface KeepsakeBoxProps {
 }
 
 const normalizeSenderName = (senderId?: string) => senderId === 'Lior' ? 'Tulika' : senderId;
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error ?? new Error('Could not read file'));
+        reader.readAsDataURL(file);
+    });
 
 const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void, isReacted?: boolean, onReact?: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick, isReacted, onReact }) => {
     const imageStoragePath = selectImageStoragePath(keepsake.storagePath, keepsake.imageMimeType);
@@ -204,6 +213,11 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const [image, setImage] = useState<string | null>(null);
     const [video, setVideo] = useState<string | null>(null);
     const [step, setStep] = useState(1); // 1: Content, 2: Confirmation
+    const [videoProcessing, setVideoProcessing] = useState(false);
+    const [videoError, setVideoError] = useState(false);
+    const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+    const [sendError, setSendError] = useState<string | null>(null);
+    const [isSending, setIsSending] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoInputRef = useRef<HTMLInputElement>(null);
@@ -279,37 +293,47 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
         }
     };
 
-    const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const profile = StorageService.getCoupleProfile();
-            if (!profile.isPremium) {
-                setShowPremiumModal(true);
-                return;
-            }
-            
-            if (isVideoTooLarge(file)) {
-                toast.show("Video too large (Max 25MB)", 'error');
-                return;
-            }
-
-            // Generate thumbnail so the card has a preview image
-            try {
-                const thumb = await generateVideoThumbnail(file);
-                if (thumb) setImage(thumb);
-            } catch (err) {
-                console.error('Video thumbnail generation failed', err);
-            }
-
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                setVideo(ev.target?.result as string);
-            };
-            reader.readAsDataURL(file);
+    const processVideoFile = async (file: File) => {
+        // Keep the File so a failed attempt can be retried without re-picking.
+        setPendingVideoFile(file);
+        setVideoError(false);
+        setVideoProcessing(true);
+        try {
+            // Thumbnail so the card has a preview image; '' means generation failed.
+            const thumb = await generateVideoThumbnail(file);
+            if (!thumb) throw new Error('Thumbnail generation failed');
+            const dataUrl = await readFileAsDataUrl(file);
+            setImage(thumb);
+            setVideo(dataUrl);
+            setPendingVideoFile(null);
+        } catch {
+            setVideoError(true);
+        } finally {
+            setVideoProcessing(false);
         }
     };
 
+    const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // allow re-selecting the same file later
+        if (!file) return;
+
+        const profile = StorageService.getCoupleProfile();
+        if (!profile.isPremium) {
+            setShowPremiumModal(true);
+            return;
+        }
+
+        if (isVideoTooLarge(file)) {
+            toast.show("Video too large (Max 25MB)", 'error');
+            return;
+        }
+
+        await processVideoFile(file);
+    };
+
     const handleSend = async () => {
+        if (isSending) return;
         const myId = StorageService.getDeviceId();
         const newKeepsake: Keepsake = {
             id: generateId(),
@@ -324,12 +348,19 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
             isHidden: false
         };
 
+        setIsSending(true);
+        setSendError(null);
         try {
             await StorageService.saveKeepsake(newKeepsake);
             feedback.celebrate();
             resetCompose();
-        } catch (error: any) {
-            toast.show(error?.message || 'Keepsake could not be saved.', 'error');
+        } catch (error: unknown) {
+            // Keep the composer open with everything intact so retry can resend.
+            setSendError(error instanceof Error && error.message
+                ? error.message
+                : 'Everything you wrote is still here — try again.');
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -342,6 +373,10 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
         setImage(null);
         setVideo(null);
         setType('letter');
+        setVideoProcessing(false);
+        setVideoError(false);
+        setPendingVideoFile(null);
+        setSendError(null);
     };
 
     return (
@@ -506,26 +541,41 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                                 )}
 
                                 {type === 'video' && (
-                                    <div
-                                        onClick={() => videoInputRef.current?.click()}
-                                        className="aspect-video rounded-2xl flex flex-col items-center justify-center cursor-pointer overflow-hidden shadow-inner"
-                                        style={{ background: 'rgba(var(--theme-particle-2-rgb),0.06)', border: '2px dashed rgba(var(--theme-particle-2-rgb),0.22)', color: 'var(--color-text-secondary)' }}
-                                    >
-                                        {video ? (
-                                            <video src={video} className="w-full h-full object-cover" controls />
-                                        ) : (
-                                            <>
-                                                <Video size={32} className="mb-2" />
-                                                <span className="text-sm">Tap to select video</span>
-                                            </>
+                                    <div className="space-y-4">
+                                        <div
+                                            onClick={() => { if (!videoProcessing) videoInputRef.current?.click(); }}
+                                            className={`aspect-video rounded-2xl flex flex-col items-center justify-center overflow-hidden shadow-inner ${videoProcessing ? 'cursor-wait' : 'cursor-pointer'}`}
+                                            style={{ background: 'rgba(var(--theme-particle-2-rgb),0.06)', border: '2px dashed rgba(var(--theme-particle-2-rgb),0.22)', color: 'var(--color-text-secondary)' }}
+                                        >
+                                            {videoProcessing ? (
+                                                <>
+                                                    <div className="w-8 h-8 rounded-full border-4 border-gray-300 border-t-lior-400 animate-spin mb-3" />
+                                                    <span className="text-sm">Preparing video…</span>
+                                                </>
+                                            ) : video ? (
+                                                <video src={video} className="w-full h-full object-cover" controls />
+                                            ) : (
+                                                <>
+                                                    <Video size={32} className="mb-2" />
+                                                    <span className="text-sm">Tap to select video</span>
+                                                </>
+                                            )}
+                                            <input
+                                                type="file"
+                                                ref={videoInputRef}
+                                                className="hidden"
+                                                accept="video/*"
+                                                onChange={handleVideoUpload}
+                                            />
+                                        </div>
+                                        {videoError && pendingVideoFile && (
+                                            <MediaErrorCard
+                                                title="Couldn't prepare that video"
+                                                detail="Your video is still selected — try again or pick another."
+                                                onRetry={() => { void processVideoFile(pendingVideoFile); }}
+                                                onDismiss={() => { setVideoError(false); setPendingVideoFile(null); }}
+                                            />
                                         )}
-                                        <input
-                                            type="file"
-                                            ref={videoInputRef}
-                                            className="hidden"
-                                            accept="video/*"
-                                            onChange={handleVideoUpload}
-                                        />
                                     </div>
                                 )}
 
@@ -568,14 +618,25 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                             </p>
 
                             <div className="w-full space-y-3">
+                                {sendError && (
+                                    <MediaErrorCard
+                                        title="Couldn't save your keepsake"
+                                        detail={sendError}
+                                        retryLabel="Try saving again"
+                                        onRetry={handleSend}
+                                        onDismiss={() => setSendError(null)}
+                                    />
+                                )}
                                 <button
                                     onClick={handleSend}
-                                    className="w-full bg-lior-500 text-white py-4 rounded-xl font-bold uppercase tracking-wider shadow-xl shadow-lior-500/20 spring-press spring-hover transition-transform"
+                                    disabled={isSending}
+                                    className="w-full bg-lior-500 text-white py-4 rounded-xl font-bold uppercase tracking-wider shadow-xl shadow-lior-500/20 spring-press spring-hover transition-transform disabled:opacity-60"
                                 >
-                                    Seal & Send
+                                    {isSending ? 'Sealing…' : 'Seal & Send'}
                                 </button>
                                 <button
                                     onClick={() => setStep(1)}
+                                    disabled={isSending}
                                     className="w-full py-4 text-sm font-bold uppercase tracking-wider"
                                     style={{ color: 'var(--color-text-secondary)' }}
                                 >
