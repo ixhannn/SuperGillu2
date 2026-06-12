@@ -279,6 +279,23 @@ const App = () => {
   // TransitionEngine and permanently desync the lock.
   const navTokenRef = useRef(0);
 
+  // A tap that lands while a transition holds the lock must NOT be swallowed:
+  // the engine path keeps the lock for the whole animation (240–360ms) while
+  // the destination content is already visible, so rapid sequential taps
+  // routinely arrive inside that window. We park the latest such request
+  // (last tap wins) and replay it the moment the lock releases — otherwise
+  // the tap is dropped with no retry and the shell stays on the old tab.
+  const pendingNavigationRef = useRef<{ view: ViewState; options: NavigationOptions } | null>(null);
+  const navigateToRef = useRef<(view: ViewState, options?: NavigationOptions) => void>(() => {});
+
+  const drainPendingNavigation = useCallback(() => {
+    const pending = pendingNavigationRef.current;
+    if (!pending) return;
+    pendingNavigationRef.current = null;
+    if (pending.view === currentViewRef.current) return;
+    navigateToRef.current(pending.view, pending.options);
+  }, []);
+
   const finalizeNavigation = useCallback((token: number) => {
     if (token !== navTokenRef.current) return;
     const metric = pendingNavigationMetricRef.current;
@@ -288,7 +305,8 @@ const App = () => {
       pendingNavigationMetricRef.current = null;
     }
     transitionLockRef.current = false;
-  }, []);
+    drainPendingNavigation();
+  }, [drainPendingNavigation]);
 
   useEffect(() => {
     mountedTabsRef.current = mountedTabs;
@@ -352,7 +370,7 @@ const App = () => {
       startedAt: startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     };
 
-    TransitionEngine.navigate(
+    const accepted = TransitionEngine.navigate(
       dir as EngineDirection,
       () => {
         flushSync(() => {
@@ -364,11 +382,31 @@ const App = () => {
         requestAnimationFrame(() => finalizeNavigation(navToken));
       },
     );
+    if (!accepted) {
+      // Engine refused (already mid-animation): commit without animation
+      // rather than leaving the lock held forever waiting for a completion
+      // callback that will never fire.
+      flushSync(() => {
+        markTabMounted(destination);
+        setCurrentView(destination);
+      });
+      finalizeNavigation(navToken);
+    }
   }, [finalizeNavigation, markTabMounted, runTabTransition]);
 
   const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
-    if (prev === view || transitionLockRef.current) return;
+    if (prev === view) {
+      // Tapping the tab we're on (or already transitioning to) means "stay
+      // here" — it also cancels any switch parked behind the lock.
+      pendingNavigationRef.current = null;
+      return;
+    }
+    if (transitionLockRef.current) {
+      pendingNavigationRef.current = { view, options };
+      return;
+    }
+    pendingNavigationRef.current = null;
 
     // ── Resolve direction before the transition snapshot ─────────────────────
     let dir: TransitionDirection = 'tab';
@@ -422,6 +460,12 @@ const App = () => {
         .then(() => {
           requestAnimationFrame(() => {
             transitionLockRef.current = false;
+            if (pendingNavigationRef.current) {
+              // A newer tap arrived while the chunk loaded — honour it
+              // instead of committing this stale destination first.
+              drainPendingNavigation();
+              return;
+            }
             commitNavigation();
           });
         })
@@ -433,12 +477,17 @@ const App = () => {
           DiagnosticsService.recordError('navigation.preload', error, { view });
           transitionLockRef.current = false;
           toast.show("Couldn't open that screen — check your connection", 'error');
+          drainPendingNavigation();
         });
       return;
     }
 
     commitNavigation();
-  }, [getCurrentScroll, runNavigation]);
+  }, [drainPendingNavigation, getCurrentScroll, runNavigation]);
+
+  useEffect(() => {
+    navigateToRef.current = navigateTo;
+  }, [navigateTo]);
 
   const goBack = useCallback(() => {
     if (transitionLockRef.current) return;
