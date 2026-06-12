@@ -249,6 +249,12 @@ function btnColor(bx: number, btnLeft: number, btnWidth: number): [number,number
   return [r, g, b];
 }
 
+/**
+ * Haptic pattern for the button-dissolve effect: a tick on lift-off,
+ * then buzzes synced to each lub-dub of the held heart.
+ */
+export const DISSOLVE_VIBRATION: number[] = [18, 1772, 42, 238, 28, 612, 42, 238, 28];
+
 export function spawnDissolve(rect: DOMRect, onDone: () => void) {
   syncEffectPalette();
   effectTs      = performance.now();
