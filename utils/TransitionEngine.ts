@@ -115,13 +115,17 @@ class TransitionEngineImpl {
   /**
    * Programmatic navigation. Clones outgoing, commits React, double-rAF CSS transition.
    * `commit` must call flushSync internally to make React render synchronously.
+   *
+   * Returns false WITHOUT calling commit/onComplete when a transition is
+   * already running — the caller must handle the refusal (commit by other
+   * means) or its navigation state will never advance.
    */
   navigate(
     dir: EngineDirection,
     commit: () => void,
     onComplete?: () => void,
-  ): void {
-    if (this._busy) return;
+  ): boolean {
+    if (this._busy) return false;
     this._busy = true;
     this._setTransitioning(true);
 
@@ -132,11 +136,11 @@ class TransitionEngineImpl {
     };
 
     const c = this._c;
-    if (!c) { commit(); wrappedComplete(); return; }
+    if (!c) { commit(); wrappedComplete(); return true; }
 
     if (this._mo) {
       this._xfade(c, commit, wrappedComplete);
-      return;
+      return true;
     }
 
     // ── Native View Transitions API (Chromium 111+) ─────────────────────────
@@ -150,10 +154,11 @@ class TransitionEngineImpl {
     };
     if (typeof docAny.startViewTransition === 'function' && this._supportsVT) {
       this._runNativeVT(docAny, dir, commit, wrappedComplete);
-      return;
+      return true;
     }
 
     this._run(c, dir, commit, wrappedComplete);
+    return true;
   }
 
   /** Toggle off the native View Transitions path (testing / kill switch). */
@@ -167,15 +172,36 @@ class TransitionEngineImpl {
   ): void {
     // Tag the document so our CSS keyframes scope to this transition.
     document.documentElement.dataset.vtDir = dir;
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      delete document.documentElement.dataset.vtDir;
+      done();
+    };
     try {
       const vt = docAny.startViewTransition!(() => {
         // The browser runs this callback inside the transition's "snapshot
         // captured" phase. React commits synchronously here.
         commit();
       });
+      // Watchdog: `finished` is the ONLY completion signal on this path, and
+      // under main-thread/GPU starvation it can stall far past the CSS
+      // duration — or never settle at all. `done` releases the navigation
+      // lock, so a dead promise here freezes navigation permanently. By
+      // dur+400ms the transition is visually over either way; skip whatever
+      // remains and settle. settle() is idempotent, so whichever of the
+      // watchdog / `finished` fires first wins and the other no-ops.
+      const dur = dirConfig(dir, window.innerWidth).dur;
+      const watchdog = window.setTimeout(() => {
+        try {
+          (vt as { skipTransition?: () => void }).skipTransition?.();
+        } catch (_) { /* already finished */ }
+        settle();
+      }, dur + 400);
       vt.finished.finally(() => {
-        delete document.documentElement.dataset.vtDir;
-        done();
+        window.clearTimeout(watchdog);
+        settle();
       });
     } catch (_) {
       // If the API throws (e.g. nested transitions), fall back to the JS path.
