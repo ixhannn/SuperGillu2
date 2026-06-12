@@ -2475,5 +2475,5 @@ img {
    * skips layout/paint while keeping the React state (effects, refs)
    * fully alive. */
   content-visibility: hidden;
-  contain: strict size layout style paint;
+  contain: strict;
 }
