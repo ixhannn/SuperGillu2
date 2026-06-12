@@ -16,6 +16,7 @@
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { AnimationEngine } from '../utils/AnimationEngine';
+import { readThemeRgbTriplet } from '../utils/themeVars';
 
 export interface ConfettiHandle {
   trigger(x?: number, y?: number): void;
@@ -55,11 +56,26 @@ function acquireConfetti(): ConfettiParticle | null {
   return null;
 }
 
-const COLORS = [
+// Palette is synced from the active theme's particle/heart tokens on every
+// trigger — a fixed rainbow looked wrong on every theme except rose.
+let COLORS = [
   '244,63,94', '251,113,133', '251,191,36',
   '168,85,247', '96,165,250', '52,211,153',
   '253,186,116', '255,255,255',
 ];
+
+function syncConfettiPalette() {
+  COLORS = [
+    readThemeRgbTriplet('--theme-particle-1-rgb', '244,63,94'),
+    readThemeRgbTriplet('--theme-particle-2-rgb', '251,113,133'),
+    readThemeRgbTriplet('--theme-particle-3-rgb', '251,191,36'),
+    readThemeRgbTriplet('--theme-particle-4-rgb', '168,85,247'),
+    readThemeRgbTriplet('--theme-particle-5-rgb', '96,165,250'),
+    readThemeRgbTriplet('--theme-heart-a-rgb', '253,186,116'),
+    readThemeRgbTriplet('--theme-heart-b-rgb', '52,211,153'),
+    '255,255,255',
+  ];
+}
 const SHAPES: ConfettiParticle['shape'][] = ['heart', 'star', 'rect', 'circle', 'heart', 'rect'];
 
 function explode(cx: number, cy: number, count: number): void {
@@ -121,6 +137,7 @@ const PhysicsConfettiInner: React.ForwardRefRenderFunction<ConfettiHandle> = (_p
 
   useImperativeHandle(ref, () => ({
     trigger(x?: number, y?: number) {
+      syncConfettiPalette();
       const cx = x ?? window.innerWidth  / 2;
       const cy = y ?? window.innerHeight / 2;
       explode(cx, cy, 220);

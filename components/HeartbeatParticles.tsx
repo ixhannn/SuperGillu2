@@ -13,6 +13,7 @@
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
+import { readThemeRgbTriplet } from '../utils/themeVars';
 
 // ─────────────────────────────────────────────────────── types ────────────────
 
@@ -208,16 +209,48 @@ let dissolveStart    = 0;   // timestamp of spawn
 
 let effectTs = 0;
 
-// Base colour gradient perfectly matching the DOM button: lior-500 (#f43f5e) → lior-600 (#e11d48)
+// ── Theme palette (synced from CSS variables at each trigger) ─────────────
+// The DOM button is painted with the themed lior-500 → lior-600 gradient, so
+// the particle copy of it has to read the same tokens — hardcoded rose values
+// made every non-rose theme clash the moment the effect fired.
+type Rgb = [number, number, number];
+
+function readTriplet(name: string, fallback: string): Rgb {
+  const [r, g, b] = readThemeRgbTriplet(name, fallback).split(',').map(Number);
+  return [r | 0, g | 0, b | 0];
+}
+
+function scaleRgb([r, g, b]: Rgb, k: number): Rgb {
+  return [
+    Math.min(255, Math.round(r * k)),
+    Math.min(255, Math.round(g * k)),
+    Math.min(255, Math.round(b * k)),
+  ];
+}
+
+let BTN_FROM: Rgb = [244, 63, 94];   // lior-500
+let BTN_TO: Rgb   = [225, 29, 72];   // lior-600
+let HEART_CORE: Rgb = [220, 15, 40]; // deep heart pigment
+let HEART_SOFT: Rgb = [255, 180, 190]; // light inner bloom
+
+function syncEffectPalette() {
+  BTN_FROM = readTriplet('--color-lior-500', '244,63,94');
+  BTN_TO   = readTriplet('--color-lior-600', '225,29,72');
+  HEART_CORE = scaleRgb(BTN_TO, 0.92);
+  HEART_SOFT = readTriplet('--theme-heart-a-rgb', '255,180,190');
+}
+
+// Base colour gradient matching the DOM button: lior-500 → lior-600
 function btnColor(bx: number, btnLeft: number, btnWidth: number): [number,number,number] {
   const t = (bx - btnLeft) / btnWidth;  // 0 (left) → 1 (right)
-  const r = Math.round(244 - t*19);     // 244 → 225
-  const g = Math.round(63  - t*34);     // 63  → 29
-  const b = Math.round(94  - t*22);     // 94  → 72
+  const r = Math.round(BTN_FROM[0] + (BTN_TO[0] - BTN_FROM[0]) * t);
+  const g = Math.round(BTN_FROM[1] + (BTN_TO[1] - BTN_FROM[1]) * t);
+  const b = Math.round(BTN_FROM[2] + (BTN_TO[2] - BTN_FROM[2]) * t);
   return [r, g, b];
 }
 
 export function spawnDissolve(rect: DOMRect, onDone: () => void) {
+  syncEffectPalette();
   effectTs      = performance.now();
   dissolveStart = effectTs;
   dissolveOnDone    = onDone;
@@ -302,6 +335,7 @@ export function spawnDissolve(rect: DOMRect, onDone: () => void) {
 }
 
 function spawnSend(cx: number, cy: number, W: number, H: number) {
+  syncEffectPalette();
   effectTs = performance.now();
   const order = GRID.map((_,i) => i).sort(() => Math.random()-0.5);
 
@@ -337,7 +371,7 @@ function spawnSend(cx: number, cy: number, W: number, H: number) {
     p.convergeEnd=delay+convDur; p.holdEnd=delay+convDur+holdDur;
     p.lifetime=delay+convDur+holdDur+burstDur;
     p.size=rnd(1.8,3.0); p.bright=bright;
-    p.r=244; p.g=63; p.b=94; p.wobble=0;
+    p.r=BTN_FROM[0]; p.g=BTN_FROM[1]; p.b=BTN_FROM[2]; p.wobble=0;
   }
 }
 
@@ -388,8 +422,6 @@ function dotSolid(ctx: CanvasRenderingContext2D, x: number, y: number, s: number
   ctx.fillRect(Math.floor(x - s*0.5), Math.floor(y - s*0.5), s, Math.max(1, s));
 }
 
-// Heart crimson core: extreme contrast
-const HEART_R = 220, HEART_G = 15, HEART_B = 40;
 
 // ─────────────────────────────────────────────────────── component ────────────
 
@@ -580,20 +612,24 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           const fadeOut = clamp01(1 - (dEt - holdEnd_g) / 500);
           const gA = fadeIn * fadeOut;
 
-          // Outer soft bloom
+          // Outer soft bloom — themed heart pigment
+          const [hr, hg, hb] = HEART_CORE;
+          const [dr, dg, db] = scaleRgb(HEART_CORE, 0.75);
           const gR = HR * 1.35 * bScaleG;
           const g1 = ctx.createRadialGradient(dissolveHcx, dissolveHcy, 0, dissolveHcx, dissolveHcy, gR);
-          g1.addColorStop(0,    `rgba(240,20,70,${(gA*0.35).toFixed(3)})`);
-          g1.addColorStop(0.45, `rgba(180,10,40, ${(gA*0.15).toFixed(3)})`);
+          g1.addColorStop(0,    `rgba(${hr},${hg},${hb},${(gA*0.35).toFixed(3)})`);
+          g1.addColorStop(0.45, `rgba(${dr},${dg},${db},${(gA*0.15).toFixed(3)})`);
           g1.addColorStop(1,    'rgba(0,0,0,0)');
           ctx.fillStyle = g1;
           ctx.beginPath(); ctx.arc(dissolveHcx, dissolveHcy, gR, 0, Math.PI*2); ctx.fill();
 
-          // Tight inner hot-core glow (fiery peach heart pulse)
+          // Tight inner hot-core glow (light themed heart pulse)
+          const [sr, sg, sb] = HEART_SOFT;
+          const [br, bg2, bb] = scaleRgb(HEART_CORE, 1.16);
           const gR2 = HR * 0.55 * bScaleG;
           const g2  = ctx.createRadialGradient(dissolveHcx, dissolveHcy - HR*0.15, 0, dissolveHcx, dissolveHcy, gR2);
-          g2.addColorStop(0,   `rgba(255,180,190,${(gA*0.40).toFixed(3)})`);
-          g2.addColorStop(0.5, `rgba(255,60,90, ${(gA*0.18).toFixed(3)})`);
+          g2.addColorStop(0,   `rgba(${sr},${sg},${sb},${(gA*0.40).toFixed(3)})`);
+          g2.addColorStop(0.5, `rgba(${br},${bg2},${bb},${(gA*0.18).toFixed(3)})`);
           g2.addColorStop(1,   'rgba(0,0,0,0)');
           ctx.fillStyle = g2;
           ctx.beginPath(); ctx.arc(dissolveHcx, dissolveHcy, gR2, 0, Math.PI*2); ctx.fill();
@@ -655,9 +691,9 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           px += Math.sin(p.wobble) * (1 - easeT) * 2.0;
           py += Math.cos(p.wobble * 0.85 + 1.57) * (1 - easeT) * 1.6;
 
-          const cr  = Math.round(p.r + (HEART_R - p.r) * easeT);
-          const cg  = Math.round(p.g + (HEART_G - p.g) * easeT);
-          const cb  = Math.round(p.b + (HEART_B - p.b) * easeT);
+          const cr  = Math.round(p.r + (HEART_CORE[0] - p.r) * easeT);
+          const cg  = Math.round(p.g + (HEART_CORE[1] - p.g) * easeT);
+          const cb  = Math.round(p.b + (HEART_CORE[2] - p.b) * easeT);
 
           // snap
           if (easeT > 0.98) {
@@ -775,9 +811,9 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
           const px = p.hcx + (dx * cosS - dy * sinS);
           const py = p.hcy + (dx * sinS + dy * cosS);
 
-          const cr = Math.round(HEART_R + (p.r - HEART_R) * t);
-          const cg = Math.round(HEART_G + (p.g - HEART_G) * t);
-          const cb = Math.round(HEART_B + (p.b - HEART_B) * t);
+          const cr = Math.round(HEART_CORE[0] + (p.r - HEART_CORE[0]) * t);
+          const cg = Math.round(HEART_CORE[1] + (p.g - HEART_CORE[1]) * t);
+          const cb = Math.round(HEART_CORE[2] + (p.b - HEART_CORE[2]) * t);
           dotSolid(ctx, px, py, p.size, cr, cg, cb, 0.98);
 
         } else {

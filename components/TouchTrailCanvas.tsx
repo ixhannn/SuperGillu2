@@ -13,6 +13,8 @@
 
 import React, { useEffect, useRef } from 'react';
 import { AnimationEngine } from '../utils/AnimationEngine';
+import { readThemeRgbTriplet } from '../utils/themeVars';
+import { observeDocumentAttributes } from '../utils/documentObserverBus';
 
 const POOL_SIZE    = 800;
 const LIFETIME_MS  = 800;
@@ -47,14 +49,27 @@ function acquire(): Particle | null {
   return null; // pool exhausted — drop gracefully
 }
 
-// Lerp between two hex colors via float channels
+// Theme-synced lerp endpoints: slow movement → warm heart accent,
+// fast swipe → the theme's coolest particle tint. Re-read on theme change.
+let SLOW_RGB: [number, number, number] = [244, 63, 94];
+let FAST_RGB: [number, number, number] = [129, 140, 248];
+
+function syncTrailColors() {
+  const parse = (name: string, fallback: string): [number, number, number] => {
+    const [r, g, b] = readThemeRgbTriplet(name, fallback).split(',').map(Number);
+    return [r | 0, g | 0, b | 0];
+  };
+  SLOW_RGB = parse('--theme-heart-b-rgb', '244,63,94');
+  FAST_RGB = parse('--theme-particle-5-rgb', '129,140,248');
+}
+
+// Lerp between the two theme endpoints via float channels
 function speedColor(speed: number): [number, number, number, number] {
   // speed in px/frame, ~0 (still) to ~40 (fast swipe)
   const t = Math.min(speed / 35, 1);
-  // Rose gold: 244,63,94 → violet: 129,140,248
-  const r = 244 + (129 - 244) * t;
-  const g =  63 + (140 -  63) * t;
-  const b =  94 + (248 -  94) * t;
+  const r = SLOW_RGB[0] + (FAST_RGB[0] - SLOW_RGB[0]) * t;
+  const g = SLOW_RGB[1] + (FAST_RGB[1] - SLOW_RGB[1]) * t;
+  const b = SLOW_RGB[2] + (FAST_RGB[2] - SLOW_RGB[2]) * t;
   return [r, g, b, t];
 }
 
@@ -74,6 +89,9 @@ export const TouchTrailCanvas: React.FC = () => {
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
+
+    syncTrailColors();
+    const stopThemeObserver = observeDocumentAttributes(['style', 'data-theme'], syncTrailColors);
 
     // ── Touch tracking ────────────────────────────────────────────
     let prevX = 0, prevY = 0, prevTime = 0;
@@ -183,6 +201,7 @@ export const TouchTrailCanvas: React.FC = () => {
     return () => {
       AnimationEngine.unregister('touch-trail');
       ro.disconnect();
+      stopThemeObserver();
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup',   onPointerUp);

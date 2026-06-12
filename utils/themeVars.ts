@@ -32,6 +32,12 @@ function toRgbTriplet(color: string, fallback: string): string {
     }
   }
 
+  // Bare "r,g,b" triplet — the storage format of the --theme-*-rgb tokens.
+  const bare = color.split(',').map((part) => part.trim());
+  if (bare.length === 3 && bare.every((part) => /^\d{1,3}$/.test(part))) {
+    return bare.join(',');
+  }
+
   return fallback;
 }
 
