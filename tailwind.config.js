@@ -11,12 +11,26 @@ export default {
         "./src/**/*.{js,ts,jsx,tsx}",
         "./components/**/*.{js,ts,jsx,tsx}",
         "./views/**/*.{js,ts,jsx,tsx}",
+        "./hooks/**/*.{js,ts,jsx,tsx}",
+        "./services/**/*.{js,ts,jsx,tsx}",
         "./App.tsx",
         "./index.tsx"
     ],
     theme: {
         extend: {
             colors: {
+                // `lior` is referenced by ~90 class usages across views/.
+                // It was only defined in the dead tailwind.config.cjs, so those
+                // classes silently produced no CSS until merged here.
+                lior: {
+                    50: '#fff1f2',
+                    100: '#ffe4e6',
+                    200: '#fecdd3',
+                    300: '#fda4af',
+                    400: '#fb7185',
+                    500: '#f43f5e',
+                    600: '#e11d48',
+                },
                 tulika: {
                     50: '#fff1f2',
                     100: '#ffe4e6',

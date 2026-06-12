@@ -1,19 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const swSource = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+// public/sw.js is the single source of truth: index.tsx registers '/sw.js',
+// which Vite serves from public/. (A drifting duplicate at the repo root was
+// removed — do not reintroduce it.)
 const publicSwSource = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
-
-assert.match(
-  swSource,
-  /const CACHE_NAME = 'lior-v6';/,
-  'Expected the service worker cache version to roll forward after startup safety fixes',
-);
 
 assert.match(
   publicSwSource,
   /const CACHE_NAME = 'lior-v6';/,
-  'Expected the built public service worker to use the current cache version',
+  'Expected the service worker cache version to roll forward after startup safety fixes',
 );
 
 assert.match(
@@ -23,13 +19,13 @@ assert.match(
 );
 
 assert.match(
-  swSource,
+  publicSwSource,
   /return \(await caches\.match\(event\.request\)\) \|\| \(await caches\.match\('\/'\)\) \|\| Response\.error\(\);/,
   'Expected navigation requests to fall back to a real Response instead of leaving the app shell unresolved',
 );
 
 assert.match(
-  swSource,
+  publicSwSource,
   /return Response\.error\(\);/,
   'Expected uncached asset failures to return an explicit error response instead of resolving undefined',
 );

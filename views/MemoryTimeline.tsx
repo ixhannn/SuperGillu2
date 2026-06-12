@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom';
 import { Trash2, Image as ImageIcon, PlayCircle, Plus, Calendar, Sparkles, Heart, X, Pause, Play, Volume2, VolumeX, Send, MessageCircle, CornerDownRight, Mic, Share2 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
-import { ViewState, Memory, Note, Comment } from '../types';
+import { ViewState, Memory, Note, Comment, VoiceNote } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService } from '../services/sync';
 import { feedback } from '../utils/feedback';
@@ -507,8 +507,11 @@ const InlineAudioPlayer: React.FC<{ memory: Memory }> = ({ memory }) => {
         let active = true;
         if (memory.audioId) {
             // Reuse the VoiceNote audio loader — audioId is the IndexedDB key
-            StorageService.getVoiceNoteAudio({ audioId: memory.audioId, audioStoragePath: memory.audioStoragePath } as any).then(url => {
+            StorageService.getVoiceNoteAudio({ audioId: memory.audioId, audioStoragePath: memory.audioStoragePath } as VoiceNote).then(url => {
                 if (active && url) setAudioUrl(url);
+            }).catch((e) => {
+                console.warn('[MemoryTimeline] Failed to load voice note audio:', e);
+                if (active) setAudioUrl(null);
             });
         }
         return () => { active = false; };
@@ -531,7 +534,12 @@ const InlineAudioPlayer: React.FC<{ memory: Memory }> = ({ memory }) => {
             audioRef.current.pause();
             setIsPlaying(false);
         } else {
-            audioRef.current.play().catch(() => {});
+            // Reset the playing state if playback is refused (autoplay policy,
+            // decode failure) so the button doesn't get stuck showing "pause".
+            audioRef.current.play().catch((e) => {
+                console.warn('[MemoryTimeline] Audio playback failed:', e);
+                setIsPlaying(false);
+            });
             setIsPlaying(true);
         }
     };

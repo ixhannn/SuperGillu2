@@ -8,7 +8,6 @@ import {
     normalizeMimeType,
     parseManagedMediaKey,
 } from '../shared/mediaPolicy.js';
-import { isE2EAppMode } from './e2eHarness';
 
 const WORKER_URL = (import.meta.env.VITE_R2_WORKER_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
@@ -87,7 +86,12 @@ const authHeaders = async (): Promise<Record<string, string> | null> => {
     };
 };
 
-const managedWriteHeaders = async (): Promise<Record<string, string> | null> => authHeaders();
+const managedWriteHeaders = async (): Promise<Record<string, string> | null> => {
+    // Writes always require a real Supabase session. The legacy X-Upload-Key
+    // fallback was removed: it bypassed couple-membership checks on the worker
+    // and shipped a shared secret inside the browser bundle.
+    return authHeaders();
+};
 
 /** Convert a base64 data URI to an ArrayBuffer + MIME type. */
 function base64ToBuffer(dataUri: string): { buffer: ArrayBuffer; mimeType: string } {
@@ -202,10 +206,6 @@ const shouldReportMissingRead = (key: string) => {
     MISSING_READ_REPORT_CACHE.set(key, now);
     return true;
 };
-
-const shouldWarnForManagedWriteSkip = (): boolean => (
-    !isE2EAppMode() && SupabaseService.isConfigured()
-);
 
 const reportMissingRead = async (storagePath: string, reason: string) => {
     const key = extractCandidateR2Key(storagePath);
@@ -456,11 +456,8 @@ export const MediaStorageService = {
 
     async uploadMedia(base64DataUri: string, storagePath: string, options: UploadMediaOptions = {}): Promise<string | null> {
         if (!base64DataUri) return null;
-        if (isE2EAppMode()) return null;
         if (!WORKER_URL) {
-            if (shouldWarnForManagedWriteSkip()) {
-                console.warn('[R2] VITE_R2_WORKER_URL not configured - upload skipped.');
-            }
+            console.warn('[R2] VITE_R2_WORKER_URL not configured - upload skipped.');
             return null;
         }
 
@@ -527,9 +524,7 @@ export const MediaStorageService = {
             if (!url) return null;
             const workerAuthHeaders = await managedWriteHeaders();
             if (!workerAuthHeaders) {
-                if (shouldWarnForManagedWriteSkip()) {
-                    console.warn('[R2] Missing managed worker credentials - upload skipped.');
-                }
+                console.warn('[R2] Missing managed worker credentials - upload skipped.');
                 return null;
             }
 
@@ -686,7 +681,6 @@ export const MediaStorageService = {
 
     async deleteMedia(storagePath: string): Promise<boolean> {
         if (!storagePath) return true;
-        if (isE2EAppMode()) return false;
 
         const key = extractR2Key(storagePath);
         if (key && isManagedUploadKey(key)) {
@@ -696,9 +690,7 @@ export const MediaStorageService = {
                 try {
                     const workerAuthHeaders = await managedWriteHeaders();
                     if (!workerAuthHeaders) {
-                        if (shouldWarnForManagedWriteSkip()) {
-                            console.warn('[R2] Missing managed worker credentials - delete skipped.');
-                        }
+                        console.warn('[R2] Missing managed worker credentials - delete skipped.');
                         return false;
                     }
                     const res = await fetch(url, {

@@ -3,9 +3,10 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
- * In dev mode, Vite's React Refresh runtime uses `new Function()` which
- * requires 'unsafe-eval' in the CSP. This plugin relaxes the CSP meta tag
- * during development only — production builds keep the strict policy.
+ * In dev mode, Vite injects an inline React Refresh preamble (needs
+ * 'unsafe-inline') and the refresh runtime uses `new Function()` (needs
+ * 'unsafe-eval'). This plugin relaxes the CSP meta tag during development
+ * only — production builds keep the strict `script-src 'self'` policy.
  */
 function devCspPlugin(): Plugin {
   return {
@@ -13,7 +14,7 @@ function devCspPlugin(): Plugin {
     transformIndexHtml(html, ctx) {
       if (ctx.server) {
         return html.replace(
-          /script-src 'self' 'unsafe-inline'/,
+          /script-src 'self'/,
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
         ).replace(
           /connect-src 'self'/,

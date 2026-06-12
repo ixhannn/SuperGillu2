@@ -1,7 +1,5 @@
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from '../_shared/cors.ts';
 
 const FALLBACK = { text: 'I love you both! ❤️', isFlashback: false };
 
@@ -27,11 +25,16 @@ type Note = {
   content?: string;
 };
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
-  });
+const makeJson = (cors: Record<string, string>) =>
+  (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
+function readBearerToken(value: string | null) {
+  if (!value) return '';
+  return value.toLowerCase().startsWith('bearer ') ? value.slice(7).trim() : '';
 }
 
 const trimText = (value: unknown, fallback: string, maxLength: number) => {
@@ -109,8 +112,29 @@ const buildPrompt = (stats: PetStats, profile: CoupleProfile, recentMemories: Me
 };
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const cors = corsHeaders(req);
+  const json = makeJson(cors);
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  // Require a real Supabase session before spending Gemini quota — without
+  // this, anyone who discovers the function URL can drain the API key.
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRoleKey) {
+    return json({ error: 'Pet dialogue is not configured' }, 500);
+  }
+
+  const accessToken = readBearerToken(req.headers.get('Authorization'));
+  if (!accessToken) return json({ error: 'Authentication required' }, 401);
+
+  const service = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: userData, error: userError } = await service.auth.getUser(accessToken);
+  if (userError || !userData.user) {
+    return json({ error: 'Invalid session' }, 401);
+  }
 
   let body: {
     stats?: PetStats;

@@ -35,8 +35,10 @@ import { feedback } from '../utils/feedback';
 // shell is what's being redesigned; the auth logic is preserved verbatim.
 // ══════════════════════════════════════════════════════════════════════
 const getSupabaseAuthConfig = () => {
-    const url = import.meta.env.VITE_SUPABASE_URL?.trim() || localStorage.getItem('lior_sb_url')?.trim() || '';
-    const key = import.meta.env.VITE_SUPABASE_KEY?.trim() || localStorage.getItem('lior_sb_key')?.trim() || '';
+    // Credentials are POSTed to this URL, so it must come from the validated
+    // config path (env var, or a localStorage value verified to be a real
+    // *.supabase.co host) — never from a raw localStorage read.
+    const { url, anonKey: key } = SupabaseService.getProjectConfig();
     return { url, key, isConfigured: Boolean(url && key) };
 };
 

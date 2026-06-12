@@ -15,4 +15,12 @@ bucket_name = "lior-media"
 #   wrangler secret put SUPABASE_URL
 #   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 # Managed media writes are authorized with the caller's Supabase session,
-# not a shared client-side upload secret.
+# not a shared client-side upload secret. (The legacy UPLOAD_KEY /
+# X-Upload-Key fallback has been removed.)
+#
+# Cross-origin browser access is restricted to a built-in allowlist
+# (localhost dev, Capacitor WebView origins, *.joinlior.com,
+# *.joinlior.workers.dev, *.pages.dev). If the web app is served from
+# another domain, add it via:
+#   wrangler secret put ALLOWED_ORIGINS   # comma-separated exact origins
+# or a plain [vars] entry, e.g. ALLOWED_ORIGINS = "https://app.example.com"

@@ -1,4 +1,5 @@
 const ADMIN_CONFIG_KEY = 'lior_admin_dashboard_config';
+const ADMIN_TOKEN_KEY = 'lior_admin_dashboard_token';
 
 export type AdminDashboardConfig = {
   workerUrl: string;
@@ -314,14 +315,23 @@ const defaultConfig = (): AdminDashboardConfig => ({
 });
 
 export const AdminDashboardApi = {
+  // The worker URL is harmless and convenient to persist across restarts
+  // (localStorage). The admin token grants full access to every admin
+  // endpoint, so it is kept in sessionStorage only: it disappears when the
+  // tab closes and is never written to disk. Any token that may have been
+  // persisted by older builds is scrubbed from localStorage on load.
   loadConfig(): AdminDashboardConfig {
     try {
       const raw = localStorage.getItem(ADMIN_CONFIG_KEY);
-      if (!raw) return defaultConfig();
-      const parsed = JSON.parse(raw) as Partial<AdminDashboardConfig>;
+      const parsed = raw ? (JSON.parse(raw) as Partial<AdminDashboardConfig>) : {};
+      if (parsed.token) {
+        localStorage.setItem(ADMIN_CONFIG_KEY, JSON.stringify({
+          workerUrl: normalizeWorkerUrl(String(parsed.workerUrl || '')),
+        }));
+      }
       return {
         workerUrl: normalizeWorkerUrl(String(parsed.workerUrl || import.meta.env.VITE_R2_WORKER_URL || '')),
-        token: String(parsed.token || ''),
+        token: String(sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''),
       };
     } catch {
       return defaultConfig();
@@ -331,12 +341,17 @@ export const AdminDashboardApi = {
   saveConfig(config: AdminDashboardConfig) {
     localStorage.setItem(ADMIN_CONFIG_KEY, JSON.stringify({
       workerUrl: normalizeWorkerUrl(config.workerUrl),
-      token: config.token,
     }));
+    if (config.token) {
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, config.token);
+    } else {
+      sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
   },
 
   clearConfig() {
     localStorage.removeItem(ADMIN_CONFIG_KEY);
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
   },
 
   async request(

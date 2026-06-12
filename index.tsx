@@ -67,6 +67,11 @@ if (typeof document !== 'undefined') {
   // Fail-safe: never let entrance-animated content stay stranded invisible if
   // its reveal animation is interrupted (background/resume, throttling, etc.).
   startRevealSafety();
+
+  // iOS Safari only applies :active styles when a touchstart listener exists.
+  // This used to be an inline ontouchstart="" on <body>, which the strict
+  // production CSP (script-src 'self') would block.
+  document.body.addEventListener('touchstart', () => {}, { passive: true });
 }
 
 const rootElement = document.getElementById('root');

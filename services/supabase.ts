@@ -4,6 +4,27 @@ import { isE2EAppMode } from './e2eHarness';
 const KEYS = { URL: 'lior_sb_url', KEY: 'lior_sb_key' };
 const ENV_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || '';
 const ENV_KEY = import.meta.env.VITE_SUPABASE_KEY?.trim() || '';
+
+// The project URL can be supplied at runtime via localStorage (manual setup
+// flow). Only accept real Supabase hosts there, so a localStorage write (e.g.
+// through an XSS or a malicious extension) cannot re-point all cloud sync at
+// an attacker-controlled server. Plain http is allowed only for the local CLI.
+const isTrustedSupabaseUrl = (value: string): boolean => {
+    try {
+        const parsed = new URL(value);
+        if (parsed.protocol === 'https:') {
+            return parsed.hostname === 'supabase.co' || parsed.hostname.endsWith('.supabase.co');
+        }
+        return parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+    } catch {
+        return false;
+    }
+};
+
+const readStoredSupabaseUrl = (): string => {
+    const stored = localStorage.getItem(KEYS.URL) || '';
+    return isTrustedSupabaseUrl(stored) ? stored : '';
+};
 let cachedUserId: string | null = null;
 let cachedCoupleId: string | null = null;
 let sessionLookupPromise: Promise<Session | null> | null = null;
@@ -93,7 +114,7 @@ export const SupabaseService = {
     client: null as SupabaseClient | null,
 
     getProjectConfig: () => ({
-        url: ENV_URL || localStorage.getItem(KEYS.URL) || '',
+        url: ENV_URL || readStoredSupabaseUrl(),
         anonKey: ENV_KEY || localStorage.getItem(KEYS.KEY) || '',
     }),
 
@@ -127,13 +148,17 @@ export const SupabaseService = {
     },
 
     configure: (url: string, key: string) => {
+        if (!isTrustedSupabaseUrl(url)) {
+            console.warn('Rejected Supabase URL: only *.supabase.co (or localhost for dev) is allowed.');
+            return false;
+        }
         localStorage.setItem(KEYS.URL, url);
         localStorage.setItem(KEYS.KEY, key);
         SupabaseService.client = null;
         return SupabaseService.init();
     },
 
-    isConfigured: () => (!!ENV_URL && !!ENV_KEY) || (!!localStorage.getItem(KEYS.URL) && !!localStorage.getItem(KEYS.KEY)),
+    isConfigured: () => (!!ENV_URL && !!ENV_KEY) || (!!readStoredSupabaseUrl() && !!localStorage.getItem(KEYS.KEY)),
 
     getCachedUserId: () => cachedUserId,
 

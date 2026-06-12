@@ -14,6 +14,18 @@
       "port": 3013
     },
     {
+      "name": "Lior Main Dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/Sameer/Downloads/Lior", "run", "dev"],
+      "port": 3002
+    },
+    {
+      "name": "Lior E2E",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/Sameer/Downloads/Lior", "run", "dev:e2e"],
+      "port": 3002
+    },
+    {
       "name": "Tulika Preview Server",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview"],

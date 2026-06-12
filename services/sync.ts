@@ -357,9 +357,13 @@ class SyncServiceClass {
         try {
             new Notification(title, { body, icon, badge: "/notification-icon.png" });
         } catch (e) {
-            // Fallback for some mobile browsers
+            // Fallback for some mobile browsers. May itself fail (no service
+            // worker registered in dev) — catch so it never becomes an
+            // unhandled promise rejection.
             navigator.serviceWorker.ready.then(registration => {
                 registration.showNotification(title, { body, icon, badge: "/notification-icon.png" });
+            }).catch((err) => {
+                console.warn('[Sync] Notification fallback failed:', err);
             });
         }
     }

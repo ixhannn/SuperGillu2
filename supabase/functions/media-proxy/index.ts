@@ -1,19 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from '../_shared/cors.ts';
 
 const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'];
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
-}
+const makeJson = (cors: Record<string, string>) =>
+  (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
 
 function readBearerToken(value: string | null) {
   if (!value) return '';
@@ -78,7 +73,9 @@ async function blobToDataUri(blob: Blob) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const cors = { ...corsHeaders(req), 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
+  const json = makeJson(cors);
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
