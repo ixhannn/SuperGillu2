@@ -1,5 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 
+// Home renders live time: the "Our time together" counter ticks every second
+// and the day/milestone counts roll over daily. Pin Date/Date.now() to a fixed
+// instant so screenshots are reproducible on any day. setFixedTime (unlike
+// clock.install + pauseAt) leaves real timers running, so the counter's
+// setInterval still fires — it just always reads the same time.
+const FIXED_NOW = new Date('2026-06-11T12:00:00');
+
+const freezeTime = async (page: Page) => {
+  await page.clock.setFixedTime(FIXED_NOW);
+};
+
 const freezeVisualMotion = async (page: Page) => {
   await page.addStyleTag({
     content: `
@@ -84,6 +95,7 @@ const waitForStableViewContent = async (page: Page, view: string) => {
 };
 
 const openStableView = async (page: Page, view: string) => {
+  await freezeTime(page);
   await seedStableState(page);
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto(`/?e2e=1&view=${view}`);
@@ -111,6 +123,7 @@ for (const view of ['home', 'us', 'timeline', 'daily-moments', 'private-space', 
 // Solo mode: an UNLINKED user must never see a phantom partner or a
 // heartbeat-to-nobody. Same seed, but with the partner link removed.
 test('visual parity: home (unlinked / solo mode)', async ({ page }) => {
+  await freezeTime(page);
   await seedStableState(page);
   await page.addInitScript(() => localStorage.removeItem('lior_link_lock'));
   await page.setViewportSize({ width: 393, height: 852 });
