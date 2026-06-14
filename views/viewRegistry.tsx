@@ -82,7 +82,6 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   'mood-calendar': lazyNamedView(() => import('./MoodCalendar'), 'MoodCalendar'),
   'aura-rewind': lazyNamedView(() => import('./AuraRewind'), 'AuraRewind'),
   'aura-signal': lazyNamedView(() => import('./AuraSignal'), 'AuraSignal'),
-  'presence-room': lazyNamedView(() => import('./PresenceRoom'), 'PresenceRoom'),
   'bonsai-bloom': lazyNamedView(() => import('./BonsaiBloom'), 'BonsaiBloom'),
   'coco-pet': lazyNamedView(() => import('./CocoPetPage'), 'CocoPetPage'),
   us: lazyNamedView(() => import('./Us'), 'Us'),

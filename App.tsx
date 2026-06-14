@@ -1139,7 +1139,7 @@ const AuraSignalReceiver = () => {
         Audio.play('heartbeat');
 
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-           new Notification('Lior - New Aura', {
+           new Notification('Lior - New Pulse', {
                body: detail.payload.title, 
                icon: '/notification-icon.png',
                silent: false

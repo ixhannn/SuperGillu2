@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, Home, Waves, Brush, Moon, Send, Compass, Milestone, Sparkles } from 'lucide-react';
+import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, Home, Brush, Moon, Send, Compass, Milestone, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
@@ -213,7 +213,6 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 <div className="grid grid-cols-2 gap-3">
                     {([
                         { Icon: Home,  label: 'Our Room',      sub: 'Decorate together',  view: 'our-room' as const,      accent: '#ec4899' },
-                        { Icon: Waves, label: 'Presence',      sub: 'Feel each other',    view: 'presence-room' as const, accent: '#14b8a6' },
                         { Icon: Brush, label: 'Draw Together', sub: 'Shared canvas',      view: 'canvas' as const,        accent: '#8b5cf6' },
                         { Icon: Moon,  label: 'Quiet Mode',    sub: 'Ambient memories',   view: 'quiet-mode' as const,    accent: '#6366f1' },
                     ]).map((item, i) => (
@@ -291,7 +290,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                         <Sparkles size={19} strokeWidth={2} className="text-white" />
                     </div>
                     <div className="flex-1 text-left relative">
-                        <p className="font-serif font-bold text-white text-[1.02rem] leading-tight">Aura Signal</p>
+                        <p className="font-serif font-bold text-white text-[1.02rem] leading-tight">Pulse</p>
                         <p className="text-[0.72rem] mt-0.5" style={{ color: 'rgba(255,255,255,0.84)' }}>Send a feeling across the distance, wordlessly</p>
                     </div>
                     <div
