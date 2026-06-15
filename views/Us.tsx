@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, Home, Brush, Moon, Send, Compass, Milestone, Sparkles } from 'lucide-react';
+import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, ChevronRight, Home, Brush, Moon, Send, Compass, Milestone, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
@@ -209,52 +209,68 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
 
             {/* ── Shared Spaces ────────────────────────────────────────── */}
             <div className="px-5 mb-3">
-                <p className="text-[0.64rem] font-bold uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--color-text-secondary)', opacity: 0.72 }}>Shared Spaces</p>
-                <div className="grid grid-cols-2 gap-3">
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--color-text-secondary)', opacity: 0.78 }}>Shared spaces</p>
+
+                {/* Hero — Our Room (the flagship shared space) */}
+                <motion.button
+                    initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setView('our-room')}
+                    className="relative w-full overflow-hidden flex items-center gap-4 p-[1.1rem] rounded-[1.6rem] text-left"
+                    style={{
+                        // Warm, near-solid surface (no washed-out frosting) so the
+                        // card reads with real presence above the rose field.
+                        background: 'linear-gradient(135deg, #fffafc 0%, #ffe7f0 100%)',
+                        border: '1px solid rgba(255,255,255,0.9)',
+                        boxShadow: '0 14px 30px rgba(178,120,140,0.16), 0 4px 10px rgba(178,120,140,0.08)',
+                    }}
+                >
+                    <div aria-hidden className="absolute -top-10 -right-8 w-36 h-36 rounded-full pointer-events-none"
+                        style={{ background: 'radial-gradient(circle, rgba(236,72,153,0.18), transparent 70%)' }} />
+                    <div className="w-[3.4rem] h-[3.4rem] rounded-[1.1rem] flex items-center justify-center flex-shrink-0 relative"
+                        style={{ background: 'linear-gradient(140deg,#f472b6,#ec4899)', boxShadow: '0 8px 18px rgba(236,72,153,0.35)' }}>
+                        <Home size={24} strokeWidth={2} className="text-white" />
+                    </div>
+                    <div className="flex-1 relative">
+                        <p className="font-serif font-bold text-[1.16rem] leading-tight" style={{ color: 'var(--color-text-primary)' }}>Our Room</p>
+                        <p className="text-[0.8rem] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>Decorate your space together</p>
+                    </div>
+                    <ChevronRight size={20} className="relative flex-shrink-0" style={{ color: '#ec4899', opacity: 0.5 }} />
+                </motion.button>
+
+                {/* Pair — the two ambient spaces */}
+                <div className="grid grid-cols-2 gap-3 mt-3">
                     {([
-                        { Icon: Home,  label: 'Our Room',      sub: 'Decorate together',  view: 'our-room' as const,      accent: '#ec4899' },
-                        { Icon: Brush, label: 'Draw Together', sub: 'Shared canvas',      view: 'canvas' as const,        accent: '#8b5cf6' },
-                        { Icon: Moon,  label: 'Quiet Mode',    sub: 'Ambient memories',   view: 'quiet-mode' as const,    accent: '#6366f1' },
+                        { Icon: Brush, label: 'Draw Together', sub: 'Shared canvas',    view: 'canvas' as const,     from: '#fffaf8', to: '#fdeee7', badge: 'rgba(224,103,63,0.13)', ring: 'rgba(224,103,63,0.26)', accent: '#e0673f', glow: 'rgba(224,103,63,0.18)' },
+                        { Icon: Moon,  label: 'Quiet Mode',    sub: 'Ambient memories', view: 'quiet-mode' as const, from: '#fdfaff', to: '#f1ecfb', badge: 'rgba(122,104,201,0.14)', ring: 'rgba(122,104,201,0.26)', accent: '#7a68c9', glow: 'rgba(122,104,201,0.16)' },
                     ]).map((item, i) => (
                         <motion.button
                             key={item.label}
                             initial={{ opacity: 0, y: 14, scale: 0.96 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ type: 'spring', stiffness: 340, damping: 24, delay: i * 0.05 }}
+                            transition={{ type: 'spring', stiffness: 340, damping: 24, delay: 0.06 + i * 0.05 }}
                             whileTap={{ scale: 0.96 }}
                             onClick={() => setView(item.view)}
                             className="relative overflow-hidden flex flex-col items-start gap-3 p-4 rounded-[1.4rem] text-left"
                             style={{
-                                // Uniform frosted-white glass for ALL four cards —
-                                // each space's identity comes from the accent icon
-                                // badge, not a whole-card tint. This kills the
-                                // chaotic 4-different-colours look.
-                                background: 'rgba(255,255,255,0.74)',
-                                border: '1px solid rgba(255,255,255,0.92)',
-                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95), 0 10px 22px rgba(120,80,100,0.09)',
-                                backdropFilter: 'blur(16px)',
-                                WebkitBackdropFilter: 'blur(16px)',
+                                // Each space gets a gentle, on-brand warm tint for
+                                // identity — cohesive, not the old chaotic look.
+                                background: `linear-gradient(150deg, ${item.from}, ${item.to})`,
+                                border: '1px solid rgba(255,255,255,0.9)',
+                                boxShadow: '0 8px 20px rgba(178,120,140,0.10), 0 2px 6px rgba(178,120,140,0.06)',
                             }}
                         >
-                            {/* Soft accent wash bleeding from the top-right corner */}
-                            <div
-                                aria-hidden
-                                className="absolute -top-10 -right-10 w-28 h-28 rounded-full pointer-events-none"
-                                style={{ background: `radial-gradient(circle, ${item.accent}26, transparent 70%)` }}
-                            />
-                            {/* Accent icon badge — the space's identity */}
-                            <div
-                                className="w-11 h-11 rounded-2xl flex items-center justify-center relative"
-                                style={{
-                                    background: `${item.accent}14`,
-                                    border: `1px solid ${item.accent}2e`,
-                                }}
-                            >
+                            <div aria-hidden className="absolute -top-8 -right-7 w-24 h-24 rounded-full pointer-events-none"
+                                style={{ background: `radial-gradient(circle, ${item.glow}, transparent 70%)` }} />
+                            <div className="w-11 h-11 rounded-2xl flex items-center justify-center relative"
+                                style={{ background: item.badge, border: `1px solid ${item.ring}` }}>
                                 <item.Icon size={19} strokeWidth={2} style={{ color: item.accent }} />
                             </div>
                             <div className="relative">
-                                <p className="font-semibold text-[0.94rem] leading-tight" style={{ color: 'var(--color-text-primary)' }}>{item.label}</p>
-                                <p className="text-[0.74rem] mt-0.5" style={{ color: 'var(--color-text-secondary)', opacity: 0.68 }}>{item.sub}</p>
+                                <p className="font-serif font-bold text-[0.96rem] leading-tight" style={{ color: 'var(--color-text-primary)' }}>{item.label}</p>
+                                <p className="text-[0.73rem] mt-0.5" style={{ color: 'var(--color-text-secondary)', opacity: 0.82 }}>{item.sub}</p>
                             </div>
                         </motion.button>
                     ))}
@@ -284,10 +300,20 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                         style={{ background: 'radial-gradient(120% 90% at 12% -20%, rgba(255,255,255,0.40), transparent 58%)' }}
                     />
                     <div
-                        className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 relative"
-                        style={{ background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.38)' }}
+                        className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 relative"
+                        style={{ background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.4)' }}
                     >
-                        <Sparkles size={19} strokeWidth={2} className="text-white" />
+                        {[0, 1].map((r) => (
+                            <motion.span
+                                key={r}
+                                aria-hidden
+                                className="absolute rounded-full pointer-events-none"
+                                style={{ width: 46, height: 46, border: '1.5px solid rgba(255,255,255,0.5)' }}
+                                animate={{ scale: [1, 1.85], opacity: [0.55, 0] }}
+                                transition={{ duration: 2.4, repeat: Infinity, delay: r * 1.2, ease: 'easeOut' }}
+                            />
+                        ))}
+                        <Sparkles size={20} strokeWidth={2} className="text-white relative" />
                     </div>
                     <div className="flex-1 text-left relative">
                         <p className="font-serif font-bold text-white text-[1.02rem] leading-tight">Pulse</p>
