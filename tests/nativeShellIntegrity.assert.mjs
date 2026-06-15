@@ -53,8 +53,26 @@ assert.match(
 
 assert.match(
   appSource,
-  /NativeShellService\.start\(\{[\s\S]*onHardwareBack:[\s\S]*lior:hardware-back[\s\S]*runNavigation\(destination, prev === 'add-memory' \? 'modal-close' : 'pop'\)[\s\S]*NativeShellService\.minimizeApp\(\)/,
-  'Expected App to route hardware back through modal dismissal, app navigation (sheet-aware pop), then minimize.',
+  /NativeShellService\.start\(\{[\s\S]*onHardwareBack:[\s\S]*lior:hardware-back[\s\S]*performBackRef\.current\(\)[\s\S]*NativeShellService\.minimizeApp\(\)/,
+  'Expected App to route hardware back through modal dismissal, the shared in-app back, then minimize.',
+);
+
+assert.match(
+  appSource,
+  /const performBack = useCallback\(\(\) => \{[\s\S]*runNavigation\(destination, prev === 'add-memory' \? 'modal-close' : 'pop'\)/,
+  'Expected the shared back to perform a sheet-aware pop (modal-close for the composer, else pop).',
+);
+
+assert.match(
+  appSource,
+  /onHardwareBack:[\s\S]*if \(transitionLockRef\.current\) \{[\s\S]*pendingBackRef\.current \+= 1;[\s\S]*return true;[\s\S]*\}[\s\S]*NativeShellService\.minimizeApp\(\)/,
+  'Expected hardware back to queue/swallow presses while a transition holds the lock instead of minimizing — guards the rapid-back app-exit bug.',
+);
+
+assert.match(
+  appSource,
+  /if \(drainPendingBack\(\)\) return;\s*drainPendingNavigation\(\);/,
+  'Expected finalizeNavigation to replay a queued back press before draining a parked forward tap.',
 );
 
 assert.match(
