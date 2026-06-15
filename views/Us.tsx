@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, ChevronRight, Home, Brush, Moon, Send, Compass, Milestone, Sparkles, Heart } from 'lucide-react';
-import { motion, AnimatePresence, useReducedMotion, animate } from 'framer-motion';
+import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, ChevronRight, Home, Brush, Moon, Send, Compass, Milestone, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -22,7 +22,7 @@ const MS_GRADIENTS = [
     'linear-gradient(150deg,#fffdfc,#ffe9ef)',
     'linear-gradient(150deg,#fffbf7,#fbe7da)',
     'linear-gradient(150deg,#fffcfd,#f7e4ec)',
-    'linear-gradient(150deg,#fffdfc,#ffe4ea)',
+    'linear-gradient(150deg,#fffdfc,#ecd4db)',
 ];
 
 type Tab = 'bucket' | 'wishlist' | 'milestones';
@@ -44,7 +44,7 @@ const WARM = {
     inkSoft: 'var(--color-text-secondary)',
     rose: '#ec4899', roseSoft: '#f472b6', roseDeep: '#be3d72', navActive: '#c4687e',
     // frozen foil ring for the double-bezel shell — never animate its position
-    foilRing: 'linear-gradient(150deg, rgba(244,114,182,0.30), rgba(232,160,176,0.10) 32%, rgba(255,255,255,0.85) 52%, rgba(232,160,176,0.10) 72%, rgba(244,114,182,0.30))',
+    foilRing: 'linear-gradient(150deg, rgba(196,104,126,0.34), rgba(178,120,140,0.10) 32%, rgba(255,255,255,0.78) 52%, rgba(178,120,140,0.10) 72%, rgba(196,104,126,0.34))',
     // the shadow system — soft + mauve-tinted, never black
     catch: 'inset 0 1px 0 rgba(255,255,255,0.95)',
     catchHero: 'inset 0 1.5px 0 rgba(255,255,255,1)',
@@ -64,7 +64,7 @@ const STAGGER = { hidden: {}, visible: { transition: { staggerChildren: 0.06, de
 const GRAIN_URL = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
 
 // Double-bezel surface: outer foil ring + concentric inner core (inner radius = outer − pad).
-const Bezel: React.FC<{ radius?: number; pad?: number; coreBg?: string; shadow?: string; className?: string; style?: React.CSSProperties; coreStyle?: React.CSSProperties; children: React.ReactNode }> = ({ radius = RADIUS.cardOuter, pad = 5, coreBg = 'linear-gradient(150deg,#fffdfc,#fff4f7)', shadow = WARM.md, className, style, coreStyle, children }) => (
+const Bezel: React.FC<{ radius?: number; pad?: number; coreBg?: string; shadow?: string; className?: string; style?: React.CSSProperties; coreStyle?: React.CSSProperties; children: React.ReactNode }> = ({ radius = RADIUS.cardOuter, pad = 5, coreBg = 'linear-gradient(150deg,#fffaf6,#f6e6ea)', shadow = WARM.md, className, style, coreStyle, children }) => (
     <div className={className} style={{ borderRadius: radius, padding: pad, background: WARM.foilRing, boxShadow: `${shadow}, ${WARM.contact}`, ...style }}>
         <div style={{ borderRadius: radius - pad, background: coreBg, boxShadow: `${WARM.catch}, inset 0 -1px 0 rgba(196,104,126,0.05)`, position: 'relative', overflow: 'hidden', height: '100%', ...coreStyle }}>
             {children}
@@ -72,14 +72,13 @@ const Bezel: React.FC<{ radius?: number; pad?: number; coreBg?: string; shadow?:
     </div>
 );
 
-// Eyebrow pill — restores rhythm above each section.
-const Eyebrow: React.FC<{ children: React.ReactNode; center?: boolean }> = ({ children, center }) => (
-    <div className={`flex items-center gap-2 mb-3 ${center ? 'justify-center' : ''}`}>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: '#ffe4ea', boxShadow: WARM.catch, border: '1px solid rgba(255,255,255,0.8)' }}>
-            <span className="w-1 h-1 rounded-full" style={{ background: WARM.rose }} />
+// Eyebrow pill — restores rhythm above each section (no divider rule).
+const Eyebrow: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="flex items-center mb-3">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: '#ecd4db', boxShadow: WARM.catch, border: '1px solid rgba(255,255,255,0.65)' }}>
+            <span className="w-1 h-1 rounded-full" style={{ background: WARM.roseDeep }} />
             <span className="font-bold uppercase" style={{ fontSize: '0.62rem', letterSpacing: '0.18em', color: WARM.navActive }}>{children}</span>
         </span>
-        {!center && <span className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(196,104,126,0.16), transparent)' }} />}
     </div>
 );
 
@@ -242,25 +241,6 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
 
     const reduce = useReducedMotion();
 
-    // Signature "Day N together" masthead — presentation only, derived from the
-    // earliest dated milestone (first date). Falls back to names when unset.
-    const anchorDate = (() => {
-        const anniv = profile.anniversaryDate || undefined;
-        const fd = milestones.find(m => m.id === 'first-date' && m.date)?.date;
-        const earliest = datedMilestones.length ? datedMilestones.map(m => m.date).sort()[0] : undefined;
-        return anniv || fd || earliest || null;
-    })();
-    const rawDayCount = anchorDate ? Math.floor((Date.now() - new Date(anchorDate).getTime()) / 86400000) : null;
-    // Require >= 1 so a default "today" anniversary never renders "Day 0" — fall back to names instead.
-    const dayCount = (rawDayCount != null && Number.isFinite(rawDayCount) && rawDayCount >= 1) ? rawDayCount : null;
-    const [dayDisplay, setDayDisplay] = useState(0);
-    useEffect(() => {
-        if (dayCount == null) return;
-        if (reduce) { setDayDisplay(dayCount); return; }
-        const controls = animate(0, dayCount, { duration: 1.1, ease: [0.16, 1, 0.3, 1], onUpdate: (v) => setDayDisplay(Math.round(v)) });
-        return () => controls.stop();
-    }, [dayCount, reduce]);
-
     const TABS = [
         { id: 'bucket' as Tab, Icon: Compass, label: 'Bucket List', count: pending.length },
         { id: 'wishlist' as Tab, Icon: Gift, label: 'Wishlist', count: visibleWishes.length },
@@ -276,48 +256,12 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
             {/* Paper grain — covers the page behind content for tactile warmth */}
             <div aria-hidden className="absolute inset-0 pointer-events-none z-0" style={{ opacity: 0.04, mixBlendMode: 'multiply', backgroundImage: GRAIN_URL }} />
 
-            {/* ── Masthead — the "Day N together" signature moment ─────────── */}
-            <motion.div
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={SOFT_SPRING}
-                className="relative z-[1] px-5 pt-1 pb-1 text-center"
-            >
-                <Eyebrow center>{dayCount != null ? 'Together since' : 'Our world'}</Eyebrow>
-                {dayCount != null ? (
-                    <>
-                        <p className="font-serif" style={{ fontSize: 'clamp(3rem, 14vw, 3.8rem)', fontWeight: 500, lineHeight: 0.9, letterSpacing: '-0.02em', color: WARM.ink }}>
-                            {dayDisplay.toLocaleString()}
-                        </p>
-                        <p className="mt-1" style={{ fontSize: '0.8rem', letterSpacing: '0.04em', color: WARM.inkSoft }}>days together</p>
-                    </>
-                ) : (
-                    <p className="font-serif" style={{ fontSize: '2.4rem', fontWeight: 500, lineHeight: 1, letterSpacing: '-0.01em', color: WARM.ink }}>
-                        {profile.myName || 'You'} <span style={{ color: WARM.rose }}>&amp;</span> {profile.partnerName || 'them'}
-                    </p>
-                )}
-                <div className="flex items-center justify-center gap-3 mt-3">
-                    <span className="h-px w-16" style={{ background: 'linear-gradient(90deg, transparent, rgba(196,104,126,0.28))' }} />
-                    <span className="relative inline-flex items-center justify-center" style={{ width: 26, height: 26 }}>
-                        {!reduce && (
-                            <motion.span aria-hidden className="absolute rounded-full" style={{ width: 26, height: 26, background: 'radial-gradient(circle, rgba(244,114,182,0.45), transparent 70%)' }}
-                                animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0.85, 0.5] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }} />
-                        )}
-                        <span className="relative flex items-center justify-center rounded-full" style={{ width: 14, height: 14, background: 'radial-gradient(circle at 30% 30%, #fff, #c06079)', boxShadow: '0 6px 14px rgba(192,96,121,0.22), inset 0 1px 0 rgba(255,255,255,0.9)' }}>
-                            <Heart size={8} strokeWidth={0} className="text-white" fill="currentColor" />
-                        </span>
-                    </span>
-                    <span className="h-px w-16" style={{ background: 'linear-gradient(90deg, rgba(196,104,126,0.28), transparent)' }} />
-                </div>
-                <p className="font-serif mt-3" style={{ fontSize: '1rem', fontWeight: 500, color: WARM.inkSoft }}>your world, in one place.</p>
-            </motion.div>
-
             {/* ── Shared Spaces ────────────────────────────────────────────── */}
             <motion.div
                 initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ ...SOFT_SPRING, delay: 0.06 }}
-                className="relative z-[1] px-5 mb-9 mt-7"
+                transition={{ ...SOFT_SPRING, delay: 0.04 }}
+                className="relative z-[1] px-5 mb-9 mt-3"
             >
                 <Eyebrow>Shared spaces</Eyebrow>
                 <h3 className="font-serif" style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.01em', color: WARM.ink, lineHeight: 1.05 }}>where we meet</h3>
@@ -326,16 +270,16 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 {/* Hero — Our Room */}
                 <motion.button whileTap={{ scale: 0.985 }} transition={PRESS_SPRING} onClick={() => setView('our-room')} className="block w-full text-left">
                     <Bezel radius={RADIUS.heroOuter} pad={5} shadow={WARM.lg}
-                        coreBg="radial-gradient(120% 90% at 14% -10%, #fffdfc 0%, #fff6f4 46%, #ffeaf0 100%)"
+                        coreBg="radial-gradient(120% 90% at 14% -10%, #fffaf6 0%, #faeae4 46%, #f3d7dd 100%)"
                         coreStyle={{ boxShadow: `${WARM.catchHero}, inset 0 -1px 0 rgba(196,104,126,0.05)` }}>
-                        <div className="relative flex items-center gap-4" style={{ padding: '1.25rem', minHeight: '8.5rem' }}>
-                            <Home aria-hidden size={150} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -14, bottom: -22, color: '#c4687e', opacity: 0.06, transform: 'rotate(-10deg)' }} />
+                        <div className="relative flex items-center gap-4" style={{ padding: '1.25rem', minHeight: '8rem' }}>
+                            <Home aria-hidden size={150} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -14, bottom: -22, color: '#9e3a5c', opacity: 0.07, transform: 'rotate(-10deg)' }} />
                             <span className="relative flex items-center justify-center flex-shrink-0" style={{ width: '3.5rem', height: '3.5rem' }}>
                                 {!reduce && (
-                                    <motion.span aria-hidden className="absolute rounded-full" style={{ width: '4.4rem', height: '4.4rem', background: 'radial-gradient(circle, rgba(236,72,153,0.20), transparent 70%)' }}
+                                    <motion.span aria-hidden className="absolute rounded-full" style={{ width: '4.4rem', height: '4.4rem', background: 'radial-gradient(circle, rgba(158,58,92,0.22), transparent 70%)' }}
                                         animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }} />
                                 )}
-                                <span className="relative flex items-center justify-center" style={{ width: '3.5rem', height: '3.5rem', borderRadius: RADIUS.chip + 2, background: 'linear-gradient(140deg,#f472b6,#ec4899)', boxShadow: '0 10px 22px rgba(236,72,153,0.32), inset 0 1px 0 rgba(255,255,255,0.5)' }}>
+                                <span className="relative flex items-center justify-center" style={{ width: '3.5rem', height: '3.5rem', borderRadius: RADIUS.chip + 2, background: 'linear-gradient(140deg,#c4687e,#9e3a5c)', boxShadow: '0 10px 22px rgba(158,58,92,0.34), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                     <Home size={24} strokeWidth={1.7} className="text-white" />
                                 </span>
                             </span>
@@ -344,44 +288,39 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 <p className="font-serif mt-1" style={{ fontSize: '1.32rem', fontWeight: 700, lineHeight: 1.04, color: WARM.ink }}>Our Room</p>
                                 <p className="mt-0.5" style={{ fontSize: '0.8rem', color: WARM.inkSoft }}>step inside the space you've made.</p>
                             </div>
-                            <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 38, height: 38, background: 'rgba(255,255,255,0.85)', boxShadow: '0 4px 12px rgba(232,160,176,0.18), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
-                                <ChevronRight size={18} strokeWidth={1.7} style={{ color: '#ec4899' }} />
+                            <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 38, height: 38, background: 'rgba(255,255,255,0.85)', boxShadow: '0 4px 12px rgba(158,58,92,0.16), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
+                                <ChevronRight size={18} strokeWidth={1.7} style={{ color: '#9e3a5c' }} />
                             </motion.span>
                         </div>
                     </Bezel>
                 </motion.button>
 
-                {/* Pair — the two ambient spaces */}
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                    {([
-                        { Icon: Brush, label: 'Draw Together', sub: 'Shared canvas',    eyebrow: 'Create',  view: 'canvas' as const,     from: '#fffaf8', to: '#fdeee7', badge: 'rgba(224,103,63,0.13)', ring: 'rgba(224,103,63,0.26)', accent: '#e0673f', glow: 'rgba(224,103,63,0.18)' },
-                        { Icon: Moon,  label: 'Quiet Mode',    sub: 'Ambient memories', eyebrow: 'Breathe', view: 'quiet-mode' as const, from: '#fdfaff', to: '#f1ecfb', badge: 'rgba(122,104,201,0.14)', ring: 'rgba(122,104,201,0.26)', accent: '#7a68c9', glow: 'rgba(122,104,201,0.16)' },
-                    ]).map((item, i) => (
-                        <motion.button
-                            key={item.label}
-                            initial={{ opacity: 0, y: 16 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ ...SOFT_SPRING, delay: 0.12 + i * 0.06 }}
-                            whileTap={{ scale: 0.96 }}
-                            onClick={() => setView(item.view)}
-                            className="block text-left"
-                        >
-                            <Bezel radius={RADIUS.cardOuter} pad={4} shadow={WARM.sm} coreBg={`linear-gradient(150deg, ${item.from}, ${item.to})`}>
-                                <div className="relative flex flex-col items-start gap-3" style={{ padding: '1rem', minHeight: '7.2rem' }}>
-                                    <item.Icon aria-hidden size={110} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -16, bottom: -18, color: item.accent, opacity: 0.07, transform: 'rotate(-10deg)' }} />
-                                    <span className="relative flex items-center justify-center rounded-full" style={{ width: 40, height: 40, background: item.badge, border: `1px solid ${item.ring}`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.7), 0 4px 10px ${item.glow}` }}>
-                                        <item.Icon size={18} strokeWidth={1.7} style={{ color: item.accent }} />
-                                    </span>
-                                    <div className="relative">
-                                        <p className="font-bold uppercase" style={{ fontSize: '0.56rem', letterSpacing: '0.16em', color: item.accent, opacity: 0.85 }}>{item.eyebrow}</p>
-                                        <p className="font-serif mt-1" style={{ fontSize: '1rem', fontWeight: 700, lineHeight: 1.05, color: WARM.ink }}>{item.label}</p>
-                                        <p className="mt-0.5" style={{ fontSize: '0.73rem', color: WARM.inkSoft }}>{item.sub}</p>
-                                    </div>
-                                </div>
-                            </Bezel>
-                        </motion.button>
-                    ))}
-                </div>
+                {/* Draw Together — full-width companion row */}
+                <motion.button
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ ...SOFT_SPRING, delay: 0.12 }}
+                    whileTap={{ scale: 0.985 }}
+                    onClick={() => setView('canvas')}
+                    className="block w-full text-left mt-3"
+                >
+                    <Bezel radius={RADIUS.cardOuter} pad={4} shadow={WARM.sm} coreBg="linear-gradient(150deg,#fffaf6,#f6e7df)">
+                        <div className="relative flex items-center gap-3.5" style={{ padding: '0.95rem 1.1rem' }}>
+                            <Brush aria-hidden size={96} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -10, bottom: -16, color: '#c2562f', opacity: 0.07, transform: 'rotate(-10deg)' }} />
+                            <span className="relative flex items-center justify-center rounded-2xl flex-shrink-0" style={{ width: 46, height: 46, background: 'rgba(194,86,47,0.13)', border: '1px solid rgba(194,86,47,0.26)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(194,86,47,0.16)' }}>
+                                <Brush size={20} strokeWidth={1.7} style={{ color: '#c2562f' }} />
+                            </span>
+                            <div className="flex-1 relative">
+                                <p className="font-bold uppercase" style={{ fontSize: '0.56rem', letterSpacing: '0.16em', color: '#c2562f', opacity: 0.9 }}>Create</p>
+                                <p className="font-serif mt-0.5" style={{ fontSize: '1.05rem', fontWeight: 700, lineHeight: 1.05, color: WARM.ink }}>Draw Together</p>
+                                <p style={{ fontSize: '0.74rem', color: WARM.inkSoft }}>a shared canvas, just for two.</p>
+                            </div>
+                            <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.8)', boxShadow: '0 3px 9px rgba(194,86,47,0.14), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
+                                <ChevronRight size={17} strokeWidth={1.7} style={{ color: '#c2562f' }} />
+                            </motion.span>
+                        </div>
+                    </Bezel>
+                </motion.button>
             </motion.div>
 
             {/* ── Pulse — a quiet signal ──────────────────────────────────── */}
@@ -400,8 +339,8 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                     className="block w-full text-left"
                 >
                     {/* shell — lighter shadow than the hero so the hero stays king */}
-                    <div style={{ borderRadius: RADIUS.cardOuter, padding: 5, background: 'linear-gradient(150deg, rgba(190,61,114,0.45), rgba(244,114,182,0.28) 50%, rgba(190,61,114,0.45))', boxShadow: '0 2px 4px rgba(190,61,114,0.16), 0 22px 44px -16px rgba(236,72,153,0.30)' }}>
-                        <div className="relative flex items-center gap-3.5" style={{ borderRadius: RADIUS.cardCore, overflow: 'hidden', padding: '1rem', background: 'linear-gradient(135deg,#f9a8d4 0%,#ec4899 52%,#be3d72 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -1px 0 rgba(120,20,55,0.16)' }}>
+                    <div style={{ borderRadius: RADIUS.cardOuter, padding: 5, background: 'linear-gradient(150deg, rgba(125,37,72,0.5), rgba(196,104,126,0.32) 50%, rgba(125,37,72,0.5))', boxShadow: '0 2px 4px rgba(125,37,72,0.18), 0 22px 44px -16px rgba(158,58,92,0.32)' }}>
+                        <div className="relative flex items-center gap-3.5" style={{ borderRadius: RADIUS.cardCore, overflow: 'hidden', padding: '1rem', background: 'linear-gradient(135deg,#bf6385 0%,#a13a5e 52%,#7d2548 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.26), inset 0 -1px 0 rgba(70,12,34,0.22)' }}>
                             {!reduce && (
                                 <motion.span aria-hidden className="absolute top-0 bottom-0 pointer-events-none" style={{ width: '40%', background: 'linear-gradient(105deg, transparent, rgba(255,255,255,0.24), transparent)', transform: 'skewX(-18deg)' }}
                                     animate={{ x: ['-60%', '320%'] }} transition={{ duration: 1.2, repeat: Infinity, repeatDelay: 6.5, ease: [0.16, 1, 0.3, 1] }} />
@@ -411,7 +350,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     <motion.span aria-hidden className="absolute rounded-full pointer-events-none" style={{ width: 52, height: 52, border: '1.5px solid rgba(255,255,255,0.5)' }}
                                         animate={{ scale: [1, 1.7], opacity: [0.5, 0] }} transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 1.4, ease: 'easeOut' }} />
                                 )}
-                                <span className="relative flex items-center justify-center rounded-full" style={{ width: 52, height: 52, background: 'linear-gradient(135deg,#f9b8c4,#ec4899)', boxShadow: '0 10px 24px rgba(236,72,153,0.28), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                                <span className="relative flex items-center justify-center rounded-full" style={{ width: 52, height: 52, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 10px 24px rgba(158,58,92,0.30), inset 0 1px 0 rgba(255,255,255,0.32)' }}>
                                     <Sparkles size={20} strokeWidth={1.7} className="text-white" />
                                 </span>
                             </span>
@@ -447,14 +386,14 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 className="flex-1 relative flex items-center justify-center gap-1.5 spring-press"
                                 style={{ borderRadius: RADIUS.chip, paddingTop: '0.62rem', paddingBottom: '0.62rem' }}>
                                 {active && (
-                                    <motion.span layoutId="us-tab-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#f472b6,#ec4899)', boxShadow: '0 6px 14px rgba(236,72,153,0.28), inset 0 1px 0 rgba(255,255,255,0.4)' }}
+                                    <motion.span layoutId="us-tab-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(236,72,153,0.28), inset 0 1px 0 rgba(255,255,255,0.4)' }}
                                         transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
                                 )}
                                 <tab.Icon size={15} strokeWidth={1.8} className="relative z-[1]" style={{ color: active ? '#ffffff' : WARM.inkSoft }} />
                                 <span className="relative z-[1]" style={{ fontSize: '0.74rem', fontWeight: 700, color: active ? '#ffffff' : WARM.inkSoft }}>{tab.label}</span>
                                 {tab.count > 0 && !active && (
                                     <span className="absolute -top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full text-[0.5rem] font-bold flex items-center justify-center z-[2]"
-                                        style={{ background: '#ffe4ea', color: '#c4687e', boxShadow: WARM.catch }}>
+                                        style={{ background: '#ecd4db', color: '#c4687e', boxShadow: WARM.catch }}>
                                         {tab.count > 9 ? '9+' : tab.count}
                                     </span>
                                 )}
@@ -478,7 +417,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     <p style={{ fontSize: '0.72rem', fontWeight: 700, color: WARM.navActive }}>{pct}%</p>
                                 </div>
                                 <div style={{ height: 8, borderRadius: 999, overflow: 'hidden', background: 'rgba(196,104,126,0.16)', boxShadow: 'inset 0 1px 2px rgba(178,120,140,0.18)' }}>
-                                    <motion.div style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#ec4899 0%,#f472b6 60%,#f9b8c4 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}
+                                    <motion.div style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#9e3a5c 0%,#c4687e 60%,#d98ba3 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}
                                         initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ type: 'spring', stiffness: 80, damping: 18 }} />
                                 </div>
                             </div>
@@ -504,7 +443,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 className="flex-1 bg-transparent outline-none" style={{ fontSize: 16, color: WARM.ink }} />
                             <button onClick={addBucketItem}
                                 className="flex items-center justify-center flex-shrink-0 spring-press"
-                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#f472b6,#ec4899)', boxShadow: '0 4px 10px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 4px 10px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                 <Plus size={16} className="text-white" strokeWidth={1.8} />
                             </button>
                         </div>
@@ -537,7 +476,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                                     <p className="pr-5 mb-3" style={{ fontSize: '0.86rem', lineHeight: 1.32, color: WARM.ink }}>{item.text}</p>
                                                     <div className="flex items-center justify-between">
                                                         <span className="flex items-center gap-1.5">
-                                                            <span className="flex items-center justify-center rounded-full text-white" style={{ width: 18, height: 18, fontSize: '0.5rem', fontWeight: 700, background: 'radial-gradient(circle at 30% 30%,#fff,#c06079)' }}>{(item.addedBy || '?').charAt(0).toUpperCase()}</span>
+                                                            <span className="flex items-center justify-center rounded-full text-white" style={{ width: 18, height: 18, fontSize: '0.5rem', fontWeight: 700, background: 'radial-gradient(circle at 30% 30%,#fff,#9e3a5c)' }}>{(item.addedBy || '?').charAt(0).toUpperCase()}</span>
                                                             <span style={{ fontSize: '0.62rem', color: WARM.inkSoft }}>{item.addedBy}</span>
                                                         </span>
                                                         <motion.button onClick={() => toggleBucket(item.id)} aria-label="Mark done" whileTap={{ scale: 0.85 }}
@@ -594,7 +533,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                             {(['me', 'partner'] as const).map(who => {
                                 const name = who === 'me' ? profile.myName : profile.partnerName;
                                 const count = who === 'me' ? myWishes.length : partnerWishes.length;
-                                const color = who === 'me' ? '#ec4899' : '#a8617f';
+                                const color = who === 'me' ? '#b34a6b' : '#a8617f';
                                 const isActive = wishTab === who;
                                 return (
                                     <button key={who} onClick={() => setWishTab(who)}
@@ -624,7 +563,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 const inputVal = who === 'me' ? myWishInput : partnerWishInput;
                                 const setInput = who === 'me' ? setMyWishInput : setPartnerWishInput;
                                 const a = who === 'me'
-                                    ? { color: '#ec4899', light: 'rgba(236,72,153,0.07)', ring: 'rgba(236,72,153,0.2)' }
+                                    ? { color: '#b34a6b', light: 'rgba(179,74,107,0.08)', ring: 'rgba(179,74,107,0.22)' }
                                     : { color: '#a8617f', light: 'rgba(168,97,127,0.08)', ring: 'rgba(168,97,127,0.22)' };
 
                                 return (
@@ -690,6 +629,26 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 {activeTab === 'milestones' && (
                     <motion.div key="milestones" initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 7 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="px-5">
 
+                        {/* Quiet Mode — ambient drift back through your journey */}
+                        <motion.button whileTap={{ scale: 0.98 }} transition={PRESS_SPRING} onClick={() => setView('quiet-mode')} className="block w-full text-left mb-5">
+                            <Bezel radius={RADIUS.row} pad={4} shadow={WARM.sm} coreBg="linear-gradient(135deg,#fbf6fa,#efe1ec)">
+                                <div className="relative flex items-center gap-3" style={{ padding: '0.85rem 1rem' }}>
+                                    <Moon aria-hidden size={80} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -8, bottom: -14, color: '#8a5a7e', opacity: 0.08, transform: 'rotate(-10deg)' }} />
+                                    <span className="relative flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 40, height: 40, background: 'rgba(138,90,126,0.14)', border: '1px solid rgba(138,90,126,0.26)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)' }}>
+                                        <Moon size={18} strokeWidth={1.7} style={{ color: '#8a5a7e' }} />
+                                    </span>
+                                    <div className="flex-1 relative">
+                                        <p className="font-bold uppercase" style={{ fontSize: '0.56rem', letterSpacing: '0.16em', color: '#8a5a7e', opacity: 0.9 }}>Breathe</p>
+                                        <p className="font-serif mt-0.5" style={{ fontSize: '0.98rem', fontWeight: 700, color: WARM.ink, lineHeight: 1.05 }}>Quiet Mode</p>
+                                        <p style={{ fontSize: '0.72rem', color: WARM.inkSoft }}>drift back through your memories.</p>
+                                    </div>
+                                    <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.8)', boxShadow: '0 3px 9px rgba(138,90,126,0.16), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
+                                        <ChevronRight size={16} strokeWidth={1.7} style={{ color: '#8a5a7e' }} />
+                                    </motion.span>
+                                </div>
+                            </Bezel>
+                        </motion.button>
+
                         <AnimatePresence mode="wait">
                             {showMsForm ? (
                                 /* ── Add form ── */
@@ -701,7 +660,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                         {MILESTONE_EMOJIS.map(e => (
                                             <button key={e} onClick={() => setMsEmoji(e)}
                                                 className="flex items-center justify-center text-lg spring-press transition-all"
-                                                style={{ width: 36, height: 36, borderRadius: RADIUS.chip, background: msEmoji === e ? '#ffe4ea' : 'rgba(196,104,126,0.06)', boxShadow: msEmoji === e ? WARM.catch : 'none', transform: msEmoji === e ? 'scale(1.12)' : 'scale(1)' }}>
+                                                style={{ width: 36, height: 36, borderRadius: RADIUS.chip, background: msEmoji === e ? '#ecd4db' : 'rgba(196,104,126,0.06)', boxShadow: msEmoji === e ? WARM.catch : 'none', transform: msEmoji === e ? 'scale(1.12)' : 'scale(1)' }}>
                                                 {e}
                                             </button>
                                         ))}
@@ -713,7 +672,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                         <button onClick={() => setShowMsForm(false)} className="flex-1 py-3 spring-press" style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', color: WARM.inkSoft, background: 'rgba(196,104,126,0.08)' }}>Cancel</button>
                                         <button onClick={addMilestone}
                                             className="flex-1 py-3 font-semibold text-white spring-press"
-                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', background: 'linear-gradient(135deg,#f472b6,#ec4899)', boxShadow: '0 6px 14px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.4)', opacity: msTitle.trim() && msDate ? 1 : 0.4 }}>
+                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.4)', opacity: msTitle.trim() && msDate ? 1 : 0.4 }}>
                                             Save
                                         </button>
                                     </div>
@@ -731,7 +690,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                         <p className="mb-6" style={{ fontSize: '0.78rem', color: WARM.inkSoft }}>Every great love has chapters worth remembering</p>
                                         <button onClick={() => setShowMsForm(true)}
                                             className="inline-flex items-center gap-2 px-6 py-3 spring-press text-white font-semibold"
-                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.85rem', background: 'linear-gradient(135deg,#f472b6,#ec4899)', boxShadow: '0 6px 16px rgba(236,72,153,0.35), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.85rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 16px rgba(236,72,153,0.35), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                             <Plus size={15} strokeWidth={1.8} />
                                             Add first milestone
                                         </button>
@@ -771,10 +730,10 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                                         </button>
                                                         <span className="relative flex items-center justify-center mb-1" style={{ width: 48, height: 48 }}>
                                                             {isNewest && !reduce && (
-                                                                <motion.span aria-hidden className="absolute rounded-full" style={{ width: 60, height: 60, background: 'radial-gradient(circle, rgba(244,114,182,0.30), transparent 70%)' }}
+                                                                <motion.span aria-hidden className="absolute rounded-full" style={{ width: 60, height: 60, background: 'radial-gradient(circle, rgba(196,104,126,0.32), transparent 70%)' }}
                                                                     animate={{ scale: [1, 1.12, 1], opacity: [0.6, 0.95, 0.6] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }} />
                                                             )}
-                                                            <span className="relative flex items-center justify-center rounded-full text-2xl" style={{ width: 48, height: 48, background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(192,96,121,0.78))', boxShadow: '0 10px 20px rgba(192,96,121,0.18), inset 0 1px 0 rgba(255,255,255,0.92)' }}>
+                                                            <span className="relative flex items-center justify-center rounded-full text-2xl" style={{ width: 48, height: 48, background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(158,58,92,0.82))', boxShadow: '0 10px 20px rgba(158,58,92,0.2), inset 0 1px 0 rgba(255,255,255,0.92)' }}>
                                                                 {ms.emoji}
                                                             </span>
                                                         </span>
