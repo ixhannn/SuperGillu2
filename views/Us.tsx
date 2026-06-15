@@ -42,7 +42,7 @@ const relativeTime = (dateStr: string) => {
 const WARM = {
     ink: 'var(--color-text-primary)',
     inkSoft: 'var(--color-text-secondary)',
-    rose: '#ec4899', roseSoft: '#f472b6', roseDeep: '#be3d72', navActive: '#c4687e',
+    rose: '#b34a6b', roseSoft: '#f472b6', roseDeep: '#be3d72', navActive: '#c4687e',
     // frozen foil ring for the double-bezel shell — never animate its position
     foilRing: 'linear-gradient(150deg, rgba(196,104,126,0.34), rgba(178,120,140,0.10) 32%, rgba(255,255,255,0.78) 52%, rgba(178,120,140,0.10) 72%, rgba(196,104,126,0.34))',
     // the shadow system — soft + mauve-tinted, never black
@@ -237,7 +237,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
         { id: 'milestones' as Tab, Icon: Milestone, label: 'Milestones', count: datedMilestones.length },
     ];
 
-    const inputCls = "w-full rounded-2xl px-4 py-3 text-[16px] text-[#2d1f25] placeholder-[#c9b3ba] outline-none bg-[#fffaf8] border border-[rgba(196,104,126,0.18)] focus:border-[rgba(236,72,153,0.4)] transition-colors";
+    const inputCls = "w-full rounded-2xl px-4 py-3 text-[16px] text-[#2d1f25] placeholder-[#c9b3ba] outline-none bg-[#fffaf8] border border-[rgba(196,104,126,0.18)] focus:border-[rgba(158,58,92,0.4)] transition-colors";
 
     return (
         <div className="us-view min-h-screen pb-32 relative">
@@ -251,7 +251,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...SOFT_SPRING, delay: 0.04 }}
-                className="relative z-[1] px-5 mb-9 mt-3"
+                className="relative z-[1] px-5 mb-9 mt-4"
             >
                 {/* Hero — Our Room */}
                 <motion.button whileTap={{ scale: 0.985 }} transition={PRESS_SPRING} onClick={() => setView('our-room')} className="block w-full text-left">
@@ -270,8 +270,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 </span>
                             </span>
                             <div className="flex-1 relative">
-                                <p className="font-bold uppercase" style={{ fontSize: '0.6rem', letterSpacing: '0.16em', color: WARM.navActive }}>Your shared space</p>
-                                <p className="font-serif mt-1" style={{ fontSize: '1.32rem', fontWeight: 700, lineHeight: 1.04, color: WARM.ink }}>Our Room</p>
+                                <p className="font-serif" style={{ fontSize: '1.32rem', fontWeight: 700, lineHeight: 1.04, color: WARM.ink }}>Our Room</p>
                                 <p className="mt-0.5" style={{ fontSize: '0.8rem', color: WARM.inkSoft }}>step inside the space you've made.</p>
                             </div>
                             <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 38, height: 38, background: 'rgba(255,255,255,0.85)', boxShadow: '0 4px 12px rgba(158,58,92,0.16), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
@@ -297,8 +296,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 <Brush size={20} strokeWidth={1.7} style={{ color: '#c2562f' }} />
                             </span>
                             <div className="flex-1 relative">
-                                <p className="font-bold uppercase" style={{ fontSize: '0.56rem', letterSpacing: '0.16em', color: '#c2562f', opacity: 0.9 }}>Create</p>
-                                <p className="font-serif mt-0.5" style={{ fontSize: '1.05rem', fontWeight: 700, lineHeight: 1.05, color: WARM.ink }}>Draw Together</p>
+                                <p className="font-serif" style={{ fontSize: '1.05rem', fontWeight: 700, lineHeight: 1.05, color: WARM.ink }}>Draw Together</p>
                                 <p style={{ fontSize: '0.74rem', color: WARM.inkSoft }}>a shared canvas, just for two.</p>
                             </div>
                             <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.8)', boxShadow: '0 3px 9px rgba(194,86,47,0.14), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
@@ -369,7 +367,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 className="flex-1 relative flex items-center justify-center gap-1.5 spring-press"
                                 style={{ borderRadius: RADIUS.chip, paddingTop: '0.62rem', paddingBottom: '0.62rem' }}>
                                 {active && (
-                                    <motion.span layoutId="us-tab-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(236,72,153,0.28), inset 0 1px 0 rgba(255,255,255,0.4)' }}
+                                    <motion.span layoutId="us-tab-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(158,58,92,0.28), inset 0 1px 0 rgba(255,255,255,0.4)' }}
                                         transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
                                 )}
                                 <tab.Icon size={15} strokeWidth={1.8} className="relative z-[1]" style={{ color: active ? '#ffffff' : WARM.inkSoft }} />
@@ -410,10 +408,10 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                         <div className="flex gap-2.5 items-center mb-5 transition-all duration-200"
                             style={{
                                 borderRadius: RADIUS.row, padding: '0.9rem 1rem', background: '#fffaf8',
-                                border: bucketFocused ? '1px solid rgba(236,72,153,0.4)' : '1px solid rgba(196,104,126,0.18)',
-                                boxShadow: bucketFocused ? `0 0 0 2px rgba(236,72,153,0.18), ${WARM.sm}, ${WARM.catch}` : `${WARM.sm}, ${WARM.catch}`,
+                                border: bucketFocused ? '1px solid rgba(158,58,92,0.4)' : '1px solid rgba(196,104,126,0.18)',
+                                boxShadow: bucketFocused ? `0 0 0 2px rgba(158,58,92,0.18), ${WARM.sm}, ${WARM.catch}` : `${WARM.sm}, ${WARM.catch}`,
                             }}>
-                            <MapPin size={16} strokeWidth={1.7} style={{ color: bucketFocused ? '#ec4899' : '#d8b3c0' }} className="flex-shrink-0 transition-colors duration-200" />
+                            <MapPin size={16} strokeWidth={1.7} style={{ color: bucketFocused ? '#b34a6b' : '#d8b3c0' }} className="flex-shrink-0 transition-colors duration-200" />
                             <input value={bucketInput} onChange={e => setBucketInput(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) addBucketItem(); }}
                                 onFocus={() => setBucketFocused(true)}
@@ -426,7 +424,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 className="flex-1 bg-transparent outline-none" style={{ fontSize: 16, color: WARM.ink }} />
                             <button onClick={addBucketItem}
                                 className="flex items-center justify-center flex-shrink-0 spring-press"
-                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 4px 10px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 4px 10px rgba(158,58,92,0.3), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                 <Plus size={16} className="text-white" strokeWidth={1.8} />
                             </button>
                         </div>
@@ -434,8 +432,8 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                         {/* Empty */}
                         {visibleBucket.length === 0 && (
                             <div className="text-center py-16">
-                                <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'rgba(236,72,153,0.10)', border: '1px solid rgba(236,72,153,0.18)' }}>
-                                    <Compass size={28} strokeWidth={1.7} style={{ color: '#ec4899' }} />
+                                <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'rgba(158,58,92,0.10)', border: '1px solid rgba(158,58,92,0.18)' }}>
+                                    <Compass size={28} strokeWidth={1.7} style={{ color: '#b34a6b' }} />
                                 </div>
                                 <p className="font-serif text-xl mb-1" style={{ color: WARM.ink }}>The world is yours</p>
                                 <p style={{ fontSize: '0.78rem', color: WARM.inkSoft }}>Add adventures to share together</p>
@@ -635,7 +633,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                         <button onClick={() => setShowMsForm(false)} className="flex-1 py-3 spring-press" style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', color: WARM.inkSoft, background: 'rgba(196,104,126,0.08)' }}>Cancel</button>
                                         <button onClick={addMilestone}
                                             className="flex-1 py-3 font-semibold text-white spring-press"
-                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.4)', opacity: msTitle.trim() && msDate ? 1 : 0.4 }}>
+                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(158,58,92,0.3), inset 0 1px 0 rgba(255,255,255,0.4)', opacity: msTitle.trim() && msDate ? 1 : 0.4 }}>
                                             Save
                                         </button>
                                     </div>
@@ -646,14 +644,14 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     className="overflow-hidden mb-5"
                                     style={{ borderRadius: RADIUS.heroOuter, background: 'linear-gradient(145deg,#fffdfc,#fff1f5)', boxShadow: `${WARM.md}, ${WARM.catch}`, border: '1px solid rgba(255,255,255,0.9)' }}>
                                     <div className="px-6 pt-8 pb-6 text-center">
-                                        <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'rgba(236,72,153,0.10)', border: '1px solid rgba(236,72,153,0.20)' }}>
-                                            <Milestone size={28} strokeWidth={1.7} style={{ color: '#ec4899' }} />
+                                        <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'rgba(158,58,92,0.10)', border: '1px solid rgba(158,58,92,0.20)' }}>
+                                            <Milestone size={28} strokeWidth={1.7} style={{ color: '#b34a6b' }} />
                                         </div>
                                         <p className="font-serif font-bold text-xl mb-1" style={{ color: WARM.ink }}>Your story starts here</p>
                                         <p className="mb-6" style={{ fontSize: '0.78rem', color: WARM.inkSoft }}>Every great love has chapters worth remembering</p>
                                         <button onClick={() => setShowMsForm(true)}
                                             className="inline-flex items-center gap-2 px-6 py-3 spring-press text-white font-semibold"
-                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.85rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 16px rgba(236,72,153,0.35), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.85rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 16px rgba(158,58,92,0.35), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                             <Plus size={15} strokeWidth={1.8} />
                                             Add first milestone
                                         </button>
@@ -664,9 +662,9 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 <motion.div key="addbtn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                     <button onClick={() => setShowMsForm(true)}
                                         className="w-full flex items-center gap-3 px-4 py-3.5 mb-5 spring-press"
-                                        style={{ borderRadius: RADIUS.row, background: '#fffaf8', border: '1px dashed rgba(236,72,153,0.35)', boxShadow: WARM.catch }}>
-                                        <div className="flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: RADIUS.chip, background: 'rgba(236,72,153,0.08)' }}>
-                                            <Plus size={16} strokeWidth={1.8} style={{ color: '#ec4899' }} />
+                                        style={{ borderRadius: RADIUS.row, background: '#fffaf8', border: '1px dashed rgba(158,58,92,0.35)', boxShadow: WARM.catch }}>
+                                        <div className="flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: RADIUS.chip, background: 'rgba(158,58,92,0.08)' }}>
+                                            <Plus size={16} strokeWidth={1.8} style={{ color: '#b34a6b' }} />
                                         </div>
                                         <p style={{ fontSize: '0.85rem', color: WARM.inkSoft }}>Add a milestone…</p>
                                     </button>
