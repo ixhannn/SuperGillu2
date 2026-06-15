@@ -1,7 +1,6 @@
 import React, { useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { Home, Plus, Archive, Sparkles, Heart, Users } from 'lucide-react';
 import { ViewState } from '../types';
-import { Audio } from '../services/audio';
 import { Haptics } from '../services/haptics';
 import { useNativeShell } from '../hooks/useNativeShell';
 
@@ -140,9 +139,19 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
   }, [currentView, movePill]);
 
   const handleNavTap = useCallback((id: string) => {
-    Audio.play(id === 'add-memory' ? 'press' : 'navSwitch');
-    void (id === 'add-memory' ? Haptics.press() : Haptics.softTap());
-    if (currentView === 'private-space' && id === 'add-memory') {
+    const isPrivateAdd = currentView === 'private-space' && id === 'add-memory';
+    // Tapping the tab you're already on does nothing — stay silent so there is
+    // no dead buzz/click with no visual result.
+    if (currentView === id && !isPrivateAdd) return;
+    if (id === 'add-memory') {
+      // Opening the composer is a primary action — Press (Medium). Haptic only;
+      // subtle, no nav sound.
+      void Haptics.press();
+    } else {
+      // Tab switch — a light tap, haptic only. The old 'navSwitch' click read as cheap.
+      void Haptics.softTap();
+    }
+    if (isPrivateAdd) {
       window.dispatchEvent(new CustomEvent('private-space:add'));
       return;
     }

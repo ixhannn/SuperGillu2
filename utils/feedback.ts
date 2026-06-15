@@ -1,64 +1,38 @@
-// Haptics and Audio Utility for Premium Multi-sensory feedback
+// Multi-sensory feedback facade — Lior
+// ─────────────────────────────────────────────────────────────────────────────
+// Thin shim over the two real authorities: services/haptics (tactile) and
+// services/audio (procedural sound). It used to carry its OWN AudioContext +
+// oscillators, which meant its sound IGNORED the user's audio-off preference
+// (the Profile toggle only ever touched the Audio service). Routing every sound
+// through Audio.play() fixes that — sound now obeys lior_audio everywhere — and
+// retires a duplicate ~90-line Web Audio engine.
+//
+// Signatures are preserved so existing call sites compile unchanged. New:
+//   tapSilent() — haptic-only routine tap (no paired sound). Prefer this for
+//                 chips/rows/icons/dismiss; reserve tap() (haptic+sound) for
+//                 primary controls.
+//   milestone() — the real escalating celebrate (Heavy climax). Reserve for
+//                 genuine milestones; routine saves should use confirm().
+//   confirm()   — success haptic + soft chime, for routine save/create/complete.
 import { Haptics } from '../services/haptics';
+import { Audio } from '../services/audio';
+
 class FeedbackEngine {
-  private audioCtx: AudioContext | null = null;
-  private isEnabled: boolean = true;
+  private isEnabled = true;
+  // Retained as a light local cooldown so a single logical event cannot stack
+  // two paired sounds; Audio.play also self-gates on its own enabled flag.
   private lastAudioAt = 0;
   private readonly audioDebounceMs = 70;
 
-  constructor() {
-    // We only initialize AudioContext on first user interaction to comply with browser autoplay policies
-  }
-
-  private getAudioContext() {
-    if (!this.audioCtx) {
-      if (typeof window !== 'undefined' && (window.AudioContext || (window as any).webkitAudioContext)) {
-        this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-    }
-    // Resume if suspended (browsers suspend it if created before interaction)
-    if (this.audioCtx && this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
-    }
-    return this.audioCtx;
-  }
-
   private canPlayAudio(): boolean {
+    if (!this.isEnabled) return false;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (now - this.lastAudioAt < this.audioDebounceMs) return false;
     this.lastAudioAt = now;
     return true;
   }
 
-  // Generate a soft, rounded 'pop' or 'tick' sound computationally
-  private playTone(frequency: number, type: OscillatorType, duration: number, volumeLevel: number = 0.1, skipCooldown = false) {
-    if (!this.isEnabled || (!skipCooldown && !this.canPlayAudio())) return;
-    const ctx = this.getAudioContext();
-    if (!ctx) return;
-
-    try {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = type;
-      osc.frequency.setValueAtTime(frequency, ctx.currentTime);
-
-      // Envelope: quick attack, exponential decay for a percussive 'tick/pop'
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(volumeLevel, ctx.currentTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + duration);
-    } catch (e) {
-      console.warn("Audio playback failed", e);
-    }
-  }
-
-  // --- HAPTICS ---
+  // --- HAPTICS (haptic-only) ---
 
   public light() {
     Haptics.tap();
@@ -76,98 +50,68 @@ class FeedbackEngine {
     Haptics.error();
   }
 
-  // --- PREMIUM AUDIO ---
+  // --- SOUND (routed through the canonical Audio engine) ---
 
   public playTick() {
-    if (!this.isEnabled || !this.canPlayAudio()) return;
-    const ctx = this.getAudioContext();
-    if (!ctx) return;
-
-    try {
-      // Very short, high-frequency "snap" simulating a physical UI switch (taptic feel)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'triangle'; 
-      // Very fast frequency drop to simulate a mechanical "click" instead of a tone
-      osc.frequency.setValueAtTime(1500, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.015);
-
-      // Extremely tight envelope to prevent any ringing
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 0.001); // Fast attack
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.015); // Fast decay
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.015);
-    } catch (e) {
-      console.warn("Audio playback failed", e);
-    }
+    if (!this.canPlayAudio()) return;
+    Audio.play('tap');
   }
 
   public playPop() {
-    if (!this.isEnabled || !this.canPlayAudio()) return;
-    const ctx = this.getAudioContext();
-    if (!ctx) return;
-
-    try {
-      // Soft, warm "thock" sound (like closing a wooden box or a heavy mechanical key)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      // Lower register, subtle drop
-      osc.frequency.setValueAtTime(300, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.03);
-
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.005); // Softer attack
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03); // Tighter decay than before
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.03);
-    } catch (e) {
-      console.warn("Audio playback failed", e);
-    }
+    if (!this.canPlayAudio()) return;
+    Audio.play('press');
   }
 
   public playSuccess() {
-    if (!this.isEnabled || !this.canPlayAudio()) return;
-    const ctx = this.getAudioContext();
-    if (!ctx) return;
-    
-    // Play a quick, clean two-tone chime (F5 to C6 - perfect fifth), much softer than before
-    this.playTone(698.46, 'sine', 0.1, 0.03, true); 
-    setTimeout(() => {
-      this.playTone(1046.50, 'sine', 0.2, 0.04, true); 
-    }, 80);
+    if (!this.canPlayAudio()) return;
+    Audio.play('confirm');
   }
 
   // --- COMPOSITE PRESETS ---
 
+  /** Haptic-only routine tap — the restraint-first default for secondary controls. */
+  public tapSilent() {
+    this.light();
+  }
+
+  /** Light tap + tick — reserve for primary controls where a paired sound earns its place. */
   public tap() {
     this.light();
     this.playTick();
   }
 
+  /** Medium press + pop — deliberate, weighted interaction. */
   public interact() {
     this.medium();
     this.playPop();
   }
 
-  public celebrate() {
-    this.success();
+  /** Routine completion: success haptic + soft chime. Use for save/create/complete. */
+  public confirm() {
+    Haptics.success();
     this.playSuccess();
   }
 
+  /** Genuine milestone: escalating Heavy-climax cascade + celebratory chime. Ration hard. */
+  public milestone() {
+    Haptics.celebrate();
+    if (this.canPlayAudio()) Audio.play('celebrate');
+  }
+
+  /**
+   * Back-compat: historically a notification-level "save" cue (success haptic +
+   * chime). Kept at that intensity — NOT the heavy crescendo — so the many
+   * routine save sites that call it are not over-celebrated. For true
+   * milestones use milestone(); for routine saves prefer confirm().
+   */
+  public celebrate() {
+    this.confirm();
+  }
+
+  /** Gates this facade's SOUND. Haptics obey their own lior_haptics pref via the Haptics service. */
   public setEnabled(enabled: boolean) {
     this.isEnabled = enabled;
+    Audio.setEnabled(enabled);
   }
 }
 

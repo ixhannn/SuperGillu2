@@ -80,14 +80,14 @@ assert.match(
 
 assert.match(
   hapticsSource,
-  /touchmove[\s\S]*wheel[\s\S]*scroll[\s\S]*pointermove/,
-  'Expected haptics to observe scroll-like gestures before firing interaction feedback.',
+  /touchmove[\s\S]*pointerdown[\s\S]*pointermove/,
+  'Expected haptics to observe touch-scroll and pointer-drag gestures (pointer-aware) before firing interaction feedback.',
 );
 
 assert.match(
   hapticsSource,
-  /async press\(\)[\s\S]*ImpactStyle\.Light/,
-  'Expected standard press haptics to stay subtle instead of medium/heavy.',
+  /async press\([\s\S]*?ImpactStyle\.Medium/,
+  'Expected the standard button press to feel weighted (Medium) — a distinct tier above a Light row tap.',
 );
 
 assert.match(

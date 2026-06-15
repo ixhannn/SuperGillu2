@@ -4,6 +4,7 @@ import { SyncService } from '../services/sync';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { CheckCircle2, Navigation } from 'lucide-react';
 import { feedback } from '../utils/feedback';
+import { Haptics } from '../services/haptics';
 import { ViewHeader } from '../components/ViewHeader';
 
 interface AuraSignalProps {
@@ -137,15 +138,18 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
         feedback.tap();
         let progress = 0;
         holdIntervalRef.current = setInterval(() => {
-            progress += 2; // fills up in ~50 ticks (500ms)
+            progress += 3; // fills up in ~530ms
             setHoldProgress(progress);
-            if (progress % 20 === 0 && navigator.vibrate) navigator.vibrate(10); // Subtle tick haptic
-            
+            // Escalating charge (Light → Medium → Heavy → release) as the orb fills.
+            // Routed through the haptics service so it honors the haptics-off pref
+            // and actually fires on native — the old raw navigator.vibrate(10) did neither.
+            Haptics.longPressProgress(progress / 100);
+
             if (progress >= 100) {
                 clearInterval(holdIntervalRef.current);
                 fireSignal();
             }
-        }, 10);
+        }, 16);
     };
 
     const cancelCharge = () => {

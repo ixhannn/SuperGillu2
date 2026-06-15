@@ -8,7 +8,8 @@ import { SyncService, syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
 import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
-import { HeartbeatParticles, HeartbeatParticlesHandle, DISSOLVE_VIBRATION } from '../components/HeartbeatParticles';
+import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
+import { Haptics } from '../services/haptics';
 import { DailyQuestion } from '../components/DailyQuestion';
 import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
@@ -512,7 +513,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         } else {
             particlesRef.current?.triggerReceive(window.innerWidth / 2, window.innerHeight / 2);
         }
-        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
+        void Haptics.doubleBeat(); // partner's heartbeat arriving — a felt double lub-dub
         setTimeout(() => setReceivedHeartbeat(false), 2000);
     };
 
@@ -521,7 +522,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         
         const rect = heartbeatBtnRef.current.getBoundingClientRect();
         setIsDissolving(true);
-        if (navigator.vibrate) navigator.vibrate(DISSOLVE_VIBRATION);
+        void Haptics.heartbeat(); // your pulse leaving your hand toward them — one clean lub-dub
         
         particlesRef.current?.triggerButtonDissolve(rect, () => {
             setIsDissolving(false);

@@ -187,6 +187,7 @@ export function attachPress(el: HTMLElement, opts: PressOptions = {}): () => voi
   const onDown = (e: PointerEvent): void => {
     if (pid !== null) return;
     pid = e.pointerId;
+    Haptics.warmUp(); // iOS: warm the Taptic Engine so the press haptic lands on time
     opts.onDown?.();
     // Synchronous write — this happens in the same task as the event, <16 ms
     el.style.transform = `scale(${pressScale})`;
@@ -276,6 +277,7 @@ export function attachDrag(el: HTMLElement, opts: DragOptions = {}): () => void 
     el.setPointerCapture(e.pointerId);
     el.style.cursor = 'grabbing';
     opts.onStart?.();
+    Haptics.dragPickup(); // L3 — "lifted off the surface"
 
     prevX = e.clientX;
     prevY = e.clientY;
@@ -320,6 +322,7 @@ export function attachDrag(el: HTMLElement, opts: DragOptions = {}): () => void 
     el.style.cursor = 'grab';
 
     opts.onEnd?.(curX, curY, vx, vy);
+    Haptics.dragDrop(); // L2 — "it landed"
 
     // Momentum look-ahead: where would item land in 80 ms?
     let targetX = curX + vx * 80;
@@ -1045,16 +1048,22 @@ export function attachLongPress(el: HTMLElement, opts: LongPressOptions): () => 
     // Scale reduction 1 → 0.97 during hold
     el.style.transform = `scale(${(1 - 0.03 * progress).toFixed(4)})`;
 
-    // Haptic escalation — each fires exactly once per gesture
-    if (!hap33 && progress >= 0.33) { hap33 = true; Haptics.tap(); }
-    if (!hap66 && progress >= 0.66) { hap66 = true; Haptics.press(); }
+    // Haptic escalation — subtle build, each fires exactly once per gesture
+    // (the hap33/hap66 latches guarantee that). allowDuringScroll: a long-press
+    // holds a stationary finger, but natural jitter can trip the scroll-suppress
+    // gate. bypassDebounce: the latches already prevent repeats, so we skip the
+    // shared debounce entirely — otherwise the 33% beat's 140ms window would
+    // swallow the 66% beat on a short hold.
+    // Feel: light tick → light tick → Medium activation click (no Heavy slam).
+    if (!hap33 && progress >= 0.33) { hap33 = true; Haptics.tap({ allowDuringScroll: true, bypassDebounce: true }); }
+    if (!hap66 && progress >= 0.66) { hap66 = true; Haptics.tap({ allowDuringScroll: true, bypassDebounce: true }); }
 
     if (progress >= 1) {
       activated = true;
       hideRing();
       resetArc();
       el.style.transform = 'scale(1)';
-      Haptics.heavy();
+      Haptics.press({ allowDuringScroll: true, bypassDebounce: true });
       opts.onActivate();
       return; // stop RAF
     }
@@ -1084,6 +1093,7 @@ export function attachLongPress(el: HTMLElement, opts: LongPressOptions): () => 
     activated = false;
     hap33     = false;
     hap66     = false;
+    Haptics.warmUp(); // iOS: warm the engine so the 33% escalation beat is on time
     showRing();
     rafId = requestAnimationFrame(tick);
   };
