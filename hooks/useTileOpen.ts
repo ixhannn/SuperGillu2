@@ -18,7 +18,9 @@
 import { useCallback } from 'react';
 
 const LIFT_CLASS = 'tile-open-lifting';
-const LIFT_MS = 220; // matches tile-lift keyframe in index.css
+const LIFT_MS = 300; // matches `tile-lift` keyframe duration in index.css; held
+                     // through most of the 360ms route push so the card stays
+                     // lifted while the next view slides in.
 
 type Target = HTMLElement | null;
 
@@ -56,6 +58,16 @@ export function useTileOpen(): (
 
     const target = findLiftTarget(event.currentTarget as HTMLElement);
     if (target) {
+      // Origin for the "expand" view transition: the new page blooms from the
+      // centre of the tapped tile so it visibly BECOMES the destination. The
+      // flag is consumed (and a plain push upgraded to expand) by
+      // TransitionEngine.navigate(); it falls back to push if unsupported.
+      const rect = target.getBoundingClientRect();
+      const root = document.documentElement;
+      root.style.setProperty('--lior-open-x', `${Math.round(rect.left + rect.width / 2)}px`);
+      root.style.setProperty('--lior-open-y', `${Math.round(rect.top + rect.height / 2)}px`);
+      root.dataset.liorOpenExpand = '1';
+
       target.classList.add(LIFT_CLASS);
       // Auto-remove after the keyframe completes. If the source view is
       // already unmounted by the time this fires, removeClass is a no-op.

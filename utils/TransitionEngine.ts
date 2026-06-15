@@ -32,7 +32,7 @@ const VEL_WIN_MS  = 80;    // rolling velocity window
 const COMMIT_VEL  = 0.35;  // px/ms to auto-commit
 const COMMIT_FRAC = 0.38;  // fraction of screen width to auto-commit
 
-export type EngineDirection = 'tab' | 'push' | 'pop' | 'modal' | 'modal-close';
+export type EngineDirection = 'tab' | 'push' | 'pop' | 'modal' | 'modal-close' | 'expand';
 
 // ─── Config per direction ──────────────────────────────────────────────────────
 interface DirConfig {
@@ -47,27 +47,40 @@ function dirConfig(dir: EngineDirection, W: number): DirConfig {
   const tx = (px: number, sc = 1) => `translate3d(${px}px,0,0) scale(${sc})`;
   const ty = (p: string,   sc = 1) => `translate3d(0,${p},0) scale(${sc})`;
 
+  // NOTE: this JS-clone fallback runs only where the View Transitions API is
+  // unavailable (older WebViews). Here the outgoing page is cloned ON TOP, so
+  // "forward" motions fade the old layer out to reveal the new one beneath,
+  // while "back" motions slide the opaque old layer off to reveal it. The
+  // primary (View Transitions) path is governed by the CSS keyframes and gets
+  // the full new-on-top push; these values keep the legacy path coherent.
   switch (dir) {
     case 'tab':
-      return { dur: T_TAB,  inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: [ty('10px', 0.988),  '0'],
-        outTo:  [ty('-8px', 1.012),  '0'] };
+      return { dur: T_TAB,  inEase: E_SILK, outEase: E_SILK,
+        inFrom: [ty('14px', 0.985),  '0'],
+        outTo:  [ty('-10px', 1.008), '0'] };
     case 'push':
       return { dur: T_PUSH, inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: [tx(W * 0.24, 0.982), '0'],
-        outTo:  [tx(-W * 0.10, 0.982),'0.22'] };
+        inFrom: [tx(W, 1),            '1'],
+        outTo:  [tx(-W * 0.22, 0.965),'0'] };
     case 'pop':
       return { dur: T_POP,  inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: [tx(-W * 0.10, 0.982),'0'],
-        outTo:  [tx(W * 0.24, 0.982), '0.18'] };
+        inFrom: [tx(-W * 0.22, 0.965),'1'],
+        outTo:  [tx(W, 1),            '1'] };
     case 'modal':
       return { dur: T_MODAL_OPEN,  inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: [ty('28px', 0.982),'0'],
-        outTo:  [ty('-10px', 0.982),'0.62'] };
+        inFrom: [ty('100%', 1),      '1'],
+        outTo:  [ty('-1.2%', 0.97),  '0'] };
     case 'modal-close':
-      return { dur: T_MODAL_CLOSE, inEase: E_STANDARD, outEase: E_EXIT,
-        inFrom: [ty('-10px', 0.982), '0.62'],
-        outTo:  [ty('30px', 0.982),  '0'] };
+      return { dur: T_MODAL_CLOSE, inEase: E_SILK, outEase: E_EXIT,
+        inFrom: [ty('-1.2%', 0.97),  '0.9'],
+        outTo:  [ty('100%', 1),      '1'] };
+    case 'expand':
+      // Tile-open bloom. The View Transitions path scales the new page from the
+      // tapped tile's origin (set in CSS by useTileOpen). This legacy clone
+      // fallback can't honour a per-tile origin, so it blooms from centre.
+      return { dur: T_PUSH, inEase: E_SILK, outEase: E_STANDARD,
+        inFrom: ['scale(0.6)',  '0'],
+        outTo:  ['scale(1.06)', '0'] };
   }
 }
 
@@ -129,6 +142,15 @@ class TransitionEngineImpl {
     this._busy = true;
     this._setTransitioning(true);
 
+    // Tile-open upgrade: useTileOpen() flags a pending "expand" (bloom from the
+    // tapped tile). Consume the flag here and upgrade a plain push into expand.
+    let effectiveDir = dir;
+    if (typeof document !== 'undefined') {
+      const de = document.documentElement;
+      if (de.dataset.liorOpenExpand === '1' && dir === 'push') effectiveDir = 'expand';
+      if (de.dataset.liorOpenExpand) delete de.dataset.liorOpenExpand;
+    }
+
     const wrappedComplete = () => {
       this._busy = false;
       this._setTransitioning(false);
@@ -153,11 +175,11 @@ class TransitionEngineImpl {
       startViewTransition?: (cb: () => void) => { finished: Promise<void> };
     };
     if (typeof docAny.startViewTransition === 'function' && this._supportsVT) {
-      this._runNativeVT(docAny, dir, commit, wrappedComplete);
+      this._runNativeVT(docAny, effectiveDir, commit, wrappedComplete);
       return true;
     }
 
-    this._run(c, dir, commit, wrappedComplete);
+    this._run(c, effectiveDir, commit, wrappedComplete);
     return true;
   }
 

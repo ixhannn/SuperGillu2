@@ -19,10 +19,12 @@ const IND   = 56;   // indicator size
 const BTN   = 60;   // button slot
 const NAV_H = 76;   // bar height
 
-// Liquid spring: a soft ~5% overshoot that settles, like the iOS tab pill.
-// This runs inside WAAPI on the compositor thread — immune to JS jank.
-const SPRING_EASE = 'cubic-bezier(0.34, 1.26, 0.44, 1)';
-const SPRING_MS   = 460;
+// Pill glide: pure silk deceleration (no overshoot — matches the app-wide
+// motion language) timed to land WITH the tab content fade so the indicator
+// settles in lockstep instead of chasing the page for 220ms after it arrives.
+// Runs inside WAAPI on the compositor thread — immune to JS jank.
+const SPRING_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'; // --lior-ease-silk
+const SPRING_MS   = 240;                             // --lior-motion-tab
 
 export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView, notifications }) => {
   const navRef  = useRef<HTMLDivElement>(null);

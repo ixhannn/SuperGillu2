@@ -32,10 +32,14 @@
   --breath-scale: 1;
   --breath-pad: 0px; /* Spring timing functions */
   --spring-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* De-bounced 2026-06-15: both aliased onto the silk curve. The old
+     cubic-bezier(0.34,1.56,0.64,1) overshoot read as jitter/cheap and broke
+     the "critically damped, no loose bounce" motion language. Repointing the
+     vars removes overshoot from every consumer at once. */
+  --spring-bounce: var(--spring-snappy);
   --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
   --spring-gentle: cubic-bezier(0.25, 0.8, 0.25, 1);
-  --elastic-out: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --elastic-out: var(--spring-snappy);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quart: cubic-bezier(
     0.25,
@@ -1725,7 +1729,71 @@ canvas.fixed,
   background: rgba(var(--theme-particle-2-rgb), 0.45);
   animation: ripple-ink 0.55s var(--ease-out-expo) forwards;
   z-index: 100;
-} /* ── LIFT — card lifts toward finger on hover ────────────────────────────── */
+}
+/* ── TILE OPEN — the tapped card "picks itself up" as the next view slides in.
+   Driven by useTileOpen() which adds .tile-open-lifting for ~300ms while the
+   route push runs concurrently, so the user feels they OPENED the card rather
+   than being taken to an unrelated page. Compositor-only (transform + shadow),
+   silk deceleration to match the route layer. */
+@keyframes tile-lift {
+  from { transform: translateZ(0) scale(1);     box-shadow: var(--shadow-sm); }
+  to   { transform: translateZ(0) scale(1.035); box-shadow: var(--shadow-lg); }
+}
+.tile-open-lifting {
+  animation: tile-lift 300ms var(--lior-ease-silk, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  will-change: transform;
+  position: relative;
+  z-index: 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile-open-lifting { animation: none; }
+}
+/* ── SKELETON — warm shimmer + aura sweep (restored).
+   Skeleton.tsx renders .skeleton-shell with .skeleton-aura + .skeleton-shimmer
+   children; these rules give them the premium pink shimmer instead of flat
+   grey boxes. Pure transform/opacity so they stay on the compositor. */
+.skeleton-shell {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    rgba(232, 160, 176, 0.12),
+    rgba(232, 160, 176, 0.06)
+  );
+}
+.skeleton-aura {
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    rgba(255, 255, 255, 0.55),
+    transparent 72%
+  );
+  opacity: 0.4;
+  animation: skeleton-aura 2.4s var(--lior-ease-soft, ease-in-out) infinite;
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 18%,
+    rgba(255, 255, 255, 0.6) 50%,
+    transparent 82%
+  );
+  transform: translate3d(-100%, 0, 0);
+  animation: skeleton-shimmer 1.5s var(--lior-ease-soft, ease-in-out) infinite;
+  will-change: transform;
+}
+@keyframes skeleton-shimmer {
+  from { transform: translate3d(-100%, 0, 0); }
+  to   { transform: translate3d(100%, 0, 0); }
+}
+@keyframes skeleton-aura {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 0.6; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer,
+  .skeleton-aura { animation: none; }
+}
+/* ── LIFT — card lifts toward finger on hover ────────────────────────────── */
 .lift-card {
   transition:
     transform 0.36s var(--spring-smooth),

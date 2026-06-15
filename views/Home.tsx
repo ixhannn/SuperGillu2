@@ -19,6 +19,7 @@ import { springSmooth, springSnappy } from '../utils/motion';
 import { toast } from '../utils/toast';
 import { NotificationsService } from '../services/notifications';
 import { useRelationship } from '../hooks/useRelationship';
+import { useTileOpen } from '../hooks/useTileOpen';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -287,6 +288,9 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // Authoritative "do I actually have a partner?" signal. Drives solo-mode UI
     // so an unlinked user never sees a phantom partner or a heartbeat-to-nobody.
     const { isLinked } = useRelationship();
+    // Tile-open lift — the tapped card "picks itself up" while the route push
+    // slides the next view in, so navigation feels like opening, not jumping.
+    const open = useTileOpen();
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [daysTogether, setDaysTogether] = useState(0);
@@ -879,7 +883,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     data-coachmark="countdowns"
                     maxTilt={14}
                     glare
-                    onClick={() => setView('countdowns')}
+                    onClick={(e) => open(e, () => setView('countdowns'))}
                     className="relative overflow-hidden p-6 rounded-[1.75rem] mb-5 aurora-card border border-white/10 cursor-pointer"
                     style={{
                         background: 'linear-gradient(140deg, #1c1917 0%, #292524 40%, #3a1520 100%)',
@@ -928,7 +932,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             {onThisDayMemory && (
                 <ScrollReveal variant="tiltUp">
                     <div
-                        onClick={() => setView('timeline')}
+                        onClick={(e) => open(e, () => setView('timeline'))}
                         className={`rounded-[1.75rem] mb-5 relative z-10 spring-press cursor-pointer overflow-hidden ${
                             otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-lior-500 to-amber-500 text-white p-6'
                         }`}
@@ -986,7 +990,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('open-when')}
+                        onClick={(e) => open(e, () => setView('open-when'))}
                         className="w-full h-full cursor-pointer"
                     >
                         <div data-coachmark="open-when" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1006,7 +1010,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('dinner-decider')}
+                        onClick={(e) => open(e, () => setView('dinner-decider'))}
                         className="w-full h-full cursor-pointer"
                     >
                         <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1028,7 +1032,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         aria-label="Open Aura Board"
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('mood-calendar')}
+                        onClick={(e) => open(e, () => setView('mood-calendar'))}
                         className="w-full h-full cursor-pointer text-left appearance-none border-0 bg-transparent p-0"
                     >
                         <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1048,7 +1052,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('bonsai-bloom')}
+                        onClick={(e) => open(e, () => setView('bonsai-bloom'))}
                         className="w-full h-full cursor-pointer"
                     >
                         <div data-coachmark="bonsai" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1068,7 +1072,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     <motion.div
                         whileTap={{ scale: 0.98 }}
                         transition={{ type: 'spring', stiffness: 520, damping: 28 }}
-                        onClick={() => setView('private-space')}
+                        onClick={(e) => open(e, () => setView('private-space'))}
                         className="w-full cursor-pointer"
                     >
                         <div
@@ -1106,7 +1110,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     <motion.div
                         whileTap={{ scale: 0.97 }}
                         transition={{ type: 'spring', stiffness: 520, damping: 28 }}
-                        onClick={() => setView('premium')}
+                        onClick={(e) => open(e, () => setView('premium'))}
                         className="w-full cursor-pointer"
                     >
                         <div

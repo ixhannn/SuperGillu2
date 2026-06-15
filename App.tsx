@@ -51,7 +51,6 @@ import { AppLaunchOverlay } from './components/AppLaunchOverlay';
 import { DevPanel } from './components/DevPanel';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
-import { InternalAdminService } from './services/internalAdmin';
 import { scheduleIdleTask } from './utils/scheduler';
 import { toast } from './utils/toast';
 import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
@@ -1095,14 +1094,11 @@ const App = () => {
           label: 'Open storage console',
           action: () => navigateTo('storage-console'),
         },
-        {
-          label: InternalAdminService.isOverrideEnabled() ? 'Disable admin override' : 'Enable admin override',
-          action: () => {
-            const next = !InternalAdminService.isOverrideEnabled();
-            InternalAdminService.setOverride(next);
-            DiagnosticsService.recordInfo('admin', `Internal admin override ${next ? 'enabled' : 'disabled'}`);
-          },
-        },
+        // The "admin override" DevPanel action was removed: it called
+        // InternalAdminService.isOverrideEnabled()/setOverride(), which were
+        // deliberately deleted from the service (client-side override was a
+        // security bypass — see services/internalAdmin.ts). The stale calls
+        // white-screened the dev build via `undefined is not a function`.
       ]} />}
     </>
   );

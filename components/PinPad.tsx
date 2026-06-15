@@ -31,17 +31,26 @@ export const PinPad: React.FC<PinPadProps> = ({
   dotStyle,
   filledDotStyle,
 }) => {
-  const press = (key: string) => {
-    if (disabled) return;
-    if (key === 'back') {
-      if (value.length === 0) return;
-      feedback.light();
-      onChange(value.slice(0, -1));
-      return;
-    }
-    if (value.length >= length) return;
+  // Error haptic paired with the shake — fires whenever the parent bumps
+  // errorSignal (e.g. wrong PIN), so a rejection is felt, not just seen.
+  React.useEffect(() => {
+    if (errorSignal > 0) feedback.error();
+  }, [errorSignal]);
+
+  /** True when this key would actually do something. */
+  const isActionable = (key: string): boolean => {
+    if (disabled) return false;
+    if (key === 'back') return value.length > 0;
+    return value.length < length;
+  };
+
+  // Haptic fires on the explicit key action (consistent with the app's
+  // "haptics on product actions, not raw pointerdown" rule — global
+  // pointer-down haptics were removed for feeling noisy during scroll).
+  const commit = (key: string) => {
+    if (!isActionable(key)) return;
     feedback.light();
-    onChange(value + key);
+    onChange(key === 'back' ? value.slice(0, -1) : value + key);
   };
 
   return (
@@ -76,7 +85,7 @@ export const PinPad: React.FC<PinPadProps> = ({
             <button
               key={key}
               type="button"
-              onClick={() => press(key)}
+              onClick={() => commit(key)}
               disabled={disabled || (isBack && value.length === 0)}
               aria-label={isBack ? 'Delete digit' : `Digit ${key}`}
               className="flex min-h-[3.6rem] items-center justify-center rounded-[1.3rem] text-[1.35rem] font-semibold transition-transform active:scale-95 disabled:opacity-35"
