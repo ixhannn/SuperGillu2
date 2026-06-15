@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, ChevronRight, Home, Brush, Moon, Send, Compass, Milestone, Sparkles } from 'lucide-react';
+import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, ChevronRight, Home, Brush, Send, Compass, Milestone, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
@@ -69,16 +69,6 @@ const Bezel: React.FC<{ radius?: number; pad?: number; coreBg?: string; shadow?:
         <div style={{ borderRadius: radius - pad, background: coreBg, boxShadow: `${WARM.catch}, inset 0 -1px 0 rgba(196,104,126,0.05)`, position: 'relative', overflow: 'hidden', height: '100%', ...coreStyle }}>
             {children}
         </div>
-    </div>
-);
-
-// Eyebrow pill — restores rhythm above each section (no divider rule).
-const Eyebrow: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="flex items-center mb-3">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: '#ecd4db', boxShadow: WARM.catch, border: '1px solid rgba(255,255,255,0.65)' }}>
-            <span className="w-1 h-1 rounded-full" style={{ background: WARM.roseDeep }} />
-            <span className="font-bold uppercase" style={{ fontSize: '0.62rem', letterSpacing: '0.18em', color: WARM.navActive }}>{children}</span>
-        </span>
     </div>
 );
 
@@ -263,10 +253,6 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 transition={{ ...SOFT_SPRING, delay: 0.04 }}
                 className="relative z-[1] px-5 mb-9 mt-3"
             >
-                <Eyebrow>Shared spaces</Eyebrow>
-                <h3 className="font-serif" style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.01em', color: WARM.ink, lineHeight: 1.05 }}>where we meet</h3>
-                <p className="mb-4 mt-1" style={{ fontSize: '0.8rem', color: WARM.inkSoft }}>the rooms only the two of you share.</p>
-
                 {/* Hero — Our Room */}
                 <motion.button whileTap={{ scale: 0.985 }} transition={PRESS_SPRING} onClick={() => setView('our-room')} className="block w-full text-left">
                     <Bezel radius={RADIUS.heroOuter} pad={5} shadow={WARM.lg}
@@ -330,7 +316,6 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 transition={{ ...SOFT_SPRING, delay: 0.12 }}
                 className="relative z-[1] px-5 mb-9"
             >
-                <Eyebrow>A quiet signal</Eyebrow>
                 <motion.button
                     data-coachmark="aura-signal"
                     whileTap={{ scale: 0.985 }}
@@ -376,8 +361,6 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 transition={{ ...SOFT_SPRING, delay: 0.18 }}
                 className="relative z-[1] px-5 mb-7"
             >
-                <Eyebrow>Our story</Eyebrow>
-                <h3 className="font-serif mb-4" style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.01em', color: WARM.ink, lineHeight: 1.05 }}>keep, wish, remember</h3>
                 <div className="flex" style={{ borderRadius: 20, padding: 5, background: 'linear-gradient(150deg,#f1d8e0,#ead0d9)', boxShadow: 'inset 0 2px 6px rgba(178,120,140,0.22), inset 0 -1px 0 rgba(255,255,255,0.6)' }}>
                     {TABS.map(tab => {
                         const active = activeTab === tab.id;
@@ -628,26 +611,6 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 {/* ══ MILESTONES ═══════════════════════════════════════════ */}
                 {activeTab === 'milestones' && (
                     <motion.div key="milestones" initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 7 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="px-5">
-
-                        {/* Quiet Mode — ambient drift back through your journey */}
-                        <motion.button whileTap={{ scale: 0.98 }} transition={PRESS_SPRING} onClick={() => setView('quiet-mode')} className="block w-full text-left mb-5">
-                            <Bezel radius={RADIUS.row} pad={4} shadow={WARM.sm} coreBg="linear-gradient(135deg,#fbf6fa,#efe1ec)">
-                                <div className="relative flex items-center gap-3" style={{ padding: '0.85rem 1rem' }}>
-                                    <Moon aria-hidden size={80} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -8, bottom: -14, color: '#8a5a7e', opacity: 0.08, transform: 'rotate(-10deg)' }} />
-                                    <span className="relative flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 40, height: 40, background: 'rgba(138,90,126,0.14)', border: '1px solid rgba(138,90,126,0.26)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)' }}>
-                                        <Moon size={18} strokeWidth={1.7} style={{ color: '#8a5a7e' }} />
-                                    </span>
-                                    <div className="flex-1 relative">
-                                        <p className="font-bold uppercase" style={{ fontSize: '0.56rem', letterSpacing: '0.16em', color: '#8a5a7e', opacity: 0.9 }}>Breathe</p>
-                                        <p className="font-serif mt-0.5" style={{ fontSize: '0.98rem', fontWeight: 700, color: WARM.ink, lineHeight: 1.05 }}>Quiet Mode</p>
-                                        <p style={{ fontSize: '0.72rem', color: WARM.inkSoft }}>drift back through your memories.</p>
-                                    </div>
-                                    <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.8)', boxShadow: '0 3px 9px rgba(138,90,126,0.16), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
-                                        <ChevronRight size={16} strokeWidth={1.7} style={{ color: '#8a5a7e' }} />
-                                    </motion.span>
-                                </div>
-                            </Bezel>
-                        </motion.button>
 
                         <AnimatePresence mode="wait">
                             {showMsForm ? (
