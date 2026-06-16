@@ -472,9 +472,6 @@ const CONTENT_SINGLETON_KEYS = [
     COUPLE_ROOM_KEY,
 ];
 const CONTENT_LEGACY_MIRROR_KEYS = ['lior_bucket', 'lior_wishlist', 'lior_milestones', 'lior_room_state'];
-const TULIKA_NAME = 'Tulika';
-const ISHAN_NAME = 'Ishan';
-const LEGACY_RENAMED_PERSON_NAME = 'Lior';
 const LEGACY_ROOM_ITEM_MAP: Record<string, string> = {
     frame: 'photo_frames',
     candle: 'candle_cluster',
@@ -598,35 +595,6 @@ const sanitizeUserString = (value: string) => (
         .replace(/</g, '＜')
         .replace(/>/g, '＞')
 );
-
-const normalizeIdentityPair = <T extends { myName?: string; partnerName?: string }>(identity: T): T => {
-    const normalized = { ...identity };
-
-    if (normalized.myName === LEGACY_RENAMED_PERSON_NAME) {
-        normalized.myName = TULIKA_NAME;
-    }
-
-    if (normalized.partnerName === LEGACY_RENAMED_PERSON_NAME) {
-        normalized.partnerName = TULIKA_NAME;
-    }
-
-    // Do not auto-fill empty names — they stay empty until the user sets them
-    // via onboarding or profile settings. Partner name is set automatically
-    // after QR pairing via PairingService / SyncService.
-
-    return normalized;
-};
-
-const normalizeKeepsakeSender = <T extends { senderId?: string }>(item: T): T => {
-    if (item.senderId !== LEGACY_RENAMED_PERSON_NAME) {
-        return item;
-    }
-
-    return {
-        ...item,
-        senderId: TULIKA_NAME,
-    };
-};
 
 const sanitizeUserContent = <T>(value: T): T => {
     if (typeof value === 'string') {
@@ -955,7 +923,6 @@ export const StorageService = {
                 await writeRaw(STORES.DATA, CACHE_KEYS.ENVELOPES, DATA_CACHE.envelopes);
             }
 
-            DATA_CACHE.keepsakes = DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item));
             DATA_CACHE.moodEntries = normalizeMoodEntries(DATA_CACHE.moodEntries);
             await writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, DATA_CACHE.moodEntries);
 
@@ -1160,9 +1127,7 @@ export const StorageService = {
 
     async _saveInternal(listKey: keyof typeof DATA_CACHE, storageKey: string, item: any, prefix?: string, table?: string, source: 'user' | 'sync' = 'user') {
         const sanitizedItem = sanitizeUserContent(item);
-        const normalizedItem = listKey === 'keepsakes'
-            ? normalizeKeepsakeSender(sanitizedItem)
-            : listKey === 'dailyPhotos'
+        const normalizedItem = listKey === 'dailyPhotos'
             ? normalizeDailyPhoto(sanitizedItem)
             : listKey === 'moodEntries'
             ? normalizeMoodEntry(sanitizedItem)
@@ -1604,8 +1569,8 @@ export const StorageService = {
         }
     },
 
-    getKeepsakes: () => DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item)),
-    saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, normalizeKeepsakeSender(k), 'keep', 'keepsakes'),
+    getKeepsakes: () => DATA_CACHE.keepsakes,
+    saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, k, 'keep', 'keepsakes'),
     hideKeepsake: async (id: string) => {
         const list = DATA_CACHE.keepsakes.map(k => k.id === id ? { ...k, isHidden: true } : k);
         DATA_CACHE.keepsakes = list;
@@ -1993,20 +1958,13 @@ export const StorageService = {
             return { ..._profileCacheVal };
         }
 
-        const rawIdentity = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
-        const id = normalizeIdentityPair(rawIdentity);
-        if (id.myName !== rawIdentity.myName || id.partnerName !== rawIdentity.partnerName) {
-            localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: id.myName, partnerName: id.partnerName }));
-        }
+        const id = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
 
         const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: '', theme: 'rose' };
 
         const result = applyLockedPairLink({ ...id, ...shared });
         _profileCacheVal = result;
-        // Re-key off the possibly-normalized identity string so the next call
-        // hits the cache instead of missing once more after a normalization write.
-        const finalIdStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
-        _profileCacheKey = `${finalIdStr ?? ''} ${sharedStr ?? ''} ${lockStr ?? ''}`;
+        _profileCacheKey = `${idStr ?? ''} ${sharedStr ?? ''} ${lockStr ?? ''}`;
         return { ...result };
     },
 
@@ -2124,7 +2082,7 @@ export const StorageService = {
     saveCoupleProfile: (p: CoupleProfile, source: 'user' | 'sync' = 'user') => {
         const currentProfile = StorageService.getCoupleProfile();
         const sanitizedProfile = applyLockedPairLink(
-            normalizeIdentityPair(sanitizeUserContent(p)),
+            sanitizeUserContent(p),
             currentProfile,
         ) as CoupleProfile;
         persistLockedPairLink(sanitizedProfile);

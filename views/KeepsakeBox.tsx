@@ -21,7 +21,9 @@ interface KeepsakeBoxProps {
     setView: (view: ViewState) => void;
 }
 
-const normalizeSenderName = (senderId?: string) => senderId === 'Lior' ? 'Tulika' : senderId;
+// A keepsake belongs to "me" when its sender matches this device or my saved display name.
+const isMyKeepsake = (senderId: string | undefined, myName: string): boolean =>
+    senderId === StorageService.getDeviceId() || (!!senderId && senderId === myName);
 
 const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -31,7 +33,7 @@ const readFileAsDataUrl = (file: File): Promise<string> =>
         reader.readAsDataURL(file);
     });
 
-const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, myName: string, onHide: () => void, onClick: () => void, isReacted?: boolean, onReact?: () => void }> = ({ keepsake, isMine, partnerName, myName, onHide, onClick, isReacted, onReact }) => {
+const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName: string, onHide: () => void, onClick: () => void, isReacted?: boolean, onReact?: () => void }> = ({ keepsake, isMine, partnerName, onHide, onClick, isReacted, onReact }) => {
     const imageStoragePath = selectImageStoragePath(keepsake.storagePath, keepsake.imageMimeType);
     const videoStoragePath = selectVideoStoragePath(keepsake.videoStoragePath, keepsake.storagePath, keepsake.videoMimeType || keepsake.imageMimeType);
     const { src: mediaSrc, handleError: handleMediaError } = useLiorMedia(keepsake.imageId || keepsake.videoId, keepsake.image || keepsake.video, imageStoragePath || videoStoragePath);
@@ -40,8 +42,7 @@ const KeepsakeCard: React.FC<{ keepsake: Keepsake, isMine: boolean, partnerName:
         year: 'numeric', month: 'short', day: 'numeric'
     });
 
-    const normalizedSender = normalizeSenderName(keepsake.senderId);
-    const displaySender = normalizedSender === 'Tulika' ? 'Tulika' : (normalizedSender === 'Ishan' ? 'Ishan' : (isMine ? 'Me' : partnerName));
+    const displaySender = isMine ? 'Me' : partnerName;
 
     return (
         <div className={`perf-list-item flex w-full mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}>
@@ -199,7 +200,7 @@ const KeepsakeDetailContent: React.FC<{ keepsake: Keepsake, onClose: () => void 
 
 export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
     const [keepsakes, setKeepsakes] = useState<Keepsake[]>([]);
-    const [activeTab, setActiveTab] = useState<'lior' | 'ishan'>('lior');
+    const [activeTab, setActiveTab] = useState<'mine' | 'partner'>('mine');
     const [selectedKeepsake, setSelectedKeepsake] = useState<Keepsake | null>(null);
     const [isComposing, setIsComposing] = useState(false);
     const [profile, setProfile] = useState<CoupleProfile>({ myName: 'Me', partnerName: 'Partner', anniversaryDate: '' });
@@ -237,21 +238,8 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
         const sorted = keepsakes
             .filter(k => !k.isHidden)
             .filter(k => {
-                const senderId = normalizeSenderName(k.senderId);
-                const isSentByTulika = senderId === 'Tulika';
-                const isSentByIshan = senderId === 'Ishan';
-                const isMe = k.senderId === StorageService.getDeviceId();
-                const isMeTulika = profile.myName === 'Tulika';
-                
-                if (activeTab === 'lior') {
-                    if (isSentByTulika) return true;
-                    if (isSentByIshan) return false;
-                    return isMeTulika ? isMe : !isMe;
-                } else {
-                    if (isSentByIshan) return true;
-                    if (isSentByTulika) return false;
-                    return isMeTulika ? !isMe : isMe;
-                }
+                const mine = isMyKeepsake(k.senderId, profile.myName);
+                return activeTab === 'mine' ? mine : !mine;
             })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -392,19 +380,19 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                 <div className="flex p-1.5 rounded-full relative mb-2 mx-6 glass-card shadow-none ring-1 ring-inset ring-white/10 bg-black/5">
                     <div
                         className="absolute top-1.5 bottom-1.5 w-[48%] rounded-full transition-all duration-300 ease-spring shadow-lg"
-                        style={{ left: activeTab === 'lior' ? '1%' : '51%', background: 'white' }}
+                        style={{ left: activeTab === 'mine' ? '1%' : '51%', background: 'white' }}
                     ></div>
                     <button
-                        onClick={() => setActiveTab('lior')}
-                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest relative z-10 transition-all ${activeTab === 'lior' ? 'text-lior-600' : 'text-gray-400'}`}
+                        onClick={() => setActiveTab('mine')}
+                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest relative z-10 transition-all ${activeTab === 'mine' ? 'text-lior-600' : 'text-gray-400'}`}
                     >
-                        {profile.myName === 'Tulika' ? 'Created' : 'Tulika'}
+                        {profile.myName || 'You'}
                     </button>
                     <button
-                        onClick={() => setActiveTab('ishan')}
-                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest relative z-10 transition-all ${activeTab === 'ishan' ? 'text-lior-600' : 'text-gray-400'}`}
+                        onClick={() => setActiveTab('partner')}
+                        className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest relative z-10 transition-all ${activeTab === 'partner' ? 'text-lior-600' : 'text-gray-400'}`}
                     >
-                        {profile.myName === 'Ishan' ? 'Created' : 'Ishan'}
+                        {profile.partnerName || 'Partner'}
                     </button>
                 </div>
             </div>
@@ -418,9 +406,8 @@ export const KeepsakeBox: React.FC<KeepsakeBoxProps> = ({ setView }) => {
                                 <KeepsakeCard
                                     key={k.id}
                                     keepsake={k}
-                                    isMine={k.senderId === StorageService.getDeviceId() || k.senderId === profile.myName}
+                                    isMine={isMyKeepsake(k.senderId, profile.myName)}
                                     partnerName={profile.partnerName}
-                                    myName={profile.myName}
                                     onHide={() => handleHide(k.id)}
                                     onClick={() => setSelectedKeepsake(k)}
                                     isReacted={reactedKeepsakes.has(k.id)}
