@@ -1462,19 +1462,19 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                         onClick={() => setView('quiet-mode')}
                         className="block w-full text-left mb-5"
                     >
-                        <div style={{ borderRadius: 22, padding: 4, background: 'linear-gradient(150deg, rgba(138,90,126,0.30), rgba(178,120,140,0.10) 50%, rgba(138,90,126,0.30))', boxShadow: '0 1px 2px rgba(178,120,140,0.10), 0 14px 30px -14px rgba(138,90,126,0.30)' }}>
+                        <div style={{ borderRadius: 22, padding: 4, background: 'linear-gradient(150deg, color-mix(in srgb, var(--color-lior-500) 30%, transparent), rgba(178,120,140,0.10) 50%, color-mix(in srgb, var(--color-lior-500) 30%, transparent))', boxShadow: '0 1px 2px rgba(178,120,140,0.10), 0 14px 30px -14px color-mix(in srgb, var(--color-lior-500) 30%, transparent)' }}>
                             <div className="relative flex items-center gap-3" style={{ borderRadius: 18, overflow: 'hidden', padding: '0.85rem 1rem', background: 'linear-gradient(135deg,#fbf6fa,#efe1ec)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }}>
-                                <Moon aria-hidden size={80} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -8, bottom: -14, color: '#8a5a7e', opacity: 0.08, transform: 'rotate(-10deg)' }} />
-                                <span className="relative flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 40, height: 40, background: 'rgba(138,90,126,0.14)', border: '1px solid rgba(138,90,126,0.26)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)' }}>
-                                    <Moon size={18} strokeWidth={1.7} style={{ color: '#8a5a7e' }} />
+                                <Moon aria-hidden size={80} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -8, bottom: -14, color: 'var(--color-lior-600)', opacity: 0.08, transform: 'rotate(-10deg)' }} />
+                                <span className="relative flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 40, height: 40, background: 'color-mix(in srgb, var(--color-lior-500) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--color-lior-500) 26%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)' }}>
+                                    <Moon size={18} strokeWidth={1.7} style={{ color: 'var(--color-lior-600)' }} />
                                 </span>
                                 <div className="flex-1 relative">
-                                    <p className="font-bold uppercase" style={{ fontSize: '0.56rem', letterSpacing: '0.16em', color: '#8a5a7e', opacity: 0.9 }}>Breathe</p>
+                                    <p className="font-bold uppercase" style={{ fontSize: '0.56rem', letterSpacing: '0.16em', color: 'var(--color-lior-600)', opacity: 0.9 }}>Breathe</p>
                                     <p className="font-serif mt-0.5" style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.05 }}>Quiet Mode</p>
                                     <p style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>drift back through your memories.</p>
                                 </div>
-                                <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.85)', boxShadow: '0 3px 9px rgba(138,90,126,0.16), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
-                                    <ChevronRight size={16} strokeWidth={1.7} style={{ color: '#8a5a7e' }} />
+                                <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.85)', boxShadow: '0 3px 9px color-mix(in srgb, var(--color-lior-500) 16%, transparent), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
+                                    <ChevronRight size={16} strokeWidth={1.7} style={{ color: 'var(--color-lior-600)' }} />
                                 </motion.span>
                             </div>
                         </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Check, Trash2, X, MapPin, Gift, ChevronDown, ChevronUp, ChevronRight, Home, Brush, Send, Compass, Milestone, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { feedback } from '../utils/feedback';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { StorageService, storageEventTarget } from '../services/storage';
@@ -22,7 +23,7 @@ const MS_GRADIENTS = [
     'linear-gradient(150deg,#fffdfc,#ffe9ef)',
     'linear-gradient(150deg,#fffbf7,#fbe7da)',
     'linear-gradient(150deg,#fffcfd,#f7e4ec)',
-    'linear-gradient(150deg,#fffdfc,#ecd4db)',
+    'linear-gradient(150deg,#fffdfc,var(--color-lior-100))',
 ];
 
 type Tab = 'bucket' | 'wishlist' | 'milestones';
@@ -42,16 +43,17 @@ const relativeTime = (dateStr: string) => {
 const WARM = {
     ink: 'var(--color-text-primary)',
     inkSoft: 'var(--color-text-secondary)',
-    rose: '#b34a6b', roseSoft: '#f472b6', roseDeep: '#be3d72', navActive: '#c4687e',
-    // frozen foil ring for the double-bezel shell — never animate its position
-    foilRing: 'linear-gradient(150deg, rgba(196,104,126,0.34), rgba(178,120,140,0.10) 32%, rgba(255,255,255,0.78) 52%, rgba(178,120,140,0.10) 72%, rgba(196,104,126,0.34))',
-    // the shadow system — soft + mauve-tinted, never black
+    // Accent ramp follows the ACTIVE THEME (rose / teal / lavender / …); the
+    // deep 500–600 stops keep the premium depth. Surfaces stay warm cream.
+    rose: 'var(--color-lior-500)', roseSoft: 'var(--color-lior-400)', roseDeep: 'var(--color-lior-600)', navActive: 'var(--color-nav-active)',
+    foilRing: 'linear-gradient(150deg, color-mix(in srgb, var(--color-lior-400) 30%, transparent), color-mix(in srgb, var(--color-lior-400) 8%, transparent) 32%, rgba(255,255,255,0.72) 52%, color-mix(in srgb, var(--color-lior-400) 8%, transparent) 72%, color-mix(in srgb, var(--color-lior-400) 30%, transparent))',
+    // soft, near-neutral warm shadow — reads fine under any light theme
     catch: 'inset 0 1px 0 rgba(255,255,255,0.95)',
     catchHero: 'inset 0 1.5px 0 rgba(255,255,255,1)',
-    contact: '0 1px 2px rgba(178,120,140,0.10)',
-    sm: '0 1px 2px rgba(178,120,140,0.08), 0 10px 24px -10px rgba(178,120,140,0.16)',
-    md: '0 1px 2px rgba(178,120,140,0.10), 0 18px 40px -14px rgba(178,120,140,0.20)',
-    lg: '0 2px 4px rgba(178,120,140,0.12), 0 30px 60px -18px rgba(192,96,121,0.24)',
+    contact: '0 1px 2px rgba(150,110,120,0.10)',
+    sm: '0 1px 2px rgba(150,110,120,0.08), 0 10px 24px -10px rgba(150,110,120,0.16)',
+    md: '0 1px 2px rgba(150,110,120,0.10), 0 18px 40px -14px rgba(150,110,120,0.20)',
+    lg: '0 2px 4px rgba(150,110,120,0.12), 0 30px 60px -18px rgba(150,110,120,0.24)',
 } as const;
 
 const RADIUS = { heroOuter: 30, heroCore: 25, cardOuter: 26, cardCore: 21, row: 20, chip: 17 } as const;
@@ -254,18 +256,18 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 className="relative z-[1] px-5 mb-9 mt-4"
             >
                 {/* Hero — Our Room */}
-                <motion.button whileTap={{ scale: 0.985 }} transition={PRESS_SPRING} onClick={() => setView('our-room')} className="block w-full text-left">
+                <motion.button whileTap={{ scale: 0.985 }} transition={PRESS_SPRING} onClick={() => { feedback.tap(); setView('our-room'); }} className="block w-full text-left">
                     <Bezel radius={RADIUS.heroOuter} pad={5} shadow={WARM.lg}
                         coreBg="radial-gradient(120% 90% at 14% -10%, #fffaf6 0%, #faeae4 46%, #f3d7dd 100%)"
                         coreStyle={{ boxShadow: `${WARM.catchHero}, inset 0 -1px 0 rgba(196,104,126,0.05)` }}>
                         <div className="relative flex items-center gap-4" style={{ padding: '1.25rem', minHeight: '8rem' }}>
-                            <Home aria-hidden size={150} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -14, bottom: -22, color: '#9e3a5c', opacity: 0.07, transform: 'rotate(-10deg)' }} />
+                            <Home aria-hidden size={150} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -14, bottom: -22, color: 'var(--color-lior-600)', opacity: 0.07, transform: 'rotate(-10deg)' }} />
                             <span className="relative flex items-center justify-center flex-shrink-0" style={{ width: '3.5rem', height: '3.5rem' }}>
                                 {!reduce && (
-                                    <motion.span aria-hidden className="absolute rounded-full" style={{ width: '4.4rem', height: '4.4rem', background: 'radial-gradient(circle, rgba(158,58,92,0.22), transparent 70%)' }}
+                                    <motion.span aria-hidden className="absolute rounded-full" style={{ width: '4.4rem', height: '4.4rem', background: 'radial-gradient(circle, color-mix(in srgb, var(--color-lior-600) 22%, transparent), transparent 70%)' }}
                                         animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }} />
                                 )}
-                                <span className="relative flex items-center justify-center" style={{ width: '3.5rem', height: '3.5rem', borderRadius: RADIUS.chip + 2, background: 'linear-gradient(140deg,#c4687e,#9e3a5c)', boxShadow: '0 10px 22px rgba(158,58,92,0.34), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                                <span className="relative flex items-center justify-center" style={{ width: '3.5rem', height: '3.5rem', borderRadius: RADIUS.chip + 2, background: 'linear-gradient(140deg,var(--color-lior-500),var(--color-lior-600))', boxShadow: '0 10px 22px color-mix(in srgb, var(--color-lior-600) 34%, transparent), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                     <Home size={24} strokeWidth={1.7} className="text-white" />
                                 </span>
                             </span>
@@ -273,8 +275,8 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 <p className="font-serif" style={{ fontSize: '1.32rem', fontWeight: 700, lineHeight: 1.04, color: WARM.ink }}>Our Room</p>
                                 <p className="mt-0.5" style={{ fontSize: '0.8rem', color: WARM.inkSoft }}>step inside the space you've made.</p>
                             </div>
-                            <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 38, height: 38, background: 'rgba(255,255,255,0.85)', boxShadow: '0 4px 12px rgba(158,58,92,0.16), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
-                                <ChevronRight size={18} strokeWidth={1.7} style={{ color: '#9e3a5c' }} />
+                            <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 38, height: 38, background: 'rgba(255,255,255,0.85)', boxShadow: '0 4px 12px color-mix(in srgb, var(--color-lior-600) 16%, transparent), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
+                                <ChevronRight size={18} strokeWidth={1.7} style={{ color: 'var(--color-lior-600)' }} />
                             </motion.span>
                         </div>
                     </Bezel>
@@ -286,21 +288,21 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ ...SOFT_SPRING, delay: 0.12 }}
                     whileTap={{ scale: 0.985 }}
-                    onClick={() => setView('canvas')}
+                    onClick={() => { feedback.tap(); setView('canvas'); }}
                     className="block w-full text-left mt-3"
                 >
                     <Bezel radius={RADIUS.cardOuter} pad={4} shadow={WARM.sm} coreBg="linear-gradient(150deg,#fffaf6,#f6e7df)">
                         <div className="relative flex items-center gap-3.5" style={{ padding: '0.95rem 1.1rem' }}>
-                            <Brush aria-hidden size={96} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -10, bottom: -16, color: '#c2562f', opacity: 0.07, transform: 'rotate(-10deg)' }} />
-                            <span className="relative flex items-center justify-center rounded-2xl flex-shrink-0" style={{ width: 46, height: 46, background: 'rgba(194,86,47,0.13)', border: '1px solid rgba(194,86,47,0.26)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(194,86,47,0.16)' }}>
-                                <Brush size={20} strokeWidth={1.7} style={{ color: '#c2562f' }} />
+                            <Brush aria-hidden size={96} strokeWidth={1} className="absolute pointer-events-none" style={{ right: -10, bottom: -16, color: 'var(--color-lior-500)', opacity: 0.07, transform: 'rotate(-10deg)' }} />
+                            <span className="relative flex items-center justify-center rounded-2xl flex-shrink-0" style={{ width: 46, height: 46, background: 'color-mix(in srgb, var(--color-lior-500) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--color-lior-500) 28%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px color-mix(in srgb, var(--color-lior-500) 16%, transparent)' }}>
+                                <Brush size={20} strokeWidth={1.7} style={{ color: 'var(--color-lior-500)' }} />
                             </span>
                             <div className="flex-1 relative">
                                 <p className="font-serif" style={{ fontSize: '1.05rem', fontWeight: 700, lineHeight: 1.05, color: WARM.ink }}>Draw Together</p>
                                 <p style={{ fontSize: '0.74rem', color: WARM.inkSoft }}>a shared canvas, just for two.</p>
                             </div>
-                            <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.8)', boxShadow: '0 3px 9px rgba(194,86,47,0.14), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
-                                <ChevronRight size={17} strokeWidth={1.7} style={{ color: '#c2562f' }} />
+                            <motion.span className="relative flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.8)', boxShadow: '0 3px 9px color-mix(in srgb, var(--color-lior-500) 14%, transparent), inset 0 1px 0 rgba(255,255,255,1)' }} whileTap={{ x: 2 }}>
+                                <ChevronRight size={17} strokeWidth={1.7} style={{ color: 'var(--color-lior-500)' }} />
                             </motion.span>
                         </div>
                     </Bezel>
@@ -318,12 +320,12 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                     data-coachmark="aura-signal"
                     whileTap={{ scale: 0.985 }}
                     transition={PRESS_SPRING}
-                    onClick={() => setView('aura-signal')}
+                    onClick={() => { feedback.celebrate(); setView('aura-signal'); }}
                     className="block w-full text-left"
                 >
                     {/* shell — lighter shadow than the hero so the hero stays king */}
-                    <div style={{ borderRadius: RADIUS.cardOuter, padding: 5, background: 'linear-gradient(150deg, rgba(125,37,72,0.5), rgba(196,104,126,0.32) 50%, rgba(125,37,72,0.5))', boxShadow: '0 2px 4px rgba(125,37,72,0.18), 0 22px 44px -16px rgba(158,58,92,0.32)' }}>
-                        <div className="relative flex items-center gap-3.5" style={{ borderRadius: RADIUS.cardCore, overflow: 'hidden', padding: '1rem', background: 'linear-gradient(135deg,#bf6385 0%,#a13a5e 52%,#7d2548 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.26), inset 0 -1px 0 rgba(70,12,34,0.22)' }}>
+                    <div style={{ borderRadius: RADIUS.cardOuter, padding: 5, background: 'linear-gradient(150deg, color-mix(in srgb, var(--color-lior-600) 50%, transparent), color-mix(in srgb, var(--color-lior-400) 32%, transparent) 50%, color-mix(in srgb, var(--color-lior-600) 50%, transparent))', boxShadow: '0 2px 4px color-mix(in srgb, var(--color-lior-600) 18%, transparent), 0 22px 44px -16px color-mix(in srgb, var(--color-lior-500) 30%, transparent)' }}>
+                        <div className="relative flex items-center gap-3.5" style={{ borderRadius: RADIUS.cardCore, overflow: 'hidden', padding: '1rem', background: 'linear-gradient(135deg,var(--color-lior-400) 0%,var(--color-lior-500) 52%,var(--color-lior-600) 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.26), inset 0 -1px 0 rgba(70,12,34,0.22)' }}>
                             {!reduce && (
                                 <motion.span aria-hidden className="absolute top-0 bottom-0 pointer-events-none" style={{ width: '40%', background: 'linear-gradient(105deg, transparent, rgba(255,255,255,0.24), transparent)', transform: 'skewX(-18deg)' }}
                                     animate={{ x: ['-60%', '320%'] }} transition={{ duration: 1.2, repeat: Infinity, repeatDelay: 6.5, ease: [0.16, 1, 0.3, 1] }} />
@@ -333,7 +335,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     <motion.span aria-hidden className="absolute rounded-full pointer-events-none" style={{ width: 52, height: 52, border: '1.5px solid rgba(255,255,255,0.5)' }}
                                         animate={{ scale: [1, 1.7], opacity: [0.5, 0] }} transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 1.4, ease: 'easeOut' }} />
                                 )}
-                                <span className="relative flex items-center justify-center rounded-full" style={{ width: 52, height: 52, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 10px 24px rgba(158,58,92,0.30), inset 0 1px 0 rgba(255,255,255,0.32)' }}>
+                                <span className="relative flex items-center justify-center rounded-full" style={{ width: 52, height: 52, background: 'linear-gradient(135deg,var(--color-lior-500),var(--color-lior-600))', boxShadow: '0 10px 24px color-mix(in srgb, var(--color-lior-600) 30%, transparent), inset 0 1px 0 rgba(255,255,255,0.32)' }}>
                                     <Sparkles size={20} strokeWidth={1.7} className="text-white" />
                                 </span>
                             </span>
@@ -342,9 +344,9 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 <p className="mt-1" style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.85)' }}>across the distance, wordlessly.</p>
                             </div>
                             <span className="relative flex items-center gap-2 flex-shrink-0" style={{ minHeight: 44, padding: '0 6px 0 14px', borderRadius: 999, background: 'rgba(255,255,255,0.96)' }}>
-                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#be3d72' }}>send</span>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-lior-600)' }}>send</span>
                                 <span className="flex items-center justify-center rounded-full" style={{ width: 30, height: 30, background: 'rgba(190,61,114,0.10)' }}>
-                                    <Send size={15} strokeWidth={1.7} style={{ color: '#be3d72' }} />
+                                    <Send size={15} strokeWidth={1.7} style={{ color: 'var(--color-lior-600)' }} />
                                 </span>
                             </span>
                         </div>
@@ -359,22 +361,22 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                 transition={{ ...SOFT_SPRING, delay: 0.18 }}
                 className="relative z-[1] px-5 mb-7"
             >
-                <div className="flex" style={{ borderRadius: 20, padding: 5, background: 'linear-gradient(150deg,#f1d8e0,#ead0d9)', boxShadow: 'inset 0 2px 6px rgba(178,120,140,0.22), inset 0 -1px 0 rgba(255,255,255,0.6)' }}>
+                <div className="flex" style={{ borderRadius: 20, padding: 5, background: 'linear-gradient(150deg,var(--color-lior-100),var(--color-lior-200))', boxShadow: 'inset 0 2px 6px rgba(178,120,140,0.22), inset 0 -1px 0 rgba(255,255,255,0.6)' }}>
                     {TABS.map(tab => {
                         const active = activeTab === tab.id;
                         return (
-                            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                            <button key={tab.id} onClick={() => { feedback.tap(); setActiveTab(tab.id); }}
                                 className="flex-1 relative flex items-center justify-center gap-1.5 spring-press"
                                 style={{ borderRadius: RADIUS.chip, paddingTop: '0.62rem', paddingBottom: '0.62rem' }}>
                                 {active && (
-                                    <motion.span layoutId="us-tab-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(158,58,92,0.28), inset 0 1px 0 rgba(255,255,255,0.4)' }}
+                                    <motion.span layoutId="us-tab-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,var(--color-lior-500),var(--color-lior-600))', boxShadow: '0 6px 14px color-mix(in srgb, var(--color-lior-600) 28%, transparent), inset 0 1px 0 rgba(255,255,255,0.4)' }}
                                         transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
                                 )}
                                 <tab.Icon size={15} strokeWidth={1.8} className="relative z-[1]" style={{ color: active ? '#ffffff' : WARM.inkSoft }} />
                                 <span className="relative z-[1]" style={{ fontSize: '0.74rem', fontWeight: 700, color: active ? '#ffffff' : WARM.inkSoft }}>{tab.label}</span>
                                 {tab.count > 0 && !active && (
                                     <span className="absolute -top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full text-[0.5rem] font-bold flex items-center justify-center z-[2]"
-                                        style={{ background: '#ecd4db', color: '#c4687e', boxShadow: WARM.catch }}>
+                                        style={{ background: 'var(--color-lior-100)', color: 'var(--color-lior-500)', boxShadow: WARM.catch }}>
                                         {tab.count > 9 ? '9+' : tab.count}
                                     </span>
                                 )}
@@ -397,8 +399,8 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     <p style={{ fontSize: '0.72rem', color: WARM.inkSoft }}>{completed.length} of {visibleBucket.length} done</p>
                                     <p style={{ fontSize: '0.72rem', fontWeight: 700, color: WARM.navActive }}>{pct}%</p>
                                 </div>
-                                <div style={{ height: 8, borderRadius: 999, overflow: 'hidden', background: 'rgba(196,104,126,0.16)', boxShadow: 'inset 0 1px 2px rgba(178,120,140,0.18)' }}>
-                                    <motion.div style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#9e3a5c 0%,#c4687e 60%,#d98ba3 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}
+                                <div style={{ height: 8, borderRadius: 999, overflow: 'hidden', background: 'color-mix(in srgb, var(--color-lior-500) 16%, transparent)', boxShadow: 'inset 0 1px 2px rgba(178,120,140,0.18)' }}>
+                                    <motion.div style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,var(--color-lior-600) 0%,var(--color-lior-500) 60%,var(--color-lior-300) 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}
                                         initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ type: 'spring', stiffness: 80, damping: 18 }} />
                                 </div>
                             </div>
@@ -408,10 +410,10 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                         <div className="flex gap-2.5 items-center mb-5 transition-all duration-200"
                             style={{
                                 borderRadius: RADIUS.row, padding: '0.9rem 1rem', background: '#fffaf8',
-                                border: bucketFocused ? '1px solid rgba(158,58,92,0.4)' : '1px solid rgba(196,104,126,0.18)',
-                                boxShadow: bucketFocused ? `0 0 0 2px rgba(158,58,92,0.18), ${WARM.sm}, ${WARM.catch}` : `${WARM.sm}, ${WARM.catch}`,
+                                border: bucketFocused ? '1px solid color-mix(in srgb, var(--color-lior-600) 40%, transparent)' : '1px solid color-mix(in srgb, var(--color-lior-500) 18%, transparent)',
+                                boxShadow: bucketFocused ? `0 0 0 2px color-mix(in srgb, var(--color-lior-600) 18%, transparent), ${WARM.sm}, ${WARM.catch}` : `${WARM.sm}, ${WARM.catch}`,
                             }}>
-                            <MapPin size={16} strokeWidth={1.7} style={{ color: bucketFocused ? '#b34a6b' : '#d8b3c0' }} className="flex-shrink-0 transition-colors duration-200" />
+                            <MapPin size={16} strokeWidth={1.7} style={{ color: bucketFocused ? 'var(--color-lior-500)' : 'var(--color-lior-300)' }} className="flex-shrink-0 transition-colors duration-200" />
                             <input value={bucketInput} onChange={e => setBucketInput(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) addBucketItem(); }}
                                 onFocus={() => setBucketFocused(true)}
@@ -422,18 +424,19 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 autoCapitalize="sentences"
                                 autoCorrect="on"
                                 className="flex-1 bg-transparent outline-none" style={{ fontSize: 16, color: WARM.ink }} />
-                            <button onClick={addBucketItem}
-                                className="flex items-center justify-center flex-shrink-0 spring-press"
-                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 4px 10px rgba(158,58,92,0.3), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                            <motion.button onClick={() => { feedback.tap(); addBucketItem(); }}
+                                whileTap={{ scale: 0.86, rotate: 90 }} transition={PRESS_SPRING}
+                                className="flex items-center justify-center flex-shrink-0"
+                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: 'linear-gradient(135deg,var(--color-lior-500),var(--color-lior-600))', boxShadow: '0 4px 10px color-mix(in srgb, var(--color-lior-600) 30%, transparent), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                 <Plus size={16} className="text-white" strokeWidth={1.8} />
-                            </button>
+                            </motion.button>
                         </div>
 
                         {/* Empty */}
                         {visibleBucket.length === 0 && (
                             <div className="text-center py-16">
-                                <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'rgba(158,58,92,0.10)', border: '1px solid rgba(158,58,92,0.18)' }}>
-                                    <Compass size={28} strokeWidth={1.7} style={{ color: '#b34a6b' }} />
+                                <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'color-mix(in srgb, var(--color-lior-600) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-lior-600) 18%, transparent)' }}>
+                                    <Compass size={28} strokeWidth={1.7} style={{ color: 'var(--color-lior-500)' }} />
                                 </div>
                                 <p className="font-serif text-xl mb-1" style={{ color: WARM.ink }}>The world is yours</p>
                                 <p style={{ fontSize: '0.78rem', color: WARM.inkSoft }}>Add adventures to share together</p>
@@ -457,11 +460,11 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                                     <p className="pr-5 mb-3" style={{ fontSize: '0.86rem', lineHeight: 1.32, color: WARM.ink }}>{item.text}</p>
                                                     <div className="flex items-center justify-between">
                                                         <span className="flex items-center gap-1.5">
-                                                            <span className="flex items-center justify-center rounded-full text-white" style={{ width: 18, height: 18, fontSize: '0.5rem', fontWeight: 700, background: 'radial-gradient(circle at 30% 30%,#fff,#9e3a5c)' }}>{(item.addedBy || '?').charAt(0).toUpperCase()}</span>
+                                                            <span className="flex items-center justify-center rounded-full text-white" style={{ width: 18, height: 18, fontSize: '0.5rem', fontWeight: 700, background: 'radial-gradient(circle at 30% 30%,#fff,var(--color-lior-600))' }}>{(item.addedBy || '?').charAt(0).toUpperCase()}</span>
                                                             <span style={{ fontSize: '0.62rem', color: WARM.inkSoft }}>{item.addedBy}</span>
                                                         </span>
-                                                        <motion.button onClick={() => toggleBucket(item.id)} aria-label="Mark done" whileTap={{ scale: 0.85 }}
-                                                            className="flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 999, border: '1.5px solid rgba(196,104,126,0.4)', background: '#fffaf8' }} />
+                                                        <motion.button onClick={() => { feedback.tap(); toggleBucket(item.id); }} aria-label="Mark done" whileTap={{ scale: 0.85 }}
+                                                            className="flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 999, border: '1.5px solid color-mix(in srgb, var(--color-lior-500) 40%, transparent)', background: '#fffaf8' }} />
                                                     </div>
                                                 </div>
                                             </Bezel>
@@ -490,7 +493,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                                             <X size={12} strokeWidth={1.6} style={{ color: '#c9b3ba' }} />
                                                         </button>
                                                         <p className="line-through pr-3 mb-3" style={{ fontSize: '0.82rem', lineHeight: 1.32, color: WARM.inkSoft }}>{item.text}</p>
-                                                        <button onClick={() => toggleBucket(item.id)} aria-label="Mark not done"
+                                                        <button onClick={() => { feedback.tap(); toggleBucket(item.id); }} aria-label="Mark not done"
                                                             className="self-end flex items-center justify-center spring-press" style={{ width: 26, height: 26, borderRadius: 999, background: '#22c55e' }}>
                                                             <Check size={13} className="text-white" strokeWidth={2.4} />
                                                         </button>
@@ -514,20 +517,20 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                             {(['me', 'partner'] as const).map(who => {
                                 const name = who === 'me' ? profile.myName : profile.partnerName;
                                 const count = who === 'me' ? myWishes.length : partnerWishes.length;
-                                const color = who === 'me' ? '#b34a6b' : '#a8617f';
+                                const color = who === 'me' ? 'var(--color-lior-500)' : 'var(--color-nav-active)';
                                 const isActive = wishTab === who;
                                 return (
-                                    <button key={who} onClick={() => setWishTab(who)}
+                                    <button key={who} onClick={() => { feedback.tap(); setWishTab(who); }}
                                         className="flex-1 relative flex items-center justify-center gap-2 py-2.5 spring-press"
                                         style={{ borderRadius: RADIUS.row }}>
                                         {isActive && (
-                                            <motion.span layoutId="us-wish-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.row, background: '#fffaf8', border: `1.5px solid ${color}40`, boxShadow: `0 6px 16px ${color}1f, ${WARM.catch}` }}
+                                            <motion.span layoutId="us-wish-pill" className="absolute inset-0" style={{ borderRadius: RADIUS.row, background: '#fffaf8', border: `1.5px solid color-mix(in srgb, ${color} 40%, transparent)`, boxShadow: `0 6px 16px color-mix(in srgb, ${color} 14%, transparent), ${WARM.catch}` }}
                                                 transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
                                         )}
                                         <span className="relative z-[1] w-2 h-2 rounded-full flex-shrink-0" style={{ background: isActive ? color : '#d8c4cb' }} />
                                         <span className="relative z-[1]" style={{ fontSize: '0.82rem', fontWeight: 600, color: isActive ? WARM.ink : WARM.inkSoft }}>{name}</span>
                                         {count > 0 && (
-                                            <span className="relative z-[1]" style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: 999, background: isActive ? color + '18' : 'rgba(196,104,126,0.08)', color: isActive ? color : WARM.inkSoft }}>
+                                            <span className="relative z-[1]" style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: 999, background: isActive ? `color-mix(in srgb, ${color} 12%, transparent)` : 'rgba(196,104,126,0.08)', color: isActive ? color : WARM.inkSoft }}>
                                                 {count}
                                             </span>
                                         )}
@@ -544,8 +547,8 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                 const inputVal = who === 'me' ? myWishInput : partnerWishInput;
                                 const setInput = who === 'me' ? setMyWishInput : setPartnerWishInput;
                                 const a = who === 'me'
-                                    ? { color: '#b34a6b', light: 'rgba(179,74,107,0.08)', ring: 'rgba(179,74,107,0.22)' }
-                                    : { color: '#a8617f', light: 'rgba(168,97,127,0.08)', ring: 'rgba(168,97,127,0.22)' };
+                                    ? { color: 'var(--color-lior-500)', light: 'color-mix(in srgb, var(--color-lior-500) 8%, transparent)', ring: 'color-mix(in srgb, var(--color-lior-500) 22%, transparent)' }
+                                    : { color: 'var(--color-nav-active)', light: 'color-mix(in srgb, var(--color-nav-active) 9%, transparent)', ring: 'color-mix(in srgb, var(--color-nav-active) 24%, transparent)' };
 
                                 return (
                                     <motion.div key={who} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}
@@ -560,11 +563,12 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                                 placeholder="Add a wish…"
                                                 inputMode="text" enterKeyHint="done" autoCapitalize="sentences" autoCorrect="on"
                                                 className="flex-1 bg-transparent outline-none" style={{ fontSize: 16, color: WARM.ink }} />
-                                            <button onClick={() => { addWish(who, inputVal); setInput(''); }}
-                                                className="flex items-center justify-center flex-shrink-0 spring-press"
-                                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: `linear-gradient(135deg,${a.color}cc,${a.color})`, boxShadow: `0 4px 10px ${a.color}40, inset 0 1px 0 rgba(255,255,255,0.4)` }}>
+                                            <motion.button onClick={() => { feedback.tap(); addWish(who, inputVal); setInput(''); }}
+                                                whileTap={{ scale: 0.86, rotate: 90 }} transition={PRESS_SPRING}
+                                                className="flex items-center justify-center flex-shrink-0"
+                                                style={{ width: 32, height: 32, borderRadius: RADIUS.chip, background: `linear-gradient(135deg, color-mix(in srgb, ${a.color} 82%, transparent), ${a.color})`, boxShadow: `0 4px 10px color-mix(in srgb, ${a.color} 40%, transparent), inset 0 1px 0 rgba(255,255,255,0.4)` }}>
                                                 <Plus size={16} className="text-white" strokeWidth={1.8} />
-                                            </button>
+                                            </motion.button>
                                         </div>
 
                                         {list.length === 0 && (
@@ -588,7 +592,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                                                 <X size={12} strokeWidth={1.6} style={{ color: '#c9b3ba' }} />
                                                             </button>
                                                             <p className={`pr-5 mb-2 ${item.gifted ? 'line-through' : ''}`} style={{ fontSize: '0.85rem', lineHeight: 1.32, color: item.gifted ? WARM.inkSoft : WARM.ink }}>{item.text}</p>
-                                                            <button onClick={() => toggleGifted(item.id)}
+                                                            <button onClick={() => { feedback.tap(); toggleGifted(item.id); }}
                                                                 className="inline-flex items-center gap-1.5 spring-press"
                                                                 style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.25rem 0.6rem', borderRadius: 999, background: item.gifted ? 'rgba(34,197,94,0.15)' : 'rgba(196,104,126,0.08)', color: item.gifted ? '#16a34a' : WARM.inkSoft }}>
                                                                 <Gift size={11} strokeWidth={1.8} />
@@ -619,9 +623,9 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     <p className="uppercase" style={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.16em', color: WARM.navActive }}>New milestone</p>
                                     <div className="flex gap-1.5 flex-wrap">
                                         {MILESTONE_EMOJIS.map(e => (
-                                            <button key={e} onClick={() => setMsEmoji(e)}
+                                            <button key={e} onClick={() => { feedback.tap(); setMsEmoji(e); }}
                                                 className="flex items-center justify-center text-lg spring-press transition-all"
-                                                style={{ width: 36, height: 36, borderRadius: RADIUS.chip, background: msEmoji === e ? '#ecd4db' : 'rgba(196,104,126,0.06)', boxShadow: msEmoji === e ? WARM.catch : 'none', transform: msEmoji === e ? 'scale(1.12)' : 'scale(1)' }}>
+                                                style={{ width: 36, height: 36, borderRadius: RADIUS.chip, background: msEmoji === e ? 'var(--color-lior-100)' : 'rgba(196,104,126,0.06)', boxShadow: msEmoji === e ? WARM.catch : 'none', transform: msEmoji === e ? 'scale(1.12)' : 'scale(1)' }}>
                                                 {e}
                                             </button>
                                         ))}
@@ -631,9 +635,9 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     <input value={msDesc} onChange={e => setMsDesc(e.target.value)} placeholder="A little note… (optional)" className={inputCls} />
                                     <div className="flex gap-2">
                                         <button onClick={() => setShowMsForm(false)} className="flex-1 py-3 spring-press" style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', color: WARM.inkSoft, background: 'rgba(196,104,126,0.08)' }}>Cancel</button>
-                                        <button onClick={addMilestone}
+                                        <button onClick={() => { feedback.celebrate(); addMilestone(); }}
                                             className="flex-1 py-3 font-semibold text-white spring-press"
-                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 14px rgba(158,58,92,0.3), inset 0 1px 0 rgba(255,255,255,0.4)', opacity: msTitle.trim() && msDate ? 1 : 0.4 }}>
+                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', background: 'linear-gradient(135deg,var(--color-lior-500),var(--color-lior-600))', boxShadow: '0 6px 14px color-mix(in srgb, var(--color-lior-600) 30%, transparent), inset 0 1px 0 rgba(255,255,255,0.4)', opacity: msTitle.trim() && msDate ? 1 : 0.4 }}>
                                             Save
                                         </button>
                                     </div>
@@ -644,14 +648,14 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     className="overflow-hidden mb-5"
                                     style={{ borderRadius: RADIUS.heroOuter, background: 'linear-gradient(145deg,#fffdfc,#fff1f5)', boxShadow: `${WARM.md}, ${WARM.catch}`, border: '1px solid rgba(255,255,255,0.9)' }}>
                                     <div className="px-6 pt-8 pb-6 text-center">
-                                        <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'rgba(158,58,92,0.10)', border: '1px solid rgba(158,58,92,0.20)' }}>
-                                            <Milestone size={28} strokeWidth={1.7} style={{ color: '#b34a6b' }} />
+                                        <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: 22, background: 'color-mix(in srgb, var(--color-lior-600) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-lior-600) 20%, transparent)' }}>
+                                            <Milestone size={28} strokeWidth={1.7} style={{ color: 'var(--color-lior-500)' }} />
                                         </div>
                                         <p className="font-serif font-bold text-xl mb-1" style={{ color: WARM.ink }}>Your story starts here</p>
                                         <p className="mb-6" style={{ fontSize: '0.78rem', color: WARM.inkSoft }}>Every great love has chapters worth remembering</p>
-                                        <button onClick={() => setShowMsForm(true)}
+                                        <button onClick={() => { feedback.tap(); setShowMsForm(true); }}
                                             className="inline-flex items-center gap-2 px-6 py-3 spring-press text-white font-semibold"
-                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.85rem', background: 'linear-gradient(135deg,#c4687e,#9e3a5c)', boxShadow: '0 6px 16px rgba(158,58,92,0.35), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
+                                            style={{ borderRadius: RADIUS.chip, fontSize: '0.85rem', background: 'linear-gradient(135deg,var(--color-lior-500),var(--color-lior-600))', boxShadow: '0 6px 16px color-mix(in srgb, var(--color-lior-600) 35%, transparent), inset 0 1px 0 rgba(255,255,255,0.4)' }}>
                                             <Plus size={15} strokeWidth={1.8} />
                                             Add first milestone
                                         </button>
@@ -660,11 +664,11 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                             ) : (
                                 /* ── Add button (when milestones exist) ── */
                                 <motion.div key="addbtn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                    <button onClick={() => setShowMsForm(true)}
+                                    <button onClick={() => { feedback.tap(); setShowMsForm(true); }}
                                         className="w-full flex items-center gap-3 px-4 py-3.5 mb-5 spring-press"
-                                        style={{ borderRadius: RADIUS.row, background: '#fffaf8', border: '1px dashed rgba(158,58,92,0.35)', boxShadow: WARM.catch }}>
-                                        <div className="flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: RADIUS.chip, background: 'rgba(158,58,92,0.08)' }}>
-                                            <Plus size={16} strokeWidth={1.8} style={{ color: '#b34a6b' }} />
+                                        style={{ borderRadius: RADIUS.row, background: '#fffaf8', border: '1px dashed color-mix(in srgb, var(--color-lior-600) 35%, transparent)', boxShadow: WARM.catch }}>
+                                        <div className="flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: RADIUS.chip, background: 'color-mix(in srgb, var(--color-lior-600) 8%, transparent)' }}>
+                                            <Plus size={16} strokeWidth={1.8} style={{ color: 'var(--color-lior-500)' }} />
                                         </div>
                                         <p style={{ fontSize: '0.85rem', color: WARM.inkSoft }}>Add a milestone…</p>
                                     </button>
@@ -691,10 +695,10 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                                         </button>
                                                         <span className="relative flex items-center justify-center mb-1" style={{ width: 48, height: 48 }}>
                                                             {isNewest && !reduce && (
-                                                                <motion.span aria-hidden className="absolute rounded-full" style={{ width: 60, height: 60, background: 'radial-gradient(circle, rgba(196,104,126,0.32), transparent 70%)' }}
+                                                                <motion.span aria-hidden className="absolute rounded-full" style={{ width: 60, height: 60, background: 'radial-gradient(circle, color-mix(in srgb, var(--color-lior-500) 32%, transparent), transparent 70%)' }}
                                                                     animate={{ scale: [1, 1.12, 1], opacity: [0.6, 0.95, 0.6] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }} />
                                                             )}
-                                                            <span className="relative flex items-center justify-center rounded-full text-2xl" style={{ width: 48, height: 48, background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(158,58,92,0.82))', boxShadow: '0 10px 20px rgba(158,58,92,0.2), inset 0 1px 0 rgba(255,255,255,0.92)' }}>
+                                                            <span className="relative flex items-center justify-center rounded-full text-2xl" style={{ width: 48, height: 48, background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), var(--color-lior-600))', boxShadow: '0 10px 20px color-mix(in srgb, var(--color-lior-600) 22%, transparent), inset 0 1px 0 rgba(255,255,255,0.92)' }}>
                                                                 {ms.emoji}
                                                             </span>
                                                         </span>
