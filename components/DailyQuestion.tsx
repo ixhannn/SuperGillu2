@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Send, X } from 'lucide-react';
+import { Sparkles, Send, Flame } from 'lucide-react';
 import { CoupleProfile, QuestionEntry } from '../types';
 import { StorageService } from '../services/storage';
+import { NotificationsService } from '../services/notifications';
+import { getRitualStreak } from '../services/dailyRitual';
+import { Haptics } from '../services/haptics';
+import { Audio } from '../services/audio';
+import { toast } from '../utils/toast';
+import { HeartbeatParticles, HeartbeatParticlesHandle } from './HeartbeatParticles';
 
 interface DailyQuestionProps {
     profile: CoupleProfile;
@@ -14,23 +20,61 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     const [expanded, setExpanded] = useState(false);
     const [draft, setDraft] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
+    const particlesRef = useRef<HeartbeatParticlesHandle>(null);
+    // Guards the one-shot reveal flourish so it fires once per reveal, never on
+    // re-render. Keyed by the entry date so a brand-new day can celebrate again.
+    const celebratedRef = useRef<string | null>(null);
+    const hasLoadedRef = useRef(false);
 
     useEffect(() => {
         const q = StorageService.getTodayQuestion(profile.myName, profile.partnerName);
+        // On the very first load, if today's question is ALREADY revealed (the
+        // app reopened after both answered earlier), pre-mark it celebrated so
+        // the flourish only fires on a genuine in-session reveal transition —
+        // never as a replay on mount.
+        if (!hasLoadedRef.current) {
+            hasLoadedRef.current = true;
+            if (q.revealedAt) celebratedRef.current = q.date;
+        }
         setEntry(q);
     }, [profile]);
 
-    const refresh = () => {
-        const q = StorageService.getTodayQuestion(profile.myName, profile.partnerName);
-        setEntry(q);
-        onUpdate();
-    };
+    const myAnswer = entry?.answers[profile.myName];
+    const partnerAnswer = entry?.answers[profile.partnerName];
+    // Reveal is gated on revealedAt ONLY — never on the partner's answer string
+    // being present. This prevents the partner's answer leaking into the UI
+    // before the mutual-reveal moment is actually committed.
+    const isRevealed = Boolean(entry?.revealedAt);
+
+    const streak = getRitualStreak(profile.questions);
+
+    // ── One-beat reveal flourish ────────────────────────────────────────────
+    // When the card first enters its revealed state, play a single celebratory
+    // beat: one Heavy haptic + one chime + a brief particle gather + one toast.
+    // No spam, no multi-second ceremony — warm-minimal.
+    //
+    // The toast uses type 'info' (not 'heart'/'success') on purpose: DynamicToast
+    // auto-fires feedback.celebrate() (a success haptic + success chime) for
+    // celebratory toast types, which would stack a full SECOND beat on top of
+    // the explicit Heavy + chime below. 'info' downgrades that to the lightest
+    // available toast feedback (a single Medium tick), keeping the intended one
+    // Heavy haptic + 'confirm' chime as the dominant — and effectively single — beat.
+    useEffect(() => {
+        if (!entry?.revealedAt || !isRevealed) return;
+        if (celebratedRef.current === entry.date) return;
+        celebratedRef.current = entry.date;
+
+        void Haptics.heavy();
+        Audio.play('confirm');
+        const rect = cardRef.current?.getBoundingClientRect();
+        if (rect) {
+            particlesRef.current?.triggerReceive(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        }
+        toast.show('Your story grew', 'info');
+    }, [entry?.revealedAt, entry?.date, isRevealed]);
 
     if (!entry) return null;
-
-    const myAnswer = entry.answers[profile.myName];
-    const partnerAnswer = entry.answers[profile.partnerName];
-    const bothAnswered = !!myAnswer && !!partnerAnswer;
 
     const handleCardClick = () => {
         if (!myAnswer && !expanded) {
@@ -42,16 +86,17 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     const handleSubmit = () => {
         if (!draft.trim()) return;
         const answer = draft.trim();
-        setEntry(prev => prev ? ({
-            ...prev,
-            answers: {
-                ...prev.answers,
-                [profile.myName]: answer,
-            },
-        }) : prev);
-        StorageService.submitQuestionAnswer(answer);
+        const justRevealed = StorageService.submitQuestionAnswer(answer);
+        // Re-read the canonical entry so revealedAt (set by storage when both
+        // answers exist) is reflected — the reveal render gates on it.
+        const updated = StorageService.getTodayQuestion(profile.myName, profile.partnerName);
+        setEntry(updated);
         setExpanded(false);
         setDraft('');
+        // Fire-and-forget partner push ONCE, only on the reveal-completing submit.
+        if (justRevealed) {
+            void NotificationsService.triggerPartnerNudge('daily_answer', profile.myName);
+        }
         onUpdate();
     };
 
@@ -63,6 +108,7 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
 
     return (
         <motion.div
+            ref={cardRef}
             layout="size"
             onClick={handleCardClick}
             className="w-full rounded-[1.75rem] p-5 mb-5 relative overflow-hidden"
@@ -76,12 +122,30 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
             }}
             transition={{ layout: { type: 'spring', stiffness: 400, damping: 32 } }}
         >
+            <HeartbeatParticles ref={particlesRef} />
+
             {/* Header */}
-            <div className="flex items-center gap-1.5 mb-3">
-                <Sparkles size={12} className="text-rose-400" />
-                <span className="text-[10px] uppercase tracking-widest font-bold text-rose-400">
-                    Today's Question
-                </span>
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5">
+                    <Sparkles size={12} className="text-rose-400" />
+                    <span className="text-[10px] uppercase tracking-widest font-bold text-rose-400">
+                        Today's Question
+                    </span>
+                </div>
+                {streak >= 2 && (
+                    <div
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+                        style={{
+                            background: 'rgba(251,146,60,0.10)',
+                            border: '1px solid rgba(251,146,60,0.18)',
+                        }}
+                    >
+                        <Flame size={11} className="text-orange-400" />
+                        <span className="text-[10px] font-bold text-orange-500">
+                            {streak} days in a row
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Question text */}
@@ -91,8 +155,8 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
 
             {/* State content */}
             <AnimatePresence mode="wait">
-                {bothAnswered ? (
-                    /* Both answered — reveal inline */
+                {isRevealed ? (
+                    /* Both answered — reveal inline (gated on revealedAt) */
                     <motion.div
                         key="revealed"
                         initial={{ opacity: 0, y: 8 }}
@@ -101,8 +165,8 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
                         className="space-y-2 mt-1"
                         onClick={e => e.stopPropagation()}
                     >
-                        <AnswerBubble name="You" answer={myAnswer} isMe />
-                        <AnswerBubble name={profile.partnerName} answer={partnerAnswer} isMe={false} />
+                        <AnswerBubble name="You" answer={myAnswer ?? ''} isMe />
+                        <AnswerBubble name={profile.partnerName} answer={partnerAnswer ?? ''} isMe={false} />
                     </motion.div>
 
                 ) : myAnswer ? (

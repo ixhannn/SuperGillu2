@@ -55,8 +55,11 @@ Deno.serve(async (req: Request) => {
   // ── Notification type ────────────────────────────────────────────────────
   // 'pulse_check' (default) — nudge the partner if they haven't checked in.
   // 'heartbeat'             — partner tapped the heartbeat button.
+  // 'daily_answer'          — partner answered today's question (always sends).
   const reqBody = await req.json().catch(() => ({})) as { type?: string; senderName?: string };
-  const type = reqBody.type === 'heartbeat' ? 'heartbeat' : 'pulse_check';
+  const type = reqBody.type === 'heartbeat' || reqBody.type === 'daily_answer'
+    ? reqBody.type
+    : 'pulse_check';
   const senderName = (reqBody.senderName || '').toString().trim().slice(0, 40);
 
   // Service-role client for privileged reads
@@ -120,6 +123,13 @@ Deno.serve(async (req: Request) => {
     title = `\u{1F497} Heartbeat from ${who}`;
     body  = '\u{1F49E} Tap to send one back';
     view  = 'home'; // heartbeat button lives on Home
+  } else if (type === 'daily_answer') {
+    // Partner answered today's question — always sends (no pulse-check guard).
+    title = senderName
+      ? `${senderName} answered today's question`
+      : "Your partner answered today's question";
+    body  = 'Tap to see what you both said';
+    view  = 'home';
   } else {
     title = '\u{1F495} Your partner is thinking of you';
     body  = "They just checked in \u2014 take a moment to share how you're feeling too.";

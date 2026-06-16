@@ -2299,20 +2299,28 @@ export const StorageService = {
         return entry;
     },
 
-    submitQuestionAnswer: (answer: string): void => {
+    // Returns `justRevealed` — true ONLY on the call that FIRST transitions the
+    // entry to revealed (this is the call that sets revealedAt because both
+    // answers now exist). Lets the caller fire a one-shot "partner answered" push.
+    submitQuestionAnswer: (answer: string): boolean => {
         const profile = StorageService.getCoupleProfile();
         const today = new Date().toISOString().split('T')[0];
         const questions = profile.questions ?? [];
         const idx = questions.findIndex(q => q.date === today);
-        if (idx === -1) return;
+        if (idx === -1) return false;
 
+        let justRevealed = false;
         const updated = questions.map((q, i) => {
             if (i !== idx) return q;
             const answers = { ...q.answers, [profile.myName]: answer };
             const bothAnswered = answers[profile.myName] && answers[profile.partnerName];
-            return { ...q, answers, revealedAt: bothAnswered ? new Date().toISOString() : q.revealedAt };
+            // `justRevealed` only when this call is the one that sets revealedAt:
+            // both answers now exist AND the entry was not already revealed.
+            justRevealed = Boolean(bothAnswered) && !q.revealedAt;
+            return { ...q, answers, revealedAt: bothAnswered ? (q.revealedAt ?? new Date().toISOString()) : q.revealedAt };
         });
         StorageService.saveCoupleProfile({ ...profile, questions: updated });
+        return justRevealed;
     },
 
     getMoodEntries: (): MoodEntry[] => {

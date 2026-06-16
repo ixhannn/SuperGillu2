@@ -794,7 +794,7 @@ export interface AmbientTrack {
 
 export interface NotificationSchedule {
   id: string;
-  kind: 'daily-clip' | 'film-ready' | 'recap-sunday' | 'cycle-3-days';
+  kind: 'daily-clip' | 'film-ready' | 'recap-sunday' | 'cycle-3-days' | 'daily-ritual';
   fireAt: string; // ISO
   title: string;
   body: string;
@@ -808,6 +808,8 @@ export interface NotificationPrefs {
   recapTime: string; // "19:00" Sundays
   filmReadyEnabled: boolean;
   partnerNudgeEnabled: boolean;
+  ritualEnabled: boolean;
+  ritualTime: string; // "20:00" — daily two-person question reminder
 }
 
 // ── Weekly Recap (editorial) ────────────────────────────────────────

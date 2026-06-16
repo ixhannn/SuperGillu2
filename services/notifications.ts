@@ -86,6 +86,7 @@ const KIND_VIEWS: Record<NotificationSchedule['kind'], string> = {
   'recap-sunday': 'weekly-recap',
   'film-ready': 'daily-video',
   'cycle-3-days': 'us',
+  'daily-ritual': 'home',
 };
 
 type NativePermissionState = 'granted' | 'denied' | 'prompt';
@@ -129,6 +130,8 @@ const DEFAULT_PREFS: NotificationPrefs = {
   recapTime: '19:00',
   filmReadyEnabled: true,
   partnerNudgeEnabled: true,
+  ritualEnabled: true,
+  ritualTime: '20:00',
 };
 
 let pushRegistrationListenerBound = false;
@@ -271,6 +274,17 @@ export const NotificationsService = {
         fireAt: when.toISOString(),
         title: 'Your week, in a page',
         body: 'Open your weekly recap — it only takes a minute.',
+      });
+    }
+
+    if (prefs.ritualEnabled) {
+      const when = nextOccurrenceOf(prefs.ritualTime);
+      queued.push({
+        id: `daily-ritual-${when.toISOString().slice(0, 10)}`,
+        kind: 'daily-ritual',
+        fireAt: when.toISOString(),
+        title: 'Today’s question is waiting',
+        body: 'Answer together — they won’t see yours until they answer too.',
       });
     }
 
@@ -432,8 +446,10 @@ export const NotificationsService = {
   /**
    * Trigger the server-side partner nudge after recording a pulse check.
    * Fire-and-forget — does not block the recording flow.
+   * Forwards `{ type, senderName }` so the edge function can tailor the
+   * notification and (for non-pulse types) the partner sees who it's from.
    */
-  async triggerPartnerNudge(): Promise<void> {
+  async triggerPartnerNudge(type = 'pulse_check', senderName = ''): Promise<void> {
     if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
     try {
       const token = await SupabaseService.getAccessToken();
@@ -447,7 +463,7 @@ export const NotificationsService = {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: '{}',
+        body: JSON.stringify({ type, senderName }),
       });
     } catch { /* fire-and-forget */ }
   },
