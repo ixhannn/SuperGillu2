@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
-import { Heart, ArrowRight, Calendar, UserPlus, Sparkles } from 'lucide-react';
+import { Heart, ArrowRight, Calendar, UserPlus, Sparkles, MessageCircleHeart, EyeOff, BookHeart } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { Haptics } from '../services/haptics';
 import { dateInputValueToStoredDate, daysTogetherFrom, parseStoredDateOnly, todayInputValue } from '../shared/dateOnly.js';
@@ -16,7 +16,7 @@ interface OnboardingProps {
     onPairNow?: (myName: string, partnerName: string) => void;
 }
 
-type Step = 'welcome' | 'myName' | 'anniversary' | 'done';
+type Step = 'welcome' | 'how-it-works' | 'myName' | 'anniversary' | 'first-question' | 'done';
 
 // ─── Floating particle system ─────────────────────────────────────────────────
 
@@ -278,9 +278,9 @@ function slide(dir: number) {
 
 // ─── Progress pills ───────────────────────────────────────────────────────────
 
-const ProgressPills: React.FC<{ current: number }> = ({ current }) => (
+const ProgressPills: React.FC<{ current: number; count?: number }> = ({ current, count = 3 }) => (
     <div className="flex gap-2 justify-center">
-        {[0, 1].map((i) => (
+        {Array.from({ length: count }, (_, i) => i).map((i) => (
             <motion.div
                 key={i}
                 animate={{ width: i === current ? 24 : 7, opacity: i <= current ? 1 : 0.28 }}
@@ -332,8 +332,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     const [dir, setDir] = useState(1);
     const [myName, setMyName] = useState('');
     const [anniversary, setAnniversary] = useState('');
+    const [firstAnswer, setFirstAnswer] = useState('');
     const [showBurst, setShowBurst] = useState(false);
     const nameRef = useRef<HTMLInputElement>(null);
+    const answerRef = useRef<HTMLTextAreaElement>(null);
+
+    // Today's ritual question — resolved lazily when the user reaches the
+    // first-question step (and only then), so the question text matches exactly
+    // what getTodayQuestion will key the persisted answer to at finalize time.
+    const [firstQuestion, setFirstQuestion] = useState('');
 
     const daysApart = useMemo(() => {
         if (!anniversary) return 0;
@@ -341,7 +348,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         return parsedAnniversary ? daysTogetherFrom(parsedAnniversary) : 0;
     }, [anniversary]);
 
-    const dotIndex = step === 'myName' ? 0 : step === 'anniversary' ? 1 : -1;
+    const dotIndex = step === 'myName' ? 0 : step === 'anniversary' ? 1 : step === 'first-question' ? 2 : -1;
 
     const advance = async (next: Step) => {
         await Haptics.heartbeat();
@@ -349,21 +356,57 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         setStep(next);
     };
 
-    // Persist the collected name + anniversary and mark onboarding complete.
-    // Shared by both the "Enter your space" (skip) and "Invite your partner"
-    // (pair now) paths so the two finalize IDENTICALLY — the only difference
-    // is where the user lands afterward. Must run BEFORE any navigation so the
-    // user is never bounced back to onboarding and never loses their input.
+    // Persist the collected name + anniversary, optionally the user's first
+    // ritual answer, and mark onboarding complete. Shared by both the "I'll do
+    // it later" (skip) and "Invite your partner" (pair now) paths so the two
+    // finalize IDENTICALLY — the only difference is where the user lands
+    // afterward. Must run BEFORE any navigation so the user is never bounced
+    // back to onboarding and never loses their input.
+    //
+    // ORDER IS LOAD-BEARING:
+    //   1. saveCoupleProfile — writes myName + anniversary. submitQuestionAnswer
+    //      keys the answer by profile.myName, so the name MUST be persisted first.
+    //   2. If a first answer was entered: getTodayQuestion(myName, '') to ensure
+    //      today's QuestionEntry exists in the profile (submitQuestionAnswer is a
+    //      no-op returning false when the entry is missing), THEN
+    //      submitQuestionAnswer(answer) to record it under profile.myName.
+    //   3. markOnboardingComplete.
     const finalizeOnboarding = () => {
         const profile = StorageService.getCoupleProfile();
+        const trimmedName = myName.trim();
+
+        // (1) Profile first — establishes profile.myName for the answer key.
         StorageService.saveCoupleProfile({
             ...profile,
-            myName: myName.trim(),
+            myName: trimmedName,
             anniversaryDate: anniversary
                 ? dateInputValueToStoredDate(anniversary)
                 : profile.anniversaryDate,
         });
+
+        // (2) Persist the first answer ONLY if one was typed, and only after the
+        // profile (and thus today's question entry) exists.
+        const trimmedAnswer = firstAnswer.trim();
+        if (trimmedAnswer) {
+            // Initialize today's QuestionEntry so submitQuestionAnswer can find it.
+            StorageService.getTodayQuestion(trimmedName, '');
+            StorageService.submitQuestionAnswer(trimmedAnswer);
+        }
+
+        // (3) Mark complete last.
         StorageService.markOnboardingComplete();
+    };
+
+    // Resolve today's ritual question text when the user reaches the first
+    // question step. getTodayQuestion is deterministic per date and idempotent
+    // (it returns the existing entry if already created), so calling it here
+    // surfaces exactly the question whose answer finalize will persist.
+    const enterFirstQuestion = async () => {
+        if (!firstQuestion) {
+            const entry = StorageService.getTodayQuestion(myName.trim(), '');
+            setFirstQuestion(entry.question);
+        }
+        await advance('first-question');
     };
 
     const handleComplete = async () => {
@@ -388,6 +431,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
 
     useEffect(() => {
         if (step === 'myName') setTimeout(() => nameRef.current?.focus(), 400);
+        if (step === 'first-question') setTimeout(() => answerRef.current?.focus(), 450);
     }, [step]);
 
     return (
@@ -406,7 +450,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
                     >
-                        <ProgressPills current={dotIndex} />
+                        <ProgressPills current={dotIndex} count={3} />
                     </motion.div>
                 )}
             </div>
@@ -507,7 +551,109 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.62 }}
                             >
-                                <PrimaryButton label="Begin your story" glow onClick={() => advance('myName')} />
+                                <PrimaryButton label="Begin your story" glow onClick={() => advance('how-it-works')} />
+                            </motion.div>
+                        </motion.div>
+                    )}
+
+                    {/* ══════════════════════════════════════════════════════
+                        HOW IT WORKS — the daily ritual explainer
+                    ═══════════════════════════════════════════════════════ */}
+                    {step === 'how-it-works' && (
+                        <motion.div key="how-it-works" {...slide(dir)} className="w-full py-6">
+                            <motion.p
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.06 }}
+                                className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-3"
+                                style={{ color: 'var(--color-text-secondary)' }}
+                            >
+                                How Lior works
+                            </motion.p>
+
+                            <motion.h2
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1, type: 'spring' as const, damping: 24 }}
+                                className="font-serif text-[1.85rem] text-center leading-snug mb-2"
+                                style={{ color: 'var(--color-text-primary)' }}
+                            >
+                                One question.<br />
+                                <span style={{ color: 'var(--color-nav-active)' }}>Every day.</span>
+                            </motion.h2>
+
+                            <motion.p
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.18 }}
+                                className="text-[14px] text-center mb-7 px-2"
+                                style={{ color: 'var(--color-text-secondary)' }}
+                            >
+                                A tiny ritual that quietly grows into your story.
+                            </motion.p>
+
+                            {/* The three beats of the ritual */}
+                            <div className="flex flex-col gap-3 mb-8">
+                                {[
+                                    {
+                                        icon: <MessageCircleHeart size={20} style={{ color: 'var(--color-nav-active)' }} />,
+                                        title: 'A question a day',
+                                        body: 'Each morning, one gentle prompt — just for the two of you.',
+                                    },
+                                    {
+                                        icon: <EyeOff size={20} style={{ color: 'var(--color-nav-active)' }} />,
+                                        title: 'Answer privately',
+                                        body: "You each answer on your own. Neither can peek at the other's.",
+                                    },
+                                    {
+                                        icon: <Heart size={20} fill="currentColor" style={{ color: 'var(--color-nav-active)' }} />,
+                                        title: 'Reveal together',
+                                        body: 'Once you’ve both answered, it opens — and only then.',
+                                    },
+                                    {
+                                        icon: <BookHeart size={20} style={{ color: 'var(--color-nav-active)' }} />,
+                                        title: 'It becomes your story',
+                                        body: 'Day by day, your answers gather into something only you share.',
+                                    },
+                                ].map((beat, i) => (
+                                    <motion.div
+                                        key={beat.title}
+                                        initial={{ opacity: 0, x: -16 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: 0.24 + i * 0.1, type: 'spring' as const, damping: 26, stiffness: 300 }}
+                                        className="flex items-start gap-3.5 px-4 py-3.5 rounded-2xl text-left"
+                                        style={{
+                                            background: 'rgba(255,255,255,0.50)',
+                                            backdropFilter: 'blur(16px)',
+                                            WebkitBackdropFilter: 'blur(16px)',
+                                            border: '1px solid rgba(255,255,255,0.78)',
+                                            boxShadow: '0 4px 18px rgba(232,160,176,0.10)',
+                                        }}
+                                    >
+                                        <div
+                                            className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
+                                            style={{ background: 'rgba(196,104,126,0.12)' }}
+                                        >
+                                            {beat.icon}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[14px] font-bold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>
+                                                {beat.title}
+                                            </p>
+                                            <p className="text-[12.5px] leading-snug" style={{ color: 'var(--color-text-secondary)' }}>
+                                                {beat.body}
+                                            </p>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </div>
+
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.7 }}
+                            >
+                                <PrimaryButton label="Let’s set you up" glow onClick={() => advance('myName')} />
                             </motion.div>
                         </motion.div>
                     )}
@@ -524,7 +670,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-8"
                                 style={{ color: 'var(--color-text-secondary)' }}
                             >
-                                Step 1 of 2
+                                Step 1 of 3
                             </motion.p>
 
                             {/* Live name preview */}
@@ -611,7 +757,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-6"
                                 style={{ color: 'var(--color-text-secondary)' }}
                             >
-                                Step 2 of 2
+                                Step 2 of 3
                             </motion.p>
 
                             <motion.h2
@@ -699,14 +845,135 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 <PrimaryButton
                                     label={anniversary ? 'Save our date' : 'Set anniversary'}
                                     disabled={!anniversary}
-                                    onClick={() => anniversary && advance('done')}
+                                    onClick={() => anniversary && enterFirstQuestion()}
                                     icon={<Heart size={17} fill="currentColor" />}
                                 />
                             </motion.div>
 
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.36 }}>
                                 <button
-                                    onClick={() => advance('done')}
+                                    onClick={() => enterFirstQuestion()}
+                                    className="w-full py-3 text-[14px] font-medium"
+                                    style={{ color: 'var(--color-text-secondary)', background: 'none', border: 'none' }}
+                                >
+                                    Skip for now
+                                </button>
+                            </motion.div>
+                        </motion.div>
+                    )}
+
+                    {/* ══════════════════════════════════════════════════════
+                        FIRST QUESTION — answer today's actual ritual prompt
+                    ═══════════════════════════════════════════════════════ */}
+                    {step === 'first-question' && (
+                        <motion.div key="first-question" {...slide(dir)} className="w-full py-6">
+                            <motion.p
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.06 }}
+                                className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-3"
+                                style={{ color: 'var(--color-text-secondary)' }}
+                            >
+                                Step 3 of 3
+                            </motion.p>
+
+                            <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 }}
+                                className="flex items-center justify-center gap-1.5 mb-3"
+                            >
+                                <Sparkles size={13} style={{ color: 'var(--color-nav-active)' }} />
+                                <span className="text-[11px] uppercase tracking-widest font-bold" style={{ color: 'var(--color-nav-active)' }}>
+                                    Today's Question
+                                </span>
+                            </motion.div>
+
+                            {/* The actual ritual question for today */}
+                            <motion.h2
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.14, type: 'spring' as const, damping: 24 }}
+                                className="font-serif text-[1.5rem] italic text-center leading-snug mb-5 px-1"
+                                style={{ color: 'var(--color-text-primary)' }}
+                            >
+                                “{firstQuestion}”
+                            </motion.h2>
+
+                            {/* Answer input */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.2 }}
+                                className="mb-3"
+                                style={{
+                                    background: 'rgba(255,255,255,0.62)',
+                                    backdropFilter: 'blur(20px)',
+                                    WebkitBackdropFilter: 'blur(20px)',
+                                    border: '1.5px solid rgba(255,255,255,0.88)',
+                                    boxShadow: '0 8px 32px rgba(232,160,176,0.15), inset 0 1px 0 rgba(255,255,255,0.95)',
+                                    borderRadius: 20,
+                                    padding: '6px 8px',
+                                }}
+                            >
+                                <textarea
+                                    ref={answerRef}
+                                    value={firstAnswer}
+                                    onChange={(e) => {
+                                        setFirstAnswer(e.target.value);
+                                        if (e.target.value.length > 0) Haptics.select();
+                                    }}
+                                    placeholder="Write your answer…"
+                                    rows={3}
+                                    maxLength={300}
+                                    inputMode="text"
+                                    autoCapitalize="sentences"
+                                    autoCorrect="on"
+                                    spellCheck
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        outline: 'none',
+                                        resize: 'none',
+                                        width: '100%',
+                                        padding: '12px 14px',
+                                        fontSize: 16,
+                                        fontWeight: 500,
+                                        lineHeight: 1.5,
+                                        color: 'var(--color-text-primary)',
+                                        caretColor: 'var(--color-nav-active)',
+                                    }}
+                                />
+                            </motion.div>
+
+                            {/* The pull: their answer waits for the partner */}
+                            <motion.p
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.28 }}
+                                className="text-[12.5px] text-center mb-6 px-3 leading-snug"
+                                style={{ color: 'var(--color-text-secondary)' }}
+                            >
+                                Saved just for you — it stays hidden until your partner answers too. The perfect reason to invite them.
+                            </motion.p>
+
+                            <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.32 }}
+                                className="mb-2"
+                            >
+                                <PrimaryButton
+                                    label="Save & continue"
+                                    disabled={!firstAnswer.trim()}
+                                    onClick={() => firstAnswer.trim() && advance('done')}
+                                    icon={<Heart size={17} fill="currentColor" />}
+                                />
+                            </motion.div>
+
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
+                                <button
+                                    onClick={() => { setFirstAnswer(''); advance('done'); }}
                                     className="w-full py-3 text-[14px] font-medium"
                                     style={{ color: 'var(--color-text-secondary)', background: 'none', border: 'none' }}
                                 >
