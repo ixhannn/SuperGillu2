@@ -447,6 +447,12 @@ const App = () => {
     // (iOS sheet), never a forward push.
     else if (prev === 'add-memory') dir = 'modal-close';
     else if (ROOT_TABS.includes(view) && ROOT_TABS.includes(prev)) dir = 'tab';
+    // Returning from a pushed detail/sub-screen to a root tab is a CLOSE, not a
+    // forward push — animate it as a pop (the detail slides off to the right to
+    // reveal the tab beneath). This makes back/close affordances that call
+    // setView('home') instead of goBack() still read as "going back" rather
+    // than a wrong-way slam-in from the right. Opening (root -> detail) stays push.
+    else if (ROOT_TABS.includes(view) && !ROOT_TABS.includes(prev)) dir = 'pop';
     else dir = 'push';
 
     const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
