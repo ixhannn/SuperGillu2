@@ -226,6 +226,35 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     };
   }, [refreshPairingStatus, stopPartnerPoll]);
 
+  // ── Auto-claim a pending invite captured from a deep link ───────────────────
+  // When the user arrived here from a tappable invite link, the code was parked
+  // in sessionStorage (see App.tsx). Pre-fill the manual field and auto-claim
+  // once the pairing hub has settled into the unlinked state. handleClaim clears
+  // the pending code on success; on failure the code is dropped too so a stale /
+  // bad link doesn't re-fire on every mount, leaving the manual field as a hint.
+  const autoClaimedRef = useRef(false);
+  useEffect(() => {
+    if (autoClaimedRef.current) return;
+    if (pairingUi.phase !== 'unlinked') return;
+    const pending = StorageService.getPendingInviteCode();
+    if (!pending) return;
+    autoClaimedRef.current = true;
+    const code = normalizeCode(pending);
+    setManualCode(code);
+    setPairTab('scan');
+    StorageService.clearPendingInviteCode();
+    if (code.length === 8 && !claimingRef.current) {
+      claimingRef.current = true;
+      void (async () => {
+        try {
+          await handleClaim(code);
+        } finally {
+          claimingRef.current = false;
+        }
+      })();
+    }
+  }, [pairingUi.phase]);
+
   // ── Poll for partner while QR is showing (inviter side) ─────────────────────
   useEffect(() => {
     if (linkedPartner || pairTab !== 'show') {

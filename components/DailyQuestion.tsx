@@ -10,6 +10,7 @@ import { Audio } from '../services/audio';
 import { toast } from '../utils/toast';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from './HeartbeatParticles';
 import { PrimingModal } from './PrimingModal';
+import { useRelationship } from '../hooks/useRelationship';
 
 // Asked AT MOST once, ever: the first mutual reveal is the highest-consent
 // moment to request notification permission (vs a cold prompt at startup).
@@ -37,6 +38,10 @@ interface DailyQuestionProps {
 }
 
 export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate }) => {
+    // Authoritative "do I actually have a partner?" — the same signal Home uses.
+    // Never trust profile.partnerName, which falls back to a phantom "Partner"
+    // when unlinked. Gates the post-answer waiting copy below.
+    const { isLinked } = useRelationship();
     const [entry, setEntry] = useState<QuestionEntry | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [draft, setDraft] = useState('');
@@ -232,19 +237,37 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
                     </motion.div>
 
                 ) : myAnswer ? (
-                    /* Answered — waiting for partner */
+                    /* Answered. Paired: waiting for the partner's answer. Solo
+                       (no real partner yet): reframe as preparation — answer is
+                       saved and will be shared once connected. No phantom name. */
                     <motion.div
                         key="waiting"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl"
+                        className={isLinked ? 'flex items-center gap-2.5 px-3 py-2.5 rounded-2xl' : 'px-3 py-2.5 rounded-2xl'}
                         style={{ background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.04)' }}
                     >
-                        <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#fb923c' }} />
-                        <span className="text-sm text-gray-400 italic">
-                            Waiting for {profile.partnerName} to answer...
-                        </span>
+                        {isLinked ? (
+                            <>
+                                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#fb923c' }} />
+                                <span className="text-sm text-gray-400 italic">
+                                    Waiting for {profile.partnerName} to answer...
+                                </span>
+                            </>
+                        ) : (
+                            <div className="flex items-start gap-2.5">
+                                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5" style={{ background: '#fb923c' }} />
+                                <div className="flex flex-col gap-0.5">
+                                    <span className="text-sm text-gray-500 italic">
+                                        Saved — your partner will see this once you're connected
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                        Your answer is saved and waiting to be shared.
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </motion.div>
 
                 ) : expanded ? (

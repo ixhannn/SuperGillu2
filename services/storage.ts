@@ -445,6 +445,9 @@ const ROOM_WALLPAPERS = new Set(['plain', 'stripes', 'polka', 'hearts', 'stars',
 const ROOM_FLOORS = new Set(['hardwood', 'carpet', 'tiles', 'cloud', 'grass', 'marble']);
 const ROOM_AMBIENTS = new Set(['warm', 'cool', 'rainbow']);
 const COUPLE_ROOM_KEY = 'lior_couple_room_v2';
+// sessionStorage key for a pair-invite code captured from a deep link before
+// the receiver has signed in. Consumed on the next authenticated session.
+const PENDING_INVITE_CODE_KEY = 'lior_pending_invite_code';
 const CONTENT_COLLECTION_STORES: Array<{ storageKey: string; cacheKey: keyof typeof DATA_CACHE }> = [
     { storageKey: CACHE_KEYS.MEMORIES, cacheKey: 'memories' },
     { storageKey: CACHE_KEYS.NOTES, cacheKey: 'notes' },
@@ -2047,6 +2050,39 @@ export const StorageService = {
     clearOnboardingCompletion: () => {
         clearAccountScopedLocalStorageValue(ACCOUNT_LOCAL_KEYS.ONBOARDING_COMPLETE);
         clearAccountScopedLocalStorageValue(ACCOUNT_LOCAL_KEYS.MANUAL_OVERRIDE);
+    },
+
+    // ── Pending pair-invite code ─────────────────────────────────────────────
+    // A pairing-invite code captured from a deep link (com.lior.app://claim or
+    // a web /claim?code=… link) before the receiver is signed in. Held in
+    // sessionStorage — NOT account-scoped — because the code belongs to the
+    // tab/launch, not yet to any authenticated account, and must survive the
+    // sign-up/sign-in round trip without persisting across app restarts.
+    getPendingInviteCode: (): string | null => {
+        try {
+            const value = sessionStorage.getItem(PENDING_INVITE_CODE_KEY);
+            return value && value.trim() ? value.trim() : null;
+        } catch {
+            return null;
+        }
+    },
+
+    setPendingInviteCode: (code: string) => {
+        const clean = (code || '').trim();
+        if (!clean) return;
+        try {
+            sessionStorage.setItem(PENDING_INVITE_CODE_KEY, clean);
+        } catch {
+            // Private-mode / quota failures must never break the deep-link flow.
+        }
+    },
+
+    clearPendingInviteCode: () => {
+        try {
+            sessionStorage.removeItem(PENDING_INVITE_CODE_KEY);
+        } catch {
+            // Ignore — best-effort cleanup.
+        }
     },
 
     getSeenReleaseVersion: (): string | null => getAccountScopedLocalStorageValue(CACHE_KEYS.SEEN_RELEASE_VERSION),
