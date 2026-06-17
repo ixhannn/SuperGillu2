@@ -564,7 +564,7 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                 }
             />
 
-            <div className="view-container space-y-6 pb-24 pt-2">
+            <div className="space-y-6 pb-24 pt-2">
 
                 {/* ── PROFILE HEADER ─────────────────────────────────────── */}
                 <div className="px-5">

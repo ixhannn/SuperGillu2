@@ -51,7 +51,6 @@ import { AppLaunchOverlay } from './components/AppLaunchOverlay';
 import { DevPanel } from './components/DevPanel';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
-import { InternalAdminService } from './services/internalAdmin';
 import { scheduleIdleTask } from './utils/scheduler';
 import { toast } from './utils/toast';
 import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
@@ -1095,14 +1094,6 @@ const App = () => {
           label: 'Open storage console',
           action: () => navigateTo('storage-console'),
         },
-        {
-          label: InternalAdminService.isOverrideEnabled() ? 'Disable admin override' : 'Enable admin override',
-          action: () => {
-            const next = !InternalAdminService.isOverrideEnabled();
-            InternalAdminService.setOverride(next);
-            DiagnosticsService.recordInfo('admin', `Internal admin override ${next ? 'enabled' : 'disabled'}`);
-          },
-        },
       ]} />}
     </>
   );
@@ -1139,7 +1130,7 @@ const AuraSignalReceiver = () => {
         Audio.play('heartbeat');
 
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-           new Notification('Lior - New Aura', {
+           new Notification('Lior - New Pulse', {
                body: detail.payload.title, 
                icon: '/notification-icon.png',
                silent: false

@@ -1275,7 +1275,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  transition: all 0.3s;
+  transition: width 0.3s var(--spring-snappy), background-color 0.3s ease, opacity 0.3s ease;
 }
 
 .recap-carousel__dot--active {

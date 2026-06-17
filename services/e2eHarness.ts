@@ -20,7 +20,6 @@ const E2E_VIEWS: ViewState[] = [
   'mood-calendar',
   'aura-rewind',
   'aura-signal',
-  'presence-room',
   'bonsai-bloom',
   'us',
   'our-room',

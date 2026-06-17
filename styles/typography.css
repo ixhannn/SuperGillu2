@@ -93,7 +93,7 @@ b {
 
 .tracking-tight,
 .tracking-tighter {
-  letter-spacing: 0 !important;
+  letter-spacing: 0;
 }
 
 .section-label,

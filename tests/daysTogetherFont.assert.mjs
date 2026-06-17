@@ -3,10 +3,15 @@ import { readFileSync } from 'node:fs';
 
 const homeSource = readFileSync(new URL('../views/Home.tsx', import.meta.url), 'utf8');
 
+// The big day-counter previously referenced "Outfit"/"Playfair Display", which
+// the consolidated typography system (see typographySystem.assert.mjs) forbids
+// loading — so it silently fell back to Georgia. It now uses the loaded display
+// font with tabular figures so the live counter renders in-system and never
+// jitters as digits change width.
 assert.match(
   homeSource,
-  /const DAYS_TOGETHER_LEGACY_FONT_STYLE[\s\S]*"Outfit", "Playfair Display", Georgia, serif/,
-  'Expected the Days Together card to keep the previous local font stack.',
+  /const DAYS_TOGETHER_LEGACY_FONT_STYLE[\s\S]*var\(--font-display\)[\s\S]*tabular-nums/,
+  'Expected the Days Together card to use the consolidated display font with tabular figures.',
 );
 
 assert.match(

@@ -215,10 +215,16 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
  * Scoped to `.home-reveal` ONLY — never `.home-reveal-item`, whose grid cells
  * lay out horizontally where a fixed intrinsic height would distort the row.
  * ──────────────────────────────────────────────────────────────────────── */
-.home-reveal {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
-}
+/* content-visibility:auto + contain-intrinsic-size were REMOVED here
+   (2026-06-16). content-visibility skips an element's rendering while it is
+   off-screen OR the tab is hidden, which RESETS the `lior-home-reveal`
+   opacity:0 -> 1 entrance animation below: scrolling the hero out the top and
+   back, or backgrounding and reopening the app, replayed the fade — so the
+   day-counter "randomly went transparent". An entrance animation that owns the
+   resting opacity must NOT share an element with content-visibility:auto. To
+   re-tame off-screen paint later, put content-visibility on an INNER wrapper
+   that carries no entrance animation. (The comment above describes the old,
+   removed optimization.) */
 
 .home-reveal-fadeScale {
   transform: translate3d(0, 12px, 0) scale(0.965);
@@ -299,44 +305,46 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
    Native View Transitions API styling.
    The browser captures snapshots of ::view-transition-old(root) and
    ::view-transition-new(root) on the compositor thread. These keyframes
-   re-create our iOS-style slide + scale per-direction without ever cloning
-   the DOM into a fixed layer.
+   re-create our iOS-style slide per-direction without ever cloning the DOM
+   into a fixed layer. The incoming (*-in) keyframes use translate + opacity
+   ONLY: scaling a ::view-transition snapshot resamples the bitmap and makes
+   the whole incoming view blurry until the transition ends (fixed 2026-06-16).
    ────────────────────────────────────────────────────────────────────────── */
 @keyframes lior-vt-tab-out {
   from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
   to   { opacity: 0; transform: translate3d(0, -8px, 0) scale(1.012); }
 }
 @keyframes lior-vt-tab-in {
-  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.988); }
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
   58%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes lior-vt-push-out {
   from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
   to   { opacity: 0.22; transform: translate3d(-10vw, 0, 0) scale(0.982); }
 }
 @keyframes lior-vt-push-in {
-  from { opacity: 0; transform: translate3d(24vw, 0, 0) scale(0.982); }
+  from { opacity: 0; transform: translate3d(24vw, 0, 0); }
   42%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes lior-vt-pop-out {
   from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
   to   { opacity: 0.18; transform: translate3d(24vw, 0, 0) scale(0.982); }
 }
 @keyframes lior-vt-pop-in {
-  from { opacity: 0; transform: translate3d(-10vw, 0, 0) scale(0.982); }
+  from { opacity: 0; transform: translate3d(-10vw, 0, 0); }
   42%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes lior-vt-modal-out {
   from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
   to   { opacity: 0.62; transform: translate3d(0, -10px, 0) scale(0.982); }
 }
 @keyframes lior-vt-modal-in {
-  from { opacity: 0; transform: translate3d(0, 28px, 0) scale(0.982); }
+  from { opacity: 0; transform: translate3d(0, 28px, 0); }
   50%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 /* Sheet dismissal — the inverse of modal: the composer slides back DOWN
    while the screen beneath settles forward in depth (iOS sheet stack). */
@@ -345,9 +353,9 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
   to   { opacity: 0; transform: translate3d(0, 34px, 0) scale(0.984); }
 }
 @keyframes lior-vt-modal-close-in {
-  from { opacity: 0.62; transform: translate3d(0, -10px, 0) scale(0.982); }
+  from { opacity: 0.62; transform: translate3d(0, -10px, 0); }
   50%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 ::view-transition-group(root) {

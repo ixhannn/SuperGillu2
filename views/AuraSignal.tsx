@@ -183,7 +183,7 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
             </AnimatePresence>
 
             <div className={`relative z-10 p-6 flex flex-col h-full min-h-screen transition-opacity duration-1000 ${sent ? 'opacity-0 delay-500' : 'opacity-100'}`}>
-                <ViewHeader title="Aura Signal" onBack={() => setView('home')} variant="transparent" />
+                <ViewHeader title="Pulse" onBack={() => setView('home')} variant="transparent" />
 
                 <div className="text-center mt-2 mb-8 relative z-20">
                     <h2 className="font-serif text-4xl font-extrabold mb-2 drop-shadow-sm" style={{ color: 'var(--color-text-primary)' }}>

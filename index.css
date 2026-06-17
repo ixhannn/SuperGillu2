@@ -11,7 +11,7 @@
   --color-pink-glow: #ffe4ea;
   --color-pink-deep: #e8a0b0;
   --color-text-primary: #2d1f25;
-  --color-text-secondary: #9b7b84;
+  --color-text-secondary: #7c626a;
   --color-nav-active: #c4687e;
   --color-nav-inactive: #c4b5ba; /* The shadow system — ultra soft, expansive, cinematic */
   --shadow-xs: 0 4px 12px rgba(232, 160, 176, 0.05);
@@ -1693,7 +1693,6 @@ canvas.fixed,
 .spring-press:active {
   transform: scale(0.955) translateY(2px) !important;
   transition: transform 0.06s cubic-bezier(0.36, 0.07, 0.19, 0.97);
-  filter: brightness(0.94) saturate(1.06) !important;
   box-shadow: var(--shadow-xs) !important;
 } /* ── INK RIPPLE — material-like contact burst on tap ────────────────────── */
 .ripple-host {
