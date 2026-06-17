@@ -337,7 +337,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     const dotIndex = step === 'myName' ? 0 : step === 'anniversary' ? 1 : -1;
 
     const advance = async (next: Step) => {
-        await Haptics.heartbeat();
+        void Haptics.tap(); // step transition — a light tap, not the romantic heartbeat
         setDir(1);
         setStep(next);
     };
@@ -530,10 +530,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 <input
                                     ref={nameRef}
                                     value={myName}
-                                    onChange={(e) => {
-                                        setMyName(e.target.value);
-                                        if (e.target.value.length > 0) Haptics.select();
-                                    }}
+                                    onChange={(e) => setMyName(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === 'Enter' && myName.trim()) advance('anniversary'); }}
                                     autoCapitalize="words"
                                     autoCorrect="off"
@@ -629,10 +626,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 <input
                                     type="date"
                                     value={anniversary}
-                                    onChange={(e) => {
-                                        setAnniversary(e.target.value);
-                                        if (e.target.value) Haptics.success();
-                                    }}
+                                    onChange={(e) => setAnniversary(e.target.value)}
                                     max={todayInputValue()}
                                     style={{
                                         background: 'transparent',

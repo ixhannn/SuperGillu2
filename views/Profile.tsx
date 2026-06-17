@@ -276,8 +276,10 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
         const next = !hapticsOn;
         Haptics.setEnabled(next);
         setHapticsOn(next);
-        if (next) { Haptics.success(); Audio.play('toggleOn'); }
-        else { Audio.play('toggleOff'); }
+        // Confirm with a toggle detent when turning ON (you can't feel one when
+        // turning OFF — haptics are now disabled). success() was too heavy here.
+        if (next) Haptics.toggleOn();
+        Audio.play(next ? 'toggleOn' : 'toggleOff');
     };
 
     const handleToggleAudio = () => {

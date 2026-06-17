@@ -308,18 +308,17 @@ const CeremonyStage: React.FC<CeremonyStageProps> = ({ surprise, onClose }) => {
     const reducedMotion = useReducedMotion();
 
     useEffect(() => {
-        feedback.celebrate();
-    }, []);
-
-    useEffect(() => {
         const handleBack = (e: Event) => { e.preventDefault(); onClose(); };
         window.addEventListener('lior:hardware-back', handleBack);
         return () => window.removeEventListener('lior:hardware-back', handleBack);
     }, [onClose]);
 
     const handleOpen = () => {
-        feedback.tap();
+        // The reveal IS the reward — a subtle escalating milestone co-timed with
+        // the open animation. (Was firing celebrate() on mount, which double-fired
+        // under StrictMode and on every remount.)
         setOpened(true);
+        feedback.milestone();
     };
 
     const sealedOn = new Date(surprise.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });

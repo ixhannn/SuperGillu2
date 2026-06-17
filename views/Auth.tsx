@@ -1613,7 +1613,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                         value={email}
                                         invalid={emailInvalid}
                                         hint={emailInvalid ? 'Email is required.' : null}
-                                        onFocus={() => feedback.tap()}
                                         onChange={(e) => setEmail(e.target.value)}
                                         autoComplete="email"
                                         autoCapitalize="none"
@@ -1626,7 +1625,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                             value={password}
                                             invalid={passwordInvalid}
                                             hint={passwordInvalid ? 'Password is required.' : null}
-                                            onFocus={() => feedback.tap()}
                                             onChange={(e) => setPassword(e.target.value)}
                                             autoComplete={isSignUp ? 'new-password' : 'current-password'}
                                         />

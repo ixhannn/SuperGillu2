@@ -1076,11 +1076,14 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
         completionRef.current = false;
 
         holdTimerRef.current = window.setInterval(() => {
+            const prevProgress = Math.min(100, (tickRef.current * HOLD_TICK_MS / HOLD_DURATION_MS) * 100);
             tickRef.current += 1;
             const progress = Math.min(100, (tickRef.current * HOLD_TICK_MS / HOLD_DURATION_MS) * 100);
             setHoldProgress(progress);
 
-            if ([25, 50, 75].some(m => Math.abs(progress - m) < 1.5 && progress >= m)) feedback.light();
+            // Crossing-based: fire exactly once as the hold passes each milestone
+            // (the old |progress - m| < 1.5 window could double-fire or skip one).
+            if ([25, 50, 75].some(m => prevProgress < m && progress >= m)) feedback.light();
             if (progress >= 100 && !completionRef.current) window.setTimeout(() => completeNurture(), 0);
         }, HOLD_TICK_MS);
     }, [isMyWatered, clearTimers, completeNurture]);

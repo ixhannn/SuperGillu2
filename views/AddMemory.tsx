@@ -757,7 +757,6 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
           {/* TEXTAREA — the heart of the page */}
           <textarea
             value={text}
-            onFocus={() => feedback.tap()}
             onChange={(e) => setText(e.target.value)}
             placeholder="What happened? Who was there? What did it feel like?"
             inputMode="text"

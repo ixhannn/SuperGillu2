@@ -14,8 +14,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Must run before super.onCreate so the bridge knows the plugin.
+        // Must run before super.onCreate so the bridge knows the plugins.
         registerPlugin(ShareTargetPlugin.class);
+        registerPlugin(LiorHapticsPlugin.class);
         super.onCreate(savedInstanceState);
 
         // System share sheet → Lior (cold start delivery).

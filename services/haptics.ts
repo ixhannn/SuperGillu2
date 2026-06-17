@@ -23,6 +23,12 @@
  * The character is featherlight and crisp (think iOS keyboard / Apple Pay), not
  * weighty. Light carries ~90% of interactions; Medium is the heaviest thing felt
  * in normal use; Heavy is reserved for the rare "physical" events only.
+ *
+ * ANDROID NOTE (critical): @capacitor/haptics impact() on Android is a hand-rolled
+ * createWaveform — Light = 50ms @ 43% amplitude (LONGER than Medium @ 43ms), which
+ * reads as a mushy buzz, not a tap. So on Android we bypass impact() entirely and
+ * send short createOneShot pulses via vibrate({duration}) — 12/18/28ms — for a
+ * crisp, subtle tick. iOS keeps the real Taptic Engine styles. See _impactNative().
  *   tap / softTap        → Light    (touch a small light object — the workhorse)
  *   press / dragPickup   → Medium   (engage a deliberate/primary control)
  *   heavy / rigidStop /
@@ -41,6 +47,31 @@
  */
 
 import { Haptics as CapHaptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+import { registerPlugin, Capacitor } from '@capacitor/core';
+
+// ─── Native LiorHaptics plugin (Android) ─────────────────────────────────────
+// A thin custom Capacitor plugin (android/app/.../LiorHapticsPlugin.java) that
+// reaches for OEM-tuned VibrationEffect.Composition / createPredefined primitives
+// — far crisper than @capacitor/haptics' 50ms impact waveform. We prefer it on
+// Android when present and fall back to the stock plugin everywhere else.
+interface LiorNativeHaptics {
+  impact(options: { level: 'tick' | 'light' | 'medium' | 'heavy' }): Promise<void>;
+}
+const NativeHaptics = registerPlugin<LiorNativeHaptics>('LiorHaptics');
+
+let _nativeChecked = false;
+let _nativeAvailable = false;
+const hasNativeHaptics = (): boolean => {
+  if (!_nativeChecked) {
+    _nativeChecked = true;
+    try {
+      _nativeAvailable =
+        Capacitor.getPlatform?.() === 'android' &&
+        Capacitor.isPluginAvailable?.('LiorHaptics') === true;
+    } catch { _nativeAvailable = false; }
+  }
+  return _nativeAvailable;
+};
 
 export type HapticIntensity = 'light' | 'medium' | 'heavy';
 
@@ -268,6 +299,38 @@ class HapticsService {
     await CapHaptics.selectionEnd();
   }
 
+  /** Android: short createOneShot duration per tier — crisp tick, not the buzzy waveform. */
+  private _androidMs(style: ImpactStyle): number {
+    return style === ImpactStyle.Heavy ? 28 : style === ImpactStyle.Medium ? 18 : 12;
+  }
+
+  /** Android level name for the native plugin. */
+  private _androidLevel(style: ImpactStyle): 'light' | 'medium' | 'heavy' {
+    return style === ImpactStyle.Heavy ? 'heavy' : style === ImpactStyle.Medium ? 'medium' : 'light';
+  }
+
+  /**
+   * Android pulse. Prefer the native LiorHaptics plugin (OEM-tuned Composition /
+   * predefined primitives — the closest Android gets to Apple's Taptic feel);
+   * fall back to a short createOneShot via the stock plugin's vibrate({duration}).
+   */
+  private _androidPulse(level: 'tick' | 'light' | 'medium' | 'heavy', fallbackMs: number): void {
+    if (hasNativeHaptics()) void NativeHaptics.impact({ level });
+    else void CapHaptics.vibrate({ duration: fallbackMs });
+  }
+
+  /**
+   * One native impact. iOS → the real Taptic Engine style. Android → an OEM-tuned
+   * primitive via the native plugin, or a SHORT createOneShot fallback. We
+   * deliberately avoid @capacitor/haptics impact() on Android: its waveforms are
+   * long and mushy (Light = 50ms @ 43%, even longer than Medium @ 43ms) and read
+   * as a buzz, not a tap. Caller owns the web fallback branch.
+   */
+  private _impactNative(style: ImpactStyle): void {
+    if (isAndroid()) this._androidPulse(this._androidLevel(style), this._androidMs(style));
+    else CapHaptics.impact({ style });
+  }
+
   // ─── L2 · Tap (Light impact) ──────────────────────────────────────────────
 
   /**
@@ -277,7 +340,7 @@ class HapticsService {
    */
   async tap(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Light });
+    if (isNative()) this._impactNative(ImpactStyle.Light);
     else vibrate(W.tap);
   }
 
@@ -289,7 +352,7 @@ class HapticsService {
    */
   async softTap(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Light });
+    if (isNative()) this._impactNative(ImpactStyle.Light);
     else vibrate(W.softTap);
   }
 
@@ -298,7 +361,7 @@ class HapticsService {
    */
   async dragDrop(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Light });
+    if (isNative()) this._impactNative(ImpactStyle.Light);
     else vibrate(W.tap);
   }
 
@@ -311,7 +374,7 @@ class HapticsService {
    */
   async press(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Medium });
+    if (isNative()) this._impactNative(ImpactStyle.Medium);
     else vibrate(W.press);
   }
 
@@ -321,7 +384,7 @@ class HapticsService {
    */
   async dragPickup(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Medium });
+    if (isNative()) this._impactNative(ImpactStyle.Medium);
     else vibrate(W.press);
   }
 
@@ -334,7 +397,7 @@ class HapticsService {
    */
   async heavy(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Heavy });
+    if (isNative()) this._impactNative(ImpactStyle.Heavy);
     else vibrate(W.heavy);
   }
 
@@ -344,7 +407,7 @@ class HapticsService {
    */
   async rigidStop(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Heavy });
+    if (isNative()) this._impactNative(ImpactStyle.Heavy);
     else vibrate(W.rigidStop);
   }
 
@@ -354,7 +417,7 @@ class HapticsService {
    */
   async destructive(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) CapHaptics.impact({ style: ImpactStyle.Heavy });
+    if (isNative()) this._impactNative(ImpactStyle.Heavy);
     else vibrate(W.heavy);
   }
 
@@ -366,14 +429,12 @@ class HapticsService {
    */
   async select(opts: FireOpts = {}) {
     if (!this._canFire(opts)) return;
-    if (isNative()) {
-      if (isAndroid()) {
-        // Android selection feedback has high bridge latency (~30ms round-trip).
-        // A Light impact is instant and perceptually identical.
-        CapHaptics.impact({ style: ImpactStyle.Light });
-      } else {
-        await this._selectionTick();
-      }
+    if (isAndroid()) {
+      // OEM-tuned tick (native plugin) or a short one-shot fallback — far tighter
+      // than the 50ms Light waveform or the 100ms Android selection waveform.
+      this._androidPulse('tick', 10);
+    } else if (isNative()) {
+      await this._selectionTick();
     } else {
       vibrate(W.select);
     }
@@ -399,7 +460,7 @@ class HapticsService {
     if (now - this._lastScrollTickAt < 16) return;
     this._lastScrollTickAt = now;
     if (isNative() && !isAndroid()) await CapHaptics.selectionChanged();
-    else if (isNative()) CapHaptics.impact({ style: ImpactStyle.Light });
+    else if (isAndroid()) this._androidPulse('tick', 8);
     else vibrate(W.select);
   }
 
@@ -451,7 +512,7 @@ class HapticsService {
   async toggleOn() {
     if (!this._canRunSequence({ cooldownMs: 160 })) return;
     if (isNative()) {
-      if (isAndroid()) { CapHaptics.impact({ style: ImpactStyle.Light }); return; }
+      if (isAndroid()) { this._androidPulse('light', 12); return; }
       await this._selectionTick();
       await wait(32);
       CapHaptics.impact({ style: ImpactStyle.Light });
@@ -466,7 +527,7 @@ class HapticsService {
   async toggleOff() {
     if (!this._canRunSequence({ cooldownMs: 160 })) return;
     if (isNative()) {
-      if (isAndroid()) { CapHaptics.impact({ style: ImpactStyle.Light }); return; }
+      if (isAndroid()) { this._androidPulse('light', 12); return; }
       CapHaptics.impact({ style: ImpactStyle.Light });
       await wait(32);
       await this._selectionTick();
@@ -491,9 +552,9 @@ class HapticsService {
   async heartbeat() {
     if (!this._canRunSequence({ cooldownMs: 360 })) return;
     if (isNative()) {
-      CapHaptics.impact({ style: ImpactStyle.Light });   // lub — soft
+      this._impactNative(ImpactStyle.Light);   // lub — soft
       await wait(150);
-      CapHaptics.impact({ style: ImpactStyle.Medium });  // dub — gentle, felt
+      this._impactNative(ImpactStyle.Medium);  // dub — gentle, felt
     } else {
       vibrate(W.heartbeat);
     }
@@ -507,13 +568,13 @@ class HapticsService {
   async doubleBeat() {
     if (!this._canRunSequence({ cooldownMs: 900 })) return;
     if (isNative()) {
-      CapHaptics.impact({ style: ImpactStyle.Light });
+      this._impactNative(ImpactStyle.Light);
       await wait(150);
-      CapHaptics.impact({ style: ImpactStyle.Medium });
+      this._impactNative(ImpactStyle.Medium);
       await wait(520);
-      CapHaptics.impact({ style: ImpactStyle.Light });
+      this._impactNative(ImpactStyle.Light);
       await wait(150);
-      CapHaptics.impact({ style: ImpactStyle.Medium });
+      this._impactNative(ImpactStyle.Medium);
     } else {
       vibrate(W.doubleBeat);
     }
@@ -535,7 +596,7 @@ class HapticsService {
         [90, ImpactStyle.Medium],
       ];
       for (const [ms, style] of beats) {
-        setTimeout(() => CapHaptics.impact({ style }), ms);
+        setTimeout(() => this._impactNative(style), ms);
       }
     } else {
       vibrate(W.celebrate);
@@ -550,9 +611,9 @@ class HapticsService {
   async milestone() {
     if (!this._canRunSequence({ cooldownMs: 360 })) return;
     if (isNative()) {
-      CapHaptics.impact({ style: ImpactStyle.Light });
+      this._impactNative(ImpactStyle.Light);
       await wait(55);
-      CapHaptics.impact({ style: ImpactStyle.Light });
+      this._impactNative(ImpactStyle.Light);
     } else {
       vibrate([12, 55, 12]);
     }
@@ -570,8 +631,8 @@ class HapticsService {
     if (!this._canRunSequence({ allowDuringScroll: true, cooldownMs: 120, key: 'longpress' })) return;
     if (isNative()) {
       if (progress >= 1.0)      CapHaptics.notification({ type: NotificationType.Success });
-      else if (progress >= 0.5) CapHaptics.impact({ style: ImpactStyle.Medium });
-      else                      CapHaptics.impact({ style: ImpactStyle.Light });
+      else if (progress >= 0.5) this._impactNative(ImpactStyle.Medium);
+      else                      this._impactNative(ImpactStyle.Light);
     } else {
       if (progress >= 1.0)      vibrate(W.success);
       else if (progress >= 0.5) vibrate(W.press);

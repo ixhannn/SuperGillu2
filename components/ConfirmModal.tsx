@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle } from 'lucide-react';
 import { feedback } from '../utils/feedback';
+import { Haptics } from '../services/haptics';
 
 interface ConfirmModalProps {
     isOpen: boolean;
@@ -91,7 +92,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
                         <div className="flex flex-col gap-2.5">
                             <button
-                                onClick={() => { variant === 'danger' ? feedback.error() : feedback.tap(); onConfirm(); }}
+                                onClick={() => { variant === 'danger' ? Haptics.destructive() : feedback.tap(); onConfirm(); }}
                                 className={`w-full py-4 rounded-xl font-bold text-[14px] leading-none uppercase tracking-widest shadow-lg active:scale-95 transition-all ${
                                     variant === 'danger'
                                         ? 'bg-red-500 text-white shadow-red-500/15'

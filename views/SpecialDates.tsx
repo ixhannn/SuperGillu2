@@ -196,7 +196,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                   dragElastic={0.1}
                   onDragEnd={(_, info) => {
                     if (info.offset.x < -80) {
-                      feedback.error();
+                      feedback.tap(); // light "armed" tick; the destructive confirm fires on commit
                       handleDelete(item.id);
                     }
                   }}

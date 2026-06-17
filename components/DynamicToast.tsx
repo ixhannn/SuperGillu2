@@ -11,13 +11,11 @@ export const DynamicToast: React.FC = () => {
     const unsubscribe = toast.subscribe((newToast) => {
       setCurrentToast(newToast);
       if (newToast) {
-        // Trigger haptics and audio on new toast
-        if (newToast.type === 'success' || newToast.type === 'heart') {
-          feedback.celebrate();
-        } else if (newToast.type === 'error') {
+        // Toasts are passive (not a user gesture) — keep them visual-only so we
+        // don't double-fire with the action's own haptic or buzz on every info
+        // pop. Only a genuine error earns a felt signal.
+        if (newToast.type === 'error') {
           feedback.error();
-        } else {
-          feedback.interact(); // light pop for info
         }
       }
     });
