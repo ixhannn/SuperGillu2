@@ -1,11 +1,19 @@
 /**
- * Daily Ritual — pure helpers for the two-person daily question.
+ * Daily Ritual — the single home for the two-person daily question logic.
  *
- * No persistence, no side effects: every function is a pure transform over the
- * couple's existing `questions[]`. Keeps the streak logic out of the storage
- * layer and trivially unit-testable.
+ * `getRitualStreak` stays a pure transform over the couple's existing
+ * `questions[]`. The Phase-3 additions (`getDailyPrompt`, `submitAnswer`,
+ * `getTodayPair`) layer a per-user `daily_answers` cloud table on top with a
+ * SERVER-ENFORCED sealed reveal, while ALWAYS falling back to the legacy
+ * `couple_profile.questions` path so the app never breaks before the migration
+ * is applied (this worktree has no .env at all).
+ *
+ * Services are imported lazily inside the async functions to avoid a circular
+ * import: `storage.ts` is a large module hub and `dailyRitual.ts` is consumed by
+ * UI that `storage` indirectly reaches. The top-level import stays types-only.
  */
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { QuestionEntry } from '../types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -77,3 +85,206 @@ export const getRitualStreak = (questions: readonly QuestionEntry[] | undefined)
 
   return streak;
 };
+
+// ── Phase 3: per-user daily_answers with sealed reveal ──────────────────────
+//
+// All three functions are best-effort cloud wrappers over the legacy local
+// `couple_profile.questions` path. They never throw: if Supabase is not
+// configured (the worktree case), or the migration isn't applied yet (table
+// absent / RLS-denied / offline), every cloud call is swallowed and the caller
+// transparently sees the existing P0-P2 experience.
+
+const DAILY_ANSWERS_TABLE = 'daily_answers';
+
+/** Per-user/day/couple answer text cap — mirrors the SQL `char_length <= 600`. */
+const ANSWER_MAX = 600;
+
+/** Caller-supplied identity for the active couple (the component passes profile). */
+export interface DailyRitualContext {
+  myName: string;
+  partnerName: string;
+}
+
+export interface DailyPrompt {
+  date: string;       // YYYY-MM-DD (UTC day key, matching getTodayQuestion)
+  promptId: string;   // stable hash of the question string
+  question: string;
+}
+
+export interface DailyPair {
+  date: string;
+  promptId: string;
+  question: string;
+  myAnswer: string | null;
+  partnerAnswer: string | null;   // null while the reveal is still sealed
+  revealed: boolean;
+  source: 'cloud' | 'local';
+}
+
+/**
+ * Stable, deterministic id for a question string (djb2 → base36).
+ *
+ * The same pooled question maps to the same `promptId` on both devices without
+ * touching `types.ts`. `promptId` is informational only — the join key is
+ * (couple_id, prompt_date) — so it is fine if it changes when the pool text is
+ * edited.
+ */
+const promptHash = (question: string): string => {
+  let h = 5381;
+  for (let i = 0; i < question.length; i++) {
+    h = ((h << 5) + h + question.charCodeAt(i)) >>> 0; // h * 33 + c, keep uint32
+  }
+  return h.toString(36);
+};
+
+/**
+ * Thin wrapper over `StorageService.getTodayQuestion` that preserves the
+ * existing deterministic 75-question pool + 90-day pruning, then derives a
+ * stable `promptId`. No DB needed — the question is computed client-side.
+ */
+export const getDailyPrompt = async (ctx: DailyRitualContext): Promise<DailyPrompt> => {
+  const { StorageService } = await import('./storage');
+  const entry = StorageService.getTodayQuestion(ctx.myName, ctx.partnerName);
+  return { date: entry.date, promptId: promptHash(entry.question), question: entry.question };
+};
+
+interface CloudIdentity {
+  client: SupabaseClient;
+  userId: string;
+  coupleId: string;
+}
+
+/**
+ * Resolves (client, userId, coupleId) when Supabase is configured AND the
+ * couple is known. Returns null in the worktree / signed-out / unpaired cases,
+ * which steers every caller onto the local-only path. Never throws.
+ */
+async function getCloudIdentity(): Promise<CloudIdentity | null> {
+  try {
+    const { SupabaseService } = await import('./supabase');
+    if (!SupabaseService.isConfigured() || !SupabaseService.client) return null;
+    const [userId, coupleId] = await Promise.all([
+      SupabaseService.getCurrentUserId(),
+      SupabaseService.getCurrentCoupleId(),
+    ]);
+    if (!userId || !coupleId) return null;
+    return { client: SupabaseService.client, userId, coupleId };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Submit the caller's answer for today.
+ *
+ * Always writes the legacy `couple_profile` path FIRST so offline / no-table
+ * behaviour is unchanged and the streak/UI keep working. Then best-effort
+ * inserts the caller's row into `daily_answers` (idempotent on the deterministic
+ * PK). On ANY cloud error — table absent, RLS, offline — it swallows and reports
+ * `usedCloud: false`; the local write already succeeded, so `ok` stays true.
+ *
+ * Never throws.
+ */
+export async function submitAnswer(
+  text: string,
+  ctx: DailyRitualContext,
+): Promise<{ ok: boolean; usedCloud: boolean }> {
+  const trimmed = text.trim().slice(0, ANSWER_MAX);
+
+  // 1) Local-first: keeps streak math + fallback intact regardless of cloud.
+  const { StorageService } = await import('./storage');
+  StorageService.submitQuestionAnswer(trimmed);
+
+  // 2) Best-effort cloud insert (purely additive).
+  const identity = await getCloudIdentity();
+  if (!identity) return { ok: true, usedCloud: false };
+
+  try {
+    const prompt = await getDailyPrompt(ctx);
+    const id = `${identity.coupleId}:${prompt.date}:${identity.userId}`;
+    const { error } = await identity.client
+      .from(DAILY_ANSWERS_TABLE)
+      .upsert(
+        {
+          id,
+          user_id: identity.userId,
+          couple_id: identity.coupleId,
+          prompt_date: prompt.date,
+          prompt_id: prompt.promptId,
+          text: trimmed,
+        },
+        { onConflict: 'id' },
+      );
+    if (error) return { ok: true, usedCloud: false };
+    return { ok: true, usedCloud: true };
+  } catch {
+    return { ok: true, usedCloud: false };
+  }
+}
+
+/**
+ * Read today's question + both answers under the sealed-reveal RLS.
+ *
+ * Computes the prompt deterministically (no DB), reads the LOCAL baseline first
+ * (the fallback), then attempts the cloud read. Under the RLS policy the result
+ * contains my row always and the partner row ONLY once I've submitted mine, so
+ * `partnerAnswer` stays null (and `revealed` false) until the seal opens. Any
+ * cloud error falls through to the local baseline.
+ *
+ * Never throws.
+ */
+export async function getTodayPair(ctx: DailyRitualContext): Promise<DailyPair> {
+  const prompt = await getDailyPrompt(ctx);
+
+  // Local baseline (source of truth when cloud is unavailable).
+  const { StorageService } = await import('./storage');
+  const local = StorageService.getTodayQuestion(ctx.myName, ctx.partnerName);
+  const localMine = local.answers[ctx.myName] ?? null;
+  const localPartner = local.answers[ctx.partnerName] ?? null;
+  const localRevealed = Boolean(local.revealedAt);
+  const baseline: DailyPair = {
+    date: prompt.date,
+    promptId: prompt.promptId,
+    question: prompt.question,
+    myAnswer: localMine,
+    partnerAnswer: localPartner,
+    revealed: localRevealed,
+    source: 'local',
+  };
+
+  // Best-effort cloud read; the sealed-reveal RLS does the gating for us.
+  const identity = await getCloudIdentity();
+  if (!identity) return baseline;
+
+  try {
+    const { data, error } = await identity.client
+      .from(DAILY_ANSWERS_TABLE)
+      .select('user_id, text, created_at')
+      .eq('couple_id', identity.coupleId)
+      .eq('prompt_date', prompt.date);
+
+    if (error || !data) return baseline;
+
+    let myAnswer: string | null = null;
+    let partnerAnswer: string | null = null;
+    for (const row of data as Array<{ user_id: string; text: string | null }>) {
+      if (row.user_id === identity.userId) myAnswer = row.text ?? null;
+      else partnerAnswer = row.text ?? null;
+    }
+
+    // Reveal only when BOTH rows are present (partner row is RLS-gated to appear
+    // exactly once mine exists — so the seal holds server-side, not just in UI).
+    const revealed = myAnswer !== null && partnerAnswer !== null;
+    return {
+      date: prompt.date,
+      promptId: prompt.promptId,
+      question: prompt.question,
+      myAnswer,
+      partnerAnswer: revealed ? partnerAnswer : null,
+      revealed,
+      source: 'cloud',
+    };
+  } catch {
+    return baseline;
+  }
+}
