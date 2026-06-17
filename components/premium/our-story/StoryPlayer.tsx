@@ -70,6 +70,7 @@ const PALETTE_FOR: Record<PlayableChapter['kind'], keyof typeof PALETTES> = {
     'line': 'ink',
     'dates': 'rose',
     'latest': 'violet',
+    'daily-ritual': 'rose',
     'tonight': 'violet',
     'outro': 'ember',
     'gate': 'ember',
@@ -157,6 +158,25 @@ const OutroBurst: React.FC = () => (
                 style={{ '--dx': p.dx, '--dy': p.dy, animationDelay: p.delay } as React.CSSProperties}
             />
         ))}
+    </div>
+);
+
+/** Answer bubble for the daily-ritual slide — mirrors DailyQuestion's
+    AnswerBubble, retoned for the dark film palette. */
+const RitualAnswer: React.FC<{ label: string; answer: string; accent: string; soft: string; isMe: boolean }> = ({ label, answer, accent, soft, isMe }) => (
+    <div
+        className="rounded-2xl px-4 py-3"
+        style={{
+            background: isMe ? soft : 'rgba(255,255,255,0.05)',
+            border: isMe ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.08)',
+        }}
+    >
+        <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] mb-1.5" style={{ color: isMe ? `${accent}e6` : GOLD.textLow }}>
+            {label}
+        </p>
+        <p className="font-serif text-[13.5px] leading-relaxed" style={{ color: GOLD.textMid }}>
+            {answer || '—'}
+        </p>
     </div>
 );
 
@@ -446,6 +466,29 @@ const SlideContent: React.FC<SlideProps> = ({ chapter, index, accent, soft, onUn
                     </motion.p>
                 </div>
             );
+
+        case 'daily-ritual': {
+            const revealedLabel = chapter.daysAgo === 0
+                ? 'Revealed today'
+                : chapter.daysAgo === 1
+                    ? 'Revealed yesterday'
+                    : `Revealed ${chapter.daysAgo} days ago`;
+            return (
+                <div className="flex-1 flex flex-col justify-end items-start text-left pb-6">
+                    <SceneTag index={index} label={chapter.slate} accent={accent} />
+                    <motion.p variants={goldRise} className="font-serif italic text-[1.5rem] leading-[1.3] mt-5" style={{ color: GOLD.textHigh, letterSpacing: '-0.01em' }}>
+                        {chapter.question}
+                    </motion.p>
+                    <motion.div variants={goldRise} className="mt-6 w-full space-y-2.5">
+                        <RitualAnswer label="You" answer={chapter.myAnswer} accent={accent} soft={soft} isMe />
+                        <RitualAnswer label="Them" answer={chapter.partnerAnswer} accent={accent} soft={soft} isMe={false} />
+                    </motion.div>
+                    <motion.p variants={goldRise} className="mt-5 text-[11px] font-bold uppercase tracking-[0.24em]" style={{ color: `${accent}b3` }}>
+                        {revealedLabel}
+                    </motion.p>
+                </div>
+            );
+        }
 
         case 'tonight':
             return (

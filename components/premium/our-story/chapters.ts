@@ -1,4 +1,4 @@
-import type { Memory } from '../../../types';
+import type { Memory, QuestionEntry } from '../../../types';
 import { StorageService } from '../../../services/storage';
 import {
     daysTogetherFrom,
@@ -16,6 +16,8 @@ import {
 
 export const CHAPTER_MS = 6000;
 export const FREE_CHAPTER_LIMIT = 3;
+/** Cap on revealed-ritual scenes spliced into the film (keeps the player fast). */
+export const RITUAL_SCENE_CAP = 16;
 
 /* ── Chapter model ──────────────────────────────────────────────────── */
 
@@ -35,6 +37,7 @@ export interface VoicesChapter extends ChapterBase { kind: 'voices'; count: numb
 export interface LineChapter extends ChapterBase { kind: 'line'; excerpt: string; dateLabel: string; }
 export interface DatesChapter extends ChapterBase { kind: 'dates'; count: number; nextTitle: string; nextLabel: string; daysUntil: number; }
 export interface LatestChapter extends ChapterBase { kind: 'latest'; excerpt: string; dateLabel: string; daysAgo: number; }
+export interface DailyRitualChapter extends ChapterBase { kind: 'daily-ritual'; date: string; question: string; myAnswer: string; partnerAnswer: string; revealedAt: string; daysAgo: number; }
 export interface TonightChapter extends ChapterBase { kind: 'tonight'; }
 export interface OutroChapter extends ChapterBase { kind: 'outro'; myName: string; partnerName: string; }
 /** Injected by the player for free accounts — never part of the built reel. */
@@ -51,6 +54,7 @@ export type StoryChapter =
     | LineChapter
     | DatesChapter
     | LatestChapter
+    | DailyRitualChapter
     | TonightChapter
     | OutroChapter;
 
@@ -136,6 +140,39 @@ const memoriesWithText = (memories: Memory[]): Memory[] =>
     memories
         .filter((m) => typeof m.text === 'string' && m.text.trim().length > 0 && !Number.isNaN(new Date(m.date).getTime()))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+/**
+ * Turns revealed daily-question entries into permanent film scenes.
+ * Most-recent first, capped at RITUAL_SCENE_CAP. Answers are resolved by the
+ * couple's raw display names (the keys used when the answers were stored).
+ * Returns [] when nothing has been revealed — no placeholder scene.
+ */
+const buildRitualChapters = (
+    questions: QuestionEntry[] | undefined,
+    rawMyName: string | undefined,
+    rawPartnerName: string | undefined,
+): DailyRitualChapter[] => {
+    if (!Array.isArray(questions) || questions.length === 0) return [];
+    const myKey = rawMyName?.trim() ?? '';
+    const partnerKey = rawPartnerName?.trim() ?? '';
+
+    return questions
+        .filter((q): q is QuestionEntry & { revealedAt: string } =>
+            typeof q.revealedAt === 'string' && q.revealedAt.length > 0)
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, RITUAL_SCENE_CAP)
+        .map((q) => ({
+            id: `ch-ritual-${q.date}`,
+            kind: 'daily-ritual' as const,
+            slate: 'A question you answered',
+            date: q.date,
+            question: q.question,
+            myAnswer: q.answers?.[myKey]?.trim() ?? '',
+            partnerAnswer: q.answers?.[partnerKey]?.trim() ?? '',
+            revealedAt: q.revealedAt,
+            daysAgo: daysAgoOf(q.revealedAt),
+        }));
+};
 
 /* ── Builder ────────────────────────────────────────────────────────── */
 
@@ -286,7 +323,13 @@ export function buildStoryFilm(): StoryFilm {
         chapters.push({ id: 'ch-tonight', kind: 'tonight', slate: 'A scene unwritten' });
     }
 
-    /* 12 — Outro (always). */
+    /* 12 — Daily ritual scenes: every revealed question becomes a permanent
+       scene. Most-recent first, capped to keep the player fast. Spliced in
+       before the outro so the credits always land last. */
+    const ritualChapters = buildRitualChapters(profile.questions, profile.myName, profile.partnerName);
+    chapters.push(...ritualChapters);
+
+    /* 13 — Outro (always). */
     chapters.push({ id: 'ch-outro', kind: 'outro', slate: 'To be continued', myName, partnerName });
 
     return { chapters, myName, partnerName, days };
