@@ -34,6 +34,16 @@ const COMMIT_FRAC = 0.38;  // fraction of screen width to auto-commit
 
 export type EngineDirection = 'tab' | 'push' | 'pop' | 'modal' | 'modal-close' | 'expand';
 
+/** Geometry of a tapped tile, captured by useTileOpen for the container morph. */
+export interface MorphOrigin {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  radius: string;
+  bg: string;
+}
+
 // ─── Config per direction ──────────────────────────────────────────────────────
 interface DirConfig {
   dur:     number;
@@ -47,25 +57,31 @@ function dirConfig(dir: EngineDirection, W: number): DirConfig {
   const tx = (px: number, sc = 1) => `translate3d(${px}px,0,0) scale(${sc})`;
   const ty = (p: string,   sc = 1) => `translate3d(0,${p},0) scale(${sc})`;
 
-  // NOTE: this JS-clone fallback runs only where the View Transitions API is
-  // unavailable (older WebViews). Here the outgoing page is cloned ON TOP, so
-  // "forward" motions fade the old layer out to reveal the new one beneath,
-  // while "back" motions slide the opaque old layer off to reveal it. The
-  // primary (View Transitions) path is governed by the CSS keyframes and gets
-  // the full new-on-top push; these values keep the legacy path coherent.
+  // This JS-clone path is now the PRIMARY route animator (the View Transitions
+  // API is disabled because it snapshotted the fixed background). The outgoing
+  // page is cloned ON TOP: "forward" motions recede + fade the old layer to
+  // reveal the new sliding in beneath; "back" motions slide the opaque old
+  // layer off to reveal the screen beneath. Tuned for a premium "arrive &
+  // settle" open and a clean slide-off close, over the still background.
   switch (dir) {
     case 'tab':
       return { dur: T_TAB,  inEase: E_SILK, outEase: E_SILK,
         inFrom: [ty('14px', 0.985),  '0'],
         outTo:  [ty('-10px', 1.008), '0'] };
     case 'push':
-      return { dur: T_PUSH, inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: [tx(W, 1),            '1'],
-        outTo:  [tx(-W * 0.22, 0.965),'0'] };
+      // OPEN: a crisp two-panel push — the new page slides fully in from the
+      // right edge while the old page (which sits on top) slides fully off to
+      // the left, so they pass each other like stacked cards. Pure movement,
+      // NO fade and NO zoom, over the still background.
+      return { dur: 380, inEase: E_SILK, outEase: E_STANDARD,
+        inFrom: [tx(W, 1),  '1'],
+        outTo:  [tx(-W, 1), '1'] };
     case 'pop':
-      return { dur: T_POP,  inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: [tx(-W * 0.22, 0.965),'1'],
-        outTo:  [tx(W, 1),            '1'] };
+      // CLOSE: the current page slides fully off to the right; the screen
+      // beneath returns from a slight left parallax and settles to rest.
+      return { dur: 320, inEase: E_SILK, outEase: E_EXIT,
+        inFrom: [tx(-W * 0.3, 1), '1'],
+        outTo:  [tx(W, 1),        '1'] };
     case 'modal':
       return { dur: T_MODAL_OPEN,  inEase: E_SILK, outEase: E_STANDARD,
         inFrom: [ty('100%', 1),      '1'],
@@ -104,6 +120,15 @@ class TransitionEngineImpl {
 
   private _prefetchCbs: ((dst: string) => void)[] = [];
 
+  // Tapped-tile geometry for the next container-morph open (set by useTileOpen,
+  // consumed once by navigate()).
+  private _morphOrigin: MorphOrigin | null = null;
+
+  // Rect + radius of the most-recently-tapped interactive element, captured
+  // globally so ANY tile/button open can clip-reveal from where the finger
+  // landed. Consumed (and expired after 700ms) by navigate().
+  private _tapOrigin: { x: number; y: number; w: number; h: number; radius: string; t: number } | null = null;
+
   // ── Public API ───────────────────────────────────────────────────────────────
 
   /** Call once. Registers global gesture listeners and stores the animated element. */
@@ -120,10 +145,16 @@ class TransitionEngineImpl {
     window.addEventListener('pointermove',   this._pm, { passive: false });
     window.addEventListener('pointerup',     this._pu, { passive: true });
     window.addEventListener('pointercancel', this._pc, { passive: true });
+    // Capture where the finger landed so an ensuing page-open can clip-reveal
+    // from that element. Capture phase + passive so it never blocks anything.
+    window.addEventListener('pointerdown', this._captureTap, { passive: true, capture: true });
   }
 
   /** Hot-swap container when the DOM element changes (e.g. re-mount). */
   setContainer(container: HTMLElement): void { this._c = container; }
+
+  /** Stash the tapped tile's geometry; the next 'expand' navigation morphs from it. */
+  setMorphOrigin(origin: MorphOrigin): void { this._morphOrigin = origin; }
 
   /**
    * Programmatic navigation. Clones outgoing, commits React, double-rAF CSS transition.
@@ -150,7 +181,6 @@ class TransitionEngineImpl {
       if (de.dataset.liorOpenExpand === '1' && dir === 'push') effectiveDir = 'expand';
       if (de.dataset.liorOpenExpand) delete de.dataset.liorOpenExpand;
     }
-
     const wrappedComplete = () => {
       this._busy = false;
       this._setTransitioning(false);
@@ -162,6 +192,23 @@ class TransitionEngineImpl {
 
     if (this._mo) {
       this._xfade(c, commit, wrappedComplete);
+      return true;
+    }
+
+    // OPEN (push) → ALWAYS a clip-reveal morph, NEVER a sideways slide: the new
+    // page is revealed through a rounded window that grows from the tapped
+    // element's rect (or screen-centre when the origin is unknown/stale) to fill
+    // the screen, with the screen being left held visible behind it.
+    if (effectiveDir === 'push' || effectiveDir === 'expand') {
+      this._clipReveal(c, this._consumeOrigin(), commit, wrappedComplete);
+      return true;
+    }
+
+    // CLOSE (pop) → matching clip-COLLAPSE morph: the page being left shrinks
+    // back into a window at the tapped point (or centre), revealing the screen
+    // beneath — instead of sliding off to the side.
+    if (effectiveDir === 'pop') {
+      this._clipCollapse(c, this._consumeOrigin(), commit, wrappedComplete);
       return true;
     }
 
@@ -183,8 +230,19 @@ class TransitionEngineImpl {
     return true;
   }
 
-  /** Toggle off the native View Transitions path (testing / kill switch). */
-  private _supportsVT = true;
+  /**
+   * Native View Transitions path — DISABLED.
+   *
+   * The VT API snapshots the WHOLE document root (::view-transition-old/new(root)),
+   * which includes the FIXED AmbientVisuals WebGL background. Animating `root`
+   * therefore slid/zoomed the entire background on every push/pop/expand — the
+   * "stage" lurched along with the content, which reads as broken, "very bad"
+   * motion (and violates "the background is the stage"). The JS path (_run)
+   * below animates ONLY the content container (this._c); the live background is
+   * never snapshotted and stays put. Re-enable only alongside a per-element
+   * `view-transition-name` strategy that pins the background out of the snapshot.
+   */
+  private _supportsVT = false;
 
   private _runNativeVT(
     docAny: Document & { startViewTransition?: (cb: () => void) => { finished: Promise<void> } },
@@ -308,6 +366,18 @@ class TransitionEngineImpl {
     // ② Pre-position incoming container at initial state (no transition)
     c.style.transition = 'none';
     c.style.willChange = 'transform,opacity';
+    // Tile-open "expand": bloom the new content FROM the tapped tile's centre
+    // (--lior-open-x/y, set in viewport px by useTileOpen) instead of from the
+    // container centre — translated into this container's local box so the page
+    // grows out of the card the user actually touched.
+    if (dir === 'expand') {
+      const rootStyle = getComputedStyle(document.documentElement);
+      const ox = parseFloat(rootStyle.getPropertyValue('--lior-open-x'));
+      const oy = parseFloat(rootStyle.getPropertyValue('--lior-open-y'));
+      c.style.transformOrigin = (!Number.isNaN(ox) && !Number.isNaN(oy))
+        ? `${ox - rect.left}px ${oy - rect.top}px`
+        : '50% 35%';
+    }
     c.style.transform  = cfg.inFrom[0];
     c.style.opacity    = cfg.inFrom[1];
 
@@ -332,6 +402,7 @@ class TransitionEngineImpl {
           clone.remove();
           c.style.transition = '';
           c.style.willChange = '';
+          c.style.transformOrigin = '';
           if (c.style.transform === 'translateZ(0) scale(1)') c.style.transform = '';
           if (c.style.opacity   === '1')                       c.style.opacity   = '';
           this._busy = false;
@@ -341,6 +412,253 @@ class TransitionEngineImpl {
         clone.addEventListener('transitionend', () => { clearTimeout(tid); cleanup(); }, { once: true });
       });
     });
+  }
+
+  // ── Container morph (tile → page) ─────────────────────────────────────────
+
+  /**
+   * Tile-open container transform. A solid surface the size/shape/colour of the
+   * tapped tile grows (GPU transform, WAAPI) from its exact rect to fill the
+   * content area, then dissolves as the destination fades in beneath it. The
+   * outgoing screen stays put behind the surface (no vanish-flash) and the fixed
+   * background is never touched. Falls back to _run if geometry is unusable.
+   */
+  private _morph(c: HTMLElement, o: MorphOrigin, commit: () => void, done?: () => void): void {
+    const full = c.getBoundingClientRect();
+    if (full.width < 1 || full.height < 1 || o.w < 1 || o.h < 1) {
+      this._run(c, 'expand', commit, done);
+      return;
+    }
+
+    const DUR  = 440;
+    const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+
+    // Opaque card-coloured surface — fall back to a warm sheet if the tile's own
+    // background was transparent (e.g. a glass tile resolves to alpha 0).
+    let bg = o.bg;
+    if (!bg || bg === 'transparent' || /,\s*0(\.0+)?\)\s*$/.test(bg)) {
+      bg = 'rgb(252, 249, 250)';
+    }
+
+    const surface = document.createElement('div');
+    surface.setAttribute('aria-hidden', 'true');
+    surface.style.cssText = [
+      'position:fixed',
+      `top:${full.top}px`,
+      `left:${full.left}px`,
+      `width:${full.width}px`,
+      `height:${full.height}px`,
+      `background:${bg}`,
+      `border-radius:${o.radius && o.radius !== '0px' ? o.radius : '28px'}`,
+      'z-index:9999',
+      'pointer-events:none',
+      'transform-origin:0 0',
+      'will-change:transform,opacity',
+      'box-shadow:0 30px 80px rgba(120,60,80,0.20)',
+      'backface-visibility:hidden',
+    ].join(';');
+    document.body.appendChild(surface);
+
+    // FLIP: full-size surface placed to start exactly over the tapped tile.
+    const sx = o.w / full.width;
+    const sy = o.h / full.height;
+    const start = `translate(${o.x - full.left}px, ${o.y - full.top}px) scale(${sx}, ${sy})`;
+
+    // Commit the destination, then hide ONLY the new overlay so the page fades
+    // in beneath the growing surface — the outgoing screen stays visible behind
+    // it, so nothing flashes out.
+    commit();
+    const overlay = c.querySelector('[data-keep-alive-tab="__overlay__"]') as HTMLElement | null;
+    if (overlay) overlay.style.opacity = '0';
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const surfAnim = surface.animate(
+          [
+            { transform: start, opacity: 1, offset: 0 },
+            { opacity: 1, offset: 0.62 },
+            { transform: 'translate(0px, 0px) scale(1, 1)', opacity: 0, offset: 1 },
+          ],
+          { duration: DUR, easing: EASE, fill: 'forwards' },
+        );
+        // Destination solidifies behind the still-opaque surface, so it's fully
+        // there by the time the surface dissolves to reveal it (no see-through).
+        const overlayAnim = overlay
+          ? overlay.animate(
+              [{ opacity: 0 }, { opacity: 1 }],
+              { duration: Math.round(DUR * 0.4), delay: Math.round(DUR * 0.05), easing: EASE, fill: 'forwards' },
+            )
+          : null;
+
+        let settled = false;
+        const cleanup = () => {
+          if (settled) return;
+          settled = true;
+          try { surface.remove(); } catch (_) { /* already gone */ }
+          if (overlay) overlay.style.opacity = '';
+          try { overlayAnim?.cancel(); } catch (_) { /* fine */ }
+          done?.();
+        };
+        surfAnim.finished.then(cleanup).catch(cleanup);
+        window.setTimeout(cleanup, DUR + 140);
+      });
+    });
+  }
+
+  // ── Clip-reveal open (tile/button → page) ─────────────────────────────────
+
+  /** Records the tapped interactive element's geometry for clip-reveal opens. */
+  private _captureTap = (e: PointerEvent): void => {
+    const el = (e.target as HTMLElement | null)?.closest?.(
+      'button, [role="button"], a[href], .spring-press, [data-press], .bento-card, .aurora-card, [data-coachmark]',
+    ) as HTMLElement | null;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 6 || r.height < 6) return;
+    let radius = '0px';
+    try { radius = getComputedStyle(el).borderRadius || '0px'; } catch (_) { /* ignore */ }
+    this._tapOrigin = { x: r.left, y: r.top, w: r.width, h: r.height, radius, t: performance.now() };
+  };
+
+  /**
+   * The morph origin for the next open/close: the most-recent tap (with a 2.5s
+   * freshness guard so a slow lazy-chunk load between tap and navigate doesn't
+   * lose it) or, failing that, a small rect at screen centre. Always returns a
+   * usable rect so opens/closes are ALWAYS a morph — never a fallback slide.
+   */
+  private _consumeOrigin(): { x: number; y: number; w: number; h: number; radius: string } {
+    const o = this._tapOrigin;
+    this._tapOrigin = null;
+    if (o && (performance.now() - o.t) < 2500) {
+      return { x: o.x, y: o.y, w: o.w, h: o.h, radius: o.radius };
+    }
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    return { x: vw / 2 - 28, y: vh * 0.4, w: 56, h: 56, radius: '28px' };
+  }
+
+  /**
+   * Reveal the new page through a rounded window that starts at the tapped
+   * element's rect and expands (clip-path) to fill the screen — content at full
+   * size throughout (no zoom), no slide, no fade. The screen being left is held
+   * visible behind it so nothing flashes to bare background. GPU-composited
+   * clip-path via WAAPI; the fixed ambient background is never touched.
+   */
+  private _clipReveal(
+    c: HTMLElement,
+    origin: { x: number; y: number; w: number; h: number; radius: string },
+    commit: () => void,
+    done?: () => void,
+  ): void {
+    // Hold the screen we're leaving (its keep-alive shell) visible behind the
+    // reveal so the page opens OVER it, not over a flash of background.
+    const prevShell = c.querySelector('.keep-alive-shell.is-active') as HTMLElement | null;
+
+    commit();
+
+    const overlay = c.querySelector('[data-keep-alive-tab="__overlay__"]') as HTMLElement | null;
+    if (!overlay) {
+      // No distinct page overlay to clip (destination is itself a tab) — settle
+      // it in with a quick opacity rise instead.
+      c.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 220, easing: E_SILK });
+      done?.();
+      return;
+    }
+
+    const prevOpacity = prevShell ? prevShell.style.opacity : '';
+    const prevVis     = prevShell ? prevShell.style.visibility : '';
+    if (prevShell) { prevShell.style.opacity = '1'; prevShell.style.visibility = 'visible'; }
+
+    const oRect  = overlay.getBoundingClientRect();
+    const top    = Math.max(0, Math.round(origin.y - oRect.top));
+    const left   = Math.max(0, Math.round(origin.x - oRect.left));
+    const right  = Math.max(0, Math.round(oRect.right  - (origin.x + origin.w)));
+    const bottom = Math.max(0, Math.round(oRect.bottom - (origin.y + origin.h)));
+    const radius = origin.radius && origin.radius !== '0px' ? origin.radius : '20px';
+    const startClip = `inset(${top}px ${right}px ${bottom}px ${left}px round ${radius})`;
+    const endClip   = 'inset(0px 0px 0px 0px round 0px)';
+
+    overlay.style.willChange = 'clip-path';
+    const anim = overlay.animate(
+      [{ clipPath: startClip }, { clipPath: endClip }],
+      { duration: 440, easing: E_SILK, fill: 'both' },
+    );
+
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      overlay.style.clipPath = '';   // fully unclipped before cancelling the fill
+      overlay.style.willChange = '';
+      try { anim.cancel(); } catch (_) { /* fine */ }
+      if (prevShell) { prevShell.style.opacity = prevOpacity; prevShell.style.visibility = prevVis; }
+      done?.();
+    };
+    anim.finished.then(cleanup).catch(cleanup);
+    window.setTimeout(cleanup, 440 + 160);
+  }
+
+  /**
+   * Close morph (mirror of _clipReveal): snapshot the page being left and clip
+   * it DOWN into a window at the tapped point (or centre), revealing the screen
+   * beneath — instead of sliding off sideways. The snapshot collapses ON TOP so
+   * the destination (committed beneath) is uncovered as the snapshot shrinks.
+   */
+  private _clipCollapse(
+    c: HTMLElement,
+    origin: { x: number; y: number; w: number; h: number; radius: string },
+    commit: () => void,
+    done?: () => void,
+  ): void {
+    const overlay = c.querySelector('[data-keep-alive-tab="__overlay__"]') as HTMLElement | null;
+    if (!overlay) {
+      // Nothing distinct to collapse — settle the destination in.
+      commit();
+      c.animate([{ opacity: 0.6 }, { opacity: 1 }], { duration: 200, easing: E_SILK });
+      done?.();
+      return;
+    }
+
+    const oRect = overlay.getBoundingClientRect();
+    const clone = overlay.cloneNode(true) as HTMLElement;
+    clone.setAttribute('aria-hidden', 'true');
+    clone.style.cssText = [
+      'position:fixed',
+      `top:${oRect.top}px`, `left:${oRect.left}px`,
+      `width:${oRect.width}px`, `height:${oRect.height}px`,
+      'margin:0', 'z-index:9999', 'pointer-events:none',
+      'will-change:clip-path,opacity', 'backface-visibility:hidden',
+    ].join(';');
+    document.body.appendChild(clone);
+
+    commit();   // destination revealed beneath the collapsing snapshot
+
+    const top    = Math.max(0, Math.round(origin.y - oRect.top));
+    const left   = Math.max(0, Math.round(origin.x - oRect.left));
+    const right  = Math.max(0, Math.round(oRect.right  - (origin.x + origin.w)));
+    const bottom = Math.max(0, Math.round(oRect.bottom - (origin.y + origin.h)));
+    const radius = origin.radius && origin.radius !== '0px' ? origin.radius : '20px';
+    const endClip = `inset(${top}px ${right}px ${bottom}px ${left}px round ${radius})`;
+
+    const anim = clone.animate(
+      [
+        { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1, offset: 0 },
+        { opacity: 1, offset: 0.7 },
+        { clipPath: endClip, opacity: 0, offset: 1 },
+      ],
+      { duration: 320, easing: E_EXIT, fill: 'both' },
+    );
+
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      try { clone.remove(); } catch (_) { /* gone */ }
+      try { anim.cancel(); } catch (_) { /* fine */ }
+      done?.();
+    };
+    anim.finished.then(cleanup).catch(cleanup);
+    window.setTimeout(cleanup, 320 + 160);
   }
 
   // ── Gesture: pointerdown ─────────────────────────────────────────────────

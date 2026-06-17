@@ -18,7 +18,7 @@ import { Haptics } from '../services/haptics';
 import { Skeleton } from '../components/Skeleton';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
 
 interface MemoryTimelineProps {
@@ -220,19 +220,25 @@ const MemoryCardBase: React.FC<{
                         }}
                     />
                 ) : (
-                    <img
-                        src={mediaUrl}
-                        alt="Memory"
-                        loading="lazy"
-                        decoding="async"
-                        className="absolute inset-0 w-full h-full object-cover"
-                        onError={handleMediaError}
-                        style={{
-                            filter: memory.frame === 'film'
-                                ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
-                                : undefined,
-                        }}
-                    />
+                    <motion.div
+                        layoutId={`mem-hero-${memory.id}`}
+                        transition={{ layout: { type: 'spring', stiffness: 300, damping: 34 } }}
+                        className="absolute inset-0 overflow-hidden"
+                    >
+                        <img
+                            src={mediaUrl}
+                            alt="Memory"
+                            loading="lazy"
+                            decoding="async"
+                            className="absolute inset-0 w-full h-full object-cover"
+                            onError={handleMediaError}
+                            style={{
+                                filter: memory.frame === 'film'
+                                    ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
+                                    : undefined,
+                            }}
+                        />
+                    </motion.div>
                 )
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center" style={{ color: 'var(--color-text-secondary)' }}>
@@ -828,10 +834,14 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
                 and the live drag offset never fight over the same y. */}
             <motion.div className="w-full max-w-md flex flex-col min-h-0" style={{ y: gestures.sheetY }}>
             <motion.div
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+                // The hero photo morphs in via shared layoutId, so the sheet
+                // itself must NOT slide (a slide would compound with the morph
+                // and read as janky). It fades while the photo grows from the
+                // tapped card. Drag-to-dismiss still uses the wrapper's sheetY.
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full flex flex-col min-h-0 sm:rounded-[2rem] rounded-t-[2rem] overflow-hidden"
                 style={{
                     // Warm wine-dark — same family as the Auth sheet, so the
@@ -900,7 +910,12 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
                             ) : mediaSrc ? (
                                 mediaKind === 'video'
                                     ? <InlineVideoPlayer src={mediaSrc} onError={handleVideoError} />
-                                    : <img ref={gestures.zoomTargetRef} src={mediaSrc} alt="Memory" onError={handleMediaError}
+                                    : <motion.div
+                                        layoutId={`mem-hero-${memory.id}`}
+                                        transition={{ layout: { type: 'spring', stiffness: 300, damping: 34 } }}
+                                        style={{ width: '100%' }}
+                                      >
+                                        <img ref={gestures.zoomTargetRef} src={mediaSrc} alt="Memory" onError={handleMediaError}
                                         draggable={false}
                                         style={{
                                             display: 'block',
@@ -913,6 +928,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
                                                 ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
                                                 : undefined,
                                         }} />
+                                      </motion.div>
                             ) : isAudioOnly ? (
                                 <div className="flex flex-col items-center justify-center py-12"
                                     style={{ background: 'linear-gradient(180deg, rgba(244,63,94,0.08) 0%, rgba(28,12,20,1) 100%)' }}>
@@ -1431,6 +1447,7 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
     }, [memories]);
 
     return (
+        <LayoutGroup>
         <PullToRefresh onRefresh={handleRefresh}>
             <div className="memory-timeline-view p-4 pt-6 pb-32 min-h-screen">
                 <ViewHeader title="Our Journey" onBack={() => setView('home')} variant="simple" />
@@ -1715,6 +1732,7 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                 />
             </div>
         </PullToRefresh>
+        </LayoutGroup>
     );
 };
 

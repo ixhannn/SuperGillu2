@@ -58,28 +58,18 @@ export function useTileOpen(): (
 
     const target = findLiftTarget(event.currentTarget as HTMLElement);
     if (target) {
-      // Origin for the "expand" view transition: the new page blooms from the
-      // centre of the tapped tile so it visibly BECOMES the destination. The
-      // flag is consumed (and a plain push upgraded to expand) by
-      // TransitionEngine.navigate(); it falls back to push if unsupported.
-      const rect = target.getBoundingClientRect();
-      const root = document.documentElement;
-      root.style.setProperty('--lior-open-x', `${Math.round(rect.left + rect.width / 2)}px`);
-      root.style.setProperty('--lior-open-y', `${Math.round(rect.top + rect.height / 2)}px`);
-      root.dataset.liorOpenExpand = '1';
-
+      // Brief press-lift on the tapped card. Feature tiles (icon cards) open
+      // their destination with a clean directional push — there is no shared
+      // image to morph into, so a real container-morph there only ever read as
+      // a cheap growing box. The true Apple-Photos shared-element morph is
+      // reserved for surfaces that DO share an image (e.g. memory photos).
       target.classList.add(LIFT_CLASS);
-      // Auto-remove after the keyframe completes. If the source view is
-      // already unmounted by the time this fires, removeClass is a no-op.
       window.setTimeout(() => {
         target.classList.remove(LIFT_CLASS);
       }, LIFT_MS + 40);
     }
 
-    // Fire navigation in parallel — the lift animates concurrently with
-    // the page transition snapshot, so the user sees the card lift AND
-    // the new page begin sliding in at the same time. This is what makes
-    // it feel "premium" vs blocked.
+    // Push the destination in. The lift runs concurrently with the slide.
     navigate();
   }, []);
 }
