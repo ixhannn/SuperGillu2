@@ -37,7 +37,9 @@ const getDisplayName = (value: string | undefined, fallback: string) => {
 };
 
 const DAYS_TOGETHER_LEGACY_FONT_STYLE: React.CSSProperties = {
-    fontFamily: '"Outfit", "Playfair Display", Georgia, serif',
+    fontFamily: 'var(--font-display)',
+    fontVariantNumeric: 'tabular-nums',
+    fontFeatureSettings: '"tnum" 1',
 };
 
 const DAYS_TOGETHER_LEGACY_UNIT_STYLE: React.CSSProperties = {
@@ -678,10 +680,14 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
 
             {/* ── DAYS TOGETHER — Hero Card ────────────────────────────── */}
             <ScrollReveal variant="fadeScale">
-                {/* scroll-recede: compositor-scrubbed sink/dim as the hero
-                    leaves the viewport — this plain div is framer-free, so
-                    the CSS animation owns its transform without conflicts. */}
-                <div ref={heroRef} className="scroll-recede">
+                {/* NOTE: scroll-recede (a view()-timeline dim/sink on exit) was
+                    REMOVED here. The hero is the TOP-most scroll element, so with
+                    `animation-range: exit` it counts as already "exiting through the
+                    top" at scrollTop 0 and gets stranded at the end-state
+                    opacity: 0.45 — i.e. the Our Journey tile looks transparent at
+                    rest. Exit-dim only works for elements that start below the fold.
+                    (ref kept for the count-up IntersectionObserver.) */}
+                <div ref={heroRef}>
                     <TiltCard
                         maxTilt={12}
                         glare
@@ -690,7 +696,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         className="relative overflow-hidden p-6 rounded-[1.75rem] mb-4 aurora-card border border-white/20 cursor-pointer"
                         style={{
                             background: 'linear-gradient(135deg, #ec4899 0%, #f9a8d4 35%, #ec4899 70%, #f472b6 100%)',
-                            boxShadow: '0 8px 32px rgba(251,207,232,0.25), 0 24px 64px rgba(251,207,232,0.10)',
+                            boxShadow: '0 10px 30px rgba(232,160,176,0.16)',
                         }}
                     >
                         {/* Decorative heart watermark */}
@@ -741,8 +747,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 background: 'linear-gradient(135deg, #fb7185 0%, #f43f5e 42%, #e11d48 100%)',
                                 border: '1px solid rgba(255,255,255,0.22)',
                                 boxShadow: receivedHeartbeat
-                                    ? 'inset 0 1px 0 rgba(255,255,255,0.26), 0 10px 28px rgba(244,63,94,0.36), 0 20px 44px rgba(225,29,72,0.18)'
-                                    : 'inset 0 1px 0 rgba(255,255,255,0.22), 0 8px 22px rgba(244,63,94,0.28), 0 16px 36px rgba(225,29,72,0.14)',
+                                    ? 'inset 0 1px 0 rgba(255,255,255,0.26), 0 5px 14px rgba(225,29,72,0.22)'
+                                    : 'inset 0 1px 0 rgba(255,255,255,0.22), 0 4px 12px rgba(225,29,72,0.16)',
                             }}
                         >
                             <HeartbeatRipple active={showHeartbeat && isLinked} />
@@ -773,9 +779,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             </ScrollReveal>
 
             {/* ── STATUS PILLS ─────────────────────────────────────────── */}
-            {/* scroll-recede-FLAT: the pills carry backdrop-filter, and an
-                ancestor opacity animation would kill their frosted glass
-                (backdrop root). Transform-only recede keeps the frost. */}
+            {/* scroll-recede-FLAT: transform-only recede (never animate opacity
+                on an ancestor of these pills). The awake pills previously set
+                backdrop-filter, but over their near-opaque white gradient it was
+                invisible (blurring the smooth page gradient = the gradient) while
+                flattening to a blurry frame during page-return / keep-alive
+                opacity fades — so it was removed (2026-06-16). */}
             <div className="flex gap-3 mb-5 relative z-10 scroll-recede-flat">
                 {/* Partner status pill — ghost placeholder until someone joins */}
                 {!isLinked && (
@@ -815,9 +824,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.12), 0 4px 12px rgba(0,0,0,0.18)',
                     } : {
                         borderRadius: '100px',
-                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.78) 100%)',
-                        backdropFilter: 'blur(20px) saturate(140%)',
-                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.82) 100%)',
                         border: '1px solid rgba(255,255,255,0.95)',
                         boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), inset 0 0 18px rgba(255,255,255,0.55), 0 2px 10px rgba(232,160,176,0.08)',
                     }}
@@ -849,9 +856,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.18), 0 4px 14px rgba(159,18,57,0.35)',
                     } : {
                         borderRadius: '100px',
-                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.78) 100%)',
-                        backdropFilter: 'blur(20px) saturate(140%)',
-                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.82) 100%)',
                         border: '1px solid rgba(255,255,255,0.95)',
                         boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), inset 0 0 18px rgba(255,255,255,0.55), 0 2px 10px rgba(232,160,176,0.08)',
                     }}

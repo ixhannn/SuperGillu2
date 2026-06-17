@@ -247,7 +247,7 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
                   }
                 }}
                 onClick={() => handleNavTap(item.id)}
-                className="relative flex items-center justify-center outline-none touch-manipulation select-none"
+                className="relative flex items-center justify-center touch-manipulation select-none"
                 style={{ width: BTN, height: BTN, zIndex: 1, flex: '1 1 0', minWidth: 0 }}
                 aria-label={currentView === 'private-space' && item.id === 'add-memory' ? 'Add private item' : item.label}
                 {...(item.id === 'daily-moments' ? { 'data-coachmark': 'daily-moments' } : {})}

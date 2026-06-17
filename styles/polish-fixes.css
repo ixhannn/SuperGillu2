@@ -1,0 +1,130 @@
+/* =============================================================================
+   LIOR — Polish fixes
+   Defines primitives that were referenced in JS/TSX but had no CSS (so they
+   rendered nothing), plus additive accessibility hardening. Imported LAST so
+   these definitions and the focus/forced-colors rules win the cascade.
+   ============================================================================= */
+
+/* ── SKELETON LOADING ───────────────────────────────────────────────────────
+   components/Skeleton.tsx emits .skeleton-shell / .skeleton-aura /
+   .skeleton-shimmer. None were defined, so every loading state painted as an
+   empty box. Tasteful warm shimmer that reads as "loading", not "broken". */
+.skeleton-shell {
+  background: color-mix(in srgb, var(--color-text-secondary, #9b7b84) 14%, transparent);
+  position: relative;
+  isolation: isolate;
+}
+.skeleton-aura {
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    rgba(255, 255, 255, 0.5) 0%,
+    transparent 70%
+  );
+  opacity: 0.4;
+  pointer-events: none;
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: lior-skeleton-shimmer 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes lior-skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ── TILE OPEN LIFT ─────────────────────────────────────────────────────────
+   hooks/useTileOpen.ts adds .tile-open-lifting for ~220ms before navigating so
+   a tapped card "picks up" as the next view slides in. The keyframe never
+   existed. Compositor-only transform + shadow grow. */
+.tile-open-lifting {
+  animation: tile-lift 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  z-index: 5;
+}
+@keyframes tile-lift {
+  0% {
+    transform: scale(1);
+    box-shadow: var(--shadow-sm);
+  }
+  45% {
+    transform: scale(1.035);
+    box-shadow: var(--shadow-lg);
+  }
+  100% {
+    transform: scale(1.02);
+    box-shadow: var(--shadow-md);
+  }
+}
+
+/* ── PAGE FRAME ──────────────────────────────────────────────────────────────
+   .view-container / .view-section were referenced by KeepsakeBox, StorageConsole
+   and Profile but defined nowhere, so KeepsakeBox/StorageConsole rendered
+   edge-to-edge. Provide the app's standard 20px gutter. (Profile pads its own
+   children, so its no-op use of this class is being removed in Profile.tsx to
+   avoid double-padding.) */
+.view-container {
+  width: 100%;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+.view-section:not(:last-child) {
+  margin-bottom: 1.5rem;
+}
+
+/* ── KEYBOARD FOCUS — visible on light AND dark surfaces ─────────────────────
+   The previous ring used rgba(var(--theme-particle-1-rgb), .6), which is
+   invisible on the dark Premium/Auth surfaces and was killed outright by
+   inline outline-none on the primary nav. This ring carries a colored outline
+   plus a light halo so it reads on any background. :focus-visible only matches
+   keyboard focus, never touch/click. */
+:focus-visible {
+  outline: 2.5px solid var(--color-nav-active, #c4687e);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2.5px solid var(--color-nav-active, #c4687e);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.7);
+}
+
+/* ── FORCED COLORS / HIGH CONTRAST ───────────────────────────────────────────
+   The UI is translucency-driven; in Windows High-Contrast every glass border
+   collapses and cards disappear. Give surfaces a real border in that mode. */
+@media (forced-colors: active) {
+  .glass-card,
+  .glass-card-hero,
+  .glass-card-premium,
+  .bento-card,
+  .accent-card,
+  .aurora-card,
+  .liquid-glass,
+  .glass-nav,
+  .glass-3d,
+  .premium-glass,
+  .premium-skeuo-glass,
+  .vh-shell,
+  .sync-surface,
+  .input-light {
+    border: 1px solid CanvasText;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+}

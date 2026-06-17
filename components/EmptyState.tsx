@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 
 // ─── Variant definitions ──────────────────────────────────────────────────────
@@ -99,16 +99,18 @@ const VARIANTS: Record<EmptyStateVariant, VariantConfig> = {
 
 // ─── Illustration icon ────────────────────────────────────────────────────────
 
-const IllustrationIcon: React.FC<{ emoji: string; gradient: string }> = ({ emoji, gradient }) => (
+const IllustrationIcon: React.FC<{ emoji: string; gradient: string }> = ({ emoji, gradient }) => {
+    const reduce = useReducedMotion();
+    return (
     <div className="flex justify-center mb-7">
         <motion.div
-            animate={{ y: [0, -6, 0] }}
+            animate={reduce ? undefined : { y: [0, -6, 0] }}
             transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
             style={{ position: 'relative' }}
         >
             {/* Outer glow */}
             <motion.div
-                animate={{ scale: [1, 1.15, 1], opacity: [0.35, 0.6, 0.35] }}
+                animate={reduce ? { opacity: 0.45 } : { scale: [1, 1.15, 1], opacity: [0.35, 0.6, 0.35] }}
                 transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
                 style={{
                     position: 'absolute',
@@ -142,7 +144,8 @@ const IllustrationIcon: React.FC<{ emoji: string; gradient: string }> = ({ emoji
             </div>
         </motion.div>
     </div>
-);
+    );
+};
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -184,7 +187,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ variant, onAction, class
                     onClick={onAction}
                     className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-[14px] mb-4"
                     style={{
-                        background: 'linear-gradient(135deg, #d4637a 0%, #c4687e 100%)',
+                        background: 'linear-gradient(135deg, #c0496a 0%, #b34563 100%)',
                         color: '#fff',
                         border: 'none',
                         boxShadow: '0 6px 20px rgba(196,104,126,0.35)',
@@ -199,7 +202,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ variant, onAction, class
             {config.tip && (
                 <p
                     className="text-[12px] font-medium"
-                    style={{ color: 'var(--color-text-secondary)', opacity: 0.55 }}
+                    style={{ color: 'var(--color-text-secondary)' }}
                 >
                     {config.tip}
                 </p>
