@@ -246,8 +246,14 @@ export const NotificationsService = {
   /**
    * Plan the recurring schedule based on current prefs. Should be called
    * on app start and whenever prefs change.
+   *
+   * `prompt` controls whether a never-decided ('prompt') permission state is
+   * allowed to trigger the OS permission dialog. App startup MUST pass
+   * `false` so reopening the app never fires a cold OS prompt; an explicit
+   * user gesture (e.g. accepting the priming modal) may pass `true`. When
+   * permission is already granted this schedules/registers regardless.
    */
-  async applySchedule(): Promise<void> {
+  async applySchedule({ prompt = false }: { prompt?: boolean } = {}): Promise<void> {
     const prefs = readPrefs();
 
     // Cancel previous
@@ -293,10 +299,11 @@ export const NotificationsService = {
     const native = await getCapacitorLocalNotifications();
     if (native) {
       // Make sure we actually hold permission — otherwise the scheduled
-      // notifications are silently dropped. Only prompt when the user hasn't
-      // decided yet (status 'prompt'); never re-nag a denial.
+      // notifications are silently dropped. Only prompt when the caller opted
+      // in AND the user hasn't decided yet (status 'prompt'); never re-nag a
+      // denial, and never prompt cold at startup (prompt === false).
       const status = await native.checkPermissions().catch(() => ({ display: 'denied' as const }));
-      if (status.display === 'prompt') {
+      if (prompt && status.display === 'prompt') {
         await native.requestPermissions().catch(() => undefined);
       }
       await ensureChannel(native);
@@ -405,8 +412,13 @@ export const NotificationsService = {
    * - Web PWA: uses VAPID Web Push subscription
    * The token is stored in Supabase `device_push_tokens` so the
    * `send-partner-nudge` Edge Function can reach either partner's device.
+   *
+   * `prompt` controls whether a never-decided permission state may trigger the
+   * OS dialog. App startup MUST pass `false`: the device is only registered
+   * when permission is ALREADY granted, never firing a cold OS prompt. An
+   * explicit user gesture may pass `true` to request-then-register.
    */
-  async registerPushToken(): Promise<void> {
+  async registerPushToken({ prompt = false }: { prompt?: boolean } = {}): Promise<void> {
     if (!SupabaseService.isConfigured()) return;
 
     const deviceId = localStorage.getItem('lior_device_id') || 'unknown';
@@ -414,7 +426,11 @@ export const NotificationsService = {
     // ── Native path: Capacitor PushNotifications ─────────────────────
     const nativePush = await getCapacitorPushNotifications();
     if (nativePush) {
-      const { receive } = await nativePush.requestPermissions().catch(() => ({ receive: 'denied' as const }));
+      // Non-prompting startup must NOT trigger the OS dialog — only inspect the
+      // current state. Prompting callers (explicit consent) may request it.
+      const { receive } = prompt
+        ? await nativePush.requestPermissions().catch(() => ({ receive: 'denied' as const }))
+        : await nativePush.checkPermissions().catch(() => ({ receive: 'denied' as const }));
       if (receive !== 'granted') return;
 
       if (!pushRegistrationListenerBound) {

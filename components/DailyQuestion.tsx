@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Send, Flame } from 'lucide-react';
+import { Sparkles, Send, Flame, Bell } from 'lucide-react';
 import { CoupleProfile, QuestionEntry } from '../types';
 import { StorageService } from '../services/storage';
 import { NotificationsService } from '../services/notifications';
@@ -9,6 +9,27 @@ import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
 import { toast } from '../utils/toast';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from './HeartbeatParticles';
+import { PrimingModal } from './PrimingModal';
+
+// Asked AT MOST once, ever: the first mutual reveal is the highest-consent
+// moment to request notification permission (vs a cold prompt at startup).
+const NOTIF_PRIMER_SHOWN_KEY = 'notif_primer_shown';
+
+function notifPrimerAlreadyShown(): boolean {
+  try {
+    return localStorage.getItem(NOTIF_PRIMER_SHOWN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markNotifPrimerShown(): void {
+  try {
+    localStorage.setItem(NOTIF_PRIMER_SHOWN_KEY, '1');
+  } catch {
+    /* storage unavailable — worst case the primer can show again next reveal */
+  }
+}
 
 interface DailyQuestionProps {
     profile: CoupleProfile;
@@ -19,6 +40,7 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     const [entry, setEntry] = useState<QuestionEntry | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [draft, setDraft] = useState('');
+    const [showNotifPrimer, setShowNotifPrimer] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<HeartbeatParticlesHandle>(null);
@@ -96,8 +118,48 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
         // Fire-and-forget partner push ONCE, only on the reveal-completing submit.
         if (justRevealed) {
             void NotificationsService.triggerPartnerNudge('daily_answer', profile.myName);
+            void maybePrimeNotifications();
         }
         onUpdate();
+    };
+
+    // The first mutual reveal is the highest-consent moment to ask for
+    // notification permission. We ask AT MOST once (notif_primer_shown flag) and
+    // ONLY when the OS state is still undecided ('default'). Strictly sequenced
+    // AFTER the reveal flourish (Heavy haptic + chime + particles + toast that
+    // the celebration effect fires this same render) via a short delay, so we
+    // never stomp that beat.
+    const maybePrimeNotifications = async () => {
+        if (notifPrimerAlreadyShown()) return;
+        let status: NotificationPermission = 'denied';
+        try {
+            status = await NotificationsService.getPermissionStatus();
+        } catch {
+            return;
+        }
+        if (status !== 'default') return;
+        window.setTimeout(() => setShowNotifPrimer(true), 1100);
+    };
+
+    const handleNotifPrimerConfirm = () => {
+        markNotifPrimerShown();
+        setShowNotifPrimer(false);
+        void (async () => {
+            try {
+                // Explicit user consent — request (prompting) then schedule now
+                // that permission may be granted. requestPermission registers
+                // the push token on grant; applySchedule lays down the reminders.
+                await NotificationsService.requestPermission();
+                await NotificationsService.applySchedule();
+            } catch {
+                /* best-effort — never block the reveal moment */
+            }
+        })();
+    };
+
+    const handleNotifPrimerCancel = () => {
+        markNotifPrimerShown();
+        setShowNotifPrimer(false);
     };
 
     const handleCancel = (e: React.MouseEvent) => {
@@ -257,6 +319,19 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Notification priming — opens AFTER the reveal flourish, at most once.
+                Portals to document.body, so it sits outside the card visually. */}
+            <PrimingModal
+                isOpen={showNotifPrimer}
+                title="Stay in sync, even apart"
+                body={`Get a gentle nudge when ${profile.partnerName} answers — so you never miss the moment your story grows.`}
+                confirmLabel="Turn on nudges"
+                cancelLabel="Not now"
+                icon={<Bell size={24} strokeWidth={2} />}
+                onConfirm={handleNotifPrimerConfirm}
+                onCancel={handleNotifPrimerCancel}
+            />
         </motion.div>
     );
 };

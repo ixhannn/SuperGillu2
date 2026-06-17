@@ -657,6 +657,10 @@ const App = () => {
   useEffect(() => {
     if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
     return scheduleIdleTask(() => {
+      // NON-prompting at startup (the default): both calls only schedule /
+      // register when permission is ALREADY granted, never firing a cold OS
+      // prompt. The ask now happens at the highest-consent moment — the first
+      // mutual reveal (DailyQuestion → PrimingModal), which passes prompt:true.
       void NotificationsService.applySchedule().catch((error) => {
         DiagnosticsService.recordError('notifications.schedule', error);
       });
@@ -902,6 +906,17 @@ const App = () => {
     setScheduleTour(true);
   };
 
+  // "Invite your partner" path: the Onboarding component has already finalized
+  // (profile + lior_onboarded persisted locally) BEFORE this fires, so we run
+  // the same server-side completion as the skip path and then route straight
+  // into the pairing hub. Onboarding is guaranteed authenticated at this point
+  // (showOnboarding only flips true inside an authed session), so Sync's
+  // PairingService can create an invite immediately.
+  const handleOnboardingPairNow = (me: string, partner: string) => {
+    handleOnboardingSelect(me, partner);
+    navigateTo('sync');
+  };
+
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
   };
@@ -976,7 +991,7 @@ const App = () => {
 
   // First-time Onboarding Check
   if (showOnboarding) {
-    return <Onboarding onComplete={handleOnboardingSelect} />;
+    return <Onboarding onComplete={handleOnboardingSelect} onPairNow={handleOnboardingPairNow} />;
   }
 
   return (

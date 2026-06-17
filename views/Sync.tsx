@@ -14,6 +14,7 @@ import { SupabaseService } from '../services/supabase';
 import { MediaMigrationService } from '../services/mediaMigration';
 import { NotificationsService } from '../services/notifications';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PrimingModal } from '../components/PrimingModal';
 import { toast } from '../utils/toast';
 import { PairingService, QR_PREFIX, PairInvite } from '../services/pairing';
 import { requestMediaStream, stopStream, MediaFailureReason } from '../utils/mediaPermissions';
@@ -59,6 +60,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const [cameraFailure, setCameraFailure] = useState<MediaFailureReason | null>(null);
   const [manualCode, setManualCode] = useState('');
   const [manualClaiming, setManualClaiming] = useState(false);
+  const [showCameraPrime, setShowCameraPrime] = useState(false);
   const [linkedPartner, setLinkedPartner] = useState(() => getLinkedPartnerLabel());
   const [pairingUi, setPairingUi] = useState<PairingUiState>({
     phase: 'checking',
@@ -75,6 +77,11 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   const cdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastExpiredInviteRef = useRef<string>('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // True once the OS camera prompt has been triggered this session. We can't
+  // reliably read prior grant state (navigator.permissions.query is flaky on
+  // iOS WKWebView), so we prime exactly once before the first cold prompt and
+  // then let later attempts hit getUserMedia directly.
+  const cameraPrimedRef = useRef(false);
 
   const normalizeCode = (value: string) =>
     value.replace(/^LIOR:/i, '').replace(/[^A-Za-z0-9]/g, '').trim().toUpperCase().slice(0, 8);
@@ -249,6 +256,24 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       streamRef.current = null;
     }
     if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
+  // Entry point for every camera-start action ("Open Camera" + banner retry).
+  // On the first/undetermined launch, prime with an explainer modal so the
+  // user understands why we need the camera BEFORE the one-shot OS prompt
+  // fires; a cold denial permanently breaks QR pairing on iOS/Android.
+  const requestCameraStart = () => {
+    if (cameraPrimedRef.current) {
+      void startCamera();
+      return;
+    }
+    setShowCameraPrime(true);
+  };
+
+  const confirmCameraPrime = () => {
+    cameraPrimedRef.current = true;
+    setShowCameraPrime(false);
+    void startCamera();
   };
 
   const startCamera = async () => {
@@ -638,7 +663,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           kind="camera"
           reason={cameraFailure}
           tone="light"
-          onRetry={startCamera}
+          onRetry={requestCameraStart}
           onDismiss={() => { setScanPhase('idle'); setCameraFailure(null); }}
         />
         <div className="w-full">
@@ -767,7 +792,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
         <p className="text-xs text-center" style={{ color: 'var(--color-text-primary)', opacity: 0.8 }}>
           Ask your partner to open their QR, then scan it here.
         </p>
-        <button onClick={startCamera}
+        <button onClick={requestCameraStart}
           className="liquid-glass-btn liquid-glass-btn--rose flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all"
           style={{ color: '#fff' }}>
           <Camera size={16} /> Open Camera
@@ -990,6 +1015,16 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           </section>
         </div>
 
+        <PrimingModal
+          isOpen={showCameraPrime}
+          title="Scan your partner's QR"
+          body="Lior uses your camera once to read the pairing code. We never record or store anything — it only sees the QR."
+          confirmLabel="Open Camera"
+          cancelLabel="Not now"
+          icon={<Camera size={24} strokeWidth={2} />}
+          onConfirm={confirmCameraPrime}
+          onCancel={() => setShowCameraPrime(false)}
+        />
         <ConfirmModal
           isOpen={showLogoutConfirm}
           title="Log Out"

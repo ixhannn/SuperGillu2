@@ -7,6 +7,13 @@ import { dateInputValueToStoredDate, daysTogetherFrom, parseStoredDateOnly, toda
 
 interface OnboardingProps {
     onComplete: (myName: string, partnerName: string) => void;
+    /**
+     * Optional: invoked instead of onComplete when the user chooses to pair
+     * with their partner right away. Onboarding is finalized identically
+     * (profile + completion flag persisted) BEFORE this fires, so the caller
+     * can safely navigate straight to the pairing hub.
+     */
+    onPairNow?: (myName: string, partnerName: string) => void;
 }
 
 type Step = 'welcome' | 'myName' | 'anniversary' | 'done';
@@ -320,7 +327,7 @@ const Orbs: React.FC = () => (
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
+export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow }) => {
     const [step, setStep] = useState<Step>('welcome');
     const [dir, setDir] = useState(1);
     const [myName, setMyName] = useState('');
@@ -342,9 +349,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         setStep(next);
     };
 
-    const handleComplete = async () => {
-        setShowBurst(true);
-        await Haptics.celebrate();
+    // Persist the collected name + anniversary and mark onboarding complete.
+    // Shared by both the "Enter your space" (skip) and "Invite your partner"
+    // (pair now) paths so the two finalize IDENTICALLY — the only difference
+    // is where the user lands afterward. Must run BEFORE any navigation so the
+    // user is never bounced back to onboarding and never loses their input.
+    const finalizeOnboarding = () => {
         const profile = StorageService.getCoupleProfile();
         StorageService.saveCoupleProfile({
             ...profile,
@@ -354,7 +364,26 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 : profile.anniversaryDate,
         });
         StorageService.markOnboardingComplete();
+    };
+
+    const handleComplete = async () => {
+        setShowBurst(true);
+        await Haptics.celebrate();
+        finalizeOnboarding();
         setTimeout(() => onComplete(myName.trim(), ''), 600);
+    };
+
+    const handlePairNow = async () => {
+        await Haptics.heartbeat();
+        // Finalize FIRST — only then hand off to the pairing hub. If onPairNow
+        // is not wired, fall back to the normal completion path so the button
+        // never strands the user mid-onboarding.
+        finalizeOnboarding();
+        if (onPairNow) {
+            onPairNow(myName.trim(), '');
+        } else {
+            onComplete(myName.trim(), '');
+        }
     };
 
     useEffect(() => {
@@ -768,12 +797,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 </motion.p>
                             </motion.div>
 
-                            {/* Invite hint */}
-                            <motion.div
+                            {/* Invite partner — real action, routes to the pairing hub */}
+                            <motion.button
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.54 }}
-                                className="mb-5 px-4 py-3.5 rounded-2xl flex items-center gap-3 text-left"
+                                whileTap={{ scale: 0.98 }}
+                                onClick={handlePairNow}
+                                className="w-full mb-5 px-4 py-3.5 rounded-2xl flex items-center gap-3 text-left"
                                 style={{
                                     background: 'rgba(255,255,255,0.46)',
                                     border: '1.5px solid rgba(255,255,255,0.82)',
@@ -786,19 +817,20 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 >
                                     <UserPlus size={18} style={{ color: 'var(--color-nav-active)' }} />
                                 </div>
-                                <div>
+                                <div className="flex-1 min-w-0">
                                     <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                                        Profile → Pair with partner
+                                        Invite your partner
                                     </p>
                                     <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-                                        Share a QR — their name appears automatically
+                                        Show a QR or share a code
                                     </p>
                                 </div>
-                            </motion.div>
+                                <ArrowRight size={18} strokeWidth={2.5} style={{ color: 'var(--color-nav-active)', flexShrink: 0 }} />
+                            </motion.button>
 
                             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.64 }}>
                                 <PrimaryButton
-                                    label="Enter your space"
+                                    label="I'll do it later"
                                     glow
                                     onClick={handleComplete}
                                     icon={<Heart size={17} fill="currentColor" />}
