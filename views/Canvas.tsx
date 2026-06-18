@@ -449,7 +449,7 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
                 boxShadow: activeColor === c
                   ? `0 0 0 3px rgba(255,255,255,0.96), 0 0 0 5px ${c}, 0 6px 12px rgba(72,47,62,0.12)`
                   : 'inset 0 1px 0 rgba(255,255,255,0.42), 0 3px 8px rgba(72,47,62,0.09)',
-                transition: 'width 0.18s cubic-bezier(0.34,1.56,0.64,1), height 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s cubic-bezier(0.34,1.56,0.64,1)',
+                transition: 'width 0.18s cubic-bezier(0.16,1,0.3,1), height 0.18s cubic-bezier(0.16,1,0.3,1), box-shadow 0.18s cubic-bezier(0.16,1,0.3,1)',
               }}
             />
           ))}

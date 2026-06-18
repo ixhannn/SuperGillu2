@@ -46,20 +46,21 @@ export const DynamicToast: React.FC = () => {
             key={currentToast.id}
             role="status"
             aria-live="polite"
-            initial={{ y: -44, scale: 0.92, opacity: 0, filter: 'blur(6px)' }}
+            initial={{ y: -44, scale: 0.92, opacity: 0 }}
             animate={{
               y: 12,
               scale: 1,
               opacity: 1,
-              filter: 'blur(0px)',
-              transition: { type: 'spring', damping: 20, stiffness: 280 }
+              transition: { type: 'spring', damping: 22, stiffness: 280 }
             }}
             exit={{
               y: -40,
               scale: 0.9,
               opacity: 0,
-              filter: 'blur(4px)',
-              transition: { duration: 0.2 }
+              // Spring exit (high damping, no overshoot) so it glides away in
+              // the same family as the entrance instead of snapping out on a
+              // linear tween. Blur dropped — costly on always-on-top chrome.
+              transition: { type: 'spring', damping: 30, stiffness: 320 }
             }}
             className="pointer-events-auto relative overflow-hidden flex items-center gap-3 glass-card backdrop-blur-xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] px-4 py-3 rounded-full"
           >

@@ -1079,7 +1079,7 @@ export function attachLongPress(el: HTMLElement, opts: LongPressOptions): () => 
     opts.onProgress?.(0);
     opts.onCancel?.();
     // Spring snap-back via CSS transition (avoids extra RAF)
-    el.style.transition = 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+    el.style.transition = 'transform 0.3s cubic-bezier(0.16,1,0.3,1)'; // silk settle (de-bounced — was 1.56 overshoot)
     el.style.transform  = 'scale(1)';
     setTimeout(() => { el.style.transition = ''; }, 320);
   };

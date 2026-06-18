@@ -221,7 +221,7 @@
   }
 
   .coco-bounce .coco-float {
-    animation: floatY 3s ease-in-out infinite, bouncePop 0.6s cubic-bezier(.34,1.56,.64,1);
+    animation: floatY 3s ease-in-out infinite, bouncePop 0.6s var(--lior-ease-silk);
   }
   @keyframes bouncePop {
     0% { transform: scale(1); }
@@ -428,7 +428,7 @@
     background: linear-gradient(90deg, #ff9aa8, #c83d5a);
     border-radius: 999px;
     box-shadow: 0 0 8px rgba(232,90,114,0.5);
-    transition: width 0.5s cubic-bezier(.34,1.56,.64,1);
+    transition: width 0.5s var(--lior-ease-silk);
   }
   .xpbar-label {
     font-size: 11px;
@@ -543,7 +543,7 @@
       0 0 0 2px var(--food-color, #c83d5a);
     transform: translate(-50%, 0) scale(0.3);
     opacity: 0;
-    animation: fanIn 0.4s cubic-bezier(.34,1.56,.64,1) forwards;
+    animation: fanIn 0.4s var(--lior-ease-silk) forwards;
     animation-delay: calc(var(--i) * 0.05s);
     transition: transform 0.12s ease;
   }
@@ -1049,7 +1049,7 @@
   .statbar-fill {
     height: 100%;
     border-radius: 999px;
-    transition: width 0.5s cubic-bezier(.34,1.56,.64,1);
+    transition: width 0.5s var(--lior-ease-silk);
   }
   .statbar-rose .statbar-fill { background: linear-gradient(90deg, #ff9aa8, #c83d5a); }
   .statbar-amber .statbar-fill { background: linear-gradient(90deg, #fde68a, #d99a4e); }
@@ -1186,7 +1186,7 @@
     background: #fff;
     border-radius: 50%;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    transition: left 0.2s cubic-bezier(.34,1.56,.64,1);
+    transition: left 0.2s var(--lior-ease-silk);
   }
   .toggle-on .toggle-knob { left: 21px; }
 
@@ -1203,7 +1203,7 @@
     font: 600 13px var(--font-ui);
     box-shadow: 0 8px 20px rgba(58,8,24,0.4);
     z-index: 50;
-    animation: toastIn 0.3s cubic-bezier(.34,1.56,.64,1);
+    animation: toastIn 0.3s var(--lior-ease-silk);
     pointer-events: none;
   }
   @keyframes toastIn {

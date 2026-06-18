@@ -93,10 +93,16 @@ select {
   --lior-ease-silk: cubic-bezier(0.16, 1, 0.3, 1);
   --lior-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --lior-ease-press: cubic-bezier(0.2, 0, 0, 1);
+  --lior-ease-exit: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Canonical duration ladder — every animation should pick from this set. */
+  --lior-motion-press: 90ms;     /* finger-down press feedback */
+  --lior-motion-feedback: 140ms; /* toggles, small state flips */
+  --lior-motion-micro: 200ms;    /* ripple, chip select, like */
   --lior-motion-tab: 240ms;
-  --lior-motion-push: 360ms;
   --lior-motion-pop: 260ms;
+  --lior-motion-push: 360ms;
   --lior-motion-modal: 380ms;
+  --lior-motion-morph: 400ms;    /* shared-element tile->page expand */
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -129,7 +135,8 @@ html[data-transitioning="1"] [data-skip-blur-on-transition] {
 }
 
 html[data-transitioning="1"] [data-lior-motion-veil="true"] {
-  animation: lior-motion-veil 520ms var(--lior-ease-silk) both;
+  /* Synced to the route push so the sheen doesn't outlive the transition. */
+  animation: lior-motion-veil var(--lior-motion-push) var(--lior-ease-silk) both;
   animation-play-state: running !important;
 }
 
@@ -137,6 +144,46 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
   0%   { opacity: 0;    transform: translate3d(-24%, 0, 0) scaleX(0.72); }
   34%  { opacity: 0.34; transform: translate3d(-4%, 0, 0) scaleX(0.92); }
   100% { opacity: 0;    transform: translate3d(34%, 0, 0) scaleX(1.08); }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Background depth recede on page open/close (the iOS/visionOS app-open cue).
+   For push/pop/expand only, TransitionEngine sets <html data-nav-depth="1">.
+   The whole ambient background world then drops BACK — dimmed, softly blurred,
+   scaled a hair — so the opening (or closing) page reads as coming forward over
+   depth instead of fighting the full-brightness pink glow. This is NOT a
+   redesign: the flag is cleared the instant the nav settles and the background
+   eases back to 100%. Tab switches never set the flag, so the persistent stage
+   stays put when moving between root tabs.
+
+   Implemented as a plain transition (not @keyframes) on purpose: the GPU-budget
+   rule above pauses every *animation* during data-transitioning, but transitions
+   keep running — so the recede survives while ambient drift is frozen. The
+   translateZ(0) baseline keeps a stable containing block for the fixed WebGL
+   layers inside, so there is no 1-frame jump when the scale kicks in.
+   ────────────────────────────────────────────────────────────────────────── */
+.lior-ambient-world {
+  transform: translateZ(0);
+  transition:
+    opacity   420ms var(--lior-ease-silk),
+    filter    420ms var(--lior-ease-silk),
+    transform 420ms var(--lior-ease-silk);
+}
+
+html[data-nav-depth="1"] .lior-ambient-world {
+  opacity: 0.5;
+  filter: blur(6px) saturate(0.92);
+  transform: translateZ(0) scale(1.035);
+  transition-duration: 340ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lior-ambient-world {
+    filter: none !important;
+    transform: translateZ(0) !important;
+    transition: opacity 200ms linear;
+  }
+  html[data-nav-depth="1"] .lior-ambient-world { opacity: 0.72; }
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -284,7 +331,9 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
 .bn-icon {
   transform: translateZ(0) scale(0.84);
   transform-origin: center;
-  transition: transform 260ms var(--lior-ease-silk);
+  /* Synced to the tab content fade (--lior-motion-tab) so the icon finishes
+     scaling exactly when the new tab reaches full opacity. */
+  transition: transform var(--lior-motion-tab) var(--lior-ease-silk);
   will-change: transform;
   backface-visibility: hidden;
 }
@@ -310,52 +359,76 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
    ONLY: scaling a ::view-transition snapshot resamples the bitmap and makes
    the whole incoming view blurry until the transition ends (fixed 2026-06-16).
    ────────────────────────────────────────────────────────────────────────── */
+/* ── Motion language: TRANSFORM into the next state, never cross-fade ───────
+   New content travels as a real object (full-distance slide at full opacity);
+   the old screen parallaxes back + dims slightly for depth. No mid-animation
+   opacity blend zone (incoming reaches full opacity within the first third,
+   then it's pure spatial movement). Compositor-only: transform + opacity. */
+
+/* Tab — lateral, same hierarchy level: a gentle vertical settle, symmetric. */
 @keyframes lior-vt-tab-out {
   from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  to   { opacity: 0; transform: translate3d(0, -8px, 0) scale(1.012); }
+  to   { opacity: 0; transform: translate3d(0, -10px, 0) scale(1.008); }
 }
 @keyframes lior-vt-tab-in {
-  from { opacity: 0; transform: translate3d(0, 10px, 0); }
-  58%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.985); }
+  30%  { opacity: 1; }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
+
+/* Push — going deeper: new screen enters from fully off the right edge at
+   full opacity (a true push, not a nudge); old recedes left + dims. */
 @keyframes lior-vt-push-out {
-  from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
-  to   { opacity: 0.22; transform: translate3d(-10vw, 0, 0) scale(0.982); }
+  from { opacity: 1;   transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0.7; transform: translate3d(-25%, 0, 0) scale(0.96); }
 }
 @keyframes lior-vt-push-in {
-  from { opacity: 0; transform: translate3d(24vw, 0, 0); }
-  42%  { opacity: 1; }
+  from { opacity: 1; transform: translate3d(100%, 0, 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
+
+/* Pop — going back: old slides fully off to the right (on top, see z-index
+   rule) revealing the previous screen coming forward from depth underneath. */
 @keyframes lior-vt-pop-out {
-  from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
-  to   { opacity: 0.18; transform: translate3d(24vw, 0, 0) scale(0.982); }
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to   { opacity: 1; transform: translate3d(100%, 0, 0); }
 }
 @keyframes lior-vt-pop-in {
-  from { opacity: 0; transform: translate3d(-10vw, 0, 0); }
-  42%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { opacity: 1; transform: translate3d(-25%, 0, 0) scale(0.96); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
+
+/* Modal — a sheet rising from the bottom edge; the screen behind recedes. */
 @keyframes lior-vt-modal-out {
-  from { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
-  to   { opacity: 0.62; transform: translate3d(0, -10px, 0) scale(0.982); }
+  from { opacity: 1;   transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0.7; transform: translate3d(0, -1.5%, 0) scale(0.965); }
 }
 @keyframes lior-vt-modal-in {
-  from { opacity: 0; transform: translate3d(0, 28px, 0); }
-  50%  { opacity: 1; }
+  from { opacity: 1; transform: translate3d(0, 100%, 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
-/* Sheet dismissal — the inverse of modal: the composer slides back DOWN
-   while the screen beneath settles forward in depth (iOS sheet stack). */
+/* Sheet dismissal — inverse of modal: the sheet slides back DOWN (on top, see
+   z-index rule) while the screen beneath settles forward in depth. */
 @keyframes lior-vt-modal-close-out {
-  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  to   { opacity: 0; transform: translate3d(0, 34px, 0) scale(0.984); }
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to   { opacity: 1; transform: translate3d(0, 100%, 0); }
 }
 @keyframes lior-vt-modal-close-in {
-  from { opacity: 0.62; transform: translate3d(0, -10px, 0); }
-  50%  { opacity: 1; }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { opacity: 0.85; transform: translate3d(0, -1.5%, 0) scale(0.965); }
+  35%  { opacity: 1; }
+  to   { opacity: 1;    transform: translate3d(0, 0, 0) scale(1); }
+}
+
+/* Expand — tile-open bloom (origin set per-tap; see the data-vt-dir="expand"
+   rule below). New page grows from the tapped tile; old recedes + fades. */
+@keyframes lior-vt-expand-in {
+  from { opacity: 0; transform: scale(0.55); }
+  40%  { opacity: 1; }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes lior-vt-expand-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(1.06); }
 }
 
 ::view-transition-group(root) {
@@ -423,6 +496,28 @@ html[data-vt-dir="modal-close"]::view-transition-old(root) {
 html[data-vt-dir="modal-close"]::view-transition-new(root) {
   animation: var(--lior-motion-pop) var(--lior-ease-silk) lior-vt-modal-close-in;
 }
+
+/* Expand — tile-open bloom. transform-origin is set per-tap (px in viewport
+   coords) by useTileOpen, so the new page grows from the exact tile the user
+   touched. New paints on top (default order) so it blooms over the old screen. */
+html[data-vt-dir="expand"]::view-transition-new(root) {
+  transform-origin: var(--lior-open-x, 50%) var(--lior-open-y, 50%);
+  animation: var(--lior-motion-push) var(--lior-ease-silk) lior-vt-expand-in;
+}
+html[data-vt-dir="expand"]::view-transition-old(root) {
+  transform-origin: var(--lior-open-x, 50%) var(--lior-open-y, 50%);
+  animation: var(--lior-motion-push) var(--lior-ease-soft) lior-vt-expand-out;
+}
+
+/* Stacking control — for "back" motions (pop, sheet dismiss) the OUTGOING
+   snapshot must paint ABOVE the incoming one so it slides off and REVEALS the
+   screen underneath (true iOS reveal). Push & modal-open keep the default
+   new-on-top order. Where a WebView ignores z-index on these pseudos it falls
+   back to the default order, which still reads as directional movement. */
+html[data-vt-dir="pop"]::view-transition-old(root),
+html[data-vt-dir="modal-close"]::view-transition-old(root) { z-index: 2; }
+html[data-vt-dir="pop"]::view-transition-new(root),
+html[data-vt-dir="modal-close"]::view-transition-new(root) { z-index: 1; }
 
 /* Reduced motion — instant snap */
 @media (prefers-reduced-motion: reduce) {

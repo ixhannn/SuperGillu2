@@ -16,11 +16,12 @@ import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
 import { buildRelationshipMilestones } from '../shared/countdowns.js';
-import { springSmooth, springSnappy } from '../utils/motion';
+import { springSmooth, springSnappy, prefersReducedMotion } from '../utils/motion';
 import { toast } from '../utils/toast';
 import { NotificationsService } from '../services/notifications';
 import { useRelationship } from '../hooks/useRelationship';
 import { useThrottledReload } from '../hooks/useThrottledReload';
+import { useTileOpen } from '../hooks/useTileOpen';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -291,6 +292,9 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // Authoritative "do I actually have a partner?" signal. Drives solo-mode UI
     // so an unlinked user never sees a phantom partner or a heartbeat-to-nobody.
     const { isLinked } = useRelationship();
+    // Tile-open lift — the tapped card "picks itself up" while the route push
+    // slides the next view in, so navigation feels like opening, not jumping.
+    const open = useTileOpen();
     const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
     const [daysTogether, setDaysTogether] = useState(0);
@@ -319,7 +323,25 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     const headerScrollTopRef = useRef(0);
     const lastOverlayStateRef = useRef<string>('');
     const heroInView = useInView(heroRef, { once: true, margin: "-100px" });
-    const displayCount = useCountUp(daysTogether, heroInView);
+    // Gate the day-count so it starts ticking only AFTER the hero card's
+    // `lior-home-reveal` entrance has settled — counting mid-fade reads as
+    // jitter. The reveal animation runs on the .home-reveal wrapper (heroRef's
+    // parent); we listen for its `animationend`. Under reduced motion the
+    // keyframe is `none`/instant so animationend may never fire — settle at
+    // once in that case.
+    const [heroSettled, setHeroSettled] = useState(false);
+    useEffect(() => {
+        if (heroSettled) return;
+        if (prefersReducedMotion()) { setHeroSettled(true); return; }
+        const wrapperEl = heroRef.current?.parentElement;
+        if (!wrapperEl) { setHeroSettled(true); return; }
+        const onEnd = (e: AnimationEvent) => {
+            if (e.animationName === 'lior-home-reveal') setHeroSettled(true);
+        };
+        wrapperEl.addEventListener('animationend', onEnd);
+        return () => wrapperEl.removeEventListener('animationend', onEnd);
+    }, [heroSettled]);
+    const displayCount = useCountUp(daysTogether, heroInView && heroSettled);
 
     const calculateStreak = (mems: Memory[]) => {
         if (mems.length === 0) return 0;
@@ -513,6 +535,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
 
     const homeContainerStyle = getHomeContainerStyle();
     const homeHeaderOverlayHeight = getHomeHeaderOverlayHeight();
+    // 140ms soft crossfade for the status-toggle icon (Sun↔Moon). Bespoke
+    // CSS opacity transition, so honour reduced-motion explicitly: collapse to
+    // an instant swap when the user prefers reduced motion.
+    const statusIconTransition = prefersReducedMotion()
+        ? 'none'
+        : 'opacity var(--lior-motion-feedback) var(--lior-ease-soft)';
 
     const triggerReceivedHeartbeat = () => {
         setReceivedHeartbeat(true);
@@ -543,6 +571,11 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
 
     const toggleMyStatus = () => {
         const newState = myStatus.state === 'awake' ? 'sleeping' : 'awake';
+        // Explicit product action (tapping the pill) → toggle haptics are
+        // sanctioned here. Awake is the "on" state: awake→sleeping = toggleOff,
+        // sleeping→awake = toggleOn.
+        if (newState === 'awake') void Haptics.toggleOn();
+        else void Haptics.toggleOff();
         const newStatus: UserStatus = { state: newState, timestamp: new Date().toISOString() };
         StorageService.saveStatus(newStatus);
         setMyStatus(newStatus);
@@ -721,7 +754,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             </div>
 
                             <div className="min-h-[5rem] flex items-center">
-                                <div className={`transition-all duration-500 w-full ${showDetailedDuration ? 'opacity-0 translate-y-4 absolute pointer-events-none' : ''}`}>
+                                <div
+                                    className={`w-full ${showDetailedDuration ? 'opacity-0 translate-y-4 absolute pointer-events-none' : ''}`}
+                                    style={{ transition: 'opacity var(--lior-motion-morph) var(--lior-ease-silk), transform var(--lior-motion-morph) var(--lior-ease-silk)' }}
+                                >
                                     <p className="text-white/50 text-micro uppercase tracking-widest mb-3">You've been together for</p>
                                     <div className="flex items-baseline gap-2.5 mb-3">
                                         <h2
@@ -738,7 +774,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                         <Sparkles size={11} fill="currentColor" /> Every day matters
                                     </p>
                                 </div>
-                                <div className={`transition-all duration-500 w-full ${!showDetailedDuration ? 'opacity-0 -translate-y-4 absolute pointer-events-none' : ''}`}>
+                                <div
+                                    className={`w-full ${!showDetailedDuration ? 'opacity-0 -translate-y-4 absolute pointer-events-none' : ''}`}
+                                    style={{ transition: 'opacity var(--lior-motion-morph) var(--lior-ease-silk), transform var(--lior-motion-morph) var(--lior-ease-silk)' }}
+                                >
                                     <p className="text-white/50 text-micro uppercase tracking-widest mb-3">That is exactly</p>
                                     <h2 className="text-3xl font-bold mb-3 leading-tight text-white" style={DAYS_TOGETHER_LEGACY_FONT_STYLE}>{detailedDuration || `${daysTogether} days`}</h2>
                                     <p className="text-white/70 text-xs font-semibold flex items-center gap-1.5">
@@ -760,7 +799,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             </div>
 
             {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
-            <ScrollReveal variant="popIn">
+            <ScrollReveal variant="popIn" delay={0.09}>
                 <div className="mb-5 flex gap-3 relative z-10">
                     <div onClick={isLinked ? sendHeartbeat : () => setView('sync')} className="flex-1">
                         <div
@@ -793,7 +832,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             </span>
                         </div>
                     </div>
-                    <div onClick={() => setView('coco-pet')} className="w-[4.5rem]">
+                    <div onClick={(e) => open(e, () => setView('coco-pet'))} className="w-[4.5rem]">
                         <div className="w-full h-full bento-card text-lior-500 p-5 flex items-center justify-center spring-press">
                             <PawPrint size={22} />
                         </div>
@@ -802,13 +841,21 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             </ScrollReveal>
 
             {/* ── STATUS PILLS ─────────────────────────────────────────── */}
-            {/* scroll-recede-FLAT: transform-only recede (never animate opacity
-                on an ancestor of these pills). The awake pills previously set
-                backdrop-filter, but over their near-opaque white gradient it was
-                invisible (blurring the smooth page gradient = the gradient) while
-                flattening to a blurry frame during page-return / keep-alive
-                opacity fades — so it was removed (2026-06-16). */}
-            <div className="flex gap-3 mb-5 relative z-10 scroll-recede-flat">
+            {/* Reveal order 3 (delay 150ms). These pills carry backdrop-filter,
+                so the cold-open entrance must be TRANSFORM-ONLY — animating
+                opacity on this ancestor would turn it into a backdrop root and
+                flatten the frosted glass (same trap as .scroll-recede-flat).
+                The framer entrance lives on this OUTER wrapper (transform only,
+                no opacity key) so the inner .scroll-recede-flat node keeps sole
+                ownership of its scroll-driven transform. MotionConfig
+                reducedMotion="user" neuters this automatically. */}
+            <motion.div
+                initial={{ y: 12, scale: 0.985 }}
+                animate={{ y: 0, scale: 1 }}
+                transition={{ ...springSmooth, delay: 0.15 }}
+                className="relative z-10"
+            >
+            <div className="flex gap-3 mb-5 scroll-recede-flat">
                 {/* Partner status pill — ghost placeholder until someone joins */}
                 {!isLinked && (
                 <button
@@ -884,11 +931,23 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), inset 0 0 18px rgba(255,255,255,0.55), 0 2px 10px rgba(232,160,176,0.08)',
                     }}
                 >
-                    <div className="relative flex-shrink-0">
-                        {myStatus.state === 'sleeping'
-                            ? <Moon size={14} className="text-lior-200" fill="currentColor" />
-                            : <Sun size={14} className="text-amber-400 animate-spin-slow" />
-                        }
+                    {/* Sun↔Moon crossfade — both icons stacked, opacity toggled
+                        over 140ms soft so the status flip reads as a dissolve,
+                        not a hard cut. */}
+                    <div className="relative flex-shrink-0 h-[14px] w-[14px]">
+                        <Sun
+                            size={14}
+                            className="absolute inset-0 text-amber-400 animate-spin-slow"
+                            style={{ opacity: myStatus.state === 'sleeping' ? 0 : 1, transition: statusIconTransition }}
+                            aria-hidden={myStatus.state === 'sleeping'}
+                        />
+                        <Moon
+                            size={14}
+                            className="absolute inset-0 text-lior-200"
+                            fill="currentColor"
+                            style={{ opacity: myStatus.state === 'sleeping' ? 1 : 0, transition: statusIconTransition }}
+                            aria-hidden={myStatus.state !== 'sleeping'}
+                        />
                     </div>
                     <div className="flex flex-col min-w-0">
                         <span className={`text-xs font-semibold leading-tight ${myStatus.state === 'sleeping' ? 'text-white' : 'text-gray-700'}`}>
@@ -900,14 +959,15 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </div>
             </div>
+            </motion.div>
 
             {/* ── COUNTDOWN CARD ───────────────────────────────────────── */}
-            <ScrollReveal variant="slideFromRight">
+            <ScrollReveal variant="slideFromRight" delay={0.21}>
                 <TiltCard
                     data-coachmark="countdowns"
                     maxTilt={14}
                     glare
-                    onClick={() => setView('countdowns')}
+                    onClick={(e) => open(e, () => setView('countdowns'))}
                     className="relative overflow-hidden p-6 rounded-[1.75rem] mb-5 aurora-card border border-white/10 cursor-pointer"
                     style={{
                         background: 'linear-gradient(140deg, #1c1917 0%, #292524 40%, #3a1520 100%)',
@@ -945,7 +1005,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             </ScrollReveal>
 
             {/* ── PARTNER INSIGHT WHISPER ────────────────────────────── */}
-            <InsightWhisper setView={setView} />
+            {/* Reveal order 5 — quiet partner insight, arrives as an aside. */}
+            <ScrollReveal variant="fadeUp" delay={0.27}>
+                <InsightWhisper setView={setView} />
+            </ScrollReveal>
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
             {onThisDayMemory && (() => {
@@ -958,7 +1021,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 return (
                 <ScrollReveal variant="tiltUp">
                     <div
-                        onClick={() => setView('timeline')}
+                        onClick={(e) => open(e, () => setView('timeline'))}
                         className={`rounded-[1.75rem] mb-5 relative z-10 spring-press cursor-pointer overflow-hidden ${
                             hasOtdImage ? 'text-white h-48' : 'bg-gradient-to-br from-lior-500 to-amber-500 text-white p-6'
                         }${hasOtdImage && !otdImage ? ' bg-gradient-to-br from-lior-500 to-amber-500' : ''}`}
@@ -1008,16 +1071,18 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             })()}
 
             {/* ── STATUS & FEATURE BENTO GRID ──────────────────────────── */}
+            {/* Reveal order 8 — base 450ms offset on the block so the grid
+                doesn't race the sections above it; items then self-stagger
+                internally (30/80/130/180/230/280ms, root-fixes.css). */}
+            <ScrollReveal variant="fadeUp" delay={0.45}>
             <div
                 className="grid grid-cols-2 gap-3 relative z-10 mb-16"
                 data-home-reveal-grid="true"
             >
                 {/* Open When — bento-card alignment */}
                 <div className="home-reveal-item">
-                    <motion.div
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('open-when')}
+                    <div
+                        onClick={(e) => open(e, () => setView('open-when'))}
                         className="w-full h-full cursor-pointer"
                     >
                         <div data-coachmark="open-when" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1029,15 +1094,13 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Open When</span>
                             <span className="text-xs text-gray-400 mt-1">Letters for any moment</span>
                         </div>
-                    </motion.div>
+                    </div>
                 </div>
 
                 {/* Dinner Decider — bento-card alignment */}
                 <div className="home-reveal-item">
-                    <motion.div
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('dinner-decider')}
+                    <div
+                        onClick={(e) => open(e, () => setView('dinner-decider'))}
                         className="w-full h-full cursor-pointer"
                     >
                         <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1049,17 +1112,15 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Dinner?</span>
                             <span className="text-xs text-gray-400 mt-1">Can't decide? We will.</span>
                         </div>
-                    </motion.div>
+                    </div>
                 </div>
 
                 {/* Mood Board */}
                 <div className="home-reveal-item col-span-1">
-                    <motion.button
+                    <button
                         type="button"
                         aria-label="Open Aura Board"
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('mood-calendar')}
+                        onClick={(e) => open(e, () => setView('mood-calendar'))}
                         className="w-full h-full cursor-pointer text-left appearance-none border-0 bg-transparent p-0"
                     >
                         <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1071,15 +1132,13 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Aura Board</span>
                             <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
                         </div>
-                    </motion.button>
+                    </button>
                 </div>
 
                 {/* Bonsai Bloom */}
                 <div className="home-reveal-item col-span-1">
-                    <motion.div
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('bonsai-bloom')}
+                    <div
+                        onClick={(e) => open(e, () => setView('bonsai-bloom'))}
                         className="w-full h-full cursor-pointer"
                     >
                         <div data-coachmark="bonsai" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
@@ -1091,15 +1150,13 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                             <span className="font-semibold text-sm text-gray-800">Bonsai</span>
                             <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
                         </div>
-                    </motion.div>
+                    </div>
                 </div>
 
                 {/* Private Space */}
                 <div className="home-reveal-item col-span-2 mt-3">
-                    <motion.div
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: 'spring', stiffness: 520, damping: 28 }}
-                        onClick={() => setView('private-space')}
+                    <div
+                        onClick={(e) => open(e, () => setView('private-space'))}
                         className="w-full cursor-pointer"
                     >
                         <div
@@ -1129,15 +1186,13 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 <ChevronRight size={16} style={{ color: '#b8a4c8' }} />
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
                 </div>
 
                 {/* ── LIOR GOLD ─────────────────────────────────────────── */}
                 <div className="home-reveal-item col-span-2 mt-3">
-                    <motion.div
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: 'spring', stiffness: 520, damping: 28 }}
-                        onClick={() => setView('premium')}
+                    <div
+                        onClick={(e) => open(e, () => setView('premium'))}
                         className="w-full cursor-pointer"
                     >
                         <div
@@ -1182,9 +1237,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 <ChevronRight size={16} style={{ color: 'rgba(255,92,124,0.55)' }} />
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
                 </div>
             </div>
+            </ScrollReveal>
         </div>
     );
 };
