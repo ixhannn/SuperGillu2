@@ -182,9 +182,24 @@ class TransitionEngineImpl {
       if (de.dataset.liorOpenExpand === '1' && dir === 'push') effectiveDir = 'expand';
       if (de.dataset.liorOpenExpand) delete de.dataset.liorOpenExpand;
     }
+
+    // Background depth recede: a page OPEN/CLOSE drops the whole ambient
+    // background back (dim + soft blur + scale) so the page comes forward —
+    // CSS reads html[data-nav-depth] (see styles/root-fixes.css). Tab switches
+    // deliberately never set it, so the persistent stage stays put when moving
+    // between root tabs. Cleared in wrappedComplete once the nav settles.
+    const navDepth =
+      effectiveDir === 'push' || effectiveDir === 'pop' || effectiveDir === 'expand';
+    if (navDepth && typeof document !== 'undefined') {
+      document.documentElement.dataset.navDepth = '1';
+    }
+
     const wrappedComplete = () => {
       this._busy = false;
       this._setTransitioning(false);
+      if (navDepth && typeof document !== 'undefined') {
+        delete document.documentElement.dataset.navDepth;
+      }
       onComplete?.();
     };
 

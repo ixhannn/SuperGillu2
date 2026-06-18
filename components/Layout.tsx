@@ -115,8 +115,20 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
         {/* No paused prop — AmbientVisuals reads <html data-transitioning>
             directly so toggling it during a navigation no longer breaks
             Layout's React.memo and forces a re-render of every keep-alive
-            shell underneath. */}
-        <AmbientVisuals />
+            shell underneath.
+
+            Wrapped as ONE unit so a page open/close can briefly RECEDE the
+            whole background — dim + soft blur + a hair of scale — via
+            html[data-nav-depth] (set by TransitionEngine). This is the
+            iOS/visionOS depth cue: the background drops back so the opening
+            page comes forward, instead of the bright pink glow competing with
+            it. It is restored 100% the instant the nav settles — never a
+            permanent change. position:fixed keeps the fixed WebGL layers inside
+            filling the viewport once this wrapper becomes their containing
+            block under transform. */}
+        <div className="lior-ambient-world fixed inset-0 z-0 pointer-events-none" aria-hidden="true">
+          <AmbientVisuals />
+        </div>
 
         {/* Vignette — promoted to its own compositor layer so the scrolling
             content underneath does not invalidate the painted radial

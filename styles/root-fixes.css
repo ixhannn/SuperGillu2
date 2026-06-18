@@ -147,6 +147,46 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+   Background depth recede on page open/close (the iOS/visionOS app-open cue).
+   For push/pop/expand only, TransitionEngine sets <html data-nav-depth="1">.
+   The whole ambient background world then drops BACK — dimmed, softly blurred,
+   scaled a hair — so the opening (or closing) page reads as coming forward over
+   depth instead of fighting the full-brightness pink glow. This is NOT a
+   redesign: the flag is cleared the instant the nav settles and the background
+   eases back to 100%. Tab switches never set the flag, so the persistent stage
+   stays put when moving between root tabs.
+
+   Implemented as a plain transition (not @keyframes) on purpose: the GPU-budget
+   rule above pauses every *animation* during data-transitioning, but transitions
+   keep running — so the recede survives while ambient drift is frozen. The
+   translateZ(0) baseline keeps a stable containing block for the fixed WebGL
+   layers inside, so there is no 1-frame jump when the scale kicks in.
+   ────────────────────────────────────────────────────────────────────────── */
+.lior-ambient-world {
+  transform: translateZ(0);
+  transition:
+    opacity   420ms var(--lior-ease-silk),
+    filter    420ms var(--lior-ease-silk),
+    transform 420ms var(--lior-ease-silk);
+}
+
+html[data-nav-depth="1"] .lior-ambient-world {
+  opacity: 0.5;
+  filter: blur(6px) saturate(0.92);
+  transform: translateZ(0) scale(1.035);
+  transition-duration: 340ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lior-ambient-world {
+    filter: none !important;
+    transform: translateZ(0) !important;
+    transition: opacity 200ms linear;
+  }
+  html[data-nav-depth="1"] .lior-ambient-world { opacity: 0.72; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    `cv-auto` utility — lets any wrapper opt into content-visibility:auto.
    Use on long, scroll-distant sections (memory cards, timeline rows, etc.)
    so the browser can skip layout + paint when they're outside the viewport.
