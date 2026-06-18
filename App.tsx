@@ -56,6 +56,7 @@ import { toast } from './utils/toast';
 import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
 import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
 import { ShareTargetService } from './services/shareTarget';
+import { PairingService } from './services/pairing';
 import { Capacitor } from '@capacitor/core';
 
 const hasCompletedOnboarding = () => StorageService.hasCompletedOnboarding();
@@ -80,6 +81,56 @@ const restoreLastRootTab = (): ViewState => {
 const SHORTCUT_VIEWS: Partial<Record<string, ViewState>> = {
   'add-memory': 'add-memory',
   'daily-moments': 'daily-moments',
+};
+
+// ── Pair-invite deep links ─────────────────────────────────────────────────
+// A tappable invite delivers the 8-char pairing code via:
+//   • native  →  com.lior.app://claim?code=XXXX
+//   • web     →  https://<origin>/claim?code=XXXX  (or ?invite=XXXX)
+// We must NOT confuse this with the OAuth PKCE redirect, which also carries a
+// `code` param. They are disambiguated as follows:
+//   • The OAuth callback path is `auth/callback` (native) / carries a `state`
+//     param (web) — an invite link never has `state`.
+//   • A bare ?code= is only treated as an invite when there is no `state`,
+//     it is not on the auth/callback path, AND it normalises to a valid
+//     8-char alphanumeric code. OAuth codes are long and contain separators.
+// Returns the normalised 8-char code, or null when the URL is not an invite.
+const INVITE_CODE_RE = /^[A-Z0-9]{8}$/;
+const normalizeInviteCode = (raw: string | null | undefined): string | null => {
+  if (!raw) return null;
+  const code = raw.replace(/^LIOR:/i, '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
+  return INVITE_CODE_RE.test(code) ? code : null;
+};
+
+const parseInviteCodeFromUrl = (rawUrl: string): string | null => {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  const path = `${url.host}${url.pathname}`.toLowerCase();
+  // The OAuth callback is never an invite, even though it carries ?code=.
+  if (path.includes('auth/callback')) return null;
+
+  const params = url.searchParams;
+  // A password-recovery link also carries ?code= — never treat it as an invite.
+  if (params.get('type') === 'recovery') return null;
+  // Explicit invite param always wins (?invite=XXXX), regardless of path.
+  const explicit = normalizeInviteCode(params.get('invite'));
+  if (explicit) return explicit;
+
+  const isClaimPath = path.includes('claim');
+  const hasOAuthState = params.has('state');
+  const codeParam = params.get('code');
+
+  // A `code` param is an invite when it's on a /claim path, OR when there's
+  // no OAuth `state` alongside it (PKCE always includes `state`) and it
+  // shapes up as a valid 8-char pairing code.
+  if (codeParam && (isClaimPath || !hasOAuthState)) {
+    return normalizeInviteCode(codeParam);
+  }
+  return null;
 };
 
 // Views a notification tap may navigate to. Payload values outside this
@@ -600,6 +651,83 @@ const App = () => {
     }
   }, [currentView, e2eMode]);
 
+  // ── Pair-invite deep link: route the receiver into the claim flow ───────
+  // When an authenticated user has a pending invite code (captured from a
+  // tappable link below, possibly before they signed in), send them to the
+  // Sync/Pairing hub which auto-claims it. Onboarding is forced off so a
+  // solo-but-unpaired receiver can claim immediately instead of being parked
+  // on the welcome screen. Sync clears the code after a successful claim.
+  const consumePendingInvite = useCallback(() => {
+    if (StorageService.getPendingInviteCode() == null) return;
+    setShowOnboarding(false);
+    navigateTo('sync');
+  }, [navigateTo]);
+
+  // ── Capture an invite code from the launch URL / appUrlOpen ─────────────
+  // Always-on (independent of auth) so a logged-out receiver's code survives
+  // the sign-up/sign-in round trip. The pending code is consumed once a
+  // session exists (here when already authed, or via consumePendingInvite
+  // fired from the auth listener after the next SIGNED_IN).
+  useEffect(() => {
+    if (e2eMode || typeof window === 'undefined') return;
+
+    const captureFromUrl = (rawUrl: string): boolean => {
+      const code = parseInviteCodeFromUrl(rawUrl);
+      if (!code) return false;
+      StorageService.setPendingInviteCode(code);
+      return true;
+    };
+
+    // 1. Web: the code may already be in the page URL on load. Capture it and
+    //    strip it from the address bar so a refresh / share doesn't re-trigger.
+    let capturedFromPageUrl = false;
+    try {
+      capturedFromPageUrl = captureFromUrl(window.location.href);
+      if (capturedFromPageUrl) {
+        const cleaned = new URL(window.location.href);
+        ['code', 'invite', 'state'].forEach((k) => cleaned.searchParams.delete(k));
+        const cleanedPath = cleaned.pathname.replace(/\/claim\/?$/i, '/') || '/';
+        window.history.replaceState({}, document.title, cleanedPath + cleaned.search);
+      }
+    } catch {
+      // Non-critical — fall through to the native path.
+    }
+
+    // 2. If already signed in, route into the claim flow right away.
+    if ((capturedFromPageUrl || StorageService.getPendingInviteCode() != null)
+        && isAuthenticated && isInitialized) {
+      consumePendingInvite();
+    }
+
+    // 3. Native: cold-start launch URL + live appUrlOpen events.
+    if (!Capacitor.isNativePlatform()) return;
+    let disposed = false;
+    let urlListener: { remove: () => Promise<void> } | null = null;
+    void (async () => {
+      try {
+        const { App: CapacitorApp } = await import('@capacitor/app');
+        const launch = await CapacitorApp.getLaunchUrl();
+        if (!disposed && launch?.url && captureFromUrl(launch.url) && isAuthenticated && isInitialized) {
+          consumePendingInvite();
+        }
+        const handle = await CapacitorApp.addListener('appUrlOpen', (event) => {
+          if (captureFromUrl(event.url) && isAuthenticated && isInitialized) {
+            consumePendingInvite();
+          }
+        });
+        if (disposed) void handle.remove();
+        else urlListener = handle;
+      } catch (error: unknown) {
+        DiagnosticsService.recordError('pairing.invite_link', error);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      void urlListener?.remove();
+    };
+  }, [consumePendingInvite, e2eMode, isAuthenticated, isInitialized]);
+
   // ── Native entry points: launcher shortcuts + system share target ───────
   useEffect(() => {
     if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
@@ -657,6 +785,10 @@ const App = () => {
   useEffect(() => {
     if (!isInitialized || showOnboarding || (!e2eMode && !isAuthenticated)) return;
     return scheduleIdleTask(() => {
+      // NON-prompting at startup (the default): both calls only schedule /
+      // register when permission is ALREADY granted, never firing a cold OS
+      // prompt. The ask now happens at the highest-consent moment — the first
+      // mutual reveal (DailyQuestion → PrimingModal), which passes prompt:true.
       void NotificationsService.applySchedule().catch((error) => {
         DiagnosticsService.recordError('notifications.schedule', error);
       });
@@ -772,7 +904,16 @@ const App = () => {
                   await initializeSync();
                   const onboarded = await resolveOnboarded();
                   if (!disposed) {
-                    setShowOnboarding(!onboarded);
+                    // A pending invite (captured from a deep link before sign-in)
+                    // takes priority: route straight into the claim flow even if
+                    // the receiver hasn't "onboarded" yet, so a solo-but-unpaired
+                    // account can link immediately. Sync clears the code on success.
+                    if (StorageService.getPendingInviteCode() != null) {
+                      setShowOnboarding(false);
+                      navigateToRef.current('sync');
+                    } else {
+                      setShowOnboarding(!onboarded);
+                    }
                   }
                 } else {
                   if (!disposed) {
@@ -788,7 +929,15 @@ const App = () => {
               await initializeSync();
               hasOnboardedAfterBootstrap = await resolveOnboarded();
               if (!disposed) {
-                setShowOnboarding(!hasOnboardedAfterBootstrap);
+                // Cold start while authenticated with a pending invite (e.g. a
+                // logged-in user tapped a web /claim link): route into the claim
+                // flow regardless of onboarding state.
+                if (StorageService.getPendingInviteCode() != null) {
+                  setShowOnboarding(false);
+                  navigateToRef.current('sync');
+                } else {
+                  setShowOnboarding(!hasOnboardedAfterBootstrap);
+                }
               }
             } else {
               hasOnboardedAfterBootstrap = false;
@@ -905,6 +1054,17 @@ const App = () => {
     setScheduleTour(true);
   };
 
+  // "Invite your partner" path: the Onboarding component has already finalized
+  // (profile + lior_onboarded persisted locally) BEFORE this fires, so we run
+  // the same server-side completion as the skip path and then route straight
+  // into the pairing hub. Onboarding is guaranteed authenticated at this point
+  // (showOnboarding only flips true inside an authed session), so Sync's
+  // PairingService can create an invite immediately.
+  const handleOnboardingPairNow = (me: string, partner: string) => {
+    handleOnboardingSelect(me, partner);
+    navigateTo('sync');
+  };
+
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
   };
@@ -979,7 +1139,7 @@ const App = () => {
 
   // First-time Onboarding Check
   if (showOnboarding) {
-    return <Onboarding onComplete={handleOnboardingSelect} />;
+    return <Onboarding onComplete={handleOnboardingSelect} onPairNow={handleOnboardingPairNow} />;
   }
 
   return (

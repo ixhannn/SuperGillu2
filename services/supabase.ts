@@ -43,6 +43,49 @@ const firstRpcRow = <T,>(data: T | T[] | null | undefined): T | null => (
     Array.isArray(data) ? data[0] ?? null : data ?? null
 );
 
+// ── Pre-reveal leak guard for the daily ritual (Phase 3) ────────────────────
+// couple_profile is a SYNCED singleton: its `data` blob is mirrored verbatim to
+// the partner's device. Daily-question answers historically live inside
+// `data.questions[].answers`, so before the sealed reveal opened the partner's
+// device would already RECEIVE the answer text. Once the server-enforced
+// sealed-reveal table (daily_answers) is the live source — flagged sticky by
+// StorageService.setRitualCloudActive — the answer TEXT must never ride along in
+// the couple_profile push. We strip it here, at the single serialization point,
+// keeping date/question/revealedAt so the "partner answered" + reveal-timing
+// signal still propagates. Pure (clones, never mutates the caller's profile),
+// scoped to couple_profile, and a no-op when the flag is off (legacy untouched).
+const RITUAL_CLOUD_ACTIVE_KEY = 'lior_ritual_cloud_active';
+
+const isRitualCloudActive = (): boolean => {
+    try { return localStorage.getItem(RITUAL_CLOUD_ACTIVE_KEY) === '1'; } catch { return false; }
+};
+
+const stripCoupleProfileAnswersForPush = (data: any): any => {
+    if (!data || typeof data !== 'object' || !Array.isArray(data.questions)) return data;
+    return {
+        ...data,
+        questions: data.questions.map((q: any) => {
+            if (!q || typeof q !== 'object' || !q.answers || typeof q.answers !== 'object') return q;
+            // Preserve every key (date/question/revealedAt/…) but blank the answer
+            // TEXT so the seal holds on the wire. We keep the answers map's KEYS
+            // (the answerer names) so the "partner answered" signal still reads,
+            // while the values carry no readable content pre-reveal.
+            const sealedAnswers = Object.fromEntries(
+                Object.keys(q.answers).map((name) => [name, '']),
+            );
+            return { ...q, answers: sealedAnswers };
+        }),
+    };
+};
+
+// Applies the strip ONLY to the couple_profile singleton AND only once the
+// sealed-reveal table is live. Any other table / inactive flag passes through.
+const sanitizeSingletonForPush = (table: string, data: any): any => (
+    table === 'couple_profile' && isRitualCloudActive()
+        ? stripCoupleProfileAnswersForPush(data)
+        : data
+);
+
 export interface SupabaseRowEnvelope<T = any> {
     id: string;
     user_id?: string | null;
@@ -442,7 +485,10 @@ export const SupabaseService = {
                 id: buildTenantRowId(coupleId, item.id),
                 user_id: userId,
                 couple_id: coupleId,
-                data: item
+                // No-op for every table except an active-ritual couple_profile push,
+                // so the pre-reveal strip is enforced regardless of which upsert
+                // path a future caller routes the singleton through.
+                data: sanitizeSingletonForPush(table, item)
             });
             if (error) {
                 console.warn(`Supabase upsert failed for ${table}:`, error);
@@ -560,11 +606,16 @@ export const SupabaseService = {
         const coupleId = await SupabaseService.getCurrentCoupleId();
         if (!userId || !coupleId) return;
 
+        // Strip pre-reveal daily answers from the couple_profile push only; the
+        // local profile (and every other table) is left untouched. No-op until
+        // the sealed-reveal table is live (see sanitizeSingletonForPush).
+        const pushData = sanitizeSingletonForPush(table, data);
+
         const { error } = await SupabaseService.client.from(table).upsert({
             id: buildTenantRowId(coupleId, 'singleton'),
             user_id: userId,
             couple_id: coupleId,
-            data
+            data: pushData
         });
         if (error) throw error;
     },

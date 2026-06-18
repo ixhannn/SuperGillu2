@@ -49,6 +49,17 @@
                 <data android:scheme="com.lior.app" android:host="shortcut" />
             </intent-filter>
 
+            <!-- Pair-invite deep links: com.lior.app://claim?code=<8-char-code>
+                 A tapped partner invite delivers the pairing code to
+                 MainActivity. The Capacitor App plugin's appUrlOpen listener
+                 (see App.tsx) parses the code and routes into the claim flow. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.lior.app" android:host="claim" />
+            </intent-filter>
+
             <!-- Share target: photos shared from the gallery (or any app)
                  land in Add Memory. Handled by ShareTargetPlugin. -->
             <intent-filter>

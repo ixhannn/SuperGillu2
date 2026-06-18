@@ -445,6 +445,9 @@ const ROOM_WALLPAPERS = new Set(['plain', 'stripes', 'polka', 'hearts', 'stars',
 const ROOM_FLOORS = new Set(['hardwood', 'carpet', 'tiles', 'cloud', 'grass', 'marble']);
 const ROOM_AMBIENTS = new Set(['warm', 'cool', 'rainbow']);
 const COUPLE_ROOM_KEY = 'lior_couple_room_v2';
+// sessionStorage key for a pair-invite code captured from a deep link before
+// the receiver has signed in. Consumed on the next authenticated session.
+const PENDING_INVITE_CODE_KEY = 'lior_pending_invite_code';
 const CONTENT_COLLECTION_STORES: Array<{ storageKey: string; cacheKey: keyof typeof DATA_CACHE }> = [
     { storageKey: CACHE_KEYS.MEMORIES, cacheKey: 'memories' },
     { storageKey: CACHE_KEYS.NOTES, cacheKey: 'notes' },
@@ -472,9 +475,6 @@ const CONTENT_SINGLETON_KEYS = [
     COUPLE_ROOM_KEY,
 ];
 const CONTENT_LEGACY_MIRROR_KEYS = ['lior_bucket', 'lior_wishlist', 'lior_milestones', 'lior_room_state'];
-const TULIKA_NAME = 'Tulika';
-const ISHAN_NAME = 'Ishan';
-const LEGACY_RENAMED_PERSON_NAME = 'Lior';
 const LEGACY_ROOM_ITEM_MAP: Record<string, string> = {
     frame: 'photo_frames',
     candle: 'candle_cluster',
@@ -598,35 +598,6 @@ const sanitizeUserString = (value: string) => (
         .replace(/</g, '＜')
         .replace(/>/g, '＞')
 );
-
-const normalizeIdentityPair = <T extends { myName?: string; partnerName?: string }>(identity: T): T => {
-    const normalized = { ...identity };
-
-    if (normalized.myName === LEGACY_RENAMED_PERSON_NAME) {
-        normalized.myName = TULIKA_NAME;
-    }
-
-    if (normalized.partnerName === LEGACY_RENAMED_PERSON_NAME) {
-        normalized.partnerName = TULIKA_NAME;
-    }
-
-    // Do not auto-fill empty names — they stay empty until the user sets them
-    // via onboarding or profile settings. Partner name is set automatically
-    // after QR pairing via PairingService / SyncService.
-
-    return normalized;
-};
-
-const normalizeKeepsakeSender = <T extends { senderId?: string }>(item: T): T => {
-    if (item.senderId !== LEGACY_RENAMED_PERSON_NAME) {
-        return item;
-    }
-
-    return {
-        ...item,
-        senderId: TULIKA_NAME,
-    };
-};
 
 const sanitizeUserContent = <T>(value: T): T => {
     if (typeof value === 'string') {
@@ -955,7 +926,6 @@ export const StorageService = {
                 await writeRaw(STORES.DATA, CACHE_KEYS.ENVELOPES, DATA_CACHE.envelopes);
             }
 
-            DATA_CACHE.keepsakes = DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item));
             DATA_CACHE.moodEntries = normalizeMoodEntries(DATA_CACHE.moodEntries);
             await writeRaw(STORES.DATA, CACHE_KEYS.MOOD_ENTRIES, DATA_CACHE.moodEntries);
 
@@ -1160,9 +1130,7 @@ export const StorageService = {
 
     async _saveInternal(listKey: keyof typeof DATA_CACHE, storageKey: string, item: any, prefix?: string, table?: string, source: 'user' | 'sync' = 'user') {
         const sanitizedItem = sanitizeUserContent(item);
-        const normalizedItem = listKey === 'keepsakes'
-            ? normalizeKeepsakeSender(sanitizedItem)
-            : listKey === 'dailyPhotos'
+        const normalizedItem = listKey === 'dailyPhotos'
             ? normalizeDailyPhoto(sanitizedItem)
             : listKey === 'moodEntries'
             ? normalizeMoodEntry(sanitizedItem)
@@ -1623,8 +1591,8 @@ export const StorageService = {
         }
     },
 
-    getKeepsakes: () => DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item)),
-    saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, normalizeKeepsakeSender(k), 'keep', 'keepsakes'),
+    getKeepsakes: () => DATA_CACHE.keepsakes,
+    saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, k, 'keep', 'keepsakes'),
     hideKeepsake: async (id: string) => {
         const list = DATA_CACHE.keepsakes.map(k => k.id === id ? { ...k, isHidden: true } : k);
         DATA_CACHE.keepsakes = list;
@@ -2012,20 +1980,13 @@ export const StorageService = {
             return { ..._profileCacheVal };
         }
 
-        const rawIdentity = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
-        const id = normalizeIdentityPair(rawIdentity);
-        if (id.myName !== rawIdentity.myName || id.partnerName !== rawIdentity.partnerName) {
-            localStorage.setItem(CACHE_KEYS.IDENTITY, JSON.stringify({ myName: id.myName, partnerName: id.partnerName }));
-        }
+        const id = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
 
         const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: '', theme: 'rose' };
 
         const result = applyLockedPairLink({ ...id, ...shared });
         _profileCacheVal = result;
-        // Re-key off the possibly-normalized identity string so the next call
-        // hits the cache instead of missing once more after a normalization write.
-        const finalIdStr = localStorage.getItem(CACHE_KEYS.IDENTITY);
-        _profileCacheKey = `${finalIdStr ?? ''} ${sharedStr ?? ''} ${lockStr ?? ''}`;
+        _profileCacheKey = `${idStr ?? ''} ${sharedStr ?? ''} ${lockStr ?? ''}`;
         return { ...result };
     },
 
@@ -2110,6 +2071,39 @@ export const StorageService = {
         clearAccountScopedLocalStorageValue(ACCOUNT_LOCAL_KEYS.MANUAL_OVERRIDE);
     },
 
+    // ── Pending pair-invite code ─────────────────────────────────────────────
+    // A pairing-invite code captured from a deep link (com.lior.app://claim or
+    // a web /claim?code=… link) before the receiver is signed in. Held in
+    // sessionStorage — NOT account-scoped — because the code belongs to the
+    // tab/launch, not yet to any authenticated account, and must survive the
+    // sign-up/sign-in round trip without persisting across app restarts.
+    getPendingInviteCode: (): string | null => {
+        try {
+            const value = sessionStorage.getItem(PENDING_INVITE_CODE_KEY);
+            return value && value.trim() ? value.trim() : null;
+        } catch {
+            return null;
+        }
+    },
+
+    setPendingInviteCode: (code: string) => {
+        const clean = (code || '').trim();
+        if (!clean) return;
+        try {
+            sessionStorage.setItem(PENDING_INVITE_CODE_KEY, clean);
+        } catch {
+            // Private-mode / quota failures must never break the deep-link flow.
+        }
+    },
+
+    clearPendingInviteCode: () => {
+        try {
+            sessionStorage.removeItem(PENDING_INVITE_CODE_KEY);
+        } catch {
+            // Ignore — best-effort cleanup.
+        }
+    },
+
     getSeenReleaseVersion: (): string | null => getAccountScopedLocalStorageValue(CACHE_KEYS.SEEN_RELEASE_VERSION),
 
     setSeenReleaseVersion: (value: string) => {
@@ -2143,7 +2137,7 @@ export const StorageService = {
     saveCoupleProfile: (p: CoupleProfile, source: 'user' | 'sync' = 'user') => {
         const currentProfile = StorageService.getCoupleProfile();
         const sanitizedProfile = applyLockedPairLink(
-            normalizeIdentityPair(sanitizeUserContent(p)),
+            sanitizeUserContent(p),
             currentProfile,
         ) as CoupleProfile;
         persistLockedPairLink(sanitizedProfile);
@@ -2360,20 +2354,49 @@ export const StorageService = {
         return entry;
     },
 
-    submitQuestionAnswer: (answer: string): void => {
+    // Returns `justRevealed` — true ONLY on the call that FIRST transitions the
+    // entry to revealed (this is the call that sets revealedAt because both
+    // answers now exist). Lets the caller fire a one-shot "partner answered" push.
+    submitQuestionAnswer: (answer: string): boolean => {
         const profile = StorageService.getCoupleProfile();
         const today = new Date().toISOString().split('T')[0];
         const questions = profile.questions ?? [];
         const idx = questions.findIndex(q => q.date === today);
-        if (idx === -1) return;
+        if (idx === -1) return false;
 
+        let justRevealed = false;
         const updated = questions.map((q, i) => {
             if (i !== idx) return q;
             const answers = { ...q.answers, [profile.myName]: answer };
             const bothAnswered = answers[profile.myName] && answers[profile.partnerName];
-            return { ...q, answers, revealedAt: bothAnswered ? new Date().toISOString() : q.revealedAt };
+            // `justRevealed` only when this call is the one that sets revealedAt:
+            // both answers now exist AND the entry was not already revealed.
+            justRevealed = Boolean(bothAnswered) && !q.revealedAt;
+            return { ...q, answers, revealedAt: bothAnswered ? (q.revealedAt ?? new Date().toISOString()) : q.revealedAt };
         });
         StorageService.saveCoupleProfile({ ...profile, questions: updated });
+        return justRevealed;
+    },
+
+    // Sticky flag: set true the first time a daily-ritual cloud op actually
+    // succeeds (sealed-reveal table reachable). Lets the rest of the app know the
+    // server-enforced reveal is live for this couple, without re-probing the DB.
+    // Best-effort — never throws; defaults false (the pre-migration local path).
+    setRitualCloudActive: (active: boolean): void => {
+        try { localStorage.setItem('lior_ritual_cloud_active', active ? '1' : '0'); } catch { /* storage unavailable */ }
+    },
+    getRitualCloudActive: (): boolean => {
+        try { return localStorage.getItem('lior_ritual_cloud_active') === '1'; } catch { return false; }
+    },
+
+    // Per-day de-dupe for the daily-reveal local notification + toast: stores the
+    // YYYY-MM-DD of the last day we alerted, so a re-subscribe / reconcile can't
+    // re-fire the same reveal. Best-effort — never throws; '' means not-yet-fired.
+    setDailyRevealNotified: (date: string): void => {
+        try { localStorage.setItem('lior_daily_reveal_notified', date); } catch { /* storage unavailable */ }
+    },
+    getDailyRevealNotified: (): string => {
+        try { return localStorage.getItem('lior_daily_reveal_notified') ?? ''; } catch { return ''; }
     },
 
     getMoodEntries: (): MoodEntry[] => {

@@ -37,13 +37,13 @@ Deno.serve(async (req) => {
   );
 
   // ── Parse body ──────────────────────────────────────────────────────────────
-  let body: { type?: string; email?: string; password?: string };
+  let body: { type?: string; email?: string; password?: string; redirectTo?: string };
   try { body = await req.json(); }
   catch { return json({ error: 'Invalid request body' }, 400); }
 
-  const { type, email, password } = body;
+  const { type, email, password, redirectTo } = body;
   if (!type || !email) return json({ error: 'Missing required fields' }, 400);
-  if (!['login', 'signup', 'reset'].includes(type))
+  if (!['login', 'signup', 'reset', 'resend'].includes(type))
     return json({ error: 'Unknown operation type' }, 400);
 
   // ── Get client IP ───────────────────────────────────────────────────────────
@@ -109,7 +109,13 @@ Deno.serve(async (req) => {
   supabase.from('auth_rate_limits').delete().lt('attempted_at', cutoff);
 
   // ── Perform auth operation ──────────────────────────────────────────────────
-  const origin = req.headers.get('origin') ?? '';
+  // Use the client-provided redirect target so confirmation / reset links
+  // deep-link back into the right surface (native custom-scheme URL on
+  // Capacitor, page origin on web). Fall back to the request origin only
+  // when the client did not send one. The target must still be on the
+  // project's Auth redirect allow-list for Supabase to honour it.
+  const origin       = req.headers.get('origin') ?? '';
+  const emailRedirect = redirectTo || origin;
 
   if (type === 'login') {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password: password ?? '' });
@@ -121,15 +127,27 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password: password ?? '',
-      options: { emailRedirectTo: origin },
+      options: { emailRedirectTo: emailRedirect },
     });
     if (error) return json({ error: error.message }, 400);
     return json({ data });
   }
 
+  if (type === 'resend') {
+    // Re-send the sign-up confirmation email. Same rate-limit gate as every
+    // other op above, so it can't be abused to spam an address.
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: emailRedirect },
+    });
+    if (error) return json({ error: error.message }, 400);
+    return json({ data: {} });
+  }
+
   // type === 'reset'
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: origin,
+    redirectTo: emailRedirect,
   });
   if (error) return json({ error: error.message }, 400);
   return json({ data: {} });

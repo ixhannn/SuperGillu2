@@ -751,6 +751,14 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
+            {/* ── TODAY'S QUESTION — the daily two-person ritual ───────────
+                Placed first, directly under the hero: it is the one thing
+                both partners should see and do together every day. Delight
+                tiles (pet, bonsai, aura) live below it. */}
+            <div className="mb-5 relative z-10">
+                <DailyQuestion profile={profile} onUpdate={() => {}} />
+            </div>
+
             {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
             <ScrollReveal variant="popIn">
                 <div className="mb-5 flex gap-3 relative z-10">
@@ -938,11 +946,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
 
             {/* ── PARTNER INSIGHT WHISPER ────────────────────────────── */}
             <InsightWhisper setView={setView} />
-
-            {/* ── TODAY'S QUESTION ─────────────────────────────────────── */}
-            <div className="mb-5 relative z-10">
-                <DailyQuestion profile={profile} onUpdate={() => {}} />
-            </div>
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
             {onThisDayMemory && (() => {

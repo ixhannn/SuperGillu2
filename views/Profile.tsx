@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Users, Volume2, VolumeX, Vibrate, Zap, Sparkles, Mic, Gift, Lock } from 'lucide-react';
+import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Volume2, VolumeX, Vibrate, Zap, Sparkles, Mic, Gift, Lock } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from '../utils/toast';
@@ -189,7 +189,6 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [hapticsOn, setHapticsOn] = useState(Haptics.isEnabled());
     const [audioOn, setAudioOn] = useState(Audio.isEnabled());
-    const [showIdentityModal, setShowIdentityModal] = useState(false);
     const [storageInfo, setStorageInfo] = useState<{ used: string, type: string }>({ used: '0 KB', type: 'Checking...' });
     const [managedStats, setManagedStats] = useState(() => StorageService.getManagedStorageStats());
     const [isInternalAdmin, setIsInternalAdmin] = useState(false);
@@ -390,21 +389,6 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
             setIsSaving(false);
             setView('home');
         }, 600);
-    };
-
-    const handleSwitchIdentityClick = () => {
-        setShowIdentityModal(true);
-    };
-
-    const handleIdentitySelect = (selectedName: string) => {
-        const partner = selectedName === 'Tulika' ? 'Ishan' : 'Tulika';
-        const newProfile = {
-            ...profile,
-            myName: selectedName,
-            partnerName: partner
-        };
-        StorageService.saveCoupleProfile(newProfile);
-        window.location.reload();
     };
 
     const handleSignOut = () => {
@@ -985,18 +969,6 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                             </button>
                         )}
 
-                        {/* Switch identity */}
-                        <button
-                            onClick={handleSwitchIdentityClick}
-                            className="w-full flex items-center gap-3 px-4 min-h-[48px] spring-press text-left active:opacity-70"
-                            style={{ borderBottom: '0.5px solid rgba(0,0,0,0.08)' }}
-                        >
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${activeTheme.palette[100]}` }}>
-                                <Users size={14} style={{ color: activeTheme.palette[500] }} />
-                            </div>
-                            <p className="flex-1 text-[15px] font-medium" style={{ color: 'var(--color-text-primary)' }}>Switch Active Profile</p>
-                        </button>
-
                         {/* Sign out */}
                         <button
                             onClick={handleSignOut}
@@ -1011,53 +983,6 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                 </div>
 
             </div>
-
-            {/* ── IDENTITY MODAL ─────────────────────────────────────────── */}
-            {showIdentityModal && (
-                <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
-                    <div className="w-full max-w-lg rounded-t-[20px] relative" style={APPLE_GLASS_STYLE}>
-                        {/* Handle bar */}
-                        <div className="flex justify-center pt-2.5 pb-4">
-                            <div className="w-9 h-[4px] rounded-full bg-black/10" />
-                        </div>
-
-                        <button
-                            onClick={() => setShowIdentityModal(false)}
-                            className="absolute top-3 right-4 w-7 h-7 rounded-full flex items-center justify-center spring-press"
-                            style={{ background: 'rgba(0,0,0,0.06)' }}
-                            aria-label="Close identity picker"
-                        >
-                            <X size={14} style={{ color: 'var(--color-text-primary)', opacity: 0.4 }} />
-                        </button>
-
-                        <div className="px-5 pb-8">
-                            <h3 className="text-[20px] font-bold tracking-[-0.02em]" style={{ color: 'var(--color-text-primary)' }}>Who's using this?</h3>
-                            <p className="text-[13px] mt-1 mb-5" style={{ color: 'var(--color-text-primary)', opacity: 0.4 }}>Pick which profile this device opens as.</p>
-
-                            <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(0,0,0,0.03)' }}>
-                                {[
-                                    { name: 'Tulika', emoji: '👩🏻' },
-                                    { name: 'Ishan',  emoji: '👨🏻' },
-                                ].map(({ name, emoji }, i) => (
-                                    <button
-                                        key={name}
-                                        onClick={() => handleIdentitySelect(name)}
-                                        className="w-full flex items-center gap-3.5 px-4 py-3.5 spring-press text-left active:opacity-70"
-                                        style={i === 0 ? { borderBottom: '0.5px solid rgba(0,0,0,0.08)' } : {}}
-                                    >
-                                        <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{
-                                            background: `linear-gradient(135deg, ${activeTheme.palette[300]}, ${activeTheme.palette[500]})`,
-                                        }}>
-                                            <span className="text-[18px] leading-none">{emoji}</span>
-                                        </div>
-                                        <p className="flex-1 text-[16px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{name}</p>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <ConfirmModal
                 isOpen={!!confirmState}

@@ -54,7 +54,7 @@ const getEmailRedirectTo = (): string => {
         : window.location.origin;
 };
 
-async function authProxy(type: 'login' | 'signup' | 'reset', email: string, password?: string) {
+async function authProxy(type: 'login' | 'signup' | 'reset' | 'resend', email: string, password?: string) {
     const { url, key, isConfigured } = getSupabaseAuthConfig();
     if (!isConfigured) {
         return { error: 'Cloud sync is not configured yet. Add your Supabase URL and anon key first.', status: 0 };
@@ -87,7 +87,7 @@ async function authProxy(type: 'login' | 'signup' | 'reset', email: string, pass
     }
 }
 
-async function directAuthFallback(type: 'login' | 'signup' | 'reset', email: string, password?: string) {
+async function directAuthFallback(type: 'login' | 'signup' | 'reset' | 'resend', email: string, password?: string) {
     const sb = SupabaseService.client;
     if (!sb) return { error: 'Supabase client is not configured.' };
     const emailRedirectTo = getEmailRedirectTo();
@@ -102,6 +102,14 @@ async function directAuthFallback(type: 'login' | 'signup' | 'reset', email: str
             options: { emailRedirectTo },
         });
         return error ? { error: error.message } : { data };
+    }
+    if (type === 'resend') {
+        const { error } = await sb.auth.resend({
+            type: 'signup',
+            email,
+            options: { emailRedirectTo },
+        });
+        return error ? { error: error.message } : { data: {} };
     }
     const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: emailRedirectTo });
     return error ? { error: error.message } : { data: {} };
@@ -946,6 +954,24 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [rateLimitSecs, setRateLimitSecs] = useState(0);
     const [submitAttempted, setSubmitAttempted] = useState(false);
+    // When a sign-up needs email confirmation (email confirmations ON in the
+    // Supabase project), we hold the pending address here and swap the form
+    // for a "Check your email" panel. Null = normal form.
+    const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null);
+    // Client-side cooldown on the Resend button, on top of the server's
+    // shared auth rate limit. Counts down ~30s after each resend.
+    const [resendCooldownSecs, setResendCooldownSecs] = useState(0);
+    // ── Password-recovery flow ────────────────────────────────────────────
+    // A reset link drops the user back here with a short-lived recovery
+    // session (Supabase fires onAuthStateChange 'PASSWORD_RECOVERY', and the
+    // redirect carries type=recovery). Instead of silently signing them in,
+    // we show a "Set a new password" form and call updateUser({ password })
+    // BEFORE entering the app. recoveryMode gates the normal SIGNED_IN →
+    // onLogin auto-entry so the user can't slip past the form.
+    const [recoveryMode, setRecoveryMode] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const recoveryModeRef = React.useRef(false);
     const reducedMotion = useReducedMotion();
     const { isConfigured } = getSupabaseAuthConfig();
 
@@ -959,6 +985,35 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         }, 1000);
         return () => clearInterval(id);
     }, [rateLimitSecs]);
+
+    useEffect(() => {
+        if (resendCooldownSecs <= 0) return;
+        const id = setInterval(() => {
+            setResendCooldownSecs((s) => {
+                if (s <= 1) { clearInterval(id); return 0; }
+                return s - 1;
+            });
+        }, 1000);
+        return () => clearInterval(id);
+    }, [resendCooldownSecs]);
+
+    // While the "Check your email" panel is up, re-poll for a session when the
+    // user returns to the tab/app — they likely just confirmed in their mail
+    // client. The onAuthStateChange SIGNED_IN listener still handles the
+    // normal case; this is a belt-and-braces path for environments where the
+    // listener doesn't fire on a cross-tab confirmation.
+    useEffect(() => {
+        if (!pendingConfirmEmail) return;
+        const sb = SupabaseService.client;
+        if (!sb) return;
+        const onFocus = () => {
+            sb.auth.getSession().then(({ data }) => {
+                if (data.session) onLogin();
+            }).catch(() => { /* ignore */ });
+        };
+        window.addEventListener('focus', onFocus);
+        return () => window.removeEventListener('focus', onFocus);
+    }, [pendingConfirmEmail, onLogin]);
 
     useEffect(() => {
         SupabaseService.init();
@@ -997,18 +1052,42 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
             cleanOAuthParams();
         }
 
+        // ── Recovery-flow detection ───────────────────────────────────
+        // A password-reset link returns here with type=recovery on either the
+        // query string or the hash. Enter recovery mode immediately so the
+        // "Set a new password" form is shown and onLogin is held back even if
+        // the recovery session arrives as a SIGNED_IN event.
+        const enterRecoveryMode = () => {
+            recoveryModeRef.current = true;
+            setRecoveryMode(true);
+            setMode('form');
+            clearFeedback();
+        };
+        if (urlParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery') {
+            enterRecoveryMode();
+        }
+
         // ── Auth state change listener ────────────────────────────────
         const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+            // Recovery session: show the set-password form instead of entering.
+            if (event === 'PASSWORD_RECOVERY') {
+                enterRecoveryMode();
+                return;
+            }
             if (event === 'SIGNED_IN' && session) {
+                // Hold back auto-entry while the user still needs to choose a
+                // new password — updateUser fires its own SIGNED_IN we ignore.
+                if (recoveryModeRef.current) return;
                 cleanOAuthParams();
                 onLogin();
             }
         });
 
         // If we already have a valid session (e.g. PKCE exchange completed
-        // before this component mounted), short-circuit straight to onLogin.
+        // before this component mounted), short-circuit straight to onLogin —
+        // unless this is a recovery session awaiting a new password.
         sb.auth.getSession().then(({ data }) => {
-            if (data.session) {
+            if (data.session && !recoveryModeRef.current) {
                 cleanOAuthParams();
                 onLogin();
             }
@@ -1065,6 +1144,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         feedback.tap();
         setMode('landing');
         setSubmitAttempted(false);
+        setPendingConfirmEmail(null);
         clearFeedback();
     };
 
@@ -1169,6 +1249,51 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         finally { setLoading(false); }
     };
 
+    // Recovery flow: set a brand-new password on the active recovery session,
+    // then enter the app. Validates a minimum length and a matching confirm
+    // before calling updateUser so we surface the same errors Supabase would.
+    const handleSetNewPassword = async () => {
+        setSubmitAttempted(true);
+        if (!newPassword || newPassword.length < 8) {
+            setError('Choose a password with at least 8 characters.');
+            feedback.error();
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            setError('Passwords do not match.');
+            feedback.error();
+            return;
+        }
+        const sb = SupabaseService.client;
+        if (!sb) {
+            setError('Cloud sync is not configured yet.');
+            feedback.error();
+            return;
+        }
+        feedback.tap();
+        setLoading(true);
+        clearFeedback();
+        try {
+            const { error: updateError } = await sb.auth.updateUser({ password: newPassword });
+            if (updateError) {
+                setError(updateError.message || 'Could not update your password.');
+                feedback.error();
+                return;
+            }
+            // Password changed — recovery is complete. Release the gate and
+            // enter the app with the now-permanent session.
+            recoveryModeRef.current = false;
+            setRecoveryMode(false);
+            setNewPassword('');
+            setConfirmPassword('');
+            onLogin();
+        } catch {
+            setError('Network error. Please check your connection.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleAuth = async () => {
         setSubmitAttempted(true);
         if (!trimmedEmail || !password) {
@@ -1185,7 +1310,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
             if (result.status === 429) setRateLimitSecs(result.retry_after_seconds ?? 600);
             else if (result.error) { setError(result.error); feedback.error(); }
             else if (isSignUp && !result.data?.session) {
-                setSuccessMsg('Confirmation email sent. Check your inbox and spam folder.');
+                // Email confirmations are ON for this project: no session yet,
+                // a confirmation link has been mailed. Swap to the dedicated
+                // "Check your email" panel (resend / open-mail / start over).
+                setPendingConfirmEmail(trimmedEmail);
+                setResendCooldownSecs(30);
             } else {
                 const sb = SupabaseService.client;
                 if (sb && result.data?.session) await sb.auth.setSession(result.data.session);
@@ -1195,12 +1324,56 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         finally { setLoading(false); }
     };
 
-    const sheetTitle = isForgotPassword ? 'Reset password' : isSignUp ? 'Create your space' : 'Welcome back';
-    const sheetSubtitle = isForgotPassword
-        ? "We'll send you a reset link."
-        : isSignUp
-            ? 'A softer place for two, just yours.'
-            : 'Enter your private space.';
+    // Re-send the sign-up confirmation email from the "Check your email" panel.
+    // Gated by both the server's shared auth rate limit (429 → rateLimitSecs)
+    // and a ~30s client cooldown so the button can't be hammered.
+    const handleResendConfirm = async () => {
+        if (!pendingConfirmEmail || loading || rateLimitSecs > 0 || resendCooldownSecs > 0) return;
+        feedback.tap();
+        setLoading(true);
+        clearFeedback();
+        try {
+            let result = await authProxy('resend', pendingConfirmEmail);
+            if (result.proxyUnavailable) result = { ...(await directAuthFallback('resend', pendingConfirmEmail)), status: 200 };
+            if (result.status === 429) setRateLimitSecs(result.retry_after_seconds ?? 600);
+            else if (result.error) { setError(result.error); feedback.error(); }
+            else { setSuccessMsg('Confirmation email re-sent. Check your inbox and spam folder.'); setResendCooldownSecs(30); }
+        } catch { setError('Network error. Please check your connection.'); }
+        finally { setLoading(false); }
+    };
+
+    // Best-effort "Open mail app" — a bare mailto: nudges the OS to surface
+    // the default mail client. Harmless no-op where none is registered.
+    const handleOpenMail = () => {
+        feedback.tap();
+        try { window.location.href = 'mailto:'; } catch { /* ignore */ }
+    };
+
+    // Abandon the pending confirmation and return to a clean sign-up form so
+    // the user can try a different address.
+    const handleUseDifferentEmail = () => {
+        feedback.tap();
+        setPendingConfirmEmail(null);
+        setResendCooldownSecs(0);
+        setPassword('');
+        setSubmitAttempted(false);
+        clearFeedback();
+    };
+
+    const sheetTitle = recoveryMode
+        ? 'Set a new password'
+        : pendingConfirmEmail
+            ? 'Check your email'
+            : isForgotPassword ? 'Reset password' : isSignUp ? 'Create your space' : 'Welcome back';
+    const sheetSubtitle = recoveryMode
+        ? 'Choose a new password to finish.'
+        : pendingConfirmEmail
+            ? 'One tap from your space.'
+            : isForgotPassword
+                ? "We'll send you a reset link."
+                : isSignUp
+                    ? 'A softer place for two, just yours.'
+                    : 'Enter your private space.';
 
     const ctaLabel = loading
         ? isForgotPassword ? 'Sending…' : isSignUp ? 'Creating…' : 'Entering…'
@@ -1515,16 +1688,20 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                 }}
                             />
 
-                            {/* Close X — smaller, more recessed */}
-                            <button
-                                type="button"
-                                onClick={closeForm}
-                                aria-label="Close"
-                                className="absolute top-3.5 right-3.5 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/8"
-                                style={{ color: 'rgba(255,232,242,0.55)' }}
-                            >
-                                <X size={15} strokeWidth={2} />
-                            </button>
+                            {/* Close X — smaller, more recessed. Hidden during
+                                password recovery: the user must finish setting a
+                                new password before they can enter or dismiss. */}
+                            {!recoveryMode && (
+                                <button
+                                    type="button"
+                                    onClick={closeForm}
+                                    aria-label="Close"
+                                    className="absolute top-3.5 right-3.5 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/8"
+                                    style={{ color: 'rgba(255,232,242,0.55)' }}
+                                >
+                                    <X size={15} strokeWidth={2} />
+                                </button>
+                            )}
 
                             <div className="relative px-6 pt-8 pb-6">
                                 {/* Title — smaller, lighter weight. Reads as
@@ -1548,7 +1725,172 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                     {sheetSubtitle}
                                 </p>
 
+                                {/* ── "Set a new password" panel ───────────
+                                    Shown when the user arrived via a reset link
+                                    (recovery session). Reuses the glass field +
+                                    rose CTA primitives. Submitting calls
+                                    updateUser({ password }) and only then enters
+                                    the app. Takes priority over every other
+                                    panel below. */}
+                                {recoveryMode && (
+                                    <>
+                                        <div className="relative mt-4 space-y-2">
+                                            <AnimatePresence mode="wait">
+                                                {error && <DarkBanner tone="error" message={error} />}
+                                                {!error && successMsg && <DarkBanner tone="success" message={successMsg} />}
+                                            </AnimatePresence>
+                                        </div>
 
+                                        <div className="relative mt-5 space-y-2.5">
+                                            <DarkField
+                                                label="New password"
+                                                type="password"
+                                                value={newPassword}
+                                                invalid={submitAttempted && (!newPassword || newPassword.length < 8)}
+                                                hint={submitAttempted && (!newPassword || newPassword.length < 8) ? 'At least 8 characters.' : null}
+                                                onFocus={() => feedback.tap()}
+                                                onChange={(e) => setNewPassword(e.target.value)}
+                                                autoComplete="new-password"
+                                            />
+                                            <DarkField
+                                                label="Confirm new password"
+                                                type="password"
+                                                value={confirmPassword}
+                                                invalid={submitAttempted && confirmPassword !== newPassword}
+                                                hint={submitAttempted && confirmPassword !== newPassword ? 'Passwords do not match.' : null}
+                                                onFocus={() => feedback.tap()}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                                autoComplete="new-password"
+                                            />
+                                        </div>
+
+                                        <motion.button
+                                            whileTap={{ scale: 0.985 }}
+                                            onClick={handleSetNewPassword}
+                                            disabled={loading}
+                                            className="relative mt-5 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl py-[15px] text-[14px] font-semibold disabled:cursor-not-allowed"
+                                            style={{
+                                                background: loading
+                                                    ? 'rgba(255,255,255,0.05)'
+                                                    : 'linear-gradient(180deg, #d8527f 0%, #b73a68 100%)',
+                                                color: loading ? 'rgba(255,232,242,0.40)' : '#fff5f8',
+                                                boxShadow: loading
+                                                    ? 'none'
+                                                    : '0 8px 20px rgba(183,58,104,0.28), inset 0 1px 0 rgba(255,255,255,0.16)',
+                                                opacity: loading ? 0.70 : 1,
+                                                letterSpacing: '0.01em',
+                                            }}
+                                        >
+                                            <span className="relative z-10 flex items-center gap-2">
+                                                {loading && <Loader2 size={14} className="animate-spin" />}
+                                                {loading ? 'Saving…' : 'Save new password'}
+                                            </span>
+                                        </motion.button>
+                                    </>
+                                )}
+
+                                {/* ── "Check your email" panel ─────────────
+                                    Shown after a sign-up that needs email
+                                    confirmation (project setting). Replaces the
+                                    form with the pending address + recovery
+                                    actions: resend, open mail, start over.
+                                    The app continues automatically once the
+                                    link is tapped (onAuthStateChange SIGNED_IN
+                                    listener + focus re-poll above). */}
+                                {!recoveryMode && pendingConfirmEmail && (
+                                    <div className="relative mt-5">
+                                        <div
+                                            className="rounded-2xl px-3.5 py-3 text-[12.5px]"
+                                            style={{
+                                                color: 'rgba(255,232,242,0.78)',
+                                                background: 'rgba(255,255,255,0.04)',
+                                                border: '1px solid rgba(255,255,255,0.08)',
+                                            }}
+                                        >
+                                            <div className="flex items-start gap-2.5">
+                                                <Mail size={15} className="mt-0.5 shrink-0" style={{ color: 'rgba(255,210,230,0.72)' }} />
+                                                <div className="leading-[1.55]">
+                                                    We sent a confirmation link to{' '}
+                                                    <strong style={{ color: '#f7e3eb', wordBreak: 'break-word' }}>{pendingConfirmEmail}</strong>.
+                                                    Tap it to finish — you'll be brought in here automatically.
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="relative mt-3 space-y-2">
+                                            <AnimatePresence mode="wait">
+                                                {rateLimitSecs > 0 && (
+                                                    <DarkBanner
+                                                        tone="warning"
+                                                        message={
+                                                            <>Try again in <strong>{Math.floor(rateLimitSecs / 60)}:{String(rateLimitSecs % 60).padStart(2, '0')}</strong>.</>
+                                                        }
+                                                    />
+                                                )}
+                                                {!rateLimitSecs && error && <DarkBanner tone="error" message={error} />}
+                                                {!rateLimitSecs && successMsg && <DarkBanner tone="success" message={successMsg} />}
+                                            </AnimatePresence>
+                                        </div>
+
+                                        <motion.button
+                                            whileTap={{ scale: 0.985 }}
+                                            onClick={handleResendConfirm}
+                                            disabled={loading || rateLimitSecs > 0 || resendCooldownSecs > 0}
+                                            className="relative mt-4 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl py-[15px] text-[14px] font-semibold disabled:cursor-not-allowed"
+                                            style={{
+                                                background: loading || rateLimitSecs > 0 || resendCooldownSecs > 0
+                                                    ? 'rgba(255,255,255,0.05)'
+                                                    : 'linear-gradient(180deg, #d8527f 0%, #b73a68 100%)',
+                                                color: loading || rateLimitSecs > 0 || resendCooldownSecs > 0 ? 'rgba(255,232,242,0.40)' : '#fff5f8',
+                                                boxShadow:
+                                                    loading || rateLimitSecs > 0 || resendCooldownSecs > 0
+                                                        ? 'none'
+                                                        : '0 8px 20px rgba(183,58,104,0.28), inset 0 1px 0 rgba(255,255,255,0.16)',
+                                                opacity: loading || rateLimitSecs > 0 || resendCooldownSecs > 0 ? 0.70 : 1,
+                                                letterSpacing: '0.01em',
+                                            }}
+                                        >
+                                            <span className="relative z-10 flex items-center gap-2">
+                                                {loading && <Loader2 size={14} className="animate-spin" />}
+                                                {loading
+                                                    ? 'Sending…'
+                                                    : resendCooldownSecs > 0
+                                                        ? `Resend in ${resendCooldownSecs}s`
+                                                        : 'Resend email'}
+                                            </span>
+                                        </motion.button>
+
+                                        <button
+                                            type="button"
+                                            onClick={handleOpenMail}
+                                            className="relative mt-2.5 flex w-full items-center justify-center gap-2 rounded-2xl py-[13px] text-[13px] font-medium transition-colors hover:bg-white/5"
+                                            style={{
+                                                color: 'rgba(255,232,242,0.78)',
+                                                background: 'rgba(255,255,255,0.04)',
+                                                border: '1px solid rgba(255,255,255,0.08)',
+                                            }}
+                                        >
+                                            <Mail size={15} strokeWidth={1.9} />
+                                            Open mail app
+                                        </button>
+
+                                        <div
+                                            className="relative mt-5 flex items-center justify-center text-[11.5px]"
+                                            style={{ color: 'rgba(255,232,242,0.42)' }}
+                                        >
+                                            Wrong address?
+                                            <button
+                                                onClick={handleUseDifferentEmail}
+                                                className="ml-1.5 font-medium hover:opacity-80"
+                                                style={{ color: 'rgba(255,210,230,0.85)' }}
+                                            >
+                                                Use a different email
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!recoveryMode && !pendingConfirmEmail && (<>
                                 {/* Google sign-in — calm white-glass button.
                                     Sits above email so social auth is the
                                     fastest path for anyone who has a Google
@@ -1700,6 +2042,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                         </button>
                                     </div>
                                 )}
+                                </>)}
                             </div>
                         </motion.div>
                     </motion.div>

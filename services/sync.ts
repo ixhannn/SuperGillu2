@@ -524,6 +524,12 @@ class SyncServiceClass {
             // Rebuild any missing local media cache from the latest cloud metadata
             // so blank cards heal during normal sync, not only on specific screens.
             await StorageService.recoverImagesFromCloud();
+
+            // Safety net for the daily ritual: if realtime missed the partner's
+            // answer, the periodic reconcile still surfaces the reveal. This is a
+            // no-op pre-migration (daily_answers absent → getTodayPair stays local
+            // and unrevealed) and self-dedupes via getDailyRevealNotified.
+            await this.reconcileDailyAnswers();
         } catch (e) {
             console.warn("Reconciliation failed", e);
         } finally {
@@ -826,6 +832,99 @@ class SyncServiceClass {
             })
             .subscribe();
         if (deletionChannel) this.realtimeChannels.push(deletionChannel);
+
+        // daily_answers is NOT a {couple_id, data} collection table (flat columns,
+        // sealed-reveal RLS), so it must NOT route through handleCloudUpdate. A
+        // partner's freshly-inserted row arrives here; we just nudge the ritual UI
+        // to re-read through the sealed-reveal service (getTodayPair), which does
+        // the gating. Guarded: if the table/publication is absent the subscribe is
+        // a harmless no-op (no rows ever arrive). See migration 20260612000000.
+        const dailyAnswersChannel = SupabaseService.client?.channel(`public:daily_answers:${coupleId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_answers', filter: `couple_id=eq.${coupleId}` }, (payload) => {
+                if (payload.eventType !== 'INSERT' && payload.eventType !== 'UPDATE') return;
+                const promptDate = (payload.new as { prompt_date?: string } | undefined)?.prompt_date;
+                void this.onDailyAnswerChange(promptDate);
+            })
+            .subscribe();
+        if (dailyAnswersChannel) this.realtimeChannels.push(dailyAnswersChannel);
+    }
+
+    // Reconcile-cadence pull for the daily ritual (realtime safety net). Re-reads
+    // through the sealed-reveal service and, if today is now revealed, drives the
+    // same UI-nudge + local-notification path as the realtime handler. Idempotent
+    // (getDailyRevealNotified de-dupes) and fully guarded — never throws.
+    private async reconcileDailyAnswers() {
+        try {
+            const profile = StorageService.getCoupleProfile();
+            if (!profile?.myName || !profile?.partnerName) return;
+            const { getTodayPair } = await import('./dailyRitual');
+            const pair = await getTodayPair({ myName: profile.myName, partnerName: profile.partnerName });
+            // Only act on a genuine cloud-backed reveal that the UI may not have
+            // seen yet; the local fallback path already covers same-device answers.
+            if (pair.source !== 'cloud' || !pair.revealed) return;
+            if (StorageService.getDailyRevealNotified() === pair.date) return;
+            await this.onDailyAnswerChange(pair.date);
+        } catch {
+            /* best-effort — a missing table just means nothing to reconcile */
+        }
+    }
+
+    // A daily_answers row changed (partner answered, or a backfilled own row).
+    // Tell the ritual UI to re-read through the sealed-reveal service, and — when
+    // the pair just COMPLETED today and a server push can't reach this device —
+    // raise a local notification so the loop closes without server push.
+    private async onDailyAnswerChange(promptDate?: string) {
+        // Always nudge the UI: getTodayPair is sealed-reveal-gated, so this never
+        // leaks a partner answer early; it just refreshes if the seal is open.
+        syncEventTarget.dispatchEvent(new CustomEvent('daily-answers-update', { detail: { promptDate } }));
+        await this.maybeNotifyDailyReveal();
+    }
+
+    // Local-notification fallback for the daily reveal. Only fires when:
+    //   - today's pair is genuinely revealed (both answered) per the sealed
+    //     service, AND we haven't already notified for this day, AND
+    //   - a server push can't be delivered from here (pushBackendAvailable=false),
+    //     so a push would no-op and the partner's device would otherwise stay
+    //     silent.
+    // Best-effort and fully guarded — never throws, no-ops pre-migration.
+    private async maybeNotifyDailyReveal() {
+        try {
+            const profile = StorageService.getCoupleProfile();
+            if (!profile?.myName || !profile?.partnerName) return;
+
+            // Lazy imports mirror the dailyRitual pattern: keep the notification +
+            // toast modules out of the eager sync graph and dodge any import cycle.
+            const [{ getTodayPair }, { NotificationsService }, { toast }] = await Promise.all([
+                import('./dailyRitual'),
+                import('./notifications'),
+                import('../utils/toast'),
+            ]);
+            const pair = await getTodayPair({ myName: profile.myName, partnerName: profile.partnerName });
+            if (!pair.revealed) return;
+
+            // De-dupe per calendar day so a re-subscribe / reconcile can't re-fire.
+            if (StorageService.getDailyRevealNotified() === pair.date) return;
+
+            // If a server push can reach this couple, let it own the alert to avoid
+            // a double notification; only step in when push is a guaranteed no-op.
+            const pushUp = await NotificationsService.pushBackendAvailable();
+            StorageService.setDailyRevealNotified(pair.date);
+
+            // In-app toast always (the foreground signal). The DailyQuestion card
+            // also celebrates on its own re-read; this covers the case where the
+            // user is elsewhere in the app when the partner answers.
+            toast.show('Your story grew — today’s answers are in', 'heart');
+
+            if (!pushUp) {
+                await NotificationsService.fireImmediate(
+                    'Today’s question is complete',
+                    `${profile.partnerName} answered too — see what you both wrote.`,
+                    'daily-ritual',
+                );
+            }
+        } catch {
+            /* best-effort — never break sync over a notification */
+        }
     }
 
     private handlePresenceUpdate(state: any, profile: any) {

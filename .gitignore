@@ -40,6 +40,9 @@ __emails.txt
 *.sln
 *.sw?
 
+# Supabase CLI local state (contains project ref, pooler URL, linked email)
+supabase/.temp/
+
 # AI Assistant and indexing directories
 .agent/
 .claude/

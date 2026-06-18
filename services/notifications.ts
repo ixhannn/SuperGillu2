@@ -91,6 +91,7 @@ const KIND_VIEWS: Record<NotificationSchedule['kind'], string> = {
   'recap-sunday': 'weekly-recap',
   'film-ready': 'daily-video',
   'cycle-3-days': 'us',
+  'daily-ritual': 'home',
 };
 
 type NativePermissionState = 'granted' | 'denied' | 'prompt';
@@ -136,6 +137,8 @@ const DEFAULT_PREFS: NotificationPrefs = {
   recapTime: '19:00',
   filmReadyEnabled: true,
   partnerNudgeEnabled: true,
+  ritualEnabled: true,
+  ritualTime: '20:00',
 };
 
 let pushRegistrationListenerBound = false;
@@ -274,8 +277,14 @@ export const NotificationsService = {
   /**
    * Plan the recurring schedule based on current prefs. Should be called
    * on app start and whenever prefs change.
+   *
+   * `prompt` controls whether a never-decided ('prompt') permission state is
+   * allowed to trigger the OS permission dialog. App startup MUST pass
+   * `false` so reopening the app never fires a cold OS prompt; an explicit
+   * user gesture (e.g. accepting the priming modal) may pass `true`. When
+   * permission is already granted this schedules/registers regardless.
    */
-  async applySchedule(): Promise<void> {
+  async applySchedule({ prompt = false }: { prompt?: boolean } = {}): Promise<void> {
     const prefs = readPrefs();
 
     // Cancel previous
@@ -307,15 +316,27 @@ export const NotificationsService = {
       });
     }
 
+    if (prefs.ritualEnabled) {
+      const when = nextOccurrenceOf(prefs.ritualTime);
+      queued.push({
+        id: `daily-ritual-${when.toISOString().slice(0, 10)}`,
+        kind: 'daily-ritual',
+        fireAt: when.toISOString(),
+        title: 'Today’s question is waiting',
+        body: 'Answer together — they won’t see yours until they answer too.',
+      });
+    }
+
     writeSchedules(queued);
 
     const native = await getCapacitorLocalNotifications();
     if (native) {
       // Make sure we actually hold permission — otherwise the scheduled
-      // notifications are silently dropped. Only prompt when the user hasn't
-      // decided yet (status 'prompt'); never re-nag a denial.
+      // notifications are silently dropped. Only prompt when the caller opted
+      // in AND the user hasn't decided yet (status 'prompt'); never re-nag a
+      // denial, and never prompt cold at startup (prompt === false).
       const status = await native.checkPermissions().catch(() => ({ display: 'denied' as const }));
-      if (status.display === 'prompt') {
+      if (prompt && status.display === 'prompt') {
         await native.requestPermissions().catch(() => undefined);
       }
       await ensureChannel(native);
@@ -441,8 +462,13 @@ export const NotificationsService = {
    * - Web PWA: uses VAPID Web Push subscription
    * The token is stored in Supabase `device_push_tokens` so the
    * `send-partner-nudge` Edge Function can reach either partner's device.
+   *
+   * `prompt` controls whether a never-decided permission state may trigger the
+   * OS dialog. App startup MUST pass `false`: the device is only registered
+   * when permission is ALREADY granted, never firing a cold OS prompt. An
+   * explicit user gesture may pass `true` to request-then-register.
    */
-  async registerPushToken(): Promise<void> {
+  async registerPushToken({ prompt = false }: { prompt?: boolean } = {}): Promise<void> {
     if (!SupabaseService.isConfigured()) return;
 
     const deviceId = localStorage.getItem('lior_device_id') || 'unknown';
@@ -450,7 +476,11 @@ export const NotificationsService = {
     // ── Native path: Capacitor PushNotifications ─────────────────────
     const nativePush = await getCapacitorPushNotifications();
     if (nativePush) {
-      const { receive } = await nativePush.requestPermissions().catch(() => ({ receive: 'denied' as const }));
+      // Non-prompting startup must NOT trigger the OS dialog — only inspect the
+      // current state. Prompting callers (explicit consent) may request it.
+      const { receive } = prompt
+        ? await nativePush.requestPermissions().catch(() => ({ receive: 'denied' as const }))
+        : await nativePush.checkPermissions().catch(() => ({ receive: 'denied' as const }));
       if (receive !== 'granted') return;
 
       // Pre-create the high-importance channel so a remote push that arrives
@@ -493,8 +523,10 @@ export const NotificationsService = {
   /**
    * Trigger the server-side partner nudge after recording a pulse check.
    * Fire-and-forget — does not block the recording flow.
+   * Forwards `{ type, senderName }` so the edge function can tailor the
+   * notification and (for non-pulse types) the partner sees who it's from.
    */
-  async triggerPartnerNudge(): Promise<void> {
+  async triggerPartnerNudge(type = 'pulse_check', senderName = ''): Promise<void> {
     if (!readPrefs().partnerNudgeEnabled) return;
     if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
     try {
@@ -509,9 +541,28 @@ export const NotificationsService = {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: '{}',
+        body: JSON.stringify({ type, senderName }),
       });
     } catch { /* fire-and-forget */ }
+  },
+
+  /**
+   * Whether a server-side partner push can actually be delivered from THIS
+   * client. Mirrors the exact preconditions `triggerPartnerNudge` needs to do
+   * anything: Supabase configured + a live client + an access token + a project
+   * URL. When this is false the push is a guaranteed no-op, so callers (e.g. the
+   * daily-ritual reveal) fall back to a LOCAL notification instead. Never throws.
+   */
+  async pushBackendAvailable(): Promise<boolean> {
+    try {
+      if (!SupabaseService.isConfigured() || !SupabaseService.client) return false;
+      const { url } = SupabaseService.getProjectConfig();
+      if (!url) return false;
+      const token = await SupabaseService.getAccessToken();
+      return Boolean(token);
+    } catch {
+      return false;
+    }
   },
 
   /**

@@ -19,6 +19,7 @@ import { CoachmarkInsights, buildCoachmarkPreloadViews } from '../services/coach
 import { NavigationOptions, ViewState } from '../types';
 import { readThemeRgbTriplet, readThemeVar } from '../utils/themeVars';
 import { observeDocumentAttributes } from '../utils/documentObserverBus';
+import { useRelationship } from '../hooks/useRelationship';
 
 export type CoachmarkMode = 'spotlight' | 'card';
 type PreviewKind =
@@ -198,7 +199,24 @@ const TAGLINES: Record<string, string> = {
   'theme-picker': 'Repaint your whole shared space with a handcrafted theme. 🎨',
   'together-music': 'Pick the one song that belongs to just the two of you. 🎶',
 };
-const taglineFor = (def: CoachmarkDef): string => TAGLINES[def.key] ?? def.whatIs;
+
+// Solo overrides — shown before a partner is linked, so the tour never promises
+// a "two of you" experience the user can't reach yet. Only keys whose default
+// copy assumes a present partner need an entry; everything else falls through to
+// TAGLINES unchanged.
+const SOLO_TAGLINES: Record<string, string> = {
+  'daily-moments': 'Drop a little photo story that quietly disappears by midnight — ready to share once you connect. 🌙',
+  'countdowns': 'Pin your next big day in sight and savour the build-up — together once you connect. ⏳',
+  'bonsai': 'A little tree that grows with every memory you add, and blooms once you connect. 🌱',
+  'aura-signal': 'A wordless “thinking of you” you can send the moment you connect. 💫',
+  'theme-picker': 'Repaint your whole space with a handcrafted theme — ready to share once you connect. 🎨',
+  'together-music': 'Pick the song that will belong to just the two of you once you connect. 🎶',
+};
+
+const taglineFor = (def: CoachmarkDef, isLinked: boolean): string => {
+  if (!isLinked && SOLO_TAGLINES[def.key]) return SOLO_TAGLINES[def.key];
+  return TAGLINES[def.key] ?? def.whatIs;
+};
 
 interface CoachmarkCtx {
   triggerCoachmark: (key: string) => void;
@@ -922,7 +940,8 @@ const SpotlightStep: React.FC<{
   onSkip: () => void;
   pendingIntent: 'next' | 'action' | null;
   enterMode: ActiveStep['enterMode'];
-}> = ({ state, stepIndex, total, onAction, onNext, onSkip, pendingIntent, enterMode }) => {
+  isLinked: boolean;
+}> = ({ state, stepIndex, total, onAction, onNext, onSkip, pendingIntent, enterMode, isLinked }) => {
   const { rect, def } = state;
   const accent = def.accentColor ?? '#e879f9';
   const actionBusy = pendingIntent === 'action';
@@ -1030,7 +1049,7 @@ const SpotlightStep: React.FC<{
           </div>
           <div style={{ minWidth: 0 }}>
             <p style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.15, margin: 0 }}>{def.title}</p>
-            <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '5px 0 0' }}>{taglineFor(def)}</p>
+            <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '5px 0 0' }}>{taglineFor(def, isLinked)}</p>
           </div>
         </div>
 
@@ -1095,7 +1114,8 @@ const CardStep: React.FC<{
   onSkip: () => void;
   pendingIntent: 'next' | 'action' | null;
   enterMode: ActiveStep['enterMode'];
-}> = ({ def, stepIndex, total, onAction, onNext, onSkip, pendingIntent, enterMode }) => {
+  isLinked: boolean;
+}> = ({ def, stepIndex, total, onAction, onNext, onSkip, pendingIntent, enterMode, isLinked }) => {
   const accent = def.accentColor ?? '#a855f7';
   const actionBusy = pendingIntent === 'action';
   const nextBusy = pendingIntent === 'next';
@@ -1151,7 +1171,7 @@ const CardStep: React.FC<{
           {/* title + playful one-liner */}
           <div style={{ textAlign: 'center', marginTop: 4 }}>
             <h2 style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 26, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.1, letterSpacing: '-0.01em', margin: 0 }}>{def.title}</h2>
-            <p style={{ fontSize: 15.5, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '9px auto 0', maxWidth: '17.5rem' }}>{taglineFor(def)}</p>
+            <p style={{ fontSize: 15.5, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '9px auto 0', maxWidth: '17.5rem' }}>{taglineFor(def, isLinked)}</p>
           </div>
 
           {/* where pill */}
@@ -1304,6 +1324,9 @@ interface CoachmarkProviderProps {
 }
 
 export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, currentView, navigateTo }) => {
+  // Solo (unlinked) users get partner-neutral tour copy so the tour never
+  // promises a "two of you" experience they can't reach until they connect.
+  const { isLinked } = useRelationship();
   const [active, setActive] = useState<ActiveStep | null>(null);
   const [celebrating, setCelebrating] = useState(false);
   const [pendingIntent, setPendingIntent] = useState<'next' | 'action' | null>(null);
@@ -1604,6 +1627,7 @@ export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, 
                 total={active.total}
                 pendingIntent={pendingIntent}
                 enterMode={active.enterMode}
+                isLinked={isLinked}
                 onAction={() => runAction(active.def)}
                 onNext={advance}
                 onSkip={dismissAll}
@@ -1616,6 +1640,7 @@ export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, 
                 total={active.total}
                 pendingIntent={pendingIntent}
                 enterMode={active.enterMode}
+                isLinked={isLinked}
                 onAction={() => runAction(active.def)}
                 onNext={advance}
                 onSkip={dismissAll}

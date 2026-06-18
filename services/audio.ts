@@ -1,5 +1,5 @@
 /**
- * Audio Service — Tulika
+ * Audio Service
  *
  * Procedural Web Audio API sound engine — zero asset files.
  *

@@ -7,6 +7,12 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
   },
+  // Custom URL scheme `com.lior.app://` is registered natively via per-host
+  // intent-filters in android/app/src/main/AndroidManifest.xml — one each for
+  // `auth` (OAuth PKCE callback), `shortcut` (launcher routes) and `claim`
+  // (pair-invite deep links). The @capacitor/app plugin surfaces these as
+  // appUrlOpen events, which App.tsx parses (OAuth code vs invite code). No
+  // extra Capacitor plugin config is required for custom-scheme delivery.
   android: {
     // Hardware-accelerated WebView rendering
     webContentsDebuggingEnabled: false,
