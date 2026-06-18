@@ -485,6 +485,25 @@ export const NotificationsService = {
   },
 
   /**
+   * Whether a server-side partner push can actually be delivered from THIS
+   * client. Mirrors the exact preconditions `triggerPartnerNudge` needs to do
+   * anything: Supabase configured + a live client + an access token + a project
+   * URL. When this is false the push is a guaranteed no-op, so callers (e.g. the
+   * daily-ritual reveal) fall back to a LOCAL notification instead. Never throws.
+   */
+  async pushBackendAvailable(): Promise<boolean> {
+    try {
+      if (!SupabaseService.isConfigured() || !SupabaseService.client) return false;
+      const { url } = SupabaseService.getProjectConfig();
+      if (!url) return false;
+      const token = await SupabaseService.getAccessToken();
+      return Boolean(token);
+    } catch {
+      return false;
+    }
+  },
+
+  /**
    * Send the partner a push when the heartbeat button is tapped, so it lands
    * even if their app is closed. Fire-and-forget — never blocks the UI.
    * `senderName` is the current user's display name (the partner sees it).

@@ -2359,6 +2359,27 @@ export const StorageService = {
         return justRevealed;
     },
 
+    // Sticky flag: set true the first time a daily-ritual cloud op actually
+    // succeeds (sealed-reveal table reachable). Lets the rest of the app know the
+    // server-enforced reveal is live for this couple, without re-probing the DB.
+    // Best-effort — never throws; defaults false (the pre-migration local path).
+    setRitualCloudActive: (active: boolean): void => {
+        try { localStorage.setItem('lior_ritual_cloud_active', active ? '1' : '0'); } catch { /* storage unavailable */ }
+    },
+    getRitualCloudActive: (): boolean => {
+        try { return localStorage.getItem('lior_ritual_cloud_active') === '1'; } catch { return false; }
+    },
+
+    // Per-day de-dupe for the daily-reveal local notification + toast: stores the
+    // YYYY-MM-DD of the last day we alerted, so a re-subscribe / reconcile can't
+    // re-fire the same reveal. Best-effort — never throws; '' means not-yet-fired.
+    setDailyRevealNotified: (date: string): void => {
+        try { localStorage.setItem('lior_daily_reveal_notified', date); } catch { /* storage unavailable */ }
+    },
+    getDailyRevealNotified: (): string => {
+        try { return localStorage.getItem('lior_daily_reveal_notified') ?? ''; } catch { return ''; }
+    },
+
     getMoodEntries: (): MoodEntry[] => {
         if (DATA_CACHE.moodEntries.length > 0) return DATA_CACHE.moodEntries;
         const str = localStorage.getItem(CACHE_KEYS.MOOD_ENTRIES);

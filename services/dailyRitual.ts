@@ -216,6 +216,9 @@ export async function submitAnswer(
         { onConflict: 'id' },
       );
     if (error) return { ok: true, usedCloud: false };
+    // Cloud write landed in the sealed-reveal table — mark the server-enforced
+    // reveal live so the couple_profile push starts stripping answer text.
+    StorageService.setRitualCloudActive(true);
     return { ok: true, usedCloud: true };
   } catch {
     return { ok: true, usedCloud: false };
@@ -264,6 +267,11 @@ export async function getTodayPair(ctx: DailyRitualContext): Promise<DailyPair> 
       .eq('prompt_date', prompt.date);
 
     if (error || !data) return baseline;
+
+    // The sealed-reveal table answered our query — the server-enforced reveal is
+    // live, so flag it (sticky) and start stripping answer text from the
+    // couple_profile push from here on.
+    StorageService.setRitualCloudActive(true);
 
     let myAnswer: string | null = null;
     let partnerAnswer: string | null = null;

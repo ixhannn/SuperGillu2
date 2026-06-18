@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, Flame, Bell } from 'lucide-react';
-import { CoupleProfile, QuestionEntry } from '../types';
+import { CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { NotificationsService } from '../services/notifications';
-import { getRitualStreak } from '../services/dailyRitual';
+import { getRitualStreak, getTodayPair, submitAnswer, type DailyPair } from '../services/dailyRitual';
+import { syncEventTarget } from '../services/sync';
 import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
 import { toast } from '../utils/toast';
@@ -42,7 +43,12 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     // Never trust profile.partnerName, which falls back to a phantom "Partner"
     // when unlinked. Gates the post-answer waiting copy below.
     const { isLinked } = useRelationship();
-    const [entry, setEntry] = useState<QuestionEntry | null>(null);
+    // Today's question + both answers, read through the sealed-reveal service.
+    // `pair.revealed`/`pair.partnerAnswer` are the gate: the service returns the
+    // partner answer ONLY when the seal has opened (server-side under the cloud
+    // RLS; locally when both answered). source==='local' is the pre-migration
+    // fallback and renders identically.
+    const [pair, setPair] = useState<DailyPair | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [draft, setDraft] = useState('');
     const [showNotifPrimer, setShowNotifPrimer] = useState(false);
@@ -53,26 +59,69 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     // re-render. Keyed by the entry date so a brand-new day can celebrate again.
     const celebratedRef = useRef<string | null>(null);
     const hasLoadedRef = useRef(false);
+    // True when the reveal arrived via the live 'daily-answers-update' path (a
+    // partner answering on another device). SyncService already shows the reveal
+    // toast for that case, so the card plays only its flourish (haptic + chime +
+    // particles) and skips its own toast to avoid a duplicate. A submit/local
+    // reveal leaves this false and the card owns the toast as before.
+    const liveRevealRef = useRef(false);
 
+    const ctx = { myName: profile.myName, partnerName: profile.partnerName };
+
+    // Async best-effort load. getTodayPair never throws and degrades to the
+    // local baseline, so a missing table / no .env still resolves a usable pair.
+    // Guard against a stale resolve overwriting newer state across profile swaps.
     useEffect(() => {
-        const q = StorageService.getTodayQuestion(profile.myName, profile.partnerName);
-        // On the very first load, if today's question is ALREADY revealed (the
-        // app reopened after both answered earlier), pre-mark it celebrated so
-        // the flourish only fires on a genuine in-session reveal transition —
-        // never as a replay on mount.
-        if (!hasLoadedRef.current) {
-            hasLoadedRef.current = true;
-            if (q.revealedAt) celebratedRef.current = q.date;
-        }
-        setEntry(q);
+        let alive = true;
+        void (async () => {
+            const p = await getTodayPair({ myName: profile.myName, partnerName: profile.partnerName });
+            if (!alive) return;
+            // On the very first load, if today is ALREADY revealed (the app
+            // reopened after both answered earlier), pre-mark it celebrated so
+            // the flourish only fires on a genuine in-session reveal transition —
+            // never as a replay on mount.
+            if (!hasLoadedRef.current) {
+                hasLoadedRef.current = true;
+                if (p.revealed) celebratedRef.current = p.date;
+            }
+            if (p.source === 'cloud') StorageService.setRitualCloudActive(true);
+            setPair(p);
+        })();
+        return () => { alive = false; };
     }, [profile]);
 
-    const myAnswer = entry?.answers[profile.myName];
-    const partnerAnswer = entry?.answers[profile.partnerName];
-    // Reveal is gated on revealedAt ONLY — never on the partner's answer string
-    // being present. This prevents the partner's answer leaking into the UI
-    // before the mutual-reveal moment is actually committed.
-    const isRevealed = Boolean(entry?.revealedAt);
+    // Live reveal: when the partner's answer reaches this device (realtime, or the
+    // periodic reconcile safety net), SyncService dispatches 'daily-answers-update'.
+    // Re-read through the sealed-reveal service — getTodayPair stays gated, so this
+    // never leaks the partner answer early; it only flips `revealed` once the seal
+    // is open, which drives the existing one-shot celebration effect.
+    useEffect(() => {
+        let alive = true;
+        const onDailyAnswers = () => {
+            void (async () => {
+                const p = await getTodayPair({ myName: profile.myName, partnerName: profile.partnerName });
+                if (!alive) return;
+                if (p.source === 'cloud') StorageService.setRitualCloudActive(true);
+                // Mark this as a live (partner-driven) reveal so the celebration
+                // effect plays the flourish but defers the toast to SyncService.
+                if (p.revealed && celebratedRef.current !== p.date) liveRevealRef.current = true;
+                setPair(p);
+            })();
+        };
+        syncEventTarget.addEventListener('daily-answers-update', onDailyAnswers);
+        return () => {
+            alive = false;
+            syncEventTarget.removeEventListener('daily-answers-update', onDailyAnswers);
+        };
+    }, [profile]);
+
+    const myAnswer = pair?.myAnswer ?? undefined;
+    // Partner answer is surfaced by the service ONLY when the seal is open, so we
+    // can render it directly — it stays null pre-reveal and never leaks early.
+    const partnerAnswer = pair?.partnerAnswer ?? undefined;
+    // Reveal gate comes straight from the service (server-enforced in cloud mode,
+    // both-answered locally) — never inferred from the partner string in the UI.
+    const isRevealed = Boolean(pair?.revealed);
 
     const streak = getRitualStreak(profile.questions);
 
@@ -88,9 +137,17 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     // available toast feedback (a single Medium tick), keeping the intended one
     // Heavy haptic + 'confirm' chime as the dominant — and effectively single — beat.
     useEffect(() => {
-        if (!entry?.revealedAt || !isRevealed) return;
-        if (celebratedRef.current === entry.date) return;
-        celebratedRef.current = entry.date;
+        if (!isRevealed || !pair) return;
+        if (celebratedRef.current === pair.date) return;
+        celebratedRef.current = pair.date;
+        // A live (partner-driven) reveal: SyncService owns the toast + the
+        // de-dupe flag + the local notification, so the card plays ONLY its
+        // flourish here and consumes the live marker. A submit/local/initial
+        // reveal (marker false) keeps the original behaviour: claim the per-day
+        // flag so SyncService's background path won't also alert, then toast.
+        const wasLive = liveRevealRef.current;
+        liveRevealRef.current = false;
+        if (!wasLive) StorageService.setDailyRevealNotified(pair.date);
 
         void Haptics.heavy();
         Audio.play('confirm');
@@ -98,10 +155,10 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
         if (rect) {
             particlesRef.current?.triggerReceive(rect.left + rect.width / 2, rect.top + rect.height / 2);
         }
-        toast.show('Your story grew', 'info');
-    }, [entry?.revealedAt, entry?.date, isRevealed]);
+        if (!wasLive) toast.show('Your story grew', 'info');
+    }, [isRevealed, pair?.date]);
 
-    if (!entry) return null;
+    if (!pair) return null;
 
     const handleCardClick = () => {
         if (!myAnswer && !expanded) {
@@ -113,19 +170,30 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     const handleSubmit = () => {
         if (!draft.trim()) return;
         const answer = draft.trim();
-        const justRevealed = StorageService.submitQuestionAnswer(answer);
-        // Re-read the canonical entry so revealedAt (set by storage when both
-        // answers exist) is reflected — the reveal render gates on it.
-        const updated = StorageService.getTodayQuestion(profile.myName, profile.partnerName);
-        setEntry(updated);
+        // Capture the seal state BEFORE writing. Just-revealed = "was sealed,
+        // now open" — the single transition that earns the push + flourish.
+        const wasRevealed = Boolean(pair?.revealed);
         setExpanded(false);
         setDraft('');
-        // Fire-and-forget partner push ONCE, only on the reveal-completing submit.
-        if (justRevealed) {
-            void NotificationsService.triggerPartnerNudge('daily_answer', profile.myName);
-            void maybePrimeNotifications();
-        }
-        onUpdate();
+        void (async () => {
+            const res = await submitAnswer(answer, ctx);
+            if (res.usedCloud) StorageService.setRitualCloudActive(true);
+            // Re-fetch the canonical pair so `revealed`/`partnerAnswer` reflect
+            // the sealed-reveal outcome (server-side in cloud mode, local
+            // otherwise). Setting `pair` to a revealed state drives the
+            // one-shot celebration effect (guarded by celebratedRef) — so the
+            // flourish plays exactly once and is never double-fired here.
+            const updated = await getTodayPair(ctx);
+            if (updated.source === 'cloud') StorageService.setRitualCloudActive(true);
+            setPair(updated);
+            // Fire-and-forget partner push ONCE, only on the sealed→open
+            // transition that THIS submit completed.
+            if (!wasRevealed && updated.revealed) {
+                void NotificationsService.triggerPartnerNudge('daily_answer', profile.myName);
+                void maybePrimeNotifications();
+            }
+            onUpdate();
+        })();
     };
 
     // The first mutual reveal is the highest-consent moment to ask for
@@ -217,7 +285,7 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
 
             {/* Question text */}
             <p className="font-serif text-[1.1rem] italic leading-snug text-gray-800 mb-3">
-                "{entry.question}"
+                "{pair.question}"
             </p>
 
             {/* State content */}

@@ -25,7 +25,9 @@ create table if not exists public.daily_answers (
   couple_id   uuid        not null,
   prompt_date date        not null,
   prompt_id   text,                               -- stable id/hash of the pooled question
-  text        text        check (char_length(text) <= 600),
+  -- NOT NULL + non-empty: the seal is "a row exists for me", so a blank row must
+  -- not be able to unlock the partner's answer without a real reciprocal answer.
+  text        text        not null check (char_length(btrim(text)) between 1 and 600),
   created_at  timestamptz not null default now()
 );
 
@@ -112,3 +114,25 @@ with check (
 -- and no permissive UPDATE/DELETE policy, both operations are denied for everyone
 -- (including the row owner) — a submitted answer can never be edited or rescinded,
 -- which keeps the reveal honest.
+
+-- Realtime: deliver a partner's freshly-inserted row to the other device so the
+-- reveal happens live, not only on the next periodic reconcile. The client
+-- subscribes to postgres_changes on this table filtered by couple_id (see
+-- services/sync.ts setupRealtimeSubscription -> 'daily-answers-update' event).
+-- Idempotent + safe to re-run: only adds the table if it isn't already published,
+-- and the whole block is a no-op if the supabase_realtime publication is absent.
+-- The sealed-reveal RLS still applies to realtime, so a partner's row is only
+-- delivered once the caller has answered — the seal holds on the live path too.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'daily_answers'
+    ) then
+      alter publication supabase_realtime add table public.daily_answers;
+    end if;
+  end if;
+end $$;
