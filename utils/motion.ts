@@ -62,3 +62,67 @@ export const prefersReducedMotion = (): boolean =>
   typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ════════════════════════════════════════════════════════════════════════════
+// Motion-OS §9.1 extension — typed JS mirrors of CSS tokens that were missing
+// from the JS layer. Every value below mirrors a CSS custom prop that already
+// lives in styles/root-fixes.css :root (the --lior-ease-* / --lior-motion-*
+// props) or composes the existing springs/eases above. Nothing here introduces
+// a NEW design value — these are exports, not new design decisions.
+// (APPEND-ONLY: do not modify or remove the exports above.)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Press-in curve — mirrors --lior-ease-press. The only ease the JS layer was
+// missing; needed by <Pressable> for the down-stroke. ───────────────────────
+export const EASE_PRESS = [0.2, 0, 0, 1] as const;
+
+// ── Short-end durations (seconds) — mirror --lior-motion-press/feedback/micro/
+// morph. (DUR_TAB/POP/PUSH/MODAL already exported above.) ────────────────────
+export const DUR_PRESS = 0.09;    // --lior-motion-press 90ms
+export const DUR_FEEDBACK = 0.14; // --lior-motion-feedback 140ms
+export const DUR_MICRO = 0.2;     // --lior-motion-micro 200ms
+export const DUR_MORPH = 0.4;     // --lior-motion-morph 400ms (shared-element)
+
+// ── Press primitive variants ────────────────────────────────────────────────
+// Down-stroke is sharp (EASE_PRESS, fast); release is springGentle so it
+// settles with the same whisper as the global .spring-press CSS primitive.
+// Scale floor matches the CSS press (0.955) — no bounce, no overshoot.
+export const pressVariants: Variants = {
+  rest:    { scale: 1,     transition: springGentle },
+  pressed: { scale: 0.955, transition: { duration: DUR_PRESS, ease: EASE_PRESS } },
+};
+
+// ── Modal / sheet variants — for in-React surfaces that are NOT route-level ──
+// (route-level sheets go through TransitionEngine 'modal'). Rises from the
+// bottom edge to match the lior-vt-modal-* keyframes.
+export const sheetVariants: Variants = {
+  hidden:  { y: '100%', transition: { duration: DUR_MODAL, ease: EASE_SOFT } },
+  visible: { y: 0,      transition: { duration: DUR_MODAL, ease: EASE_SILK } },
+  exit:    { y: '100%', transition: { duration: DUR_POP,   ease: EASE_EXIT } },
+};
+
+export const scrimVariants: Variants = {
+  hidden:  { opacity: 0, transition: { duration: DUR_POP } },
+  visible: { opacity: 1, transition: { duration: DUR_MODAL } },
+};
+
+// ── Adaptive stagger step ─────────────────────────────────────────────────────
+// Long lists must not take 2s to fully reveal. Clamps the total reveal window
+// to ~480ms regardless of N (a 30-item Timeline reveals in ~480ms, not 2s).
+export const staggerFor = (count: number): number =>
+  count <= 0 ? 0.06 : Math.min(0.06, 0.48 / count);
+
+// ── Heartbeat scale keyframes for romantic pulse surfaces (Pulse, hero heart).
+// Loop duration ≥ 2000ms per the ambient-loop rule so it never competes with
+// gesture feedback. Transform-only (scale) — compositor-safe.
+export const heartbeatPulse: Variants = {
+  beat: {
+    scale: [1, 1.06, 1, 1.04, 1],
+    transition: {
+      duration: 2.0,
+      times: [0, 0.12, 0.24, 0.36, 1],
+      ease: 'easeInOut',
+      repeat: Infinity,
+    },
+  },
+};

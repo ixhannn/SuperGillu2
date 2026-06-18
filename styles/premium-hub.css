@@ -548,6 +548,12 @@
   filter: brightness(1.14) saturate(1.06);
 }
 
+/* Reduced-motion: skip the per-tap filter re-composite entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .lq-press { transition: none; }
+  .lq-press:active { filter: none; }
+}
+
 /* Ghost glyph — oversized icon watermark giving each card its identity. */
 .lq-ghost {
   position: absolute;

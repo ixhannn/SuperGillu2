@@ -54,7 +54,7 @@ export const ActionSheet: React.FC<ActionSheetProps> = ({ open, onClose, title, 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            style={{ opacity: backdropOpacity, background: 'rgba(20,8,14,0.52)' }}
+            style={{ opacity: backdropOpacity, background: 'rgba(16,9,14,0.62)' }}
             className="absolute inset-0"
             data-no-press
             onClick={onClose}

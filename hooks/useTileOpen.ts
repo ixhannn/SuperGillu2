@@ -18,7 +18,9 @@
 import { useCallback } from 'react';
 
 const LIFT_CLASS = 'tile-open-lifting';
-const LIFT_MS = 220; // matches tile-lift keyframe in index.css
+const LIFT_MS = 300; // matches `tile-lift` keyframe duration in index.css; held
+                     // through most of the 360ms route push so the card stays
+                     // lifted while the next view slides in.
 
 type Target = HTMLElement | null;
 
@@ -56,18 +58,18 @@ export function useTileOpen(): (
 
     const target = findLiftTarget(event.currentTarget as HTMLElement);
     if (target) {
+      // Brief press-lift on the tapped card. Feature tiles (icon cards) open
+      // their destination with a clean directional push — there is no shared
+      // image to morph into, so a real container-morph there only ever read as
+      // a cheap growing box. The true Apple-Photos shared-element morph is
+      // reserved for surfaces that DO share an image (e.g. memory photos).
       target.classList.add(LIFT_CLASS);
-      // Auto-remove after the keyframe completes. If the source view is
-      // already unmounted by the time this fires, removeClass is a no-op.
       window.setTimeout(() => {
         target.classList.remove(LIFT_CLASS);
       }, LIFT_MS + 40);
     }
 
-    // Fire navigation in parallel — the lift animates concurrently with
-    // the page transition snapshot, so the user sees the card lift AND
-    // the new page begin sliding in at the same time. This is what makes
-    // it feel "premium" vs blocked.
+    // Push the destination in. The lift runs concurrently with the slide.
     navigate();
   }, []);
 }

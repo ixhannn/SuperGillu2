@@ -16,14 +16,19 @@ export const SkeletonReveal: React.FC<SkeletonRevealProps> = ({
 }) => {
   return (
     <div className={`relative overflow-hidden ${className}`}>
+      {/* Unified 240ms silk crossfade (matches --lior-motion-tab). The two
+          layers fade through each other at one tempo instead of the old
+          350/420ms staggered pair, so content arrives in the app's rhythm.
+          Animated `filter: blur` removed — it's an expensive per-frame
+          compositor op on mid-range Android for little perceptual gain. */}
       <motion.div
         className="absolute inset-0"
         initial={false}
         animate={{
           opacity: loading ? 1 : 0,
-          scale: loading ? 1 : 1.015,
+          scale: loading ? 1 : 1.01,
         }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
         style={{ pointerEvents: loading ? 'auto' : 'none' }}
       >
         {skeleton}
@@ -34,10 +39,9 @@ export const SkeletonReveal: React.FC<SkeletonRevealProps> = ({
         initial={false}
         animate={{
           opacity: loading ? 0 : 1,
-          scale: loading ? 0.985 : 1,
-          filter: loading ? 'blur(6px)' : 'blur(0px)',
+          scale: loading ? 0.99 : 1,
         }}
-        transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
       >
         {children}
       </motion.div>

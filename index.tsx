@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { MotionConfig } from 'framer-motion';
 import App from './App';
 import './index.css';
 import './styles/typography.css';
@@ -110,6 +111,11 @@ if ('serviceWorker' in navigator) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    {/* reducedMotion="user" makes every framer-motion animation app-wide honour
+        the OS "reduce motion" setting (opacity-only, no transform/layout) —
+        previously only the route layer respected it. */}
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
   </React.StrictMode>
 );

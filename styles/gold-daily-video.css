@@ -404,7 +404,7 @@
   box-shadow:
     0 16px 36px rgba(246, 199, 104, 0.32),
     inset 0 1px 0 rgba(255, 246, 222, 0.5);
-  transition: transform 200ms cubic-bezier(0.34, 1.4, 0.64, 1), border-radius 200ms ease;
+  transition: transform 200ms var(--lior-ease-silk), border-radius 200ms ease;
 }
 
 .gdv-hold.is-holding .gdv-hold__dot {
