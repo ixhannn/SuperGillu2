@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 
 const storageSource = readFileSync(new URL('../services/storage.ts', import.meta.url), 'utf8');
 const cocoCreatureSource = readFileSync(new URL('../components/coco-pet/CocoPetCreature.jsx', import.meta.url), 'utf8');
-const couplePetSource = readFileSync(new URL('../components/CouplePet.tsx', import.meta.url), 'utf8');
 
 assert.match(
   storageSource,
@@ -35,8 +34,5 @@ assert.match(
   'Expected the Coco pet creature to fall back safely when a persisted variant is unknown.',
 );
 
-assert.doesNotMatch(
-  couplePetSource,
-  /PetCharacter|PetShop|PetAIService/,
-  'Expected the old pet character/shop/AI page to be removed from the active CouplePet entry point.',
-);
+// The old pet character/shop/AI entry point was removed when
+// components/CouplePet.tsx was deleted entirely.

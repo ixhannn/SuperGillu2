@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 const moodCalendarSource = readFileSync(new URL('../views/MoodCalendar.tsx', import.meta.url), 'utf8');
 const auraRewindSource = readFileSync(new URL('../views/AuraRewind.tsx', import.meta.url), 'utf8');
 const storageSource = readFileSync(new URL('../services/storage.ts', import.meta.url), 'utf8');
-const couplePetSource = readFileSync(new URL('../components/CouplePet.tsx', import.meta.url), 'utf8');
 const cocoAppSource = readFileSync(new URL('../components/coco-pet/CocoApp.jsx', import.meta.url), 'utf8');
 const cocoOverlaySource = readFileSync(new URL('../components/coco-pet/CocoPetOverlay.tsx', import.meta.url), 'utf8');
 const homeSource = readFileSync(new URL('../views/Home.tsx', import.meta.url), 'utf8');
@@ -64,11 +63,8 @@ assert.match(
   'Expected Aura Rewind to ignore invalid timestamps.',
 );
 
-assert.match(
-  couplePetSource,
-  /CocoPetOverlay/,
-  'Expected the old CouplePet page to be replaced by the supplied Coco pet overlay.',
-);
+// The old CouplePet page has been fully removed (components/CouplePet.tsx
+// deleted); Home no longer references it — still asserted at the end of this file.
 
 assert.match(
   cocoOverlaySource,

@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 
 const memoryTimeline = readFileSync(new URL('../views/MemoryTimeline.tsx', import.meta.url), 'utf8');
 const dailyMoments = readFileSync(new URL('../views/DailyMoments.tsx', import.meta.url), 'utf8');
-const keepsakeBox = readFileSync(new URL('../views/KeepsakeBox.tsx', import.meta.url), 'utf8');
 
 assert.ok(
   memoryTimeline.includes('const videoStoragePath = selectVideoStoragePath(memory.videoStoragePath, memory.storagePath, memory.videoMimeType || memory.imageMimeType);') &&
@@ -33,8 +32,5 @@ assert.ok(
   'Expected R2 video keys accidentally stored in storagePath to be excluded from image resolution',
 );
 
-assert.ok(
-  keepsakeBox.includes('imageStoragePath || videoStoragePath') &&
-    keepsakeBox.includes('const hasMedia = !!(keepsake.image || keepsake.video || keepsake.imageId || keepsake.videoId || imageStoragePath || videoStoragePath);'),
-  'Expected Keepsakes to render R2-only media paths in cards and detail views',
-);
+// The Keepsakes R2-media assertion was removed when the KeepsakeBox feature
+// was deleted (views/KeepsakeBox.tsx no longer exists).
