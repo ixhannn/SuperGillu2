@@ -68,6 +68,17 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
 
             try {
                 const data = await resolveCachedMedia(mediaId, fallbackData, storagePath);
+                // Decode large inline (base64) images BEFORE committing, so the
+                // skeleton→image swap never shows an undecoded blank frame. Gated
+                // to data: URLs (the heavy-decode case); http URLs decode on paint
+                // and are HTTP-cached, so gating avoids a redundant second GET.
+                if (data && data.startsWith('data:') && typeof Image !== 'undefined') {
+                    try {
+                        const probe = new Image();
+                        probe.src = data;
+                        if (probe.decode) await probe.decode();
+                    } catch { /* not a decodable image (e.g. an inline video) — proceed */ }
+                }
                 if (isMounted) {
                     setSrc(data);
                     setIsLoading(false);

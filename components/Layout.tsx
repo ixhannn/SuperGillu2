@@ -25,7 +25,6 @@ interface LayoutProps {
   notifications?: {
     timeline?: boolean;
     moments?: boolean;
-    keepsakes?: boolean;
   };
 }
 

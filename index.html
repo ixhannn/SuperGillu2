@@ -123,6 +123,12 @@
     href="https://fonts.googleapis.com/css2?family=Afacad+Flux:wght@400;500;600;700;800&family=Bricolage+Grotesque:wght@500;600;700;800&display=swap"
     rel="stylesheet">
 
+  <!-- Boot theme before the bundle loads: set <html data-theme> from the
+       synchronous localStorage mirror so a non-rose (dark) theme doesn't flash
+       rose on a cold launch. External same-origin file because the production CSP
+       (script-src 'self') blocks inline <script>. -->
+  <script src="/theme-boot.js"></script>
+
   <!-- Tailwind CSS is now handled via PostCSS/Build step -->
   <style>
     :root {
@@ -163,6 +169,17 @@
       background: linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%);
       /* Allow the page to draw under the iOS dynamic island / status bar */
       padding: 0;
+    }
+
+    /* Pre-bundle boot frame for the dark theme. /theme-boot.js sets data-theme
+       from localStorage before the JS bundle loads, so a starry-night user never
+       sees the rose splash flash on a cold launch. A solid base color suffices
+       here; ThemeService paints the exact gradient once the bundle runs. */
+    html[data-theme="starry-night"],
+    html[data-theme="starry-night"] body {
+      background: #0B0D1E;
+      background-color: #0B0D1E;
+      color: #E8EAFF;
     }
 
     #root {

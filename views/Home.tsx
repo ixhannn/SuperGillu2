@@ -724,7 +724,14 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 <div className={`transition-all duration-500 w-full ${showDetailedDuration ? 'opacity-0 translate-y-4 absolute pointer-events-none' : ''}`}>
                                     <p className="text-white/50 text-micro uppercase tracking-widest mb-3">You've been together for</p>
                                     <div className="flex items-baseline gap-2.5 mb-3">
-                                        <h2 className="text-[5.5rem] tracking-tighter font-bold text-white leading-none drop-shadow-lg" style={DAYS_TOGETHER_LEGACY_FONT_STYLE}>{displayCount}</h2>
+                                        <h2
+                                            className="text-[5.5rem] tracking-tighter font-bold text-white leading-none drop-shadow-lg"
+                                            // Reserve the FINAL digit width (tabular-nums → 1ch/digit) so the
+                                            // count-up ramp doesn't widen the number and slide the "days" label
+                                            // rightward as it crosses 10/100/1000. Settled width == reserved
+                                            // width, so it's pixel-identical at rest.
+                                            style={{ ...DAYS_TOGETHER_LEGACY_FONT_STYLE, minWidth: `${String(daysTogether).length}ch`, textAlign: 'left' }}
+                                        >{displayCount}</h2>
                                         <span className="text-xl text-white/50 italic" style={DAYS_TOGETHER_LEGACY_UNIT_STYLE}>days</span>
                                     </div>
                                     <p className="text-white/70 text-xs font-semibold flex items-center gap-1.5">
