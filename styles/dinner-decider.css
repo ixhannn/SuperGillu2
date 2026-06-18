@@ -1,72 +1,141 @@
 /* ─────────────────────────────────────────────────────────────────────────
-   Dinner Decider — premium spin dial
-   Every colour pulls from theme tokens (--color-lior-*, --theme-particle-*),
-   so the wheel re-skins with every accent instead of being locked to pink.
-   Compositor-safe: only transform / opacity animate on a loop.
+   Dinner Decider — "The Walnut Lazy-Susan"
+   An extremely-realistic skeuomorphic dial: a hand-turned walnut lazy-susan
+   with fired ceramic-enamel meal slices under a glass crystal, a turned-brass
+   centre knob, and a leather-and-brass ticker.
+
+   ARCHITECTURE (the load-bearing rule):
+   • STRUCTURE — walnut, brass, chrome, glass — uses FIXED neutral material
+     colours below. Deriving metal/wood from theme tokens would turn it
+     cyan/indigo on most themes.
+   • COLOUR IDENTITY — enamel slices, ambient glow, accent CTAs, winner plaque
+     — is 100% theme-token driven, so the object re-stains across all 9 themes
+     (incl. dark starry-night) without ever muddying the wood or metal.
+
+   Lighting is single-source, upper-left (~10–11 o'clock): highlights top/
+   upper-left, shadows bottom/lower-right, contact shadow offset DOWN. No
+   rim-light from below (the #1 "casino" tell). Only enamel + glass are wet;
+   wood is matte, leather matte, brass satin. Every looping animation is
+   transform/opacity only.
    ───────────────────────────────────────────────────────────────────────── */
 
+.dd-skeu {
+  /* Fixed material palette — never tokenised */
+  --dd-wood-hi: #6b4a32;
+  --dd-wood-mid: #553722;
+  --dd-wood-lo: #3f2817;
+  --dd-brass-lo: #8a6a2e;
+  --dd-brass-mid: #d8b25e;
+  --dd-brass-hi: #f2dd9a;
+  --dd-brass-deep: #c79a3e;
+  --dd-brass-edge: rgba(198, 158, 92, 0.45);
+  --dd-chrome-a: #e9edf2;
+  --dd-chrome-b: #ffffff;
+  --dd-chrome-c: #aeb6c0;
+  --dd-chrome-d: #c7ccd4;
+  --dd-engrave: rgba(60, 40, 10, 0.85);
+  /* Walnut fibres: anisotropic fractal noise (low-x / high-y baseFrequency =
+     long vertical grain). Static data-URI — never re-rasterised per frame. */
+  --dd-wood-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.09' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)'/%3E%3C/svg%3E");
+}
+
+/* ── Stage ──────────────────────────────────────────────────────────────── */
 .dd-stage {
   position: relative;
-  width: min(82vw, 21.5rem);
+  width: 100%;
   aspect-ratio: 1 / 1;
   margin-inline: auto;
+  margin-bottom: 0.25rem;
   display: grid;
   place-items: center;
   isolation: isolate;
 }
 
-/* Ambient glow that lives behind the wheel and swells while it spins */
+/* Contact AO shadow — neutral black, offset DOWN, grounds on every theme */
+.dd-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  width: 86%;
+  height: 15%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse 50% 50% at 50% 50%,
+      rgba(0, 0, 0, 0.22) 0%, rgba(0, 0, 0, 0.07) 46%, transparent 72%);
+  filter: blur(14px);
+  transform: translateX(-50%);
+  transition: transform 0.6s ease;
+  z-index: 0;
+  pointer-events: none;
+}
+.dd-stage.is-spinning .dd-shadow { transform: translateX(-50%) scale(1.06); }
+
+/* Low, wide, warm ambient pool (theme-tinted) */
 .dd-glow {
   position: absolute;
-  inset: -14%;
+  inset: -10%;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 44%,
-      rgba(var(--theme-particle-1-rgb), 0.40) 0%,
-      rgba(var(--theme-particle-2-rgb), 0.18) 42%,
-      transparent 70%);
-  filter: blur(28px);
-  opacity: 0.62;
+  background: radial-gradient(circle at 50% 46%,
+      rgba(var(--theme-particle-1-rgb), 0.26) 0%,
+      rgba(var(--theme-particle-3-rgb), 0.12) 44%,
+      transparent 64%);
+  filter: blur(30px);
+  opacity: 0.55;
   transition: opacity 0.6s ease, transform 0.7s ease;
   z-index: 0;
   pointer-events: none;
 }
-.dd-stage.is-spinning .dd-glow { opacity: 1; transform: scale(1.05); }
-.dd-stage.has-winner  .dd-glow { opacity: 0.95; }
+.dd-stage.is-spinning .dd-glow { opacity: 1; transform: scale(1.04); }
+.dd-stage.has-winner  .dd-glow { opacity: 0.92; }
 
-/* Raised bezel ring around the wheel */
+/* ── Layer 1: turned-walnut rim ─────────────────────────────────────────── */
 .dd-bezel {
   position: relative;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  padding: 4.5%;
-  background:
-    linear-gradient(155deg,
-      rgba(255, 255, 255, 0.96) 0%,
-      color-mix(in srgb, var(--color-surface) 72%, white) 46%,
-      rgba(var(--theme-particle-3-rgb), 0.55) 100%);
-  box-shadow:
-    0 28px 54px -20px rgba(var(--theme-particle-1-rgb), 0.55),
-    0 10px 24px -14px rgba(0, 0, 0, 0.20),
-    inset 0 2px 3px rgba(255, 255, 255, 0.9),
-    inset 0 -5px 12px rgba(var(--theme-particle-1-rgb), 0.20);
+  padding: 6.5%;
   z-index: 1;
+  background:
+    /* upper-left waxed sheen (single key light) */
+    radial-gradient(120% 100% at 36% 22%, rgba(255, 250, 244, 0.22), transparent 46%),
+    /* concentric lathe grain — turned on a lathe, not conic-faked */
+    repeating-radial-gradient(circle at 50% 50%,
+      rgba(58, 36, 22, 0) 0px, rgba(58, 36, 22, 0.05) 2px,
+      rgba(22, 12, 7, 0.09) 3px, rgba(58, 36, 22, 0) 6px),
+    /* thin accent wash so the wood subtly takes the theme */
+    linear-gradient(160deg, rgba(var(--theme-particle-1-rgb), 0.10), transparent 60%),
+    /* base walnut — FIXED browns */
+    radial-gradient(circle at 50% 42%, var(--dd-wood-hi) 0%, var(--dd-wood-mid) 52%, var(--dd-wood-lo) 100%);
+  box-shadow:
+    0 26px 48px -22px rgba(0, 0, 0, 0.40),
+    var(--shadow-lg),
+    inset 0 2px 3px rgba(255, 244, 232, 0.25),
+    inset 0 -10px 22px rgba(0, 0, 0, 0.34);
   animation: dd-breathe 6.5s ease-in-out infinite;
 }
-
-/* Watch-bezel tick ring, kept very low contrast */
+/* feTurbulence wood fibres, applied as a multiply overlay */
 .dd-bezel::before {
   content: "";
   position: absolute;
-  inset: 2.4%;
+  inset: 0;
   border-radius: 50%;
-  background: repeating-conic-gradient(
-    rgba(var(--theme-particle-1-rgb), 0.45) 0deg 1.2deg,
-    transparent 1.2deg 11.25deg);
-  -webkit-mask: radial-gradient(circle, transparent calc(50% - 3.5px), #000 calc(50% - 3.5px));
-          mask: radial-gradient(circle, transparent calc(50% - 3.5px), #000 calc(50% - 3.5px));
+  background: var(--dd-wood-grain);
+  mix-blend-mode: multiply;
   opacity: 0.5;
   pointer-events: none;
+}
+/* Layer 2: neutral chrome pinstripe at the wood→enamel seam */
+.dd-bezel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(from 90deg,
+      var(--dd-chrome-a), var(--dd-chrome-b), var(--dd-chrome-c),
+      var(--dd-chrome-b), var(--dd-chrome-d), var(--dd-chrome-b), var(--dd-chrome-a));
+  -webkit-mask: radial-gradient(circle, transparent calc(50% - 7%), #000 calc(50% - 7%) calc(50% - 6%), transparent calc(50% - 6%));
+          mask: radial-gradient(circle, transparent calc(50% - 7%), #000 calc(50% - 7%) calc(50% - 6%), transparent calc(50% - 6%));
 }
 
 @keyframes dd-breathe {
@@ -74,8 +143,7 @@
   50%      { transform: scale(1.014); }
 }
 
-/* The rotating disc. React sets `transform: rotate(Ndeg)` inline; the easing
-   lives here so the spin reads heavy at the start and feathers to a stop. */
+/* ── Layer 4: rotating enamel disc (spin contract preserved verbatim) ───── */
 .dd-wheel {
   position: relative;
   width: 100%;
@@ -86,32 +154,47 @@
   transition: transform 3000ms cubic-bezier(0.16, 0.84, 0.28, 1);
   will-change: transform;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
-    inset 0 0 26px rgba(0, 0, 0, 0.14);
+    inset 0 0 0 2px rgba(198, 158, 92, 0.5),     /* brass pinline */
+    inset 0 0 0 3.5px rgba(255, 255, 255, 0.28), /* glaze edge */
+    inset 0 0 30px rgba(0, 0, 0, 0.16);          /* kiln vignette → plate sinks */
 }
 .dd-slice-label {
   fill: #fff;
-  paint-order: stroke;          /* dark outline first → white reads on any tint */
-  stroke: rgba(40, 18, 28, 0.32);
-  stroke-width: 0.014;
+  paint-order: stroke;
+  stroke: rgba(22, 11, 18, 0.66);   /* strong dark outline = guaranteed white-
+                                       label legibility on any enamel tint/theme */
+  stroke-width: 0.019;
   stroke-linejoin: round;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
-
-/* Fixed gloss dome — the highlight stays put while the slices rotate beneath */
-.dd-gloss {
-  position: absolute;
-  inset: 4.5%;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 2;
-  background:
-    radial-gradient(120% 92% at 32% 16%, rgba(255, 255, 255, 0.58) 0%, rgba(255, 255, 255, 0.10) 28%, transparent 52%),
-    radial-gradient(100% 80% at 50% 122%, rgba(0, 0, 0, 0.16) 0%, transparent 56%);
+/* One-shot glaze flare on the winning wedge */
+.dd-bloom { animation: dd-bloom 0.65s ease-out forwards; }
+@keyframes dd-bloom {
+  0%   { opacity: 0; }
+  35%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
-/* Centre hub — also a tap target ("tap to spin") */
+/* ── Layer 5: fixed domed-glass crystal (pure neutral, does not rotate) ──── */
+.dd-gloss {
+  position: absolute;
+  inset: 6.5%;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    /* convex edge meniscus */
+    radial-gradient(circle, transparent 84%, rgba(255, 255, 255, 0.22) 92%, rgba(0, 0, 0, 0.16) 100%),
+    /* bottom internal reflection */
+    radial-gradient(100% 70% at 50% 116%, rgba(0, 0, 0, 0.14), transparent 55%),
+    /* top dome catch */
+    radial-gradient(120% 96% at 34% 14%, rgba(255, 255, 255, 0.50), rgba(255, 255, 255, 0.08) 30%, transparent 52%),
+    /* swept specular */
+    linear-gradient(125deg, transparent 26%, rgba(255, 255, 255, 0.40) 38%, rgba(255, 255, 255, 0.62) 44%, rgba(255, 255, 255, 0.20) 50%, transparent 60%);
+}
+
+/* ── Layer 6: turned-brass centre knob ──────────────────────────────────── */
 .dd-hub {
   position: absolute;
   z-index: 3;
@@ -120,45 +203,82 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--dd-engrave);
   background:
-    radial-gradient(circle at 38% 30%, rgba(255, 255, 255, 0.55), transparent 46%),
-    linear-gradient(150deg, var(--color-lior-400), var(--color-lior-600));
+    /* flat-head screw recess */
+    radial-gradient(circle at 50% 54%, rgba(70, 48, 12, 0.55) 0%, transparent 22%),
+    /* top-light */
+    radial-gradient(circle at 38% 30%, rgba(255, 252, 238, 0.85), transparent 48%),
+    /* anisotropic brass banding */
+    conic-gradient(from 210deg,
+      var(--dd-brass-lo) 0deg, var(--dd-brass-mid) 40deg, var(--dd-brass-hi) 70deg,
+      var(--dd-brass-deep) 130deg, var(--dd-brass-lo) 180deg, #b88f3a 250deg, var(--dd-brass-lo) 360deg);
   box-shadow:
-    0 9px 20px -7px rgba(var(--theme-particle-1-rgb), 0.75),
-    0 2px 6px rgba(0, 0, 0, 0.18),
-    inset 0 2px 2px rgba(255, 255, 255, 0.5),
-    inset 0 0 0 4px rgba(255, 255, 255, 0.82);
+    0 8px 16px -6px rgba(40, 26, 6, 0.6),
+    inset 0 2px 2px rgba(255, 250, 230, 0.7),
+    inset 0 -4px 8px rgba(60, 40, 8, 0.5),
+    inset 0 0 0 2px rgba(120, 86, 30, 0.4);
   transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1);
   -webkit-tap-highlight-color: transparent;
+}
+/* turned knurl ring, masked to the outer edge only */
+.dd-hub::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(0, 0, 0, 0.14) 0 2deg, transparent 2deg 5deg);
+  -webkit-mask: radial-gradient(circle, transparent 66%, #000 67%);
+          mask: radial-gradient(circle, transparent 66%, #000 67%);
+  pointer-events: none;
+}
+.dd-hub svg {
+  position: relative;
+  filter: drop-shadow(0 1px 0 rgba(255, 250, 230, 0.5)); /* engraved into brass */
 }
 .dd-hub:not(:disabled):active { transform: scale(0.91); }
 .dd-hub:disabled { cursor: default; }
 .dd-stage.is-spinning .dd-hub { animation: dd-hub-pulse 1.15s ease-in-out infinite; }
 @keyframes dd-hub-pulse {
   0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.06); }
+  50%      { transform: scale(1.05); }
 }
 
-/* Pointer at 12 o'clock, notching down into the rim */
+/* ── Layer 7: leather-and-brass ticker ──────────────────────────────────── */
 .dd-pointer {
   position: absolute;
-  top: -3%;
+  top: -4%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
   width: 13%;
-  height: 15%;
-  filter: drop-shadow(0 5px 6px rgba(var(--theme-particle-1-rgb), 0.5));
+  height: 16%;
   pointer-events: none;
 }
+.dd-ticker {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 14%;
+  filter: drop-shadow(0 4px 5px rgba(40, 26, 6, 0.45));
+}
+.dd-stage.is-spinning .dd-ticker { animation: dd-tick 0.13s ease-in-out infinite; }
+.dd-ticker.dd-ticked { animation: dd-tick-settle 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes dd-tick {
+  0%, 100% { transform: rotate(3deg); }
+  50%      { transform: rotate(-3deg); }
+}
+@keyframes dd-tick-settle {
+  0%   { transform: rotate(0deg); }
+  45%  { transform: rotate(-7deg); }
+  100% { transform: rotate(0deg); }
+}
 
-/* Spin CTA */
+/* ── Spin CTA — pressable enamel-over-wood key ──────────────────────────── */
 .dd-spin-btn {
   width: 100%;
-  max-width: 18rem;
+  min-height: 52px;
   border-radius: 1.25rem;
-  padding: 1rem 1.5rem;
+  padding: 1.05rem 1.5rem;
   font-weight: 700;
   font-size: 1.02rem;
   color: #fff;
@@ -166,17 +286,28 @@
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  background: linear-gradient(135deg, var(--color-lior-400), var(--color-lior-600));
+  background: linear-gradient(150deg,
+      color-mix(in srgb, var(--color-lior-500) 86%, #7a4a28 14%),
+      var(--color-lior-600));
   box-shadow:
-    0 16px 32px -12px rgba(var(--theme-particle-1-rgb), 0.7),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42);
-  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, opacity 0.3s ease;
+    0 14px 28px -14px rgba(var(--theme-particle-1-rgb), 0.5),
+    0 3px 8px -5px rgba(40, 26, 6, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 0 rgba(198, 158, 92, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.3s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.dd-spin-btn:not(:disabled):active { transform: scale(0.965) translateY(1px); }
+.dd-spin-btn:not(:disabled):active {
+  transform: translateY(1px) scale(0.985);
+  box-shadow:
+    0 6px 14px -10px rgba(40, 26, 6, 0.4),
+    inset 0 2px 4px rgba(40, 26, 6, 0.3);
+}
 .dd-spin-btn:disabled { opacity: 0.42; box-shadow: none; cursor: not-allowed; }
 
-/* Winner reveal */
+.dd-hint { color: var(--color-text-secondary); }
+
+/* ── Winner enamel plaque ───────────────────────────────────────────────── */
 .dd-winner {
   position: relative;
   overflow: hidden;
@@ -184,29 +315,33 @@
   padding: 1.05rem 1.5rem 1.2rem;
   text-align: center;
   color: #fff;
-  background: linear-gradient(140deg, var(--color-lior-400), var(--color-lior-600));
+  background: linear-gradient(150deg,
+      color-mix(in srgb, var(--color-lior-500) 88%, #7a4a28 12%),
+      var(--color-lior-600));
   box-shadow:
-    0 22px 46px -18px rgba(var(--theme-particle-1-rgb), 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+    var(--shadow-md),
+    0 5px 12px -7px rgba(40, 26, 6, 0.35),
+    inset 0 0 0 1.5px rgba(198, 158, 92, 0.45),   /* brass frame */
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);        /* top glaze */
 }
 .dd-winner-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
+  display: inline-block;
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   opacity: 0.88;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
 }
 .dd-winner-name {
   margin-top: 0.18rem;
   font-size: clamp(1.6rem, 7vw, 2rem);
   line-height: 1.08;
   font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.16), 0 1px 1px rgba(255, 255, 255, 0.15);
 }
-
-/* Celebration sparks (transform/opacity only) */
+/* Glints off glaze — a light, theme-tinted spark (re-stains per accent), not
+   rainbow confetti and not off-theme brass. 45% white keeps it glinty. */
 .dd-spark {
   position: absolute;
   top: 50%;
@@ -214,7 +349,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, rgb(var(--theme-particle-2-rgb)) 55%, white 45%);
+  box-shadow: 0 0 5px rgba(var(--theme-particle-1-rgb), 0.7);
   opacity: 0;
   pointer-events: none;
   animation: dd-spark 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -225,14 +361,15 @@
   100% { transform: translate(var(--sx), var(--sy)) scale(1); opacity: 0; }
 }
 
-/* Add-option row */
+/* ── Add-a-dish: ceramic recipe slip + brass stud ───────────────────────── */
 .dd-input {
   flex: 1;
   min-width: 0;
   border-radius: 1rem;
   padding: 0.85rem 1rem;
-  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
-  border: 1px solid rgba(var(--theme-particle-2-rgb), 0.28);
+  background: color-mix(in srgb, var(--color-surface) 92%, white);
+  border: 1px solid rgba(198, 158, 92, 0.4);
+  box-shadow: var(--shadow-xs), inset 0 1px 2px rgba(40, 26, 6, 0.10);
   color: var(--color-text-primary);
   font-weight: 500;
   outline: none;
@@ -240,8 +377,8 @@
 }
 .dd-input::placeholder { color: var(--color-text-secondary); opacity: 0.65; }
 .dd-input:focus {
-  border-color: rgba(var(--theme-particle-1-rgb), 0.6);
-  box-shadow: 0 0 0 3px rgba(var(--theme-particle-1-rgb), 0.16);
+  border-color: rgba(198, 158, 92, 0.75);
+  box-shadow: var(--shadow-xs), inset 0 1px 2px rgba(40, 26, 6, 0.10), 0 0 0 3px rgba(var(--theme-particle-1-rgb), 0.16);
 }
 .dd-add-btn {
   flex: none;
@@ -250,30 +387,41 @@
   display: grid;
   place-items: center;
   border-radius: 1rem;
-  color: #fff;
-  background: linear-gradient(135deg, var(--color-lior-400), var(--color-lior-600));
-  box-shadow: 0 8px 18px -8px rgba(var(--theme-particle-1-rgb), 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  color: var(--dd-engrave);
+  background:
+    radial-gradient(circle at 38% 30%, rgba(255, 252, 238, 0.8), transparent 50%),
+    conic-gradient(from 210deg,
+      var(--dd-brass-lo), var(--dd-brass-mid) 70deg, var(--dd-brass-hi) 120deg,
+      var(--dd-brass-deep) 200deg, var(--dd-brass-lo) 360deg);
+  box-shadow:
+    0 8px 16px -10px rgba(40, 26, 6, 0.55),
+    inset 0 2px 2px rgba(255, 250, 230, 0.7),
+    inset 0 -3px 6px rgba(60, 40, 8, 0.45),
+    inset 0 0 0 1.5px rgba(120, 86, 30, 0.4);
   transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
   -webkit-tap-highlight-color: transparent;
 }
+.dd-add-btn svg { filter: drop-shadow(0 1px 0 rgba(255, 250, 230, 0.5)); }
 .dd-add-btn:not(:disabled):active { transform: scale(0.9); }
 .dd-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* Option chips — each carries the dot of its wheel slice for a 1:1 read */
+/* ── Option chips — quiet enamel name-tags (1:1 with wheel slices) ──────── */
 .dd-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.45rem 0.5rem 0.85rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-surface) 80%, transparent);
-  border: 1px solid rgba(var(--theme-particle-2-rgb), 0.30);
-  box-shadow: var(--shadow-xs);
+  background: var(--color-surface);
+  border: 1px solid rgba(var(--theme-particle-1-rgb), 0.25);   /* tied to its dot */
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   color: var(--color-text-primary);
   font-weight: 600;
   font-size: 0.94rem;
   max-width: 100%;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+.dd-chip:active { transform: scale(0.96); }
 .dd-chip-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -282,10 +430,10 @@
 }
 .dd-chip-dot {
   flex: none;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6), 0 0 0 1px rgba(var(--theme-particle-1-rgb), 0.4);
 }
 .dd-chip-del {
   flex: none;
@@ -305,8 +453,77 @@
   outline-offset: 1px;
 }
 
+/* ── Empty state — quiet walnut-toned plate ─────────────────────────────── */
+.dd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2rem 1rem;
+  border-radius: 2rem;
+  background: color-mix(in srgb, var(--color-surface) 94%, #7a4a28 6%);
+  border: 1px solid rgba(198, 158, 92, 0.22);
+  box-shadow: var(--shadow-sm);
+}
+.dd-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 3.75rem;
+  height: 3.75rem;
+  margin-bottom: 0.9rem;
+  border-radius: 50%;
+  color: rgba(60, 40, 10, 0.7);
+  background:
+    radial-gradient(circle at 38% 32%, rgba(255, 252, 238, 0.6), transparent 55%),
+    color-mix(in srgb, var(--color-surface) 80%, #c79a3e 20%);
+  box-shadow: inset 0 1px 2px rgba(255, 250, 230, 0.6), inset 0 -2px 5px rgba(60, 40, 8, 0.25), 0 4px 10px -6px rgba(40, 26, 6, 0.35);
+}
+.dd-empty-icon svg { filter: drop-shadow(0 1px 0 rgba(255, 250, 230, 0.5)); }
+.dd-empty-title { font-size: 0.875rem; font-weight: 700; color: var(--color-text-primary); margin-bottom: 0.2rem; }
+.dd-empty-sub { font-size: 0.75rem; font-weight: 500; color: var(--color-text-secondary); }
+
+/* ── starry-night: keep brass warm, soften any cool reads ───────────────── */
+[data-theme="starry-night"] .dd-wheel {
+  box-shadow:
+    inset 0 0 0 2px rgba(198, 158, 92, 0.55),
+    inset 0 0 0 3.5px rgba(255, 255, 255, 0.16),
+    inset 0 0 34px rgba(0, 0, 0, 0.4);
+}
+/* On the dark surface the bright dome specular blows out and reads as cheap
+   casino glare — dial the whites down and deepen the internal reflection so it
+   still reads as curved glass, just calmer. */
+[data-theme="starry-night"] .dd-gloss {
+  background:
+    radial-gradient(circle, transparent 84%, rgba(255, 255, 255, 0.14) 92%, rgba(0, 0, 0, 0.28) 100%),
+    radial-gradient(100% 70% at 50% 116%, rgba(0, 0, 0, 0.30), transparent 55%),
+    radial-gradient(120% 96% at 34% 14%, rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.05) 30%, transparent 52%),
+    linear-gradient(125deg, transparent 28%, rgba(255, 255, 255, 0.14) 40%, rgba(255, 255, 255, 0.22) 45%, rgba(255, 255, 255, 0.08) 51%, transparent 60%);
+}
+
+/* ── prefers-reduced-motion: the wheel still rotates to the result ──────── */
 @media (prefers-reduced-motion: reduce) {
   .dd-bezel,
-  .dd-stage.is-spinning .dd-hub { animation: none; }
-  .dd-spark { display: none; }
+  .dd-stage.is-spinning .dd-hub,
+  .dd-stage.is-spinning .dd-ticker,
+  .dd-ticker.dd-ticked { animation: none; }
+  .dd-spark,
+  .dd-bloom { display: none; }
 }
+
+/* ── Performance tiers: mirror the app's glass degradation ──────────────── */
+[data-tier="low"] .dd-bezel::before,
+[data-tier="css-only"] .dd-bezel::before { display: none; }   /* drop feTurbulence grain */
+[data-tier="low"] .dd-glow,
+[data-tier="low"] .dd-shadow,
+[data-tier="css-only"] .dd-glow,
+[data-tier="css-only"] .dd-shadow { filter: none; }
+[data-tier="low"] .dd-bezel,
+[data-tier="css-only"] .dd-bezel,
+[data-tier="low"] .dd-stage.is-spinning .dd-ticker,
+[data-tier="css-only"] .dd-stage.is-spinning .dd-ticker { animation: none; }
+/* Skip the winner sparks + glaze bloom on weak tiers (8 sparks + a flare =
+   needless paint cost); the slice still un-dims so the result is still clear. */
+[data-tier="low"] .dd-spark,
+[data-tier="css-only"] .dd-spark,
+[data-tier="low"] .dd-bloom,
+[data-tier="css-only"] .dd-bloom { display: none; }

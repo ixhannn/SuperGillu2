@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, X, Utensils, RotateCw, Sparkles, Shuffle } from 'lucide-react';
+import { Plus, X, Utensils, RotateCw, Shuffle } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, DinnerOption } from '../types';
@@ -18,18 +18,27 @@ const staggerItem: Variants = {
   show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] } }
 };
 
-// Wheel slice tints are pulled from the active theme's particle palette, so the
-// dial re-skins with every accent (rose, teal, ocean, starry-night, …) instead
-// of being locked to the old hardcoded pinks.
+// Slice enamel is the ONLY saturated colour and is fully theme-token driven, so
+// the dish re-stains with every accent (rose, teal, ocean, starry-night, …).
+// Every structural material (walnut, brass, chrome, glass) is a fixed neutral
+// colour defined in dinner-decider.css — deriving "brass" from a theme token
+// would turn the metal cyan/indigo on most themes.
+// The two palest tokens (particle-3 / particle-5) are intentionally avoided —
+// white labels can't read on near-white enamel. The cycle stays in the
+// saturated 1/2/4 tokens, varied by opacity, for legibility + colour rhythm.
 const SLICE_TINTS = [
-  'rgba(var(--theme-particle-1-rgb),0.95)',
-  'rgba(var(--theme-particle-3-rgb),0.82)',
-  'rgba(var(--theme-particle-2-rgb),0.90)',
-  'rgba(var(--theme-particle-4-rgb),0.85)',
-  'rgba(var(--theme-particle-1-rgb),0.70)',
-  'rgba(var(--theme-particle-5-rgb),0.92)',
+  'rgba(var(--theme-particle-1-rgb),0.96)',
+  'rgba(var(--theme-particle-2-rgb),0.86)',
+  'rgba(var(--theme-particle-4-rgb),0.90)',
+  'rgba(var(--theme-particle-1-rgb),0.78)',
+  'rgba(var(--theme-particle-2-rgb),0.96)',
+  'rgba(var(--theme-particle-4-rgb),0.80)',
 ];
-const tintFor = (i: number) => SLICE_TINTS[i % SLICE_TINTS.length];
+// Deepen each tint toward fired vitreous enamel ("deep, not candy"). Combined
+// with the strong dark label outline below, this keeps every slice's white
+// label legible on all 9 themes without muddying the warm colour.
+const tintFor = (i: number) =>
+  `color-mix(in srgb, ${SLICE_TINTS[i % SLICE_TINTS.length]} 82%, var(--color-text-primary) 18%)`;
 
 // Deterministic spark layout for the winner reveal (no per-frame layout cost).
 const SPARKS = [
@@ -221,103 +230,150 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
     return [x, y];
   };
 
+  // Pre-compute wedge geometry once so we can paint the disc in ordered layers
+  // (fills → enamel deepening → labels → pegs) without recomputing trig.
+  const wedges = displayedOptions.map((opt, i) => {
+    const startAngle = i / displayedOptions.length;
+    const endAngle = (i + 1) / displayedOptions.length;
+    const [startX, startY] = getCoordinatesForPercent(startAngle);
+    const [endX, endY] = getCoordinatesForPercent(endAngle);
+    const pathData = displayedOptions.length === 1
+      ? `M 0 0 L 1 0 A 1 1 0 1 1 1 -0.0001 Z`
+      : `M 0 0 L ${startX} ${startY} A 1 1 0 0 1 ${endX} ${endY} Z`;
+    const midAngle = (startAngle + endAngle) / 2;
+    const [labelX, labelY] = getCoordinatesForPercent(midAngle);
+    return {
+      opt, i, pathData,
+      pegX: startX, pegY: startY,
+      labelX, labelY,
+      textRotation: midAngle * 360 + 90,
+      isWinning: winner !== null && opt.id === winnerId,
+    };
+  });
+  const showPegs = displayedOptions.length <= 12;
+
   const stageClass = `dd-stage${isSpinning ? ' is-spinning' : ''}${winner ? ' has-winner' : ''}`;
 
   return (
     <div className="min-h-screen px-6 pt-8 pb-32">
       <ViewHeader
         title="Dinner Decider"
-        subtitle="Let the wheel settle it tonight"
+        subtitle="Give it a spin to settle tonight"
         onBack={() => setView('home')}
         variant="simple"
       />
 
-      <div className="flex flex-col items-center pt-2">
+      <div className="dd-skeu mx-auto w-full max-w-[22rem] flex flex-col items-center pt-2">
 
-        {/* ── The Wheel ────────────────────────────────────────────────── */}
+        {/* ── The Lazy-Susan ───────────────────────────────────────────── */}
         <div className={stageClass}>
+          <div className="dd-shadow" aria-hidden="true" />
           <div className="dd-glow" aria-hidden="true" />
 
-          {/* Pointer */}
+          {/* Leather-and-brass ticker at 12 o'clock */}
           <div className="dd-pointer" aria-hidden="true">
-            <svg viewBox="0 0 40 48" className="w-full h-full">
-              <defs>
-                <linearGradient id="dd-pointer-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" style={{ stopColor: 'var(--color-lior-400)' }} />
-                  <stop offset="1" style={{ stopColor: 'var(--color-lior-600)' }} />
-                </linearGradient>
-              </defs>
-              <path
-                d="M20 46 L5 15 Q3 6 11 4 L29 4 Q37 6 35 15 Z"
-                fill="url(#dd-pointer-grad)"
-                stroke="rgba(255,255,255,0.7)"
-                strokeWidth="1.4"
-              />
-              <ellipse cx="20" cy="13" rx="7" ry="4" fill="rgba(255,255,255,0.35)" />
-            </svg>
+            <div className={`dd-ticker${winner ? ' dd-ticked' : ''}`}>
+              <svg viewBox="0 0 44 58" className="w-full h-full">
+                <defs>
+                  <linearGradient id="dd-brass-v" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#f6e3a8" />
+                    <stop offset="0.5" stopColor="#d9b24a" />
+                    <stop offset="1" stopColor="#9c7a23" />
+                  </linearGradient>
+                  <linearGradient id="dd-leather" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#6e4a38" />
+                    <stop offset="1" stopColor="#492e23" />
+                  </linearGradient>
+                </defs>
+                {/* stitched-leather hinge tongue */}
+                <rect x="13" y="2" width="18" height="17" rx="4.5" fill="url(#dd-leather)" />
+                <line x1="16.5" y1="6.5" x2="27.5" y2="6.5" stroke="rgba(255,221,184,0.42)" strokeWidth="0.9" strokeDasharray="1.6 1.6" strokeLinecap="round" />
+                <line x1="16.5" y1="14.5" x2="27.5" y2="14.5" stroke="rgba(255,221,184,0.42)" strokeWidth="0.9" strokeDasharray="1.6 1.6" strokeLinecap="round" />
+                {/* brass pawl */}
+                <path d="M22 54 L13.5 24 Q12.4 17.5 22 16.5 Q31.6 17.5 30.5 24 Z" fill="url(#dd-brass-v)" stroke="rgba(78,52,10,0.6)" strokeWidth="0.8" strokeLinejoin="round" />
+                <ellipse cx="20.5" cy="23" rx="4.6" ry="2.8" fill="rgba(255,255,255,0.55)" />
+              </svg>
+            </div>
           </div>
 
-          {/* Bezel + rotating disc */}
+          {/* Walnut rim + rotating enamel disc */}
           <div className="dd-bezel">
             <div
               className="dd-wheel"
               style={{ transform: `rotate(${rotation}deg) translateZ(0)` }}
             >
               <svg viewBox="-1 -1 2 2" className="w-full h-full transform -rotate-90">
-                {displayedOptions.map((opt, i) => {
-                  const startAngle = i / displayedOptions.length;
-                  const endAngle = (i + 1) / displayedOptions.length;
-                  const [startX, startY] = getCoordinatesForPercent(startAngle);
-                  const [endX, endY] = getCoordinatesForPercent(endAngle);
+                <defs>
+                  <radialGradient id="dd-deepen" cx="50%" cy="50%" r="50%">
+                    <stop offset="60%" stopColor="#000" stopOpacity="0" />
+                    <stop offset="100%" stopColor="#000" stopOpacity="0.20" />
+                  </radialGradient>
+                  <radialGradient id="dd-bloom" cx="38%" cy="34%" r="68%">
+                    <stop offset="0%" stopColor="#fff" stopOpacity="0.9" />
+                    <stop offset="55%" stopColor="#fff" stopOpacity="0.16" />
+                    <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
 
-                  const pathData = displayedOptions.length === 1
-                    ? `M 0 0 L 1 0 A 1 1 0 1 1 1 -0.0001 Z`
-                    : `M 0 0 L ${startX} ${startY} A 1 1 0 0 1 ${endX} ${endY} Z`;
+                {/* Layer 4a/4d — fired enamel slices + cloisonné dividers */}
+                {wedges.map(w => (
+                  <g key={`fill-${w.opt.id}`}>
+                    <path
+                      d={w.pathData}
+                      fill={tintFor(w.i)}
+                      stroke="rgba(38,22,14,0.45)"
+                      strokeWidth="0.014"
+                      style={{
+                        paintOrder: 'stroke',
+                        opacity: winner && !w.isWinning ? 0.45 : 1,
+                        transition: 'opacity 0.5s ease',
+                      }}
+                    />
+                    {w.isWinning && (
+                      <path d={w.pathData} fill="url(#dd-bloom)" className="dd-bloom" style={{ pointerEvents: 'none' }} />
+                    )}
+                  </g>
+                ))}
 
-                  const midAngle = (startAngle + endAngle) / 2;
-                  const [labelX, labelY] = getCoordinatesForPercent(midAngle);
-                  const textRotation = midAngle * 360 + 90;
-                  const isWinning = winner !== null && opt.id === winnerId;
+                {/* Layer 4c — per-disc fired-enamel deepening toward the rim */}
+                <circle cx="0" cy="0" r="1" fill="url(#dd-deepen)" style={{ pointerEvents: 'none' }} />
 
-                  return (
-                    <g key={opt.id}>
-                      <path
-                        d={pathData}
-                        fill={tintFor(i)}
-                        stroke="rgba(255,255,255,0.85)"
-                        strokeWidth="0.014"
-                        style={{
-                          opacity: winner && !isWinning ? 0.45 : 1,
-                          transition: 'opacity 0.5s ease',
-                        }}
-                      />
-                      <text
-                        x={labelX * 0.62}
-                        y={labelY * 0.62}
-                        fontSize={displayedOptions.length > 7 ? '0.10' : '0.115'}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        transform={`rotate(${textRotation}, ${labelX * 0.62}, ${labelY * 0.62})`}
-                        className="dd-slice-label"
-                        style={{
-                          opacity: winner && !isWinning ? 0.5 : 1,
-                          transition: 'opacity 0.5s ease',
-                          pointerEvents: 'none',
-                        }}
-                      >
-                        {opt.text.length > 13 ? `${opt.text.slice(0, 13)}…` : opt.text}
-                      </text>
-                    </g>
-                  );
-                })}
+                {/* Layer 4e — labels (white + dark stroke = legible on every theme) */}
+                {wedges.map(w => (
+                  <text
+                    key={`label-${w.opt.id}`}
+                    x={w.labelX * 0.62}
+                    y={w.labelY * 0.62}
+                    fontSize={displayedOptions.length > 7 ? '0.10' : '0.115'}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    transform={`rotate(${w.textRotation}, ${w.labelX * 0.62}, ${w.labelY * 0.62})`}
+                    className="dd-slice-label"
+                    style={{
+                      opacity: winner && !w.isWinning ? 0.5 : 1,
+                      transition: 'opacity 0.5s ease',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {w.opt.text.length > 13 ? `${w.opt.text.slice(0, 13)}…` : w.opt.text}
+                  </text>
+                ))}
+
+                {/* Brass ratchet pegs at each slice boundary */}
+                {showPegs && wedges.map(w => (
+                  <g key={`peg-${w.opt.id}`} style={{ pointerEvents: 'none' }}>
+                    <circle cx={w.pegX * 0.93} cy={w.pegY * 0.93} r="0.026" fill="#c79a3e" stroke="rgba(60,40,8,0.55)" strokeWidth="0.006" />
+                    <circle cx={w.pegX * 0.93 - 0.008} cy={w.pegY * 0.93 - 0.008} r="0.008" fill="rgba(255,250,230,0.85)" />
+                  </g>
+                ))}
               </svg>
             </div>
           </div>
 
-          {/* Fixed gloss highlight */}
+          {/* Layer 5 — fixed domed-glass crystal */}
           <div className="dd-gloss" aria-hidden="true" />
 
-          {/* Centre hub — tap to spin */}
+          {/* Layer 6 — turned-brass centre knob (tap to spin) */}
           <button
             type="button"
             className="dd-hub"
@@ -325,18 +381,19 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
             disabled={!canSpin || isSpinning}
             aria-label={isSpinning ? 'Spinning' : 'Spin the wheel'}
           >
-            <Utensils size={26} strokeWidth={2.2} className={isSpinning ? 'animate-spin' : ''} />
+            <Utensils size={25} strokeWidth={2.1} />
           </button>
         </div>
 
         {/* ── Winner reveal ────────────────────────────────────────────── */}
-        <div className="w-full max-w-xs mt-8">
+        <div className="w-full mt-7">
           <AnimatePresence mode="wait">
             {winner ? (
               <motion.div
                 key="winner"
                 className="dd-winner"
-                initial={{ opacity: 0, scale: 0.8, y: 8 }}
+                aria-live="polite"
+                initial={{ opacity: 0, scale: 0.82, y: 8 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: -8 }}
                 transition={{ type: 'spring', stiffness: 380, damping: 22 }}
@@ -348,24 +405,20 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                     style={{ '--sx': `${s.x}px`, '--sy': `${s.y}px`, animationDelay: `${idx * 35}ms` } as React.CSSProperties}
                   />
                 ))}
-                <span className="dd-winner-eyebrow">
-                  <Sparkles size={12} strokeWidth={2.5} />
-                  Tonight you&apos;re having
-                </span>
+                <span className="dd-winner-eyebrow">Tonight you&apos;re having</span>
                 <p className="dd-winner-name font-display">{winner}</p>
               </motion.div>
             ) : (
               <motion.p
                 key="hint"
-                className="text-center text-sm font-medium"
-                style={{ color: 'var(--color-text-secondary)' }}
+                className="dd-hint text-center text-sm font-medium"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
                 {canSpin
-                  ? 'Tap the wheel — or the button below.'
-                  : 'Add at least 2 options to start.'}
+                  ? 'Tap the knob — or the button below.'
+                  : 'Add at least 2 dishes to start.'}
               </motion.p>
             )}
           </AnimatePresence>
@@ -374,7 +427,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
         <button
           onClick={startSpin}
           disabled={!canSpin || isSpinning}
-          className="dd-spin-btn spring-press mt-5 mb-9"
+          className="dd-spin-btn mt-5 mb-9 w-full"
         >
           {winner && !isSpinning
             ? <Shuffle size={19} strokeWidth={2.4} />
@@ -382,15 +435,15 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
           {isSpinning ? 'Spinning…' : winner ? 'Spin again' : 'Spin the Wheel'}
         </button>
 
-        {/* ── Options editor ───────────────────────────────────────────── */}
-        <div className="w-full max-w-xs space-y-4">
+        {/* ── Menu editor ──────────────────────────────────────────────── */}
+        <div className="w-full space-y-4">
           <div className="flex gap-2">
             <input
               type="text"
               value={newOption}
               onChange={(e) => setNewOption(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-              placeholder="Add a food option…"
+              placeholder="Add a dish…"
               maxLength={40}
               className="dd-input"
             />
@@ -412,7 +465,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
               animate="show"
             >
               {options.map((opt, i) => (
-                <motion.div key={opt.id} layout variants={staggerItem} className="dd-chip spring-press">
+                <motion.div key={opt.id} layout variants={staggerItem} className="dd-chip">
                   <span className="dd-chip-dot" style={{ background: tintFor(i) }} />
                   <span className="dd-chip-text">{opt.text}</span>
                   <button
@@ -426,15 +479,12 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
               ))}
             </motion.div>
           ) : (
-            <div className="flex flex-col items-center text-center py-8 animate-fade-in glass-card rounded-[2rem] shadow-sm" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.12)' }}>
-              <div className="relative mb-4">
-                <div className="absolute inset-0 rounded-full blur-xl" style={{ background: 'rgba(var(--theme-particle-1-rgb),0.22)' }} />
-                <div className="relative p-4 rounded-full shadow-inner" style={{ background: 'rgba(var(--theme-particle-2-rgb),0.10)', border: '1px solid rgba(var(--theme-particle-2-rgb),0.18)' }}>
-                  <Utensils size={28} style={{ animation: 'wiggle-spring 2s ease-in-out infinite', color: 'var(--color-lior-500)' }} />
-                </div>
+            <div className="dd-empty animate-fade-in">
+              <div className="dd-empty-icon">
+                <Utensils size={26} strokeWidth={2.1} style={{ animation: 'wiggle-spring 2.4s ease-in-out infinite' }} />
               </div>
-              <p className="text-sm font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Add some options to spin</p>
-              <p className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>You need at least 2 to get started</p>
+              <p className="dd-empty-title">Add some dishes to spin</p>
+              <p className="dd-empty-sub">You need at least 2 to get started</p>
             </div>
           )}
         </div>
