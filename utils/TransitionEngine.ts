@@ -53,9 +53,8 @@ interface DirConfig {
   outTo:   [string, string];
 }
 
-function dirConfig(dir: EngineDirection, W: number): DirConfig {
-  const tx = (px: number, sc = 1) => `translate3d(${px}px,0,0) scale(${sc})`;
-  const ty = (p: string,   sc = 1) => `translate3d(0,${p},0) scale(${sc})`;
+function dirConfig(dir: EngineDirection, _W: number): DirConfig {
+  const ty = (p: string, sc = 1) => `translate3d(0,${p},0) scale(${sc})`;
 
   // This JS-clone path is now the PRIMARY route animator (the View Transitions
   // API is disabled because it snapshotted the fixed background). The outgoing
@@ -69,19 +68,20 @@ function dirConfig(dir: EngineDirection, W: number): DirConfig {
         inFrom: [ty('14px', 0.985),  '0'],
         outTo:  [ty('-10px', 1.008), '0'] };
     case 'push':
-      // OPEN: a crisp two-panel push — the new page slides fully in from the
-      // right edge while the old page (which sits on top) slides fully off to
-      // the left, so they pass each other like stacked cards. Pure movement,
-      // NO fade and NO zoom, over the still background.
-      return { dur: 380, inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: [tx(W, 1),  '1'],
-        outTo:  [tx(-W, 1), '1'] };
+      // OPEN: the new page BLOOMS into place — scales up from 94% + fades in,
+      // while the outgoing page (cloned on top) recedes to 105% + fades out.
+      // No sideways slide, no clip window that would expose the shared
+      // background; content morphs in place over the STILL background.
+      return { dur: T_PUSH, inEase: E_SILK, outEase: E_SILK,
+        inFrom: ['scale(0.94)', '0'],
+        outTo:  ['scale(1.05)', '0'] };
     case 'pop':
-      // CLOSE: the current page slides fully off to the right; the screen
-      // beneath returns from a slight left parallax and settles to rest.
-      return { dur: 320, inEase: E_SILK, outEase: E_EXIT,
-        inFrom: [tx(-W * 0.3, 1), '1'],
-        outTo:  [tx(W, 1),        '1'] };
+      // CLOSE: mirror of open — the leaving page (cloned on top) shrinks back to
+      // 95% + fades out while the screen beneath returns from 104% + fades in
+      // and settles. No sideways slide.
+      return { dur: 300, inEase: E_SILK, outEase: E_EXIT,
+        inFrom: ['scale(1.04)', '0'],
+        outTo:  ['scale(0.95)', '0'] };
     case 'modal':
       return { dur: T_MODAL_OPEN,  inEase: E_SILK, outEase: E_STANDARD,
         inFrom: [ty('100%', 1),      '1'],
@@ -91,12 +91,13 @@ function dirConfig(dir: EngineDirection, W: number): DirConfig {
         inFrom: [ty('-1.2%', 0.97),  '0.9'],
         outTo:  [ty('100%', 1),      '1'] };
     case 'expand':
-      // Tile-open bloom. The View Transitions path scales the new page from the
-      // tapped tile's origin (set in CSS by useTileOpen). This legacy clone
-      // fallback can't honour a per-tile origin, so it blooms from centre.
-      return { dur: T_PUSH, inEase: E_SILK, outEase: E_STANDARD,
-        inFrom: ['scale(0.6)',  '0'],
-        outTo:  ['scale(1.06)', '0'] };
+      // Tile-open bloom: identical to `push`, but _run sets transform-origin to
+      // the tapped tile's centre (--lior-open-x/y) so the new page grows OUT OF
+      // the card the finger touched. A subtle 94%→100% scale keeps the edge gap
+      // tiny so the shared background barely peeks during the bloom.
+      return { dur: T_PUSH, inEase: E_SILK, outEase: E_SILK,
+        inFrom: ['scale(0.94)', '0'],
+        outTo:  ['scale(1.05)', '0'] };
   }
 }
 
@@ -195,22 +196,14 @@ class TransitionEngineImpl {
       return true;
     }
 
-    // OPEN (push) → ALWAYS a clip-reveal morph, NEVER a sideways slide: the new
-    // page is revealed through a rounded window that grows from the tapped
-    // element's rect (or screen-centre when the origin is unknown/stale) to fill
-    // the screen, with the screen being left held visible behind it.
-    if (effectiveDir === 'push' || effectiveDir === 'expand') {
-      this._clipReveal(c, this._consumeOrigin(), commit, wrappedComplete);
-      return true;
-    }
-
-    // CLOSE (pop) → matching clip-COLLAPSE morph: the page being left shrinks
-    // back into a window at the tapped point (or centre), revealing the screen
-    // beneath — instead of sliding off to the side.
-    if (effectiveDir === 'pop') {
-      this._clipCollapse(c, this._consumeOrigin(), commit, wrappedComplete);
-      return true;
-    }
+    // OPEN / CLOSE → content BLOOM over the STILL background, via _run below.
+    // A clip-path morph was tried and rejected on camera: Lior's pages are
+    // transparent surfaces over ONE shared background world, so growing a clip
+    // window just exposed that bright background as a pink "blob flash" for most
+    // of the animation — it never read as content expanding. Sideways slides
+    // were rejected too. _run instead cross-dissolves the page CONTENT with a
+    // subtle scale (blooming from the tapped tile's origin on `expand`, centre
+    // otherwise) and never touches the live background, so nothing blobs.
 
     // ── Native View Transitions API (Chromium 111+) ─────────────────────────
     // Lets the COMPOSITOR thread snapshot the old/new DOM. No JS cloneNode,
