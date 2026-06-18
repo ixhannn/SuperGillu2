@@ -29,8 +29,18 @@ assert.match(
 
 assert.match(
   nativeShellSource,
-  /import\(\/\* @vite-ignore \*\/ NETWORK_NS\)[\s\S]*networkStatusChange/,
+  /import\(['"]@capacitor\/network['"]\)[\s\S]*networkStatusChange/,
   'Expected optional Capacitor Network support with browser fallback.',
+);
+
+// Guard against the @vite-ignore footgun: a bare-specifier dynamic import left
+// unbundled fails to resolve in the native WebView at runtime, silently
+// disabling the plugin. Capacitor plugins must be imported with a static
+// string specifier so Vite/Rollup bundles them.
+assert.doesNotMatch(
+  nativeShellSource,
+  /@vite-ignore/,
+  'Capacitor plugin imports must not use @vite-ignore (breaks runtime resolution on device).',
 );
 
 assert.match(

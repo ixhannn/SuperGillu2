@@ -1,21 +1,37 @@
 # Push Notifications Setup (partner alerts when the app is closed)
 
 Local notifications (daily reminders, weekly recap, "your film is ready", and the
-in-app *Enable notifications* test) work **without** any of this — they were
-hardened in the app + Android manifest and ship in the current APK.
+in-app *Enable notifications* test) work **without** any of this — they are
+on-device and need no server.
 
-**Push / remote notifications** (getting alerted when your partner sends a
-heartbeat / nudge / aura while your app is closed) need Firebase. They are
-currently non-functional for two reasons:
+## ⚠️ Root cause fixed (2026-06-17): plugins were never bundled
 
-1. **No `google-services.json`** → the app can't obtain an FCM token, so there's
-   nothing to deliver to. (The Android build even logs *"Push Notifications won't
-   work."*)
-2. **The Supabase `send-partner-nudge` function uses the FCM *legacy* HTTP API**
-   (`fcm.googleapis.com/fcm/send` + `FCM_SERVER_KEY`), which **Google
-   decommissioned in June 2024**. It must be migrated to **FCM HTTP v1**.
+For a long stretch **no** notifications worked on device — not even the local
+*Enable notifications* test. The cause was **not** Firebase/config: the Capacitor
+notification plugins were dynamic-imported with `/* @vite-ignore */` and a bare
+module specifier (`@capacitor/local-notifications`, `@capacitor/push-notifications`).
+`@vite-ignore` tells Vite **not to bundle** the module, so in the production build
+the bare specifier was left as-is and **failed to resolve inside the Android
+WebView at runtime**. The import threw, the error was swallowed by a `try/catch`,
+and the code silently fell back to the (dead-in-WebView) Web Notifications path.
 
-Both must be done for push to work end-to-end.
+The fix: import the plugins with a static string specifier (like every other
+working Capacitor plugin — camera, keyboard, status-bar…) so Vite bundles them.
+A regression guard now lives in `tests/nativeShellIntegrity.assert.mjs`.
+
+**This fix only takes effect in a freshly built APK** — see *Step 3* below.
+
+## Current state of the prerequisites
+
+- ✅ **`google-services.json` is present** (`android/app/google-services.json`,
+  project `lior-bf6e6`) → the app can obtain an FCM token.
+- ✅ **`send-partner-nudge` is on the modern FCM HTTP v1 API** (OAuth2 +
+  service account), **not** the legacy `/fcm/send` endpoint Google
+  decommissioned in June 2024.
+
+What still remains for **push** (partner alerts while the app is closed) to work
+end-to-end is operational only: set the `FCM_SERVICE_ACCOUNT` secret (Step 2) and
+deploy the function (Step 3). Local notifications need none of this.
 
 ---
 

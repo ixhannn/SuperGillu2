@@ -3,4 +3,6 @@
     <color name="colorPrimary">#F8E7EC</color>
     <color name="colorPrimaryDark">#F8E7EC</color>
     <color name="colorAccent">#F9B8C4</color>
+    <!-- Tint applied to the FCM notification small icon (the Lior pink) -->
+    <color name="lior_notification_color">#E91E8C</color>
 </resources>

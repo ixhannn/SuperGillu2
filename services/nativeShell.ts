@@ -23,8 +23,6 @@ export type NativeShellState = {
 type BackEvent = { canGoBack: boolean };
 type BackHandler = (event: BackEvent) => boolean | void;
 
-const NETWORK_NS = '@capacitor/network';
-
 const readOnlineState = () => (
   typeof navigator === 'undefined' ? true : navigator.onLine
 );
@@ -306,7 +304,7 @@ async function configureNetwork() {
   });
 
   try {
-    const mod = (await import(/* @vite-ignore */ NETWORK_NS)) as {
+    const mod = (await import('@capacitor/network')) as {
       Network?: {
         getStatus: () => Promise<{ connected: boolean; connectionType?: string }>;
         addListener: (eventName: 'networkStatusChange', cb: (status: { connected: boolean; connectionType?: string }) => void) => Promise<ListenerHandle> | ListenerHandle;

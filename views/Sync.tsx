@@ -194,6 +194,12 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       setLinkedPartner(label);
       setPairingUi({ phase: 'linked', message: 'Permanent link saved.' });
       await SyncService.init();
+      // Re-register the push token now that a real couple_id exists. On a fresh
+      // install the launch-time registration runs BEFORE pairing, so the token
+      // was saved under the solo couple_id (or dropped) and the partner-scoped
+      // send query never matched it. Re-registering upserts the same device row
+      // under the shared couple_id so partner pushes can finally be delivered.
+      void NotificationsService.registerPushToken().catch(() => {});
       return true;
     }
 

@@ -288,8 +288,6 @@ export function getHeirloomStatsAtDate(at: Date): HeirloomStrikeStats {
 
 /* ── Strike-day notification (best effort, native only) ─────────────── */
 
-const CAP_LOCAL_NOTIFICATIONS = '@capacitor/local-notifications';
-
 interface LocalNotificationsLike {
     checkPermissions: () => Promise<{ display: 'granted' | 'denied' | 'prompt' }>;
     schedule: (opts: { notifications: unknown[] }) => Promise<unknown>;
@@ -306,7 +304,7 @@ export async function scheduleNextHeirloomStrikeNotification(next: HeirloomMiles
     try {
         const { Capacitor } = await import('@capacitor/core');
         if (!Capacitor.isNativePlatform()) return;
-        const mod = (await import(/* @vite-ignore */ CAP_LOCAL_NOTIFICATIONS)) as { LocalNotifications?: LocalNotificationsLike };
+        const mod = (await import('@capacitor/local-notifications')) as { LocalNotifications?: LocalNotificationsLike };
         const local = mod.LocalNotifications;
         if (!local) return;
         const { display } = await local.checkPermissions();

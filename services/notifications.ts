@@ -15,8 +15,8 @@
 import { Capacitor } from '@capacitor/core';
 import { NotificationPrefs, NotificationSchedule } from '../types';
 import { SupabaseService } from './supabase';
-
-const CAP_NS = '@capacitor/local-notifications';
+import { DiagnosticsService } from './diagnostics';
+import { toast } from '../utils/toast';
 
 type PluginListenerHandle = { remove: () => Promise<void> };
 
@@ -73,6 +73,11 @@ type PushNotifications = {
   requestPermissions: () => Promise<{ receive: 'granted' | 'denied' | 'prompt' }>;
   register: () => Promise<void>;
   addListener: ((event: 'registration', handler: (data: { value: string }) => void) => Promise<unknown>)
+    & ((event: 'registrationError', handler: (error: unknown) => void) => Promise<unknown>)
+    & ((
+      event: 'pushNotificationReceived',
+      handler: (notification: { title?: string; body?: string }) => void,
+    ) => Promise<PluginListenerHandle>)
     & ((
       event: 'pushNotificationActionPerformed',
       handler: (action: { notification?: { data?: { view?: string } } }) => void,
@@ -101,8 +106,10 @@ function isNativeNotificationRuntime(): boolean {
 async function getCapacitorLocalNotifications(): Promise<LocalNotifications | null> {
   if (!isNativeNotificationRuntime()) return null;
   try {
-    // Dynamic import — safe when plugin is not installed
-    const mod = (await import(/* @vite-ignore */ CAP_NS)) as { LocalNotifications?: LocalNotifications };
+    // Static specifier so Vite/Rollup bundles the plugin — a bare specifier
+    // left unbundled (e.g. via @vite-ignore) fails to resolve in the WebView
+    // at runtime, silently disabling all native notifications.
+    const mod = (await import('@capacitor/local-notifications')) as { LocalNotifications?: LocalNotifications };
     return mod.LocalNotifications ?? null;
   } catch {
     return null;
@@ -112,7 +119,7 @@ async function getCapacitorLocalNotifications(): Promise<LocalNotifications | nu
 async function getCapacitorPushNotifications(): Promise<PushNotifications | null> {
   if (!isNativeNotificationRuntime()) return null;
   try {
-    const mod = (await import(/* @vite-ignore */ '@capacitor/push-notifications')) as { PushNotifications?: PushNotifications };
+    const mod = (await import('@capacitor/push-notifications')) as { PushNotifications?: PushNotifications };
     return mod.PushNotifications ?? null;
   } catch {
     return null;
@@ -132,6 +139,11 @@ const DEFAULT_PREFS: NotificationPrefs = {
 };
 
 let pushRegistrationListenerBound = false;
+
+// Client-side cooldown so a rapid burst of heartbeat taps can't spam the
+// partner with a push storm (the server has no per-couple throttle yet).
+let lastHeartbeatPushAt = 0;
+const HEARTBEAT_PUSH_COOLDOWN_MS = 3000;
 
 function mergePermissionStates(...states: Array<NativePermissionState | null | undefined>): NativePermissionState {
   if (states.some((state) => state === 'denied')) return 'denied';
@@ -171,11 +183,22 @@ function writeSchedules(list: NotificationSchedule[]) {
   try { localStorage.setItem(SCHEDULES_KEY, JSON.stringify(list)); } catch {}
 }
 
+// Parse "HH:MM" defensively — a malformed/NaN value must not produce an
+// Invalid Date (which would throw on toISOString and silently kill ALL
+// scheduling). Falls back to 20:00.
+function parseHm(timeStr: string): { hour: number; minute: number } {
+  const [hh, mm] = (timeStr || '').split(':').map(Number);
+  return {
+    hour: Number.isFinite(hh) ? hh : 20,
+    minute: Number.isFinite(mm) ? mm : 0,
+  };
+}
+
 function nextOccurrenceOf(timeStr: string, targetWeekday?: number): Date {
-  const [hh, mm] = timeStr.split(':').map(Number);
+  const { hour, minute } = parseHm(timeStr);
   const now = new Date();
   const candidate = new Date();
-  candidate.setHours(hh ?? 20, mm ?? 0, 0, 0);
+  candidate.setHours(hour, minute, 0, 0);
   if (targetWeekday === undefined) {
     if (candidate.getTime() <= now.getTime()) candidate.setDate(candidate.getDate() + 1);
   } else {
@@ -202,6 +225,9 @@ export const NotificationsService = {
 
   savePrefs(prefs: NotificationPrefs) {
     writePrefs(prefs);
+    // Re-arm the schedule so a changed reminder time / toggle takes effect now,
+    // not on the next cold launch.
+    void this.applySchedule().catch(() => {});
   },
 
   async getPermissionStatus(): Promise<NotificationPermission> {
@@ -222,11 +248,15 @@ export const NotificationsService = {
     if (native) {
       const local = await native.requestPermissions().catch(() => ({ display: 'denied' as const }));
       const push = await getCapacitorPushNotifications();
-      if (!push) return toNotificationPermission(local.display);
-      const remote = await push.requestPermissions().catch(() => ({ receive: 'denied' as const }));
-      const permission = mergePermissionStates(local.display, remote.receive);
+      const remote = push
+        ? await push.requestPermissions().catch(() => ({ receive: 'denied' as const }))
+        : null;
+      const permission = remote ? mergePermissionStates(local.display, remote.receive) : local.display;
       if (permission === 'granted') {
+        // Register for push AND arm the recurring local schedule now —
+        // otherwise reminders aren't queued until the next cold launch.
         await this.registerPushToken().catch(() => {});
+        await this.applySchedule().catch(() => {});
       }
       return toNotificationPermission(permission);
     }
@@ -236,6 +266,7 @@ export const NotificationsService = {
     const result = await Notification.requestPermission();
     if (result === 'granted') {
       await this.registerPushToken().catch(() => {});
+      await this.applySchedule().catch(() => {});
     }
     return result;
   },
@@ -255,7 +286,9 @@ export const NotificationsService = {
     if (prefs.dailyClipEnabled) {
       const when = nextOccurrenceOf(prefs.dailyClipTime);
       queued.push({
-        id: `daily-clip-${when.toISOString().slice(0, 10)}`,
+        // Stable id (not date-based): the native schedule is now recurring, so
+        // re-running applySchedule must replace the same entry, not stack a new one.
+        id: 'daily-clip',
         kind: 'daily-clip',
         fireAt: when.toISOString(),
         title: 'Five seconds of right now',
@@ -266,7 +299,7 @@ export const NotificationsService = {
     if (prefs.recapEnabled) {
       const when = nextOccurrenceOf(prefs.recapTime, 0 /* Sunday */);
       queued.push({
-        id: `recap-${when.toISOString().slice(0, 10)}`,
+        id: 'recap-sunday',
         kind: 'recap-sunday',
         fireAt: when.toISOString(),
         title: 'Your week, in a page',
@@ -286,16 +319,25 @@ export const NotificationsService = {
         await native.requestPermissions().catch(() => undefined);
       }
       await ensureChannel(native);
-      const payload = queued.map((s) => ({
-        id: hashId(s.id),
-        title: s.title,
-        body: s.body,
-        channelId: ANDROID_CHANNEL_ID,
-        smallIcon: 'ic_notification',
-        schedule: { at: new Date(s.fireAt), allowWhileIdle: true },
-        // `view` routes the tap to the relevant screen (see bindTapRouting).
-        extra: { kind: s.kind, view: KIND_VIEWS[s.kind], ...s.payload },
-      }));
+      const payload = queued.map((s) => {
+        // Recurring rule so the OS re-fires daily/weekly WITHOUT the app being
+        // relaunched. A bare `{ at }` is one-shot and stops after the first
+        // fire — the previous behaviour meant reminders silently died until the
+        // next cold launch re-armed them.
+        const on = s.kind === 'recap-sunday'
+          ? { weekday: 1, ...parseHm(prefs.recapTime) } // Capacitor weekday: 1 = Sunday
+          : parseHm(prefs.dailyClipTime);
+        return {
+          id: hashId(s.id),
+          title: s.title,
+          body: s.body,
+          channelId: ANDROID_CHANNEL_ID,
+          smallIcon: 'ic_notification',
+          schedule: { on, repeats: true, allowWhileIdle: true },
+          // `view` routes the tap to the relevant screen (see bindTapRouting).
+          extra: { kind: s.kind, view: KIND_VIEWS[s.kind], ...s.payload },
+        };
+      });
       if (payload.length > 0) await native.schedule({ notifications: payload });
     }
     // Web fallback: we can't pre-schedule beyond session. Use setTimeout
@@ -374,6 +416,14 @@ export const NotificationsService = {
     const push = await getCapacitorPushNotifications();
     if (push) {
       try {
+        // A push delivered while the app is FOREGROUNDED is not auto-shown by
+        // the OS — surface it as an in-app toast so it isn't silently dropped.
+        handles.push(await push.addListener('pushNotificationReceived', (notification) => {
+          const message = notification?.title || notification?.body;
+          if (message) toast.show(message, 'heart');
+        }));
+      } catch { /* listener unsupported on this platform */ }
+      try {
         handles.push(await push.addListener('pushNotificationActionPerformed', (action) => {
           onNavigate(action.notification?.data?.view || 'home');
         }));
@@ -403,9 +453,20 @@ export const NotificationsService = {
       const { receive } = await nativePush.requestPermissions().catch(() => ({ receive: 'denied' as const }));
       if (receive !== 'granted') return;
 
+      // Pre-create the high-importance channel so a remote push that arrives
+      // before any local-notification scheduling still shows as a heads-up
+      // banner (otherwise it lands on the default channel, silently).
+      const localForChannel = await getCapacitorLocalNotifications();
+      if (localForChannel) await ensureChannel(localForChannel);
+
       if (!pushRegistrationListenerBound) {
         await nativePush.addListener('registration', (token: { value: string }) => {
           void savePushToken(token.value, 'fcm', deviceId);
+        });
+        // Surface FCM token-acquisition failures instead of swallowing them —
+        // otherwise "no push on this device" is impossible to diagnose.
+        await nativePush.addListener('registrationError', (err: unknown) => {
+          DiagnosticsService.recordError('notifications.push_registration_error', err);
         });
         pushRegistrationListenerBound = true;
       }
@@ -434,6 +495,7 @@ export const NotificationsService = {
    * Fire-and-forget — does not block the recording flow.
    */
   async triggerPartnerNudge(): Promise<void> {
+    if (!readPrefs().partnerNudgeEnabled) return;
     if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
     try {
       const token = await SupabaseService.getAccessToken();
@@ -458,6 +520,10 @@ export const NotificationsService = {
    * `senderName` is the current user's display name (the partner sees it).
    */
   async triggerHeartbeatPush(senderName: string): Promise<void> {
+    if (!readPrefs().partnerNudgeEnabled) return;
+    const now = Date.now();
+    if (now - lastHeartbeatPushAt < HEARTBEAT_PUSH_COOLDOWN_MS) return;
+    lastHeartbeatPushAt = now;
     if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
     try {
       const token = await SupabaseService.getAccessToken();
