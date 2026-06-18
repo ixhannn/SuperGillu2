@@ -30,7 +30,16 @@ interface LayoutProps {
 
 const VIEW_SURFACES: Partial<Record<ViewState, string>> = {
   'private-space': '#f1edf3',
+  // Pulse is an immersive near-black screen. Without a matching surface the
+  // pink app background showed through the content column's bottom padding,
+  // so the page looked like it ended abruptly mid-screen.
+  'aura-signal': '#050508',
 };
+
+// Views that hide the bottom tab bar. (Pulse keeps the nav — its dock orb is
+// lifted clear of it and the dark canvas bleeds behind it; hiding it left a
+// black gutter band and the bar abruptly vanishing.)
+const HIDE_NAV_VIEWS = new Set<ViewState>([]);
 
 export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number) => void }>({
   trigger: () => {},
@@ -207,7 +216,9 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
         {/* Global overlays — these sit above the scroll layer */}
         <TogetherMode />
         <OfflineNotice />
-        <BottomNav currentView={currentView} setView={setView} notifications={notifications} />
+        {!HIDE_NAV_VIEWS.has(currentView) && (
+          <BottomNav currentView={currentView} setView={setView} notifications={notifications} />
+        )}
         <DebugOverlay />
         <DynamicToast />
         {/* PhysicsConfetti + TouchTrailCanvas are deferred until after first

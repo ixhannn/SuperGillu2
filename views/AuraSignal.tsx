@@ -1,35 +1,51 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { ViewState } from '../types';
 import { SyncService } from '../services/sync';
-import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { CheckCircle2, Navigation } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, Check, Send } from 'lucide-react';
 import { feedback } from '../utils/feedback';
-import { Haptics } from '../services/haptics';
-import { ViewHeader } from '../components/ViewHeader';
+import { toast } from '../utils/toast';
 
 interface AuraSignalProps {
     setView: (view: ViewState) => void;
 }
 
-const SIGNAL_GROUPS = [
+interface Signal {
+    id: string;
+    color: string;
+    glow: string;
+    palette: [string, string, string];
+    title: string;
+    subtitle: string;
+    message: string;
+    afterglow: string;
+}
+
+interface SignalGroup {
+    id: string;
+    label: string;
+    signals: Signal[];
+}
+
+const SIGNAL_GROUPS: SignalGroup[] = [
     {
         id: 'comfort',
         label: 'Comfort',
         signals: [
             {
-                id: 'blue', color: '#3b82f6', glow: 'rgba(59, 130, 246, 0.4)',
+                id: 'blue', color: '#3b82f6', glow: 'rgba(59, 130, 246, 0.45)', palette: ['#60a5fa', '#3b82f6', '#1e40af'],
                 title: 'I need a hug', subtitle: 'No fixing. Just you.',
                 message: 'Feeling low and I just want your softness right now.',
                 afterglow: 'A small reminder that you are my safe place.',
             },
             {
-                id: 'yellow', color: '#eab308', glow: 'rgba(234, 179, 8, 0.42)',
+                id: 'yellow', color: '#eab308', glow: 'rgba(234, 179, 8, 0.45)', palette: ['#fde047', '#eab308', '#a16207'],
                 title: 'Anxious', subtitle: 'Stay close to me.',
                 message: 'My mind feels loud. Your presence would calm me down.',
                 afterglow: 'You do not have to solve it. Just stay with me.',
             },
             {
-                id: 'red', color: '#ef4444', glow: 'rgba(239, 68, 68, 0.4)',
+                id: 'red', color: '#ef4444', glow: 'rgba(239, 68, 68, 0.45)', palette: ['#fca5a5', '#ef4444', '#991b1b'],
                 title: 'I need space', subtitle: 'Still yours. Just overwhelmed.',
                 message: 'I need a little quiet, but I still want to feel your love.',
                 afterglow: 'Distance from noise, not distance from us.',
@@ -41,19 +57,19 @@ const SIGNAL_GROUPS = [
         label: 'Love',
         signals: [
             {
-                id: 'green', color: '#22c55e', glow: 'rgba(34, 197, 94, 0.4)',
+                id: 'green', color: '#22c55e', glow: 'rgba(34, 197, 94, 0.45)', palette: ['#86efac', '#22c55e', '#15803d'],
                 title: 'Thinking of you', subtitle: 'You crossed my heart again.',
                 message: 'Nothing urgent. I just wanted you to feel me thinking of you.',
                 afterglow: 'A soft little thread between us.',
             },
             {
-                id: 'rose', color: '#ec4899', glow: 'rgba(236, 72, 153, 0.42)',
+                id: 'rose', color: '#ec4899', glow: 'rgba(236, 72, 153, 0.45)', palette: ['#f9a8d4', '#ec4899', '#9d174d'],
                 title: 'Miss you badly', subtitle: 'Come closer somehow.',
                 message: 'The distance feels heavy tonight. I really miss you.',
                 afterglow: 'Until I can hold you, let this reach you first.',
             },
             {
-                id: 'violet', color: '#8b5cf6', glow: 'rgba(139, 92, 246, 0.4)',
+                id: 'violet', color: '#8b5cf6', glow: 'rgba(139, 92, 246, 0.45)', palette: ['#c4b5fd', '#8b5cf6', '#5b21b6'],
                 title: 'Proud of you', subtitle: 'I see your effort.',
                 message: 'I am proud of the way you are showing up, even from far away.',
                 afterglow: 'You are deeply loved for who you are becoming.',
@@ -65,13 +81,13 @@ const SIGNAL_GROUPS = [
         label: 'Ritual',
         signals: [
             {
-                id: 'amber', color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.4)',
+                id: 'amber', color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.45)', palette: ['#fcd34d', '#f59e0b', '#b45309'],
                 title: 'Need your voice', subtitle: 'Call me when you can.',
                 message: 'I want the comfort of hearing you, even for a minute.',
                 afterglow: 'Some nights your voice is the whole medicine.',
             },
             {
-                id: 'teal', color: '#14b8a6', glow: 'rgba(20, 184, 166, 0.4)',
+                id: 'teal', color: '#14b8a6', glow: 'rgba(20, 184, 166, 0.45)', palette: ['#5eead4', '#14b8a6', '#0f766e'],
                 title: 'Goodnight, love', subtitle: 'Fall asleep with me in mind.',
                 message: 'Sending you my last soft thought before sleep.',
                 afterglow: 'Let this be the feeling that stays beside you tonight.',
@@ -80,85 +96,190 @@ const SIGNAL_GROUPS = [
     },
 ];
 
-const SIGNALS = SIGNAL_GROUPS.flatMap((group) => group.signals);
+const SIGNALS: Signal[] = SIGNAL_GROUPS.flatMap((group) => group.signals);
 
-// Moving background blobs for the fluid effect
-const FluidBackground = ({ color }: { color: string }) => {
+const GRAIN = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+
+// One easing vocabulary — every beat speaks the same motion language.
+const GLIDE: [number, number, number, number] = [0.22, 1, 0.36, 1]; // entrances, washes, settles
+const LIFT: [number, number, number, number] = [0.16, 1, 0.3, 1];   // the release beats
+const SOFT = { type: 'spring', stiffness: 260, damping: 30 } as const; // cards, selection scale
+const CHECK = { type: 'spring', stiffness: 420, damping: 28 } as const; // confirm checks
+
+const HOLD_MS = 850;        // hold duration — long enough for anticipation to build
+const RING_C = 301.59;      // 2π·48, circumference of the r=48 charge ring
+// The orb / bloom origin — lifted clear of the bottom nav (≈76px + safe inset).
+const ORB_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 110px)';
+
+// Calm, near-neutral glow shown before a feeling is chosen.
+const GLOW_IDLE: [string, string, string] = ['#9aa3c8', '#5d63a0', '#33355f'];
+
+// A single soft glow that pools behind the content and slowly drifts. Two
+// analogous shades (light / base) of ONE colour family read as one cohesive
+// glow; the vignette contains it. Kept to two layers + modest blur for perf.
+const GLOW_BLOBS = [
+    { ci: 0, cx: 50, cy: 60, size: 54, blur: 64, op: 0.62, dx: ['-6%', '7%', '-6%'], dy: ['4%', '-6%', '4%'], sc: [1, 1.12, 1], xDur: 22, yDur: 27, scDur: 19 },
+    { ci: 1, cx: 42, cy: 50, size: 44, blur: 56, op: 0.50, dx: ['7%', '-5%', '7%'], dy: ['-5%', '7%', '-5%'], sc: [1.06, 0.92, 1.06], xDur: 27, yDur: 32, scDur: 24 },
+] as const;
+
+// The living glow field. memo'd so a parent re-render (selection, send) never
+// re-walks the blob tree; it only re-renders when signal/reduce change.
+const GlowField = memo(function GlowField({ signal, reduce }: { signal: Signal | null; reduce: boolean }) {
+    const palette = signal ? signal.palette : GLOW_IDLE;
+    const lit = !!signal;
     return (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
+            {/* Near-black base */}
+            <div className="absolute inset-0" style={{ background: 'radial-gradient(130% 120% at 50% 30%, #0c0c14 0%, #08080f 52%, #040406 100%)' }} />
+
+            {/* Glow pool — inhales in as ONE composited layer on entrance */}
+            <motion.div
+                className="absolute inset-0"
+                initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 1.06 }}
+                animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                transition={{ duration: reduce ? 0.25 : 0.9, ease: GLIDE }}
+                style={{ willChange: 'transform' }}
+            >
+                {GLOW_BLOBS.map((b, i) => {
+                    const color = palette[b.ci];
+                    const op = b.op * (lit ? 1 : 0.42);
+                    return (
+                        <motion.div
+                            key={i} aria-hidden className="absolute rounded-full"
+                            style={{ top: `calc(${b.cy}% - ${b.size / 2}vmax)`, left: `calc(${b.cx}% - ${b.size / 2}vmax)`, width: `${b.size}vmax`, height: `${b.size}vmax`, mixBlendMode: 'screen', filter: `blur(${b.blur}px)`, willChange: 'transform' }}
+                            initial={{ backgroundColor: color, opacity: 0, x: 0, y: 0, scale: 1 }}
+                            animate={reduce
+                                ? { backgroundColor: color, opacity: op }
+                                : { backgroundColor: color, opacity: op, x: b.dx as unknown as string[], y: b.dy as unknown as string[], scale: b.sc as unknown as number[] }}
+                            transition={{
+                                backgroundColor: { duration: 0.65, ease: 'easeInOut' },
+                                opacity: { duration: 0.9, ease: 'easeOut' },
+                                x: { duration: b.xDur, repeat: Infinity, ease: 'easeInOut' },
+                                y: { duration: b.yDur, repeat: Infinity, ease: 'easeInOut' },
+                                scale: { duration: b.scDur, repeat: Infinity, ease: 'easeInOut' },
+                            }}
+                        />
+                    );
+                })}
+            </motion.div>
+
+            {/* Vignette contains the glow as a pool; grain prevents banding */}
+            <div className="absolute inset-0" style={{ background: 'radial-gradient(116% 102% at 50% 54%, transparent 28%, rgba(4,4,7,0.55) 60%, #040406 88%)' }} />
+            <div className="absolute inset-0" style={{ opacity: 0.045, mixBlendMode: 'overlay', backgroundImage: GRAIN }} />
+        </div>
+    );
+});
+
+// The send exhale — the gathered colour releases from the orb and flows out
+// through the glow, then settles into the afterglow. One cohesive sequence.
+const GlowSend = memo(function GlowSend({ signal, reduce }: { signal: Signal; reduce: boolean }) {
+    const [c0, , c2] = signal.palette;
+    const base = signal.color;
+
+    const afterglow = (
         <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.5 }}
-            className="absolute inset-0 z-0 overflow-hidden pointer-events-none mix-blend-screen"
+            className="absolute inset-0 flex flex-col items-center justify-center px-10 text-center"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: reduce ? 0.1 : 1.6, duration: 0.6 }}
         >
+            <div aria-hidden className="absolute inset-0" style={{ background: 'radial-gradient(circle at 50% 50%, rgba(4,4,8,0.55), transparent 60%)' }} />
             <motion.div
-                animate={{
-                    x: ['-10%', '10%', '-10%'],
-                    y: ['-10%', '10%', '-10%'],
-                    scale: [1, 1.2, 1],
-                }}
-                transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute top-0 right-1/4 w-[40rem] h-[40rem] rounded-full blur-[120px] opacity-30"
-                style={{ backgroundColor: color }}
-            />
-            <motion.div
-                animate={{
-                    x: ['10%', '-10%', '10%'],
-                    y: ['10%', '-10%', '10%'],
-                    scale: [1.2, 1, 1.2],
-                }}
-                transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute bottom-0 left-1/4 w-[30rem] h-[30rem] rounded-full blur-[100px] opacity-40"
-                style={{ backgroundColor: color }}
-            />
+                initial={{ scale: 0, opacity: 0 }}
+                animate={reduce ? { scale: 1, opacity: 1 } : { scale: [0, 1, 1.03, 1], opacity: 1 }}
+                transition={reduce ? { duration: 0.3 } : { scale: { delay: 1.65, duration: 1.2, times: [0, 0.55, 0.78, 1], ease: GLIDE }, opacity: { delay: 1.65, duration: 0.4 } }}
+                className="w-16 h-16 rounded-full flex items-center justify-center mb-6 relative"
+                style={{ background: `radial-gradient(circle at 32% 28%, ${c0}, ${base} 72%)`, boxShadow: `0 0 70px ${base}` }}
+            >
+                <Check size={30} className="text-white" strokeWidth={2.6} />
+            </motion.div>
+            <p className="font-serif font-bold text-2xl text-white mb-2 relative">On its way</p>
+            <p className="text-sm leading-relaxed max-w-xs relative" style={{ color: 'rgba(255,255,255,0.82)' }}>{signal.afterglow}</p>
         </motion.div>
     );
-};
+
+    if (reduce) {
+        return (
+            <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden">
+                <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 50% 70%, ${base}, transparent 70%)`, opacity: 0.5, mixBlendMode: 'screen' }} />
+                {afterglow}
+            </div>
+        );
+    }
+
+    return (
+        <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden">
+            {/* Specular — the spark of release */}
+            <motion.div
+                aria-hidden className="absolute rounded-full"
+                style={{ left: '50%', bottom: ORB_BOTTOM, width: '22vmax', height: '22vmax', x: '-50%', y: '50%', background: 'radial-gradient(circle, #fff, transparent 60%)', mixBlendMode: 'screen' }}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: [0, 2, 4.4], opacity: [0, 0.85, 0] }}
+                transition={{ duration: 0.42, ease: LIFT, times: [0, 0.28, 1] }}
+            />
+            {/* Bloom core — the colour lifts off the orb and flows outward */}
+            <motion.div
+                aria-hidden className="absolute rounded-full"
+                style={{ left: '50%', bottom: ORB_BOTTOM, width: '16vmax', height: '16vmax', x: '-50%', y: '50%', background: `radial-gradient(circle, #fff 0%, ${c0} 30%, ${base} 62%, transparent 76%)`, mixBlendMode: 'screen', filter: 'blur(6px)' }}
+                initial={{ scale: 0.2, opacity: 0 }}
+                animate={{ scale: [0.2, 1.5, 9], opacity: [0, 1, 0.4] }}
+                transition={{ duration: 1.5, ease: LIFT, times: [0, 0.3, 1], delay: 0.14 }}
+            />
+            {/* Swell — the bridge: the field gently saturates */}
+            <motion.div
+                aria-hidden className="absolute rounded-full"
+                style={{ left: '50%', bottom: ORB_BOTTOM, width: '72vmax', height: '72vmax', x: '-50%', y: '50%', background: `radial-gradient(circle, ${base} 0%, ${c2} 38%, transparent 64%)`, mixBlendMode: 'screen', filter: 'blur(44px)' }}
+                initial={{ scale: 0.3, opacity: 0 }}
+                animate={{ scale: [0.3, 1.5], opacity: [0, 0.45, 0] }}
+                transition={{ duration: 1.4, ease: 'easeOut', delay: 0.3, times: [0, 0.4, 1] }}
+            />
+            {afterglow}
+        </div>
+    );
+});
 
 export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
+    const reduce = useReducedMotion() ?? false;
     const [selected, setSelected] = useState<string | null>(null);
     const [activeGroup, setActiveGroup] = useState<string>(SIGNAL_GROUPS[0].id);
     const [sent, setSent] = useState(false);
-    const [holdProgress, setHoldProgress] = useState(0);
-    const holdIntervalRef = useRef<any>(null);
 
-    const controls = useAnimation();
+    // Hold is driven imperatively (rAF + refs), NEVER React state, so the
+    // component does not re-render ~100×/sec during the charge (that was the lag).
+    const rafRef = useRef<number | null>(null);
+    const holdStartRef = useRef<number>(0);
+    const sentRef = useRef(false);
+    const lastHapticRef = useRef(0);
+    const lastChargeRef = useRef(0);
+    const sendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const ringRef = useRef<SVGCircleElement>(null);
+    const glowRef = useRef<HTMLDivElement>(null);
+    const orbGlowRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        if (sent) {
-            controls.start({ scale: [1, 20], opacity: [1, 0], transition: { duration: 0.8 } });
+    const activeSignal = SIGNALS.find((s) => s.id === selected) || null;
+
+    useEffect(() => () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        if (sendTimeoutRef.current) clearTimeout(sendTimeoutRef.current);
+    }, []);
+
+    // Smoothstep — the charge gathers, then catches. Pure: time 0..1 → eased 0..1.
+    const gather = (t: number) => t * t * (3 - 2 * t);
+
+    // One DOM write per element per frame. No React, no animated blur.
+    const paintCharge = (p: number) => {
+        lastChargeRef.current = p;
+        if (ringRef.current) ringRef.current.style.strokeDashoffset = String(RING_C * (1 - p));
+        if (glowRef.current) {
+            glowRef.current.style.opacity = String(0.1 + p * 0.55);
+            glowRef.current.style.transform = `translateX(-50%) scale(${0.6 + p * 0.6})`;
         }
-    }, [sent, controls]);
-
-    const activeSignal = SIGNALS.find(s => s.id === selected);
-
-    const startCharge = () => {
-        if (!selected || sent) return;
-        feedback.tap();
-        let progress = 0;
-        holdIntervalRef.current = setInterval(() => {
-            progress += 3; // fills up in ~530ms
-            setHoldProgress(progress);
-            // Escalating charge (Light → Medium → Heavy → release) as the orb fills.
-            // Routed through the haptics service so it honors the haptics-off pref
-            // and actually fires on native — the old raw navigator.vibrate(10) did neither.
-            Haptics.longPressProgress(progress / 100);
-
-            if (progress >= 100) {
-                clearInterval(holdIntervalRef.current);
-                fireSignal();
-            }
-        }, 16);
-    };
-
-    const cancelCharge = () => {
-        if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
-        if (!sent) setHoldProgress(0);
+        if (orbGlowRef.current) {
+            orbGlowRef.current.style.opacity = String(0.3 + p * 0.7);
+            orbGlowRef.current.style.transform = `scale(${0.9 + p * 0.4})`;
+        }
     };
 
     const fireSignal = () => {
-        if (!activeSignal || sent) return;
+        if (!activeSignal || sentRef.current) return;
         SyncService.sendSignal('AURA_SIGNAL', {
             color: activeSignal.color,
             title: activeSignal.title,
@@ -168,216 +289,298 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
         });
         feedback.celebrate();
         setSent(true);
-        setTimeout(() => {
+        const title = activeSignal.title;
+        sendTimeoutRef.current = setTimeout(() => {
+            sentRef.current = false;
             setSent(false);
             setSelected(null);
             setView('home');
-        }, 2500);
+            // Carry a warm confirmation onto home so the return isn't hollow.
+            toast.show(`“${title}” is on its way 💫`, 'heart', 4200);
+        }, 3300);
     };
 
+    const tick = (now: number) => {
+        const raw = Math.min(1, (now - holdStartRef.current) / HOLD_MS);
+        paintCharge(reduce ? raw : gather(raw));
+        // Escalating haptic ladder at 25 / 50 / 75% — each fires once per gesture.
+        const ladder = raw >= 0.75 ? 3 : raw >= 0.5 ? 2 : raw >= 0.25 ? 1 : 0;
+        if (ladder > lastHapticRef.current) { lastHapticRef.current = ladder; feedback.light(); }
+        if (raw >= 1) {
+            rafRef.current = null;
+            if (!sentRef.current) { sentRef.current = true; fireSignal(); }
+            return;
+        }
+        rafRef.current = requestAnimationFrame(tick);
+    };
+
+    const startCharge = () => {
+        if (!selected || sent || sentRef.current) return;
+        feedback.tap();
+        holdStartRef.current = performance.now();
+        lastHapticRef.current = 0;
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(tick);
+    };
+
+    const cancelCharge = () => {
+        if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+        if (sentRef.current || sent) return;
+        lastHapticRef.current = 0;
+        // Ease the charge back to empty (a "let go", not a snap) — still no state.
+        const from = performance.now();
+        const start = lastChargeRef.current;
+        const decay = (now: number) => {
+            const k = Math.min(1, (now - from) / 350);
+            paintCharge(start * (1 - k));
+            if (k < 1) rafRef.current = requestAnimationFrame(decay);
+            else rafRef.current = null;
+        };
+        rafRef.current = requestAnimationFrame(decay);
+    };
+
+    const groupSignals = SIGNAL_GROUPS.find((group) => group.id === activeGroup)!.signals;
+
     return (
-        <div className="flex flex-col h-full min-h-screen relative bg-gray-50 select-none">
-            
-            <AnimatePresence>
-                {activeSignal && <FluidBackground color={activeSignal.color} />}
-            </AnimatePresence>
+        <div className="relative min-h-screen overflow-hidden select-none" style={{ background: '#050508' }}>
+            <GlowField signal={activeSignal} reduce={reduce} />
 
-            <div className={`relative z-10 p-6 flex flex-col h-full min-h-screen transition-opacity duration-1000 ${sent ? 'opacity-0 delay-500' : 'opacity-100'}`}>
-                <ViewHeader title="Pulse" onBack={() => setView('home')} variant="transparent" />
+            {/* Charge glow — the gathered light. Grown imperatively in the rAF loop. */}
+            {activeSignal && !sent && (
+                <div
+                    ref={glowRef} aria-hidden
+                    className="absolute left-1/2 pointer-events-none"
+                    style={{
+                        bottom: ORB_BOTTOM, width: '32rem', height: '32rem',
+                        borderRadius: '50%', mixBlendMode: 'screen', filter: 'blur(60px)',
+                        background: `radial-gradient(circle, ${activeSignal.color}, transparent 65%)`,
+                        opacity: 0.1, transform: 'translateX(-50%) scale(0.6)',
+                        willChange: 'opacity, transform',
+                    }}
+                />
+            )}
 
-                <div className="text-center mt-2 mb-8 relative z-20">
-                    <h2 className="font-serif text-4xl font-extrabold mb-2 drop-shadow-sm" style={{ color: 'var(--color-text-primary)' }}>
-                        Vibe Check
-                    </h2>
-                    <p className="text-sm font-medium px-4" style={{ color: 'var(--color-text-secondary)' }}>
-                        Send a felt presence, not just a message.
-                    </p>
-                </div>
-
-                <div className="w-full max-w-sm mx-auto relative z-20 mb-5">
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                        {SIGNAL_GROUPS.map((group) => (
-                            <button
-                                key={group.id}
-                                onClick={() => { feedback.light(); setActiveGroup(group.id); }}
-                                className="px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.22em] font-bold whitespace-nowrap transition-all"
-                                style={{
-                                    background: activeGroup === group.id ? 'rgba(17,24,39,0.88)' : 'rgba(255,255,255,0.64)',
-                                    color: activeGroup === group.id ? '#fff' : 'var(--color-text-secondary)',
-                                    border: activeGroup === group.id ? '1px solid rgba(17,24,39,0.88)' : '1px solid rgba(255,255,255,0.8)',
-                                }}
-                            >
-                                {group.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {activeSignal && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 14 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="w-full max-w-sm mx-auto mb-5 rounded-[1.75rem] p-5 relative overflow-hidden"
-                        style={{
-                            background: 'rgba(255,255,255,0.68)',
-                            border: '1px solid rgba(255,255,255,0.82)',
-                            boxShadow: `0 14px 50px ${activeSignal.glow}`,
-                            backdropFilter: 'blur(18px)',
-                        }}
+            {/* ── Foreground content (sinks into the bloom on send) ─────────── */}
+            <div
+                className="relative z-10 flex flex-col min-h-screen pb-44"
+                style={{
+                    opacity: sent ? 0 : 1,
+                    transform: sent ? 'scale(0.96)' : 'scale(1)',
+                    transformOrigin: '50% 42%',
+                    transition: 'opacity 0.55s ease, transform 0.7s cubic-bezier(0.16,1,0.3,1)',
+                    pointerEvents: sent ? 'none' : 'auto',
+                    willChange: sent ? 'transform, opacity' : 'auto',
+                }}
+            >
+                {/* Top bar */}
+                <motion.div
+                    initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, ease: GLIDE }}
+                    className="flex items-center justify-between px-5 pt-5"
+                >
+                    <motion.button
+                        onClick={() => { feedback.tap(); setView('home'); }}
+                        whileTap={{ scale: 0.9 }}
+                        aria-label="Go back"
+                        className="w-10 h-10 rounded-full flex items-center justify-center"
+                        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', backdropFilter: 'blur(8px)' }}
                     >
-                        <div
-                            className="absolute -right-16 -top-16 w-36 h-36 rounded-full blur-3xl opacity-50"
-                            style={{ backgroundColor: activeSignal.color }}
-                        />
-                        <div className="relative z-10">
-                            <p className="text-[10px] uppercase tracking-[0.28em] font-bold mb-2" style={{ color: 'var(--color-text-secondary)' }}>
-                                They will feel
-                            </p>
-                            <h3 className="font-serif text-2xl font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
-                                {activeSignal.title}
-                            </h3>
-                            <p className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>
-                                {activeSignal.subtitle}
-                            </p>
-                            <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                                {activeSignal.afterglow}
-                            </p>
-                        </div>
-                    </motion.div>
-                )}
+                        <ArrowLeft size={18} className="text-white" strokeWidth={2} />
+                    </motion.button>
+                    <span className="text-[11px] uppercase tracking-[0.34em] font-bold" style={{ color: 'rgba(255,255,255,0.5)' }}>Pulse</span>
+                    <div className="w-10" />
+                </motion.div>
 
-                <div className="flex-1 flex flex-col justify-center gap-4 max-w-sm mx-auto w-full relative z-20 pb-40">
-                    {SIGNAL_GROUPS.find((group) => group.id === activeGroup)!.signals.map((signal, index) => {
-                        const isSelected = selected === signal.id;
-                        const isOtherSelected = selected && !isSelected;
+                {/* Title */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.56, ease: GLIDE, delay: 0.05 }}
+                    className="text-center mt-6 mb-7 px-8"
+                >
+                    <h2 className="font-serif font-bold text-[2rem] leading-tight text-white mb-2" style={{ textShadow: '0 2px 24px rgba(0,0,0,0.45)' }}>Send a feeling</h2>
+                    <p className="text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                        {activeSignal ? 'Hold the orb below to let it reach them.' : 'Across the distance, wordlessly.'}
+                    </p>
+                </motion.div>
 
-                        return (
-                            <motion.button
-                                key={signal.id}
-                                layout
-                                onClick={() => { 
-                                    if (sent) return;
-                                    feedback.tap(); 
-                                    setSelected(isSelected ? null : signal.id);
-                                    setHoldProgress(0);
-                                }}
-                                initial={{ opacity: 0, y: 30 }}
-                                animate={{
-                                    opacity: isOtherSelected ? 0.2 : 1,
-                                    scale: isSelected ? 1.02 : 1,
-                                    y: 0
-                                }}
-                                transition={{ type: 'spring', stiffness: 400, damping: 25, delay: index * 0.08 }}
-                                className={`w-full relative overflow-hidden rounded-[1.75rem] p-5 text-left transition-all duration-500
-                                    ${isSelected ? 'glass-card ring-2 ring-lior-200' : 'glass-card shadow-sm'}
-                                `}
-                                style={{
-                                    border: isSelected ? `1px solid rgba(var(--theme-particle-2-rgb),0.15)` : `1px solid rgba(var(--theme-particle-2-rgb),0.10)`,
-                                    boxShadow: isSelected ? `0 12px 40px ${signal.glow}` : 'none'
-                                }}
-                            >
-                                {/* Active Orb Aura inside card */}
-                                {isSelected && (
-                                    <div 
-                                        className="absolute -right-12 -bottom-12 w-32 h-32 rounded-full blur-2xl opacity-40 pointer-events-none" 
-                                        style={{ backgroundColor: signal.color }} 
-                                    />
-                                )}
+                {/* Group switcher — one segmented track with a sliding thumb */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.46, ease: GLIDE, delay: 0.1 }}
+                    className="w-full max-w-sm mx-auto px-5 mb-5"
+                >
+                    <div
+                        className="mx-auto flex rounded-full p-1 w-fit"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}
+                    >
+                        {SIGNAL_GROUPS.map((group) => {
+                            const active = activeGroup === group.id;
+                            const rep = group.signals[0].color;
+                            return (
+                                <button
+                                    key={group.id}
+                                    onClick={() => { feedback.light(); setActiveGroup(group.id); }}
+                                    className="relative px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.2em] font-bold whitespace-nowrap"
+                                    style={{ color: active ? '#fff' : 'rgba(255,255,255,0.45)', transition: 'color 0.3s' }}
+                                >
+                                    {active && (
+                                        <motion.span
+                                            layoutId="groupThumb"
+                                            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                                            className="absolute inset-0 rounded-full"
+                                            style={{ background: 'rgba(255,255,255,0.12)', border: `1px solid ${rep}4d` }}
+                                        />
+                                    )}
+                                    <span className="relative z-10">{group.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </motion.div>
 
-                                <div className="flex items-center gap-5 relative z-10">
-                                    <div className="relative">
-                                        <div
-                                            className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center relative z-10"
-                                            style={{ backgroundColor: signal.color, boxShadow: `0 4px 20px ${signal.glow}` }}
-                                        >
-                                            {isSelected && (
-                                                <motion.div
-                                                    animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
-                                                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                                                    className="absolute inset-0 rounded-full bg-white mix-blend-overlay"
+                {/* Feeling options */}
+                <div className="flex-1 flex flex-col justify-center gap-3 max-w-sm mx-auto w-full px-5">
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={activeGroup}
+                            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.22, ease: GLIDE }}
+                            className="flex flex-col gap-3"
+                        >
+                            {groupSignals.map((signal, index) => {
+                                const isSelected = selected === signal.id;
+                                const isOtherSelected = selected !== null && !isSelected;
+                                return (
+                                    <motion.button
+                                        key={signal.id}
+                                        onClick={() => {
+                                            if (sent) return;
+                                            feedback.tap();
+                                            // Stop any in-flight charge/decay before switching feelings
+                                            // so a stale rAF can't paint into the new card's ring.
+                                            if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+                                            paintCharge(0);
+                                            setSelected(isSelected ? null : signal.id);
+                                        }}
+                                        initial={{ opacity: 0, y: 18 }}
+                                        animate={{ opacity: isOtherSelected ? 0.5 : 1, scale: isSelected ? 1.02 : isOtherSelected ? 0.985 : 1, y: 0 }}
+                                        transition={{ ...SOFT, delay: index * 0.06 }}
+                                        whileTap={{ scale: 0.97 }}
+                                        className="w-full relative overflow-hidden rounded-[1.4rem] px-4 py-[1.05rem] text-left"
+                                        style={{
+                                            background: 'rgba(18,18,26,0.66)',
+                                            border: isSelected ? `1px solid ${signal.color}80` : '1px solid rgba(255,255,255,0.09)',
+                                            boxShadow: isSelected
+                                                ? `0 18px 52px -14px ${signal.glow}, inset 0 1px 0 rgba(255,255,255,0.07)`
+                                                : 'inset 0 1px 0 rgba(255,255,255,0.05), inset 0 0 0 1px rgba(255,255,255,0.03)',
+                                            transition: 'border-color 0.5s ease, box-shadow 0.5s ease, background 0.5s ease',
+                                        }}
+                                    >
+                                        {/* Feeling-colour glow bleeding from behind the orb — only when selected */}
+                                        <motion.div
+                                            aria-hidden className="absolute pointer-events-none rounded-full"
+                                            style={{ left: '-12%', top: '50%', width: '62%', height: '230%', y: '-50%', background: `radial-gradient(circle, ${signal.color}, transparent 70%)`, filter: 'blur(30px)', mixBlendMode: 'screen' }}
+                                            animate={{ opacity: isSelected ? 0.55 : 0 }}
+                                            transition={{ duration: 0.5, ease: 'easeOut' }}
+                                        />
+                                        <div className="flex items-center gap-4 relative z-10">
+                                            <span className="relative flex items-center justify-center flex-shrink-0" style={{ width: 46, height: 46 }}>
+                                                {isSelected && !reduce && (
+                                                    <motion.span
+                                                        aria-hidden className="absolute rounded-full"
+                                                        style={{ width: 46, height: 46, border: `1.5px solid ${signal.color}` }}
+                                                        animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
+                                                        transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 0.4 }}
+                                                    />
+                                                )}
+                                                <motion.span
+                                                    aria-hidden className="relative rounded-full"
+                                                    style={{ width: 40, height: 40, background: `radial-gradient(circle at 32% 28%, ${signal.palette[0]}, ${signal.color} 72%)`, boxShadow: `0 4px 18px ${signal.glow}, inset 0 1px 0 rgba(255,255,255,0.5)` }}
+                                                    animate={isSelected && !reduce ? { scale: [1, 1.07, 1] } : { scale: 1 }}
+                                                    transition={isSelected && !reduce ? { duration: 3.4, repeat: Infinity, ease: 'easeInOut', delay: 0.4 } : { duration: 0.3 }}
                                                 />
-                                            )}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-serif font-bold text-[1.16rem] leading-tight text-white">{signal.title}</h3>
+                                                <p className="text-[0.82rem] mt-0.5 leading-snug" style={{ color: isSelected ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.5)', transition: 'color 0.4s' }}>{signal.subtitle}</p>
+                                            </div>
+                                            <AnimatePresence>
+                                                {isSelected && (
+                                                    <motion.span
+                                                        key="check" aria-hidden
+                                                        className="flex items-center justify-center rounded-full flex-shrink-0"
+                                                        initial={{ scale: 0.4, opacity: 0 }}
+                                                        animate={{ scale: 1, opacity: 1 }}
+                                                        exit={{ scale: 0.4, opacity: 0 }}
+                                                        transition={CHECK}
+                                                        style={{ width: 24, height: 24, background: signal.color, boxShadow: `0 0 16px ${signal.glow}` }}
+                                                    >
+                                                        <Check size={14} className="text-white" strokeWidth={3} />
+                                                    </motion.span>
+                                                )}
+                                            </AnimatePresence>
                                         </div>
-                                    </div>
-                                    <div>
-                                        <h3 className={`font-serif font-bold text-xl mb-0.5 ${isSelected ? 'drop-shadow-sm' : ''}`} style={{ color: 'var(--color-text-primary)' }}>
-                                            {signal.title}
-                                        </h3>
-                                        <p className={`text-sm ${isSelected ? 'font-medium' : ''}`} style={{ color: isSelected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>
-                                            {signal.subtitle}
-                                        </p>
-                                    </div>
-                                </div>
-                            </motion.button>
-                        );
-                    })}
+                                    </motion.button>
+                                );
+                            })}
+                        </motion.div>
+                    </AnimatePresence>
                 </div>
             </div>
 
-            {/* Hold-to-Send Interface Area */}
+            {/* ── Hold-to-send dock (lifted clear of the bottom nav) ────────── */}
             <AnimatePresence>
-                {selected && (
+                {selected && !sent && activeSignal && (
                     <motion.div
-                        initial={{ opacity: 0, y: 100 }}
+                        initial={{ opacity: 0, y: 80 }}
                         animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 100, scale: 0.9 }}
-                        transition={{ type: 'spring', damping: 22 }}
-                        className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-gray-50/95 via-gray-50/80 to-transparent z-40 flex flex-col items-center justify-end pb-12 pointer-events-none"
+                        exit={{ opacity: 0, y: 80 }}
+                        transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+                        className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center justify-end"
+                        style={{ height: '22rem', paddingBottom: ORB_BOTTOM, background: 'linear-gradient(to top, #050508 4%, rgba(5,5,8,0.55) 38%, transparent 88%)' }}
                     >
-                        <p className="mb-4 text-[11px] uppercase tracking-[0.28em] font-bold pointer-events-none" style={{ color: 'var(--color-text-secondary)' }}>
-                            Hold to send your presence
+                        <p className="mb-5 text-[11px] uppercase tracking-[0.3em] font-bold" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                            Hold to send
                         </p>
-                        {/* The charging orb */}
-                        <div className="relative flex items-center justify-center pointer-events-auto">
-                            
-                            {/* SVG Ring Progress */}
-                            <svg className="absolute w-32 h-32 -rotate-90 pointer-events-none">
-                                <circle cx="64" cy="64" r="54" className="stroke-white/10" strokeWidth="4" fill="none" />
-                                <motion.circle cx="64" cy="64" r="54" 
-                                    className="stroke-white drop-shadow-glow" strokeWidth="4" fill="none" strokeLinecap="round"
-                                    strokeDasharray={339.292} 
-                                    strokeDashoffset={339.292 - (339.292 * holdProgress) / 100} 
-                                    style={{ stroke: activeSignal?.color }}
+                        <div className="relative flex items-center justify-center">
+                            {/* Charge ring — stroke-dashoffset is compositor-friendly; written in rAF */}
+                            <svg aria-hidden className="absolute w-32 h-32 pointer-events-none -rotate-90" viewBox="0 0 100 100">
+                                <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="3" />
+                                <circle
+                                    ref={ringRef} cx="50" cy="50" r="48" fill="none"
+                                    stroke={activeSignal.color} strokeWidth="3" strokeLinecap="round"
+                                    strokeDasharray={RING_C} strokeDashoffset={RING_C}
+                                    style={{ filter: `drop-shadow(0 0 5px ${activeSignal.color})`, willChange: 'stroke-dashoffset' }}
                                 />
                             </svg>
-
                             <motion.button
                                 onPointerDown={startCharge}
                                 onPointerUp={cancelCharge}
                                 onPointerLeave={cancelCharge}
+                                onPointerCancel={cancelCharge}
                                 onContextMenu={(e) => e.preventDefault()}
-                                animate={controls}
-                                whileTap={{ scale: 0.9 }}
-                                className={`w-24 h-24 rounded-full flex flex-col items-center justify-center text-white relative overflow-hidden ring-4 ring-black/50 shadow-2xl transition-all ${sent ? 'pointer-events-none' : ''}`}
-                                style={{ 
-                                    backgroundColor: activeSignal?.color,
-                                    boxShadow: `0 0 ${holdProgress}px ${activeSignal?.color}`
+                                whileTap={{ scale: 0.94 }}
+                                className="w-24 h-24 rounded-full flex flex-col items-center justify-center text-white relative overflow-hidden"
+                                style={{
+                                    background: `radial-gradient(circle at 32% 28%, ${activeSignal.palette[0]}, ${activeSignal.color} 72%)`,
+                                    boxShadow: `0 0 32px ${activeSignal.color}, inset 0 1px 0 rgba(255,255,255,0.45), inset 0 0 24px rgba(0,0,0,0.18)`,
+                                    touchAction: 'none',
                                 }}
                             >
-                                <div className="absolute inset-0 bg-black mix-blend-overlay opacity-20" />
-                                
-                                {sent ? (
-                                    <CheckCircle2 size={36} className="relative z-10 text-white animate-pop-in" />
-                                ) : (
-                                    <>
-                                        <Navigation size={24} fill="currentColor" className={`relative z-10 -mt-1 transition-transform ${holdProgress > 0 ? '-translate-y-1 scale-110' : ''}`} />
-                                        <span className={`text-[10px] font-bold uppercase tracking-widest mt-1 relative z-10 opacity-80 transition-opacity ${holdProgress > 0 ? 'opacity-100' : ''}`}>
-                                            Hold
-                                        </span>
-                                    </>
-                                )}
-
-                                {/* Inner charge wave */}
-                                <motion.div 
-                                    className="absolute bottom-0 left-0 right-0 bg-white mix-blend-overlay"
-                                    style={{ height: `${holdProgress}%` }}
-                                    transition={{ duration: 0.1 }}
+                                {/* Inner energy — brightens as the charge gathers (rAF-driven) */}
+                                <div
+                                    ref={orbGlowRef} aria-hidden className="absolute inset-0 rounded-full"
+                                    style={{ background: 'radial-gradient(circle, #fff, transparent 70%)', mixBlendMode: 'screen', filter: 'blur(4px)', opacity: 0.3, transform: 'scale(0.9)', willChange: 'opacity, transform' }}
                                 />
+                                <Send size={24} className="relative z-10 -mt-0.5" strokeWidth={2} />
+                                <span className="text-[9px] font-bold uppercase tracking-[0.18em] mt-1 relative z-10 opacity-90">
+                                    Hold
+                                </span>
                             </motion.button>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* ── Send exhale — colour releases and flows through the glow ───── */}
+            {sent && activeSignal && <GlowSend signal={activeSignal} reduce={reduce} />}
         </div>
     );
 };
