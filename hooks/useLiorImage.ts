@@ -39,8 +39,16 @@ const resolveCachedMedia = async (mediaId?: string, fallbackData?: string, stora
  *                 then a direct media download fallback.
  */
 export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePath?: string) => {
-    const [src, setSrc] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    // Seed synchronously from the module value cache so a warm cache hit paints
+    // the image on the FIRST frame, instead of flashing the loading branch
+    // (Skeleton/spinner) for one commit before the post-paint effect resolves.
+    // On a grid remount this is what stops the synchronized placeholder blink.
+    const initialKey = (mediaId || fallbackData || storagePath)
+        ? buildMediaKey(mediaId, fallbackData, storagePath)
+        : null;
+    const hasCached = initialKey !== null && mediaValueCache.has(initialKey);
+    const [src, setSrc] = useState<string | null>(() => (hasCached ? mediaValueCache.get(initialKey!) ?? null : null));
+    const [isLoading, setIsLoading] = useState(() => !hasCached);
 
     // Keep a ref so handlers can inspect the current source without effect churn.
     const srcRef = useRef<string | null>(null);

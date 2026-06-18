@@ -1,11 +1,29 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Cloud, WifiOff } from 'lucide-react';
 import { useNativeShell } from '../hooks/useNativeShell';
 
 export const OfflineNotice: React.FC = () => {
   const shell = useNativeShell();
 
+  // Debounce surfacing the banner so a momentary connection flap doesn't
+  // hard-flash the pill on/off. Going offline waits ~500ms (a real outage still
+  // shows it); coming back online hides instantly. Network-state semantics for
+  // sync are untouched — this only gates the visual.
+  const [show, setShow] = useState(() => !shell.isOnline);
+  useEffect(() => {
+    if (shell.isOnline) {
+      setShow(false);
+      return;
+    }
+    const t = setTimeout(() => setShow(true), 500);
+    return () => clearTimeout(t);
+  }, [shell.isOnline]);
+
+  // Hide instantly the moment we're back online.
   if (shell.isOnline) return null;
+  // ...and don't surface the banner until the outage has persisted ~500ms, so a
+  // momentary flap never flashes it.
+  if (!show) return null;
 
   const copy = shell.pendingUploads > 0
     ? `Offline. ${shell.pendingUploads} ${shell.pendingUploads === 1 ? 'media upload is' : 'media uploads are'} saved on this device.`

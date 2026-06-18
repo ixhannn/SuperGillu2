@@ -4,8 +4,12 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+  <!-- interactive-widget=overlays-content: the soft keyboard must NOT resize the
+       layout viewport. The native stack is an explicit overlay model
+       (adjustNothing / Keyboard.resize:'none'), and `resizes-content` fought it —
+       it shrank the 100dvh shell on every IME open, reflowing the whole app. -->
   <meta name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content" />
 
   <!-- PWA Meta Tags -->
   <title>Lior</title>
@@ -109,6 +113,12 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Preload the font CSS so the fetch starts in the head's first pass, landing
+       the display webfont (Bricolage) sooner and shrinking the FOUT window that
+       reflows the hero counter + headings. (Full reflow removal needs metric
+       overrides on the fallback face — see docs/RENDERING_STABILITY_AUDIT.md.) -->
+  <link rel="preload" as="style"
+    href="https://fonts.googleapis.com/css2?family=Afacad+Flux:wght@400;500;600;700;800&family=Bricolage+Grotesque:wght@500;600;700;800&display=swap">
   <link
     href="https://fonts.googleapis.com/css2?family=Afacad+Flux:wght@400;500;600;700;800&family=Bricolage+Grotesque:wght@500;600;700;800&display=swap"
     rel="stylesheet">

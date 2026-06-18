@@ -174,6 +174,9 @@ export const BottomNav: React.FC<BottomNavProps> = memo(({ currentView, setView,
         backfaceVisibility: 'hidden',
         contain: 'layout paint style',
         isolation: 'isolate',
+        // Own VT snapshot group so the push/pop root-slide never translates the
+        // nav sideways with the page (held still via root-fixes.css animation:none).
+        viewTransitionName: 'lior-bottom-nav',
       }}
     >
       <div

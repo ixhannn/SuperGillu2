@@ -674,6 +674,14 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
     }, []);
 
     useEffect(() => {
+        // Warm-cache seed: on a repeat visit the relationship model is already in
+        // memory, so paint the constellation immediately instead of flashing the
+        // full-screen "Reading your sky…" loader while the async re-init re-runs.
+        // A genuine cold first run (getModel() === null) still shows the loader.
+        if (RelationshipModelService.getModel()) {
+            refresh();
+            setIsReady(true);
+        }
         const initAll = async () => {
             await Promise.all([
                 RelationshipSignals.init(),

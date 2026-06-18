@@ -723,7 +723,10 @@ const App = () => {
         const hasForcedTheme = !!forcedTheme && (forcedTheme in THEMES);
         const themeToApply = (hasForcedTheme ? forcedTheme : (profile.theme || 'rose')) as ThemeId;
 
-        ThemeService.applyTheme(themeToApply);
+        // Boot apply is instant — no 600ms crossfade on the loader. index.tsx
+        // already seeded the saved theme before first paint, so a cross-fade here
+        // would only be rose→same-theme noise.
+        ThemeService.applyTheme(themeToApply, { instant: true });
 
         if (hasForcedTheme) {
           const cleanedUrl = new URL(window.location.href);

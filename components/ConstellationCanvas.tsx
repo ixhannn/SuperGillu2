@@ -58,15 +58,22 @@ export const ConstellationCanvas: React.FC = () => {
     // ── Sizing ────────────────────────────────────────────────────
     let W = 0, H = 0;
     const resize = () => {
+      const prevW = W, prevH = H;
       W = canvas.width  = window.innerWidth;
       H = canvas.height = window.innerHeight;
-      // Re-seed orbit centers on resize
-      stars.forEach(s => {
-        if (s.isPartner === -1) {
-          s.ox = Math.random() * W;
-          s.oy = Math.random() * H;
-        }
-      });
+      // Scale orbit centers PROPORTIONALLY so a viewport change (keyboard,
+      // rotation, URL-bar collapse) doesn't teleport the whole star field to
+      // fresh random positions mid-animation. Skip on the first call (prev = 0 →
+      // div-by-zero); the makeNormal() seed positions stand as-is then.
+      if (prevW > 0 && prevH > 0) {
+        const sx = W / prevW, sy = H / prevH;
+        stars.forEach(s => {
+          if (s.isPartner === -1) {
+            s.ox *= sx;
+            s.oy *= sy;
+          }
+        });
+      }
     };
 
     // ── Star pool ──────────────────────────────────────────────────

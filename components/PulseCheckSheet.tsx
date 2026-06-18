@@ -59,8 +59,12 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
     }
   }, [selectedScore, note, gratitude, isSubmitting, onComplete]);
 
-  const alreadyDone = RelationshipSignals.getTodaysPulseCheck() !== null;
-  if (alreadyDone) return null;
+  // NOTE: no in-body "already done -> return null" guard. recordPulseCheck()
+  // marks today's pulse done synchronously, so a guard here would fire on the
+  // setStep('done') re-render and yank the sheet out with NO exit animation and
+  // without ever showing the ✨ "Logged" step. The parent (PartnerIntelligence)
+  // already gates the open point, so dismissal is driven solely by its flag +
+  // AnimatePresence — which runs the proper slide-down close.
 
   return (
     <motion.div

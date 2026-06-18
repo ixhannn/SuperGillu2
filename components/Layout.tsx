@@ -130,6 +130,9 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
             transform: 'translateZ(0)',
             backfaceVisibility: 'hidden',
             contain: 'strict',
+            // Own VT snapshot group so the push/pop root-slide never drags the
+            // vignette sideways with the page (held still via root-fixes.css).
+            viewTransitionName: 'lior-vignette',
             // Reserve intrinsic size so the layer is sized at compositor time
             // without needing layout from the document tree.
             width: '100vw',

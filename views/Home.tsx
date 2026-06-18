@@ -20,6 +20,7 @@ import { springSmooth, springSnappy } from '../utils/motion';
 import { toast } from '../utils/toast';
 import { NotificationsService } from '../services/notifications';
 import { useRelationship } from '../hooks/useRelationship';
+import { useThrottledReload } from '../hooks/useThrottledReload';
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -404,11 +405,17 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         if (throwback?.id !== onThisDayMemory?.id) setOnThisDayMemory(throwback || null);
     };
 
+    // Coalesce storage-update bursts into one rAF-tick reload. Cloud reconcile
+    // dispatches one 'storage-update' per pulled row across separate task
+    // boundaries (React can't auto-batch those), so without this Home runs a
+    // full loadData() — ~10 setStates — once per row. The throttle collapses
+    // the burst into a single re-render on the next frame (visually identical).
+    const reloadData = useThrottledReload(loadData);
+
     useEffect(() => {
         loadData();
         setIsConnected(SyncService.isConnected);
-        const handleUpdate = () => loadData();
-        storageEventTarget.addEventListener('storage-update', handleUpdate);
+        storageEventTarget.addEventListener('storage-update', reloadData);
         const handleSyncUpdate = () => setIsConnected(SyncService.isConnected);
         syncEventTarget.addEventListener('sync-update', handleSyncUpdate);
         const handleSignal = (e: Event) => {
@@ -439,7 +446,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         syncEventTarget.addEventListener('presence-update', handlePresence);
 
         return () => {
-            storageEventTarget.removeEventListener('storage-update', handleUpdate);
+            storageEventTarget.removeEventListener('storage-update', reloadData);
             syncEventTarget.removeEventListener('sync-update', handleSyncUpdate);
             syncEventTarget.removeEventListener('signal-received', handleSignal);
             syncEventTarget.removeEventListener('presence-update', handlePresence);
@@ -931,13 +938,20 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             </div>
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
-            {onThisDayMemory && (
+            {onThisDayMemory && (() => {
+                // Reserve the tall image layout based on whether the memory HAS an
+                // image source — not on the async-resolved URL — so the card never
+                // jumps from a short auto-height card to a tall one when the bitmap
+                // finishes loading. The warm gradient stays as the base layer until
+                // the <img> resolves, so the reserved box is never an empty flash.
+                const hasOtdImage = !!(onThisDayMemory.image || onThisDayMemory.imageId || onThisDayMemory.storagePath);
+                return (
                 <ScrollReveal variant="tiltUp">
                     <div
                         onClick={() => setView('timeline')}
                         className={`rounded-[1.75rem] mb-5 relative z-10 spring-press cursor-pointer overflow-hidden ${
-                            otdImage ? 'text-white h-48' : 'bg-gradient-to-br from-lior-500 to-amber-500 text-white p-6'
-                        }`}
+                            hasOtdImage ? 'text-white h-48' : 'bg-gradient-to-br from-lior-500 to-amber-500 text-white p-6'
+                        }${hasOtdImage && !otdImage ? ' bg-gradient-to-br from-lior-500 to-amber-500' : ''}`}
                         style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                     >
                         {otdImage && (
@@ -952,7 +966,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                             </>
                         )}
-                        <div className={`relative z-10 h-full flex flex-col ${otdImage ? 'justify-end p-6' : ''}`}>
+                        <div className={`relative z-10 h-full flex flex-col ${hasOtdImage ? 'justify-end p-6' : ''}`}>
                             <div className="flex items-center gap-2 mb-2">
                                 <Calendar size={14} className="text-amber-300" />
                                 <span className="text-micro uppercase tracking-widest text-amber-300">On This Day</span>
@@ -980,7 +994,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         </div>
                     </div>
                 </ScrollReveal>
-            )}
+                );
+            })()}
 
             {/* ── STATUS & FEATURE BENTO GRID ──────────────────────────── */}
             <div

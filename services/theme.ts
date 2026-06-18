@@ -688,6 +688,12 @@ interface ThemeApplyOptions {
     x: number;
     y: number;
   };
+  /**
+   * Apply tokens with NO entrance choreography — skip the radial reveal and the
+   * 600ms `theme-transitioning` crossfade. Used at boot so the saved theme is
+   * applied before first paint with no visible cross-fade on the loader.
+   */
+  instant?: boolean;
 }
 
 const removeThemeReveal = () => {
@@ -733,9 +739,13 @@ export const ThemeService = {
     const { palette, tokens } = THEMES[validId];
     const root = document.documentElement;
 
-    spawnThemeReveal(tokens, options.origin);
+    if (!options.instant) spawnThemeReveal(tokens, options.origin);
     root.setAttribute('data-theme', validId);
-    root.classList.add('theme-transitioning');
+    // Mirror to a synchronous store so the inline boot script + the pre-render
+    // apply in index.tsx can select the saved theme before first paint. The
+    // authoritative copy still lives in the IndexedDB couple profile.
+    try { localStorage.setItem('lior_theme', validId); } catch { /* private mode */ }
+    if (!options.instant) root.classList.add('theme-transitioning');
 
     if (transitionTimer !== null) {
       window.clearTimeout(transitionTimer);
@@ -816,10 +826,12 @@ export const ThemeService = {
     document.body.style.background = tokens.bgMain;
     document.body.style.color = tokens.textPrimary;
 
-    transitionTimer = window.setTimeout(() => {
-      root.classList.remove('theme-transitioning');
-      transitionTimer = null;
-    }, THEME_TRANSITION_MS + 50);
+    if (!options.instant) {
+      transitionTimer = window.setTimeout(() => {
+        root.classList.remove('theme-transitioning');
+        transitionTimer = null;
+      }, THEME_TRANSITION_MS + 50);
+    }
   },
   cleanup: () => {
     if (transitionTimer !== null) {

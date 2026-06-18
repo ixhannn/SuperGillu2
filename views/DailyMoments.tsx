@@ -108,7 +108,10 @@ const PhotoCardBase: React.FC<{ photo: DailyPhoto, onOpen: (photo: DailyPhoto) =
                             decoding="async"
                         />
                     ) : (
-                        <div className="absolute inset-0 bg-black" aria-hidden="true" />
+                        // Warm placeholder (not pure black) behind a letterboxed
+                        // video until its first frame decodes — removes the hard
+                        // black blink on scroll-in for the thumbnail-less fallback.
+                        <div className="absolute inset-0" aria-hidden="true" style={{ background: 'rgba(var(--theme-particle-2-rgb), 0.08)' }} />
                     )}
                     {/* Sharp foreground — using object-cover for clean grid thumbnails */}
                     {mediaKind === 'video' ? (

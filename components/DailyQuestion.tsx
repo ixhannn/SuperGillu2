@@ -10,7 +10,14 @@ interface DailyQuestionProps {
 }
 
 export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate }) => {
-    const [entry, setEntry] = useState<QuestionEntry | null>(null);
+    // Seed synchronously — getTodayQuestion + getCoupleProfile are sync and
+    // always return a non-null entry — so the card is present on the FIRST Home
+    // paint instead of being inserted one frame later and shoving On-This-Day
+    // and the rest of the feed downward. The effect below still re-syncs on a
+    // profile (identity) change.
+    const [entry, setEntry] = useState<QuestionEntry | null>(
+        () => StorageService.getTodayQuestion(profile.myName, profile.partnerName),
+    );
     const [expanded, setExpanded] = useState(false);
     const [draft, setDraft] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);

@@ -161,6 +161,9 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
               // Push the modal up by the keyboard height so it stays visible
               // when the keyboard opens (keyboard uses overlay mode, not resize).
               paddingBottom: keyboardOpen ? keyboardHeight + 24 : 24,
+              // Glide the lift in lockstep with the IME slide instead of snapping
+              // in one frame. Matches BottomNav's keyboard curve (220ms / silk).
+              transition: 'padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
         >
             <motion.div 
@@ -200,10 +203,16 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
       </AnimatePresence>
 
       <motion.div className="grid grid-cols-2 gap-4" variants={staggerContainer} initial="hidden" animate="show">
+        {/* popLayout: a deleted card animates OUT while survivors slide to fill the
+            gap, instead of the card vanishing in one frame and the grid snapping.
+            Parent stagger variants still propagate, so first-paint entrance is
+            unchanged; the undo-restore re-enters via the same hidden→show variant. */}
+        <AnimatePresence mode="popLayout">
         {visibleNotes.map((note) => (
           <motion.div
             key={note.id}
             variants={staggerItem}
+            exit={{ opacity: 0, scale: 0.96 }}
             className={`${note.color} p-4 rounded-[2rem] min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press glass-card border border-white/30 ${longPressId === note.id ? 'scale-[1.02] ring-2 ring-red-400/40' : ''} transition-all`}
             onPointerDown={() => handlePointerDown(note.id)}
             onPointerUp={handlePointerUp}
@@ -253,8 +262,9 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
             </div>
           </motion.div>
         ))}
+        </AnimatePresence>
       </motion.div>
-      
+
       {visibleNotes.length === 0 && (
           <div className="flex flex-col items-center justify-center mt-20 animate-fade-in">
               <div className="relative mb-6">

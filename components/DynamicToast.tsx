@@ -37,7 +37,10 @@ export const DynamicToast: React.FC = () => {
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none px-4 pt-safe sm:pt-4">
-      <AnimatePresence mode="wait">
+      {/* popLayout (not "wait"): a replacing toast animates OUT while the next
+          animates IN, so back-to-back toasts swap smoothly instead of flashing
+          an empty ~200ms gap between exit and enter. */}
+      <AnimatePresence mode="popLayout">
         {currentToast && (
           <motion.div
             key={currentToast.id}
