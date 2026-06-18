@@ -261,12 +261,14 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
             }}
         ></div>
         
-        {/* Constellation star field — only when no photo */}
-        {!currentImage && (
-            <div className="absolute inset-0 z-[1] opacity-60">
-                <ConstellationCanvas />
-            </div>
-        )}
+        {/* Constellation star field — visible only when no photo. Kept PERMANENTLY
+            mounted and toggled via opacity (hard cut, matching the prior
+            present/absent behavior exactly) so the 120-star pool + heartbeat-sync
+            timeline survive each 10s slideshow cycle instead of re-seeding to
+            fresh random positions every time a text-only memory comes around. */}
+        <div className="absolute inset-0 z-[1]" style={{ opacity: currentImage ? 0 : 0.6 }}>
+            <ConstellationCanvas />
+        </div>
 
         {/* Overlay Gradient for Text Readability */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 z-[2]"></div>

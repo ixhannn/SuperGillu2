@@ -45,10 +45,12 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
     }
   }, [bestMoment, hardThing, isSubmitting, onComplete]);
 
-  // Only show Fri-Sun, and only if not already done this week
-  if (!RelationshipSignals.isReflectionTime() || RelationshipSignals.hasReflectedThisWeek()) {
-    return null;
-  }
+  // NOTE: no in-body "not reflection time / already reflected -> return null"
+  // guard. recordReflection() marks the week done synchronously, so a guard here
+  // would fire on the setStep('done') re-render and yank the sheet out with NO
+  // exit animation and without showing the 📝 "Reflected" step. The parent gates
+  // the open point (reflectionDue = isReflectionTime() && !hasReflectedThisWeek()),
+  // so dismissal is driven solely by its flag + AnimatePresence's slide-down.
 
   return (
     <motion.div

@@ -409,6 +409,9 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
               paddingBottom: modalPaddingBottom,
+              // Glide the lift with the IME slide instead of snapping in one
+              // frame. Matches BottomNav's keyboard curve (220ms / silk).
+              transition: 'padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

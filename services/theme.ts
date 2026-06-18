@@ -681,51 +681,19 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
 
 let transitionTimer: number | null = null;
 const THEME_TRANSITION_MS = 600;
-let radialTransitionTimer: number | null = null;
 
 interface ThemeApplyOptions {
   origin?: {
     x: number;
     y: number;
   };
+  /**
+   * Apply tokens with NO entrance choreography — skip the radial reveal and the
+   * 600ms `theme-transitioning` crossfade. Used at boot so the saved theme is
+   * applied before first paint with no visible cross-fade on the loader.
+   */
+  instant?: boolean;
 }
-
-const removeThemeReveal = () => {
-  const existing = document.getElementById('lior-theme-reveal');
-  existing?.remove();
-  if (radialTransitionTimer !== null) {
-    window.clearTimeout(radialTransitionTimer);
-    radialTransitionTimer = null;
-  }
-};
-
-const spawnThemeReveal = (tokens: ThemeVisualTokens, origin?: { x: number; y: number }) => {
-  if (typeof document === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    return;
-  }
-
-  removeThemeReveal();
-
-  const wash = document.createElement('div');
-  const x = origin?.x ?? window.innerWidth / 2;
-  const y = origin?.y ?? window.innerHeight / 2;
-  const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
-
-  wash.id = 'lior-theme-reveal';
-  wash.className = 'theme-radial-reveal';
-  wash.style.setProperty('--theme-reveal-origin-x', `${x}px`);
-  wash.style.setProperty('--theme-reveal-origin-y', `${y}px`);
-  wash.style.setProperty('--theme-reveal-radius', `${radius}px`);
-  wash.style.background = `${tokens.vignette}, ${tokens.bgMain}`;
-
-  document.body.appendChild(wash);
-  window.requestAnimationFrame(() => wash.classList.add('theme-radial-reveal-active'));
-
-  radialTransitionTimer = window.setTimeout(() => {
-    wash.remove();
-    radialTransitionTimer = null;
-  }, THEME_TRANSITION_MS + 120);
-};
 
 export const ThemeService = {
   applyTheme: (themeId: string, options: ThemeApplyOptions = {}) => {
@@ -733,9 +701,12 @@ export const ThemeService = {
     const { palette, tokens } = THEMES[validId];
     const root = document.documentElement;
 
-    spawnThemeReveal(tokens, options.origin);
     root.setAttribute('data-theme', validId);
-    root.classList.add('theme-transitioning');
+    // Mirror to a synchronous store so the inline boot script + the pre-render
+    // apply in index.tsx can select the saved theme before first paint. The
+    // authoritative copy still lives in the IndexedDB couple profile.
+    try { localStorage.setItem('lior_theme', validId); } catch { /* private mode */ }
+    if (!options.instant) root.classList.add('theme-transitioning');
 
     if (transitionTimer !== null) {
       window.clearTimeout(transitionTimer);
@@ -816,17 +787,18 @@ export const ThemeService = {
     document.body.style.background = tokens.bgMain;
     document.body.style.color = tokens.textPrimary;
 
-    transitionTimer = window.setTimeout(() => {
-      root.classList.remove('theme-transitioning');
-      transitionTimer = null;
-    }, THEME_TRANSITION_MS + 50);
+    if (!options.instant) {
+      transitionTimer = window.setTimeout(() => {
+        root.classList.remove('theme-transitioning');
+        transitionTimer = null;
+      }, THEME_TRANSITION_MS + 50);
+    }
   },
   cleanup: () => {
     if (transitionTimer !== null) {
       window.clearTimeout(transitionTimer);
       transitionTimer = null;
     }
-    removeThemeReveal();
     document.documentElement.classList.remove('theme-transitioning');
   }
 };

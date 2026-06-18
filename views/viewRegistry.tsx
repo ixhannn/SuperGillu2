@@ -77,7 +77,6 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   'dinner-decider': lazyNamedView(() => import('./DinnerDecider'), 'DinnerDecider'),
   profile: lazyNamedView(() => import('./Profile'), 'Profile'),
   'quiet-mode': lazyNamedView(() => import('./QuietMode'), 'QuietMode'),
-  keepsakes: lazyNamedView(() => import('./KeepsakeBox'), 'KeepsakeBox'),
   countdowns: lazyNamedView(() => import('./Countdowns'), 'Countdowns'),
   'mood-calendar': lazyNamedView(() => import('./MoodCalendar'), 'MoodCalendar'),
   'aura-rewind': lazyNamedView(() => import('./AuraRewind'), 'AuraRewind'),

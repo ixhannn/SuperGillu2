@@ -362,6 +362,24 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
   isolation: isolate;
 }
 
+/* ── Persistent chrome held still during push/pop ──────────────────────────
+   Without their own view-transition-name, the fixed BottomNav and the vignette
+   are baked into ::view-transition-group(root) and translate sideways with the
+   page on every push/pop (then snap back). Giving each its own name captures it
+   as a separate group; animation:none holds that group static while only the
+   root old/new snapshots slide. These elements never unmount across a
+   transition, so a stable name is valid. (AmbientVisuals is intentionally NOT
+   named here: snapshotting its live WebGL canvas can blank the background for
+   the transition's duration — a worse artifact than the subtle gradient slide.) */
+::view-transition-group(lior-bottom-nav),
+::view-transition-group(lior-vignette),
+::view-transition-old(lior-bottom-nav),
+::view-transition-new(lior-bottom-nav),
+::view-transition-old(lior-vignette),
+::view-transition-new(lior-vignette) {
+  animation: none;
+}
+
 /* Same refined deceleration curve the JS fallback uses. */
 ::view-transition-old(root),
 ::view-transition-new(root) {

@@ -64,9 +64,12 @@ function rescueStrandedInlineOpacity(): void {
     if (el.getAttribute('aria-hidden') === 'true') return;        // intentionally hidden
     if (el.closest('.keep-alive-shell.is-cached')) return;        // a cached tab — keep hidden
     if (el.offsetWidth === 0 && el.offsetHeight === 0) return;    // no layout footprint
-    // Reset framer's stranded inline state to its visible resting state.
+    // Only un-strand opacity (the sole goal: never leave content invisible).
+    // Do NOT clear transform — on a LIVE framer entrance the inline transform is
+    // mid-flight, and wiping it amputates the slide (a visible pop); on a
+    // genuinely stuck node the residual transform is just the small initial
+    // offset (e.g. translateY 14px), negligible next to the visibility win.
     el.style.opacity = '';
-    el.style.transform = '';
   });
 }
 

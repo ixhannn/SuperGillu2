@@ -11,6 +11,21 @@ import './styles/premium-hub.css';
 import './styles/polish-fixes.css';
 import { initGlobalGestures } from './utils/gesture';
 import { startRevealSafety } from './utils/revealSafety';
+import { ThemeService } from './services/theme';
+
+// ── THEME BOOT (before first paint) ──
+// Apply the saved theme synchronously BEFORE React's first render so a non-rose
+// (especially the dark starry-night) theme never paints the rose default for a
+// frame and then snaps. The authoritative theme still loads from the couple
+// profile during init; this only seeds the boot frame. `instant` = no crossfade.
+// (The inline <head> script in index.html covers the even-earlier pre-bundle
+// frame for the dark theme.)
+if (typeof document !== 'undefined') {
+  try {
+    const savedTheme = localStorage.getItem('lior_theme');
+    if (savedTheme) ThemeService.applyTheme(savedTheme, { instant: true });
+  } catch { /* private mode / no storage — fall back to CSS rose default */ }
+}
 
 // ── GLOBAL PRESS STATE ──
 // Keep visual press feedback central, but leave haptics to explicit product

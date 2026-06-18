@@ -833,7 +833,10 @@ interface RoomScene3DProps {
   onMoveItemGrid,
   onDragCommit,
 }) => {
-  const [webglReady, setWebglReady] = useState(true);
+  // Compute synchronously in the initializer so an unsupported WebView selects
+  // the 2D fallback BEFORE the live <Canvas> ever mounts — avoids the
+  // mount-then-tear-down-then-swap flicker. hasWebGLSupport() is side-effect-free.
+  const [webglReady] = useState(() => hasWebGLSupport());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [bursts, setBursts] = useState<{ id: string; pos: [number, number, number] }[]>([]);
 
@@ -853,10 +856,6 @@ interface RoomScene3DProps {
        }
     }
   };
-
-  useEffect(() => {
-    setWebglReady(hasWebGLSupport());
-  }, []);
 
   const floorTex = useMemo(() => createPatternTexture(room.floor, true), [room.floor]);
   const wallTex = useMemo(() => createPatternTexture(room.wallpaper, false), [room.wallpaper]);

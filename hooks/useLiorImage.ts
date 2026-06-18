@@ -39,8 +39,16 @@ const resolveCachedMedia = async (mediaId?: string, fallbackData?: string, stora
  *                 then a direct media download fallback.
  */
 export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePath?: string) => {
-    const [src, setSrc] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    // Seed synchronously from the module value cache so a warm cache hit paints
+    // the image on the FIRST frame, instead of flashing the loading branch
+    // (Skeleton/spinner) for one commit before the post-paint effect resolves.
+    // On a grid remount this is what stops the synchronized placeholder blink.
+    const initialKey = (mediaId || fallbackData || storagePath)
+        ? buildMediaKey(mediaId, fallbackData, storagePath)
+        : null;
+    const hasCached = initialKey !== null && mediaValueCache.has(initialKey);
+    const [src, setSrc] = useState<string | null>(() => (hasCached ? mediaValueCache.get(initialKey!) ?? null : null));
+    const [isLoading, setIsLoading] = useState(() => !hasCached);
 
     // Keep a ref so handlers can inspect the current source without effect churn.
     const srcRef = useRef<string | null>(null);
@@ -60,6 +68,17 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
 
             try {
                 const data = await resolveCachedMedia(mediaId, fallbackData, storagePath);
+                // Decode large inline (base64) images BEFORE committing, so the
+                // skeleton→image swap never shows an undecoded blank frame. Gated
+                // to data: URLs (the heavy-decode case); http URLs decode on paint
+                // and are HTTP-cached, so gating avoids a redundant second GET.
+                if (data && data.startsWith('data:') && typeof Image !== 'undefined') {
+                    try {
+                        const probe = new Image();
+                        probe.src = data;
+                        if (probe.decode) await probe.decode();
+                    } catch { /* not a decodable image (e.g. an inline video) — proceed */ }
+                }
                 if (isMounted) {
                     setSrc(data);
                     setIsLoading(false);

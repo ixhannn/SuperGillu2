@@ -1253,6 +1253,25 @@ export const StorageService = {
             list.unshift(toSaveMetadata);
         }
 
+        // No-op sync write: a reconciled cloud row that is byte-identical to the
+        // cached row must NOT churn state. Without this, reconcileCloud re-saves
+        // EVERY pulled row and fires one 'storage-update' per item, so a sync
+        // burst became N full re-renders across every subscribing view. Skip the
+        // cache reassign + writeRaw + notifyUpdate when nothing actually changed.
+        // Scoped to sync + no inline media this call (media side-effects above
+        // must still land); strict equality only ever skips a true no-op, so a
+        // false negative harmlessly falls through to the normal path.
+        if (
+            source === 'sync'
+            && idx >= 0
+            && existingItem
+            && !imageToStore
+            && !videoToStore
+            && JSON.stringify(existingItem) === JSON.stringify(toSaveMetadata)
+        ) {
+            return;
+        }
+
         (DATA_CACHE[listKey] as any) = list;
         await writeRaw(STORES.DATA, storageKey, list);
 

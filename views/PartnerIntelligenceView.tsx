@@ -1,4 +1,5 @@
 import React, { Suspense, useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, Feather, Heart, Sparkles } from 'lucide-react';
 import type {
@@ -674,6 +675,14 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
     }, []);
 
     useEffect(() => {
+        // Warm-cache seed: on a repeat visit the relationship model is already in
+        // memory, so paint the constellation immediately instead of flashing the
+        // full-screen "Reading your sky…" loader while the async re-init re-runs.
+        // A genuine cold first run (getModel() === null) still shows the loader.
+        if (RelationshipModelService.getModel()) {
+            refresh();
+            setIsReady(true);
+        }
         const initAll = async () => {
             await Promise.all([
                 RelationshipSignals.init(),
@@ -844,25 +853,34 @@ export const PartnerIntelligenceView: React.FC<PartnerIntelligenceViewProps> = (
                 </motion.div>
             )}
 
-            {/* Bottom sheets — fixed overlays, rethemed for the dark stage */}
-            <div className="gpi-retheme">
-                <AnimatePresence>
-                    {showPulse && (
-                        <PulseCheckSheet
-                            onComplete={handlePulseComplete}
-                            onClose={() => setShowPulse(false)}
-                        />
-                    )}
-                </AnimatePresence>
-                <AnimatePresence>
-                    {showReflection && (
-                        <WeeklyReflectionSheet
-                            onComplete={handleReflectionComplete}
-                            onClose={() => setShowReflection(false)}
-                        />
-                    )}
-                </AnimatePresence>
-            </div>
+            {/* Bottom sheets — portaled to <body> so .lenis-content's contain:paint
+                doesn't trap their position:fixed (which otherwise anchored them to
+                the scrolled content box, not the viewport, so they appeared offset
+                when the page was scrolled). The .gpi-retheme wrapper rides along
+                inside the portal so the dark-gold theming is unchanged, and each
+                sheet stays a direct child of its AnimatePresence so the exit
+                slide-down still fires. */}
+            {typeof document !== 'undefined' && createPortal(
+                <div className="gpi-retheme">
+                    <AnimatePresence>
+                        {showPulse && (
+                            <PulseCheckSheet
+                                onComplete={handlePulseComplete}
+                                onClose={() => setShowPulse(false)}
+                            />
+                        )}
+                    </AnimatePresence>
+                    <AnimatePresence>
+                        {showReflection && (
+                            <WeeklyReflectionSheet
+                                onComplete={handleReflectionComplete}
+                                onClose={() => setShowReflection(false)}
+                            />
+                        )}
+                    </AnimatePresence>
+                </div>,
+                document.body,
+            )}
         </GoldShell>
     );
 };

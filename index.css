@@ -166,9 +166,16 @@
 html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
+  /* Only the properties that actually CHANGE and CAN interpolate between themes.
+     Dropped: filter/backdrop-filter (blur radii equal across themes → never
+     animated); box-shadow (650ms tree-wide shadow interp = the real paint
+     stutter, imperceptible to lose); and `background` — the bg-main/vignette are
+     gradient strings on unregistered custom properties, which CSS cannot
+     crossfade (they snap at the 50% mark), so keeping `background` only produced
+     a split snap-vs-melt. Now the gradient field swaps cleanly in one frame
+     while the solid color tokens still fade. */
   transition-property:
-    background-color, color, border-color, box-shadow, background, fill, stroke,
-    opacity, filter, backdrop-filter;
+    background-color, color, border-color, fill, stroke, opacity;
   transition-duration: var(--theme-transition-duration);
   transition-timing-function: var(--theme-transition-ease);
 } /* ── SELECTION COLOR — follows active theme ──────────────────────────────── */
@@ -1688,12 +1695,17 @@ canvas.fixed,
      overshoot (~0.3% past rest — felt, not seen). Press-down stays on the
      fast 60ms curve below. */
   transition: transform 0.3s var(--spring-bounce);
-  will-change: transform;
 }
 .spring-press:active {
   transform: scale(0.955) translateY(2px) !important;
   transition: transform 0.06s cubic-bezier(0.36, 0.07, 0.19, 0.97);
   box-shadow: var(--shadow-xs) !important;
+  /* Promote to a compositor layer only for the duration of the tap. Keeping
+     will-change:transform on the idle base rule held a backing layer on 95+
+     tappable cards simultaneously (layer explosion → eviction risk mid-scroll
+     on low-end WebViews). The JS gesture engine also sets will-change live on
+     [data-press]; :active covers the CSS-driven presses. */
+  will-change: transform;
 } /* ── INK RIPPLE — material-like contact burst on tap ────────────────────── */
 .ripple-host {
   position: relative;

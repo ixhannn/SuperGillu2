@@ -346,7 +346,6 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
   const [editingName, setEditingName] = useState(false);
   const [draftRoomName, setDraftRoomName] = useState(room.roomName);
   const [partnerPresent, setPartnerPresent] = useState(false);
-  const [remoteActivity, setRemoteActivity] = useState('');
   const [knownSelfNames, setKnownSelfNames] = useState<string[]>(() => (profile.myName ? [profile.myName] : []));
   const [knownPartnerNames, setKnownPartnerNames] = useState<string[]>(() => (profile.partnerName ? [profile.partnerName] : []));
   // Mobile-only app: the 3D room IS the feature on this view, so we always
@@ -382,7 +381,6 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
       : next;
     const normalized = normalizeCoupleRoom(stamped);
     stateRef.current = normalized;
-    setRemoteActivity('');
     setRoom(normalized);
     saveRoom(normalized);
   }, [profile.myName]);
@@ -434,7 +432,6 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
         !nextKnownSelfNames.includes(synced.lastActorName)
       ) {
         const activity = `${synced.lastActorName} ${synced.lastActionText || 'updated the room'}`;
-        setRemoteActivity(activity);
         pushToast(activity);
       }
     };
@@ -632,7 +629,6 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
       lastTouchedAt: new Date().toISOString(),
     });
     stateRef.current = stamped;
-    setRemoteActivity('');
     setRoom(stamped);
     saveRoom(stamped);
   }, [profile.myName, selectedId]);
