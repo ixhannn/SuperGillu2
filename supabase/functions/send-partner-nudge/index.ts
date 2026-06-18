@@ -8,7 +8,9 @@
  * Required Supabase Edge Function secrets:
  *   FCM_SERVICE_ACCOUNT — Firebase service-account JSON (FCM HTTP v1). Set with:
  *                         supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)"
- *   VAPID_PRIVATE_KEY   — VAPID private key (web PWA)
+ *   VAPID_PUBLIC_KEY    — VAPID public key, base64url (same value as the client's
+ *                         VITE_VAPID_PUBLIC_KEY). Required by RFC 8292 for web push.
+ *   VAPID_PRIVATE_KEY   — VAPID private key, base64url (web PWA)
  *   VAPID_CONTACT       — Contact URL/email for VAPID (e.g. mailto:you@example.com)
  *
  * The Supabase service role key is automatically available as SUPABASE_SERVICE_ROLE_KEY.
@@ -19,6 +21,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendWebPush } from '../_shared/webPush.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -126,13 +129,26 @@ Deno.serve(async (req: Request) => {
     view  = 'partner-intelligence'; // pulse-check sheet lives here
   }
 
+  // VAPID config for the web/PWA path (read once, reused per device token).
+  const vapidPublicKey  = Deno.env.get('VAPID_PUBLIC_KEY');
+  const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
+  const vapidContact    = Deno.env.get('VAPID_CONTACT') ?? 'mailto:lior@example.com';
+
   const results: string[] = [];
 
   for (const { token, platform } of tokens) {
     if (platform === 'fcm') {
       results.push(await sendFcm(token, title, body, view));
     } else if (platform === 'web') {
-      results.push(await sendVapid(token, title, body));
+      if (!vapidPublicKey || !vapidPrivateKey) {
+        results.push('vapid_no_key');
+        continue;
+      }
+      results.push(await sendWebPush(
+        token,
+        { title, body, icon: '/icons/icon-192.png' },
+        { publicKey: vapidPublicKey, privateKey: vapidPrivateKey, subject: vapidContact },
+      ));
     }
   }
 
@@ -247,58 +263,9 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-// ── VAPID web push ────────────────────────────────────────────────────────────
-async function sendVapid(subscriptionJson: string, title: string, body: string): Promise<string> {
-  const privateKey = Deno.env.get('VAPID_PRIVATE_KEY');
-  const contact    = Deno.env.get('VAPID_CONTACT') ?? 'mailto:lior@example.com';
-  if (!privateKey) return 'vapid_no_key';
-
-  try {
-    const subscription = JSON.parse(subscriptionJson);
-    const endpoint: string = subscription.endpoint ?? '';
-    if (!endpoint) return 'vapid_no_endpoint';
-
-    // Deno's native crypto: build a minimal JWT for VAPID
-    const audience   = new URL(endpoint).origin;
-    const expiry     = Math.floor(Date.now() / 1000) + 12 * 3600;
-    const payload    = JSON.stringify({ title, body, icon: '/icons/icon-192.png' });
-
-    const vapidJwt = await buildVapidJwt(audience, expiry, contact, privateKey);
-
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `vapid t=${vapidJwt}`,
-        'Content-Type':  'application/octet-stream',
-        'TTL':           '86400',
-        'Urgency':       'normal',
-      },
-      body: new TextEncoder().encode(payload),
-    });
-    return res.ok ? 'vapid_sent' : `vapid_error_${res.status}`;
-  } catch {
-    return 'vapid_exception';
-  }
-}
-
-// Minimal VAPID JWT builder using Web Crypto (available in Deno).
-async function buildVapidJwt(
-  audience: string,
-  expiry: number,
-  contact: string,
-  privateKeyB64: string,
-): Promise<string> {
-  const header  = b64url(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
-  const claims  = b64url(JSON.stringify({ aud: audience, exp: expiry, sub: contact }));
-  const message = `${header}.${claims}`;
-
-  const keyBytes = base64ToUint8Array(privateKeyB64);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', keyBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'],
-  );
-  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, cryptoKey, new TextEncoder().encode(message));
-  return `${message}.${b64urlBuffer(sig)}`;
-}
+// ── VAPID web push ──────────────────────────────────────────────────────────
+// Encryption (RFC 8291, aes128gcm) + VAPID signing (RFC 8292) live in
+// ../_shared/webPush.ts so they can be unit-tested independently of Deno.
 
 function b64url(str: string): string {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
@@ -306,9 +273,4 @@ function b64url(str: string): string {
 
 function b64urlBuffer(buf: ArrayBuffer): string {
   return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  const binary = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-  return new Uint8Array([...binary].map(c => c.charCodeAt(0)));
 }
