@@ -14,6 +14,12 @@ const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.
 const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'] as const;
 const R2_EXISTENCE_CACHE = new Map<string, boolean>();
 const MISSING_READ_REPORT_CACHE = new Map<string, number>();
+// In-memory cache of fully-built signed worker URLs, keyed by normalized R2 key.
+// Each entry is reused until ~30s before its signature expires so an active view
+// never re-signs every render. exp is server-minted unix seconds (sign-media).
+const SIGNED_URL_CACHE = new Map<string, { url: string; exp: number }>();
+// Re-sign this many seconds before exp to avoid handing out an about-to-die URL.
+const SIGNED_URL_REFRESH_SKEW_SECONDS = 30;
 
 type LegacySupabaseRef = {
     bucket: string;
@@ -358,6 +364,79 @@ async function downloadViaMediaProxy(storagePath: string): Promise<string | null
     }
 }
 
+/**
+ * Mint short-lived signed worker URLs for the given normalized R2 keys.
+ *
+ * POSTs `{ keys }` to the sign-media edge function with the caller's Supabase
+ * session (same fetch shape as downloadViaMediaProxy). sign-media verifies the
+ * JWT + couple membership and replies `{ urls: { [key]: { exp, sig } } }` for
+ * keys the caller's couple owns (others are silently denied). The signed query
+ * `?exp=<int>&sig=<hex>` is what the Cloudflare Worker re-verifies on GET/HEAD.
+ *
+ * Returns a key -> built-URL map for the keys that were signed. Degrades to an
+ * empty map (never throws) so callers can fall back to the worker's dual-accept
+ * unsigned path while the signing secret rolls out.
+ */
+async function signManagedUrls(keys: string[]): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (!keys.length || !SupabaseService.init()) return result;
+
+    // Serve any still-fresh cached URLs without a network round-trip, and only
+    // request signatures for the keys we don't already hold a live URL for.
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const toSign: string[] = [];
+    for (const key of keys) {
+        const cached = SIGNED_URL_CACHE.get(key);
+        if (cached && cached.exp - SIGNED_URL_REFRESH_SKEW_SECONDS > nowSeconds) {
+            result.set(key, cached.url);
+        } else {
+            toSign.push(key);
+        }
+    }
+    if (!toSign.length) return result;
+
+    const accessToken = await SupabaseService.getAccessToken();
+    const { url, anonKey } = SupabaseService.getProjectConfig();
+    if (!accessToken || !url || !anonKey) return result;
+
+    try {
+        const res = await fetch(`${url.replace(/\/$/, '')}/functions/v1/sign-media`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                apikey: anonKey,
+                Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ keys: toSign }),
+        });
+        if (!res.ok) return result;
+
+        const payload = await res.json().catch(() => null);
+        const urls = payload?.urls;
+        if (!urls || typeof urls !== 'object') return result;
+
+        for (const [key, credential] of Object.entries(urls as Record<string, { exp?: unknown; sig?: unknown }>)) {
+            const exp = Number(credential?.exp);
+            const sig = credential?.sig;
+            if (!Number.isInteger(exp) || exp <= 0 || typeof sig !== 'string' || !sig) continue;
+
+            const base = joinWorkerUrl(key);
+            if (!base) continue;
+
+            // URL format mirrors the worker verifier exactly: it re-derives the
+            // signed message from `${stripLeadingSlash(decodeURIComponent(pathname))}\n${exp}`,
+            // so the query is just `exp=<int>&sig=<hex>` on the worker key path.
+            const builtUrl = `${base}?exp=${exp}&sig=${encodeURIComponent(sig)}`;
+            SIGNED_URL_CACHE.set(key, { url: builtUrl, exp });
+            result.set(key, builtUrl);
+        }
+    } catch {
+        // Network/auth failure: fall back to unsigned (worker is in dual-accept).
+    }
+
+    return result;
+}
+
 async function deleteFromSupabaseBucket(bucket: string, key: string): Promise<boolean> {
     if (!key || !SupabaseService.init() || !SupabaseService.client) return false;
 
@@ -418,9 +497,18 @@ export const MediaStorageService = {
 
     async probeR2Path(storagePath: string): Promise<boolean | null> {
         const key = extractR2Key(storagePath);
-        const url = key ? joinWorkerUrl(key) : null;
-        if (!key || !url) return false;
+        const baseUrl = key ? joinWorkerUrl(key) : null;
+        if (!key || !baseUrl) return false;
         if (R2_EXISTENCE_CACHE.has(key)) return R2_EXISTENCE_CACHE.get(key)!;
+
+        // Managed keys are private: sign the HEAD so the worker serves it once
+        // signatures are enforced. Falls back to the unsigned URL (dual-accept)
+        // if signing is unavailable.
+        let url = baseUrl;
+        if (isManagedUploadKey(key)) {
+            const signed = await signManagedUrls([key]);
+            url = signed.get(key) ?? baseUrl;
+        }
 
         try {
             const res = await fetch(url, { method: 'HEAD' });
@@ -594,7 +682,17 @@ export const MediaStorageService = {
             const probe = await MediaStorageService.probeR2Path(storagePath);
             if (probe !== false) {
                 const workerUrl = joinWorkerUrl(key);
-                if (workerUrl) return workerUrl;
+                if (workerUrl) {
+                    // Private managed media must carry a signature so an <img>/
+                    // <video> src (which can't send Authorization) is served once
+                    // signatures are enforced. Degrade to the unsigned worker URL
+                    // if signing fails (worker is in dual-accept rollout).
+                    if (isManagedUploadKey(key)) {
+                        const signed = await signManagedUrls([key]);
+                        return signed.get(key) ?? workerUrl;
+                    }
+                    return workerUrl;
+                }
             }
         }
 
