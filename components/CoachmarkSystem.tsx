@@ -132,9 +132,9 @@ export const COACHMARKS: CoachmarkDef[] = [
     gradient: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
     where: 'Home',
     preview: 'bonsai',
-    whatIs: 'The bonsai grows as the relationship fills with memories and care.',
-    whyItMatters: 'It turns progress into something you can feel visually instead of burying it in stats.',
-    doThisNow: 'Open the bonsai once so you know where your shared growth lives.',
+    whatIs: 'A calm little tree that quietly grows the longer you’ve been together.',
+    whyItMatters: 'It’s a quiet place to glance at — nothing to tend, just your time together made visible.',
+    doThisNow: 'Open the bonsai whenever you’d like a calm look at how far you’ve come.',
     fallbackToCard: true,
   },
   {
@@ -194,7 +194,7 @@ const TAGLINES: Record<string, string> = {
   'daily-moments': 'Drop a little photo story that quietly disappears by midnight. 🌙',
   'countdowns': 'Pin your next big day in sight and savour the build-up together. ⏳',
   'open-when': 'Write letters now that unlock on the exact day they’re needed. 💌',
-  'bonsai': 'Your shared little tree grows with every memory you add. 🌱',
+  'bonsai': 'A calm little tree that quietly grows with your days together. 🌱',
   'aura-signal': 'Send a wordless “thinking of you” that lands on their phone instantly. 💫',
   'theme-picker': 'Repaint your whole shared space with a handcrafted theme. 🎨',
   'together-music': 'Pick the one song that belongs to just the two of you. 🎶',
@@ -207,7 +207,7 @@ const TAGLINES: Record<string, string> = {
 const SOLO_TAGLINES: Record<string, string> = {
   'daily-moments': 'Drop a little photo story that quietly disappears by midnight — ready to share once you connect. 🌙',
   'countdowns': 'Pin your next big day in sight and savour the build-up — together once you connect. ⏳',
-  'bonsai': 'A little tree that grows with every memory you add, and blooms once you connect. 🌱',
+  'bonsai': 'A calm little tree that quietly grows with your days together, once you connect. 🌱',
   'aura-signal': 'A wordless “thinking of you” you can send the moment you connect. 💫',
   'theme-picker': 'Repaint your whole space with a handcrafted theme — ready to share once you connect. 🎨',
   'together-music': 'Pick the song that will belong to just the two of you once you connect. 🎶',
@@ -784,7 +784,7 @@ const FeaturePreview: React.FC<{ kind: PreviewKind; accent: string; large?: bool
       <div style={shellStyle}>
         <div style={chromeStyle}>
           <div style={{ position: 'absolute', left: 12, top: 12, padding: '4px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.1)', color: theme.textPrimary, fontSize: labelSize, fontWeight: 800 }}>
-            growth 72%
+            in bloom
           </div>
           <motion.div
             animate={{ scaleY: [1, 1.08, 1] }}
@@ -803,8 +803,8 @@ const FeaturePreview: React.FC<{ kind: PreviewKind; accent: string; large?: bool
           />
           <div style={{ position: 'absolute', left: '34%', right: '34%', bottom: 14, height: large ? 26 : 20, borderRadius: '18px 18px 24px 24px', background: 'linear-gradient(180deg, #6b4f3b, #433126)' }} />
           <div style={{ position: 'absolute', right: 12, bottom: 16, textAlign: 'right' }}>
-            <div style={eyebrowStyle}>watered</div>
-            <div style={titleStyle}>2 / 2</div>
+            <div style={eyebrowStyle}>together</div>
+            <div style={titleStyle}>438 days</div>
           </div>
         </div>
       </div>

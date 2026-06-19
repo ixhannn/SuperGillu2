@@ -1134,7 +1134,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                             </div>
                             <span className="font-semibold text-sm text-gray-800">Bonsai</span>
-                            <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
+                            <span className="text-xs text-gray-400 mt-1">Your tree, grown by your days together</span>
                         </div>
                     </div>
                 </div>
