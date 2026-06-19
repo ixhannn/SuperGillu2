@@ -116,6 +116,57 @@ export interface QuestionEntry {
   revealedAt?: string; // ISO string — when both answered
 }
 
+// ── Daily Drop ──────────────────────────────────────────────────────
+// One sealed, reciprocal, expiring "drop" per couple per day. The pull is
+// the state (waiting on you / waiting on them, dies at midnight), not the
+// content. See docs/DAILY_DROP_DESIGN.md.
+export type DropType =
+  | 'this_or_that'
+  | 'guess_my_mood'
+  | 'did_they_know'
+  | 'finish_my_sentence'
+  | 'on_this_day'
+  | 'secret_window'
+  | 'the_dare'
+  | 'pulse';
+
+export interface DropOption {
+  id: string;
+  label: string;
+  emoji?: string;
+}
+
+/** Resolved, denormalized content for a single day's drop (frozen into the row). */
+export interface DropPrompt {
+  type: DropType;
+  title: string;
+  subtitle?: string;
+  options?: DropOption[];   // this_or_that, guess_my_mood, did_they_know
+  sentenceStem?: string;    // finish_my_sentence
+  dare?: string;            // the_dare
+  memoryId?: string;        // on_this_day — resolved against memories at render
+}
+
+export interface DropResponse {
+  userKey: string;    // stable per-partner key (partnerUserId || myName)
+  name: string;       // display name at answer time
+  value: string;      // option id / mood id / free text / 'pulsed'
+  guess?: string;     // guess_my_mood & did_they_know: my guess of partner's value
+  createdAt: string;  // ISO
+}
+
+export interface DailyDrop {
+  id: string;         // `${coupleId}_${date}`
+  coupleId: string;
+  date: string;       // YYYY-MM-DD device-local
+  type: DropType;
+  prompt: DropPrompt;
+  responses: Record<string, DropResponse>; // keyed by userKey — MERGE, never overwrite
+  revealedAt?: string; // ISO — set once both partners' keys are present
+  createdAt: string;
+  expiresAt: string;   // ISO — next local midnight
+}
+
 export interface StreakData {
   checkIns: Record<string, string>; // { [name]: 'YYYY-MM-DD' }
   count: number;
@@ -721,7 +772,7 @@ export interface SystemMessage {
   seenAt?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'countdowns' |'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'bonsai-bloom' | 'coco-pet' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium' | 'our-story' | 'date-studio' | 'duet-journal' | 'depths' | 'love-missions' | 'heirlooms';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'countdowns' |'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'bonsai-bloom' | 'coco-pet' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium' | 'our-story' | 'date-studio' | 'duet-journal' | 'depths' | 'love-missions' | 'heirlooms' | 'daily-drop';
 
 // ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {
@@ -794,7 +845,7 @@ export interface AmbientTrack {
 
 export interface NotificationSchedule {
   id: string;
-  kind: 'daily-clip' | 'film-ready' | 'recap-sunday' | 'cycle-3-days' | 'daily-ritual';
+  kind: 'daily-clip' | 'film-ready' | 'recap-sunday' | 'cycle-3-days' | 'daily-ritual' | 'daily-drop';
   fireAt: string; // ISO
   title: string;
   body: string;
@@ -810,6 +861,8 @@ export interface NotificationPrefs {
   partnerNudgeEnabled: boolean;
   ritualEnabled: boolean;
   ritualTime: string; // "20:00" — daily two-person question reminder
+  dropEnabled: boolean;
+  dropTime: string; // "19:30" — daily Daily Drop reminder
 }
 
 // ── Weekly Recap (editorial) ────────────────────────────────────────

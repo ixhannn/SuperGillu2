@@ -10,6 +10,7 @@ import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { Haptics } from '../services/haptics';
+import { DailyDropCard } from '../components/daily-drop/DailyDropCard';
 import { DailyQuestion } from '../components/DailyQuestion';
 import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
@@ -1010,6 +1011,11 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 <InsightWhisper setView={setView} />
             </ScrollReveal>
 
+            {/* ── TODAY'S DROP ─────────────────────────────────────────── */}
+            <div className="mb-5 relative z-10">
+                <DailyDropCard setView={setView} />
+            </div>
+
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
             {onThisDayMemory && (() => {
                 // Reserve the tall image layout based on whether the memory HAS an
@@ -1115,28 +1121,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </div>
 
-                {/* Mood Board */}
-                <div className="home-reveal-item col-span-1">
-                    <button
-                        type="button"
-                        aria-label="Open Aura Board"
-                        onClick={(e) => open(e, () => setView('mood-calendar'))}
-                        className="w-full h-full cursor-pointer text-left appearance-none border-0 bg-transparent p-0"
-                    >
-                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
-                            <div className="mb-3">
-                                <div className="p-2.5 rounded-xl inline-block bg-pink-50 border border-pink-100/50">
-                                    <Sparkles size={22} className="text-pink-500" />
-                                </div>
-                            </div>
-                            <span className="font-semibold text-sm text-gray-800">Aura Board</span>
-                            <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
-                        </div>
-                    </button>
-                </div>
-
                 {/* Bonsai Bloom */}
-                <div className="home-reveal-item col-span-1">
+                <div className="home-reveal-item col-span-2">
                     <div
                         onClick={(e) => open(e, () => setView('bonsai-bloom'))}
                         className="w-full h-full cursor-pointer"

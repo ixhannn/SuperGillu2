@@ -24,6 +24,7 @@ for (const heavyView of [
   'weekly-recap',
   'our-room',
   'partner-intelligence',
+  'daily-drop',
 ]) {
   assert.equal(
     idlePreloads.has(heavyView),
