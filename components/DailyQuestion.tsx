@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Send, Flame, Bell } from 'lucide-react';
+import { Sparkles, Send, Flame, Bell, Lock } from 'lucide-react';
 import { CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { NotificationsService } from '../services/notifications';
@@ -313,14 +313,36 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className={isLinked ? 'flex items-center gap-2.5 px-3 py-2.5 rounded-2xl' : 'px-3 py-2.5 rounded-2xl'}
-                        style={{ background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.04)' }}
+                        className={isLinked ? 'relative overflow-hidden flex items-center gap-2.5 px-3 py-2.5 rounded-2xl' : 'px-3 py-2.5 rounded-2xl'}
+                        style={
+                            isLinked
+                                ? { background: 'rgba(251,146,60,0.07)', border: '1px solid rgba(251,146,60,0.16)' }
+                                : { background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.04)' }
+                        }
                     >
                         {isLinked ? (
                             <>
-                                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#fb923c' }} />
-                                <span className="text-sm text-gray-400 italic">
-                                    Waiting for {profile.partnerName} to answer...
+                                {/* Faint shimmer sweeping across the sealed pill — both
+                                    answers stay hidden behind the seal until the reveal. */}
+                                <motion.div
+                                    aria-hidden
+                                    className="absolute inset-0 pointer-events-none"
+                                    style={{
+                                        background:
+                                            'linear-gradient(105deg, transparent 30%, rgba(251,146,60,0.14) 50%, transparent 70%)',
+                                    }}
+                                    initial={{ x: '-120%' }}
+                                    animate={{ x: '120%' }}
+                                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1.2 }}
+                                />
+                                <div
+                                    className="relative flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0"
+                                    style={{ background: 'rgba(251,146,60,0.16)' }}
+                                >
+                                    <Lock size={11} strokeWidth={2.25} style={{ color: '#ea7c30' }} />
+                                </div>
+                                <span className="relative text-sm italic" style={{ color: '#b06a36' }}>
+                                    Sealed until {profile.partnerName} answers
                                 </span>
                             </>
                         ) : (
