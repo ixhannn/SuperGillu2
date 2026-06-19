@@ -5,6 +5,16 @@ import { MediaStorageService, compressImage } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
 import { normalizeCoupleRoom, migrateFromOldRoom } from '../components/room/roomSoul';
 import { isDailyMomentExpired } from '../shared/mediaRetention.js';
+import { daysTogetherFrom, parseStoredDateOnly } from '../shared/dateOnly.js';
+import { DAILY_POOL } from '../content/dailyPrompts';
+import {
+    DAY_MILESTONES,
+    DAY_MILESTONE_PROMPTS,
+    ANNIVERSARY_PROMPTS,
+    MONTHSARY_PROMPTS,
+    SEASONAL_PROMPTS,
+    pickFromBucket,
+} from '../content/milestonePrompts';
 import {
     COUPLE_TOTAL_STORAGE_BUDGET_BYTES,
     estimateDataUriBytes,
@@ -36,6 +46,98 @@ export { addPendingDelete, getPendingDeletes, isDeletedLocally, removePendingDel
 
 const hasOwn = <T extends object>(value: T, key: PropertyKey): boolean =>
     Object.prototype.hasOwnProperty.call(value, key);
+
+// ── Daily-question selection (pure, deterministic, SHARED-seed only) ─────────
+//
+// Both partners must get the SAME prompt each day. Every input below is shared
+// identity (UTC calendar day, synced anniversaryDate, synced coupleId) — never a
+// device-local value, per-user name, or Math.random — so the function is pure
+// over shared data and resolves identically on both devices.
+
+const MS_PER_DAY = 86_400_000;
+
+/** Stable djb2 hash → non-negative int, used only for an optional couple phase-shift. */
+const djb2 = (s: string): number => {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return h;
+};
+
+/**
+ * Monotonic UTC epoch-day ordinal for a YYYY-MM-DD key. Using `Date.UTC` keeps
+ * the ordinal in lockstep with the `toISOString()` day key both devices compute,
+ * so partners in different timezones never split across midnight.
+ */
+const utcDayOrdinal = (today: string): number => {
+    const [y, m, d] = today.split('-').map(Number);
+    return Math.floor(Date.UTC(y, m - 1, d) / MS_PER_DAY);
+};
+
+/**
+ * Resolves a milestone special string for `today` from the SHARED anniversary,
+ * or null if today is not a milestone. Both partners share `anniversaryDate`, so
+ * they compute the identical milestone + the identical bucket pick.
+ */
+const milestoneQuestionFor = (today: string, anniversaryDate?: string): string | null => {
+    const anchor = parseStoredDateOnly(anniversaryDate);
+    if (!anchor) return null; // empty / legacy-bad date → no spurious "day 0" special
+
+    const todayDate = parseStoredDateOnly(today);
+    if (!todayDate) return null;
+
+    // Yearly anniversary: same month + day as the anniversary. Vary the line by
+    // how many anniversaries have passed (deterministic from shared dates).
+    if (todayDate.getMonth() === anchor.getMonth() && todayDate.getDate() === anchor.getDate()) {
+        const years = Math.max(0, todayDate.getFullYear() - anchor.getFullYear());
+        if (years >= 1) return pickFromBucket(ANNIVERSARY_PROMPTS, years - 1);
+        // years === 0 is the start date itself — fall through to normal rotation.
+    }
+
+    // Round-number "days together" milestones (100, 365, 500, 1000, …).
+    const days = daysTogetherFrom(anniversaryDate, todayDate);
+    if (days > 0 && DAY_MILESTONES.includes(days)) {
+        return DAY_MILESTONE_PROMPTS[days];
+    }
+
+    // Monthly "monthsary": same day-of-month as the anniversary (but not the
+    // yearly anniversary, handled above). Vary by elapsed month count.
+    if (days > 0 && todayDate.getDate() === anchor.getDate()) {
+        const months =
+            (todayDate.getFullYear() - anchor.getFullYear()) * 12 +
+            (todayDate.getMonth() - anchor.getMonth());
+        if (months >= 1) return pickFromBucket(MONTHSARY_PROMPTS, months - 1);
+    }
+
+    return null;
+};
+
+/**
+ * Picks today's prompt deterministically from shared inputs only.
+ *
+ * Precedence: seasonal fixed-date → anniversary/day/monthsary milestone →
+ * widened-pool rotation. The rotation is a clean +1-per-day walk through the
+ * full ~195-item pool (a contiguous, no-repeat cycle ~2.6x the old 75-day gap),
+ * optionally phase-shifted per couple by a shared coupleId offset (cosmetic;
+ * identical for both partners, so determinism holds).
+ */
+const selectDailyQuestion = (
+    today: string,
+    anniversaryDate?: string,
+    coupleId?: string,
+): string => {
+    // 1) Seasonal specials on a few fixed MM-DD dates (calendar date is shared).
+    const seasonal = SEASONAL_PROMPTS[today.slice(5)];
+    if (seasonal) return seasonal;
+
+    // 2) Milestone specials derived from the shared anniversaryDate.
+    const milestone = milestoneQuestionFor(today, anniversaryDate);
+    if (milestone) return milestone;
+
+    // 3) Normal widened-pool rotation by monotonic UTC day ordinal.
+    const offset = coupleId ? djb2(coupleId) : 0;
+    const idx = (((utcDayOrdinal(today) + offset) % DAILY_POOL.length) + DAILY_POOL.length) % DAILY_POOL.length;
+    return DAILY_POOL[idx];
+};
 
 const CACHE_KEYS = {
     MEMORIES: 'lior_memories',
@@ -2508,94 +2610,12 @@ export const StorageService = {
         const existing = (profile.questions ?? []).find(q => q.date === today);
         if (existing) return existing;
 
-        // Deterministic question from pool using date hash
-        // Mix: ~55 light/fun, ~25 reflective, ~10 deep — heavy ones sprinkled, not daily
-        const QUESTIONS = [
-            // ── Light & Fun ──
-            "If today had a flavor, what would it be?",
-            "What's the most useless talent you have?",
-            "If we swapped lives for one day, what's the first thing you'd do?",
-            "What's a guilty pleasure you've never fully admitted to me?",
-            "What's your go-to order when you genuinely can't decide?",
-            "If you had to describe today using only a movie title, what would it be?",
-            "What's a weird habit you have that I probably don't know about?",
-            "What's the last song you had stuck in your head all day?",
-            "What's something you bought recently that you absolutely did not need?",
-            "If we were any two animals, what would we be and why?",
-            "What's something on your phone you'd be mildly embarrassed if I saw?",
-            "What's a childhood snack you still secretly love?",
-            "What's a conspiracy theory you kind of half-believe?",
-            "What would your reality TV show be called?",
-            "What's the most random thing you googled this week?",
-            "If today had a color, what would it be?",
-            "What's a small luxury that makes your day noticeably better?",
-            "What's a smell that instantly takes you somewhere else?",
-            "If you could have any superpower just for tomorrow, what would you pick?",
-            "What's something tiny that actually made today a little better?",
-            "What's the last photo you took on your phone?",
-            "If we had a theme song right now, what would it be?",
-            "What's a word in another language you love the sound of?",
-            "What's something you've been procrastinating on for way too long?",
-            "What's a show or movie you could rewatch forever?",
-            "If you could rename yourself, would you? What to?",
-            "What's the weirdest dream you've had recently?",
-            "What's a skill you wish you had but never actually learned?",
-            "What's your comfort food right now, no judgment?",
-            "If you could teleport anywhere for exactly one hour, where?",
-            "What's a place you really want to show me someday?",
-            "What's a compliment someone gave you that you still think about?",
-            "What's something you've been watching or reading lately?",
-            "What would you do if you had a completely free, unplanned day tomorrow?",
-            "If you could have dinner with any fictional character, who and why?",
-            "What's a small thing you're quietly looking forward to this week?",
-            "What's a word you always spell wrong no matter how many times you look it up?",
-            "What's something you used to be obsessed with that you've completely moved on from?",
-            "If you could only keep three apps on your phone, which ones?",
-            "What's something that always makes you feel instantly better?",
-
-            // ── Reflective & Warm ──
-            "What's something you learned about yourself recently that surprised you?",
-            "What's a decision you made lately that you feel genuinely good about?",
-            "What's a memory from us that you come back to more than I probably know?",
-            "What does a perfect lazy day actually look like for you?",
-            "What's something you're quietly proud of yourself for?",
-            "What's something you wish people understood about you without having to explain it?",
-            "What's a version of our future that you love imagining?",
-            "What's something I do that means more to you than I probably realize?",
-            "What's a quality in yourself that you're actively trying to grow?",
-            "What made you feel most understood recently?",
-            "What does feeling at home feel like to you?",
-            "What's a moment from the last few months you'd want to live again?",
-            "What's something you've let go of that felt hard but turned out to be right?",
-            "What's something we do together that feels like its own little world?",
-            "What's a way I've grown recently that you've noticed?",
-            "What's something about our relationship that still surprises you?",
-            "What's a goal you set for yourself this year — how's it going honestly?",
-            "What's something you're still figuring out about yourself?",
-            "What's something you're grateful for that you don't say out loud enough?",
-            "What does a good day feel like for you lately — what's the common thread?",
-            "What's a memory from your childhood you love revisiting?",
-            "What's a book, song, or film that genuinely changed how you think?",
-            "What's something about love that you understand now that you didn't before?",
-            "What's something small I do that you'd miss a lot if I stopped?",
-            "If you wrote me a letter tonight, what would the first line be?",
-
-            // ── Deep & Vulnerable (occasional — roughly 1 in 9 days) ──
-            "What's something you've been carrying alone lately that you haven't said out loud?",
-            "What's something you wish you could go back and tell a younger version of yourself?",
-            "What's a part of you that you find genuinely hard to share, even with me?",
-            "What's something you're afraid to want too much — in case it doesn't happen?",
-            "When was the last time you felt truly at peace, and what was happening?",
-            "What's a wound that's still healing, even slowly?",
-            "What do you need more of that you find hard to ask for?",
-            "What does feeling loved by me look like on a really hard day?",
-            "What's a fear about us you've never said out loud?",
-            "What's a question you wish I would ask you more?",
-        ];
-
-        const parts = today.split('-').map(Number);
-        const hash = parts[0] * 31 + parts[1] * 7 + parts[2];
-        const question = QUESTIONS[Math.abs(hash) % QUESTIONS.length];
+        // Selection is a PURE function of SHARED inputs only (UTC calendar day,
+        // plus the synced anniversaryDate/coupleId). No device-local value, no
+        // per-user name, no Math.random — so both partners resolve the SAME
+        // prompt for the same day. The first device to resolve `today` freezes
+        // the string into the QuestionEntry; the other reads it back identically.
+        const question = selectDailyQuestion(today, profile.anniversaryDate, profile.coupleId);
 
         const entry: QuestionEntry = { date: today, question, answers: {} };
         const updated = [...(profile.questions ?? []).filter(q => {
