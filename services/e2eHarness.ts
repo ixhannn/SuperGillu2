@@ -5,6 +5,7 @@ const E2E_ENABLED = import.meta.env.VITE_E2E === '1';
 
 const E2E_VIEWS: ViewState[] = [
   'home',
+  'daily-drop',
   'add-memory',
   'timeline',
   'special-dates',

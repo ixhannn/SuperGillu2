@@ -1,4 +1,5 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem, DailyDrop, DropResponse, DropType } from '../types';
+import { buildDailyDrop, nextLocalMidnightIso, isDropComplete, DROP_META, type DropBuildContext } from '../utils/dropEngine';
 import { SupabaseService } from './supabase';
 import { MediaStorageService, compressImage } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
@@ -64,6 +65,7 @@ const CACHE_KEYS = {
     SURPRISES: 'lior_surprises',
     VOICE_NOTES: 'lior_voice_notes',
     PRIVATE_SPACE_ITEMS: 'lior_private_space_items',
+    DAILY_DROPS: 'lior_daily_drops',
 };
 
 const ACCOUNT_LOCAL_KEYS = {
@@ -410,6 +412,7 @@ const DATA_CACHE = {
     surprises: [] as Surprise[],
     voiceNotes: [] as VoiceNote[],
     privateSpaceItems: [] as PrivateSpaceItem[],
+    dailyDrops: [] as DailyDrop[],
 };
 
 const DEFAULT_ENVELOPE_COLOR = 'bg-pink-500/12 text-pink-600';
@@ -462,6 +465,7 @@ const CONTENT_COLLECTION_STORES: Array<{ storageKey: string; cacheKey: keyof typ
     { storageKey: CACHE_KEYS.SURPRISES, cacheKey: 'surprises' },
     { storageKey: CACHE_KEYS.VOICE_NOTES, cacheKey: 'voiceNotes' },
     { storageKey: CACHE_KEYS.PRIVATE_SPACE_ITEMS, cacheKey: 'privateSpaceItems' },
+    { storageKey: CACHE_KEYS.DAILY_DROPS, cacheKey: 'dailyDrops' },
 ];
 const CONTENT_SINGLETON_KEYS = [
     CACHE_KEYS.PET_STATS,
@@ -843,6 +847,133 @@ const normalizeDailyPhotos = (items: DailyPhoto[], now = Date.now(), includeExpi
     return Array.from(byId.values());
 };
 
+// ── Daily Drop normalizers + merge (clobber-safe responses union) ───────────
+const normalizeDropResponse = (key: string, value: unknown): DropResponse | null => {
+    if (!value || typeof value !== 'object') return null;
+    const r = value as Partial<DropResponse> & Record<string, unknown>;
+    const valueStr = typeof r.value === 'string' ? r.value : '';
+    const userKey = cleanString(r.userKey) || cleanString(key);
+    if (!userKey) return null;
+    return {
+        userKey,
+        name: cleanString(r.name) || 'Someone',
+        value: valueStr,
+        guess: typeof r.guess === 'string' && r.guess.trim() ? r.guess : undefined,
+        createdAt: coerceIsoDate(r.createdAt) || new Date().toISOString(),
+    };
+};
+
+const normalizeDailyDrop = (value: unknown): DailyDrop | null => {
+    if (!value || typeof value !== 'object') return null;
+    const v = value as Partial<DailyDrop> & Record<string, unknown>;
+    const id = cleanString(v.id);
+    const date = cleanString(v.date);
+    const type = cleanString(v.type) as DropType;
+    const prompt = v.prompt && typeof v.prompt === 'object' ? (v.prompt as DailyDrop['prompt']) : null;
+    if (!id || !date || !type || !prompt) return null;
+
+    const responses: Record<string, DropResponse> = {};
+    const rawResponses = (v.responses && typeof v.responses === 'object') ? v.responses as Record<string, unknown> : {};
+    for (const [k, r] of Object.entries(rawResponses)) {
+        const normalized = normalizeDropResponse(k, r);
+        if (normalized) responses[normalized.userKey] = normalized;
+    }
+
+    const createdAt = coerceIsoDate(v.createdAt) || new Date().toISOString();
+    const expiresAt = coerceIsoDate(v.expiresAt) || nextLocalMidnightIso(date);
+    const complete = Object.keys(responses).length >= 2;
+    return {
+        id,
+        coupleId: cleanString(v.coupleId) || cleanString((v as Record<string, unknown>).couple_id) || 'solo',
+        date,
+        type,
+        prompt,
+        responses,
+        revealedAt: coerceIsoDate(v.revealedAt) || (complete ? createdAt : undefined),
+        createdAt,
+        expiresAt,
+    };
+};
+
+/** Union responses by userKey (newer createdAt wins); recompute revealedAt. Prompt/type are deterministic. */
+const mergeDropResponses = (base: DailyDrop, incoming: DailyDrop): DailyDrop => {
+    const responses: Record<string, DropResponse> = { ...base.responses };
+    for (const [key, resp] of Object.entries(incoming.responses || {})) {
+        const current = responses[key];
+        if (!current || new Date(resp.createdAt).getTime() >= new Date(current.createdAt).getTime()) {
+            responses[key] = resp;
+        }
+    }
+    const complete = Object.keys(responses).length >= 2;
+    const revealedAt = complete
+        ? (base.revealedAt || incoming.revealedAt || new Date().toISOString())
+        : (base.revealedAt || incoming.revealedAt);
+    return {
+        ...base,
+        prompt: base.prompt || incoming.prompt,
+        type: base.type || incoming.type,
+        expiresAt: base.expiresAt || incoming.expiresAt,
+        responses,
+        revealedAt,
+    };
+};
+
+const upsertDrop = (list: DailyDrop[], drop: DailyDrop): DailyDrop[] => {
+    const index = list.findIndex((d) => d.id === drop.id);
+    if (index === -1) return [...list, drop];
+    const next = list.slice();
+    next[index] = drop;
+    return next;
+};
+
+/** Normalize + keep the most recent 14 drops by date (drops are tiny but bounded). */
+const normalizeDailyDropList = (items: unknown[]): DailyDrop[] => {
+    const byId = new Map<string, DailyDrop>();
+    for (const item of items) {
+        const normalized = normalizeDailyDrop(item);
+        if (normalized) byId.set(normalized.id, normalized);
+    }
+    return Array.from(byId.values())
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 14);
+};
+
+const localDateKey = (d: Date = new Date()): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+/** on_this_day eligibility: a memory from this calendar day in a previous year. */
+const buildDropContext = (date: string): DropBuildContext => {
+    const anchor = new Date(`${date}T00:00:00`);
+    const throwback = DATA_CACHE.memories.find((m) => {
+        const md = new Date((m as Memory)?.date);
+        return !Number.isNaN(md.getTime())
+            && md.getDate() === anchor.getDate()
+            && md.getMonth() === anchor.getMonth()
+            && md.getFullYear() !== anchor.getFullYear();
+    });
+    return { hasThrowback: !!throwback, throwbackMemoryId: (throwback as Memory | undefined)?.id };
+};
+
+/** Dev/test-only forced drop type (see StorageService.devSetDropType). No-op in production builds. */
+const devForcedDropType = (): DropType | undefined => {
+    try {
+        if (!import.meta.env?.DEV) return undefined;
+        const fromUrl = new URLSearchParams(window.location.search).get('drop');
+        if (fromUrl && Object.prototype.hasOwnProperty.call(DROP_META, fromUrl)) {
+            try { localStorage.setItem('lior_dev_drop_type', fromUrl); } catch { /* ignore */ }
+            return fromUrl as DropType;
+        }
+        const v = localStorage.getItem('lior_dev_drop_type');
+        return v && Object.prototype.hasOwnProperty.call(DROP_META, v) ? (v as DropType) : undefined;
+    } catch {
+        return undefined;
+    }
+};
+
 const assertManagedStorageBudget = (
     feature: ManagedStorageFeature,
     incomingBytes: number,
@@ -945,7 +1076,16 @@ export const StorageService = {
                 load(CACHE_KEYS.SURPRISES, 'surprises'),
                 load(CACHE_KEYS.VOICE_NOTES, 'voiceNotes'),
                 load(CACHE_KEYS.PRIVATE_SPACE_ITEMS, 'privateSpaceItems'),
+                load(CACHE_KEYS.DAILY_DROPS, 'dailyDrops'),
             ]);
+
+            const normalizedDrops = normalizeDailyDropList(DATA_CACHE.dailyDrops);
+            if (normalizedDrops.length !== DATA_CACHE.dailyDrops.length) {
+                DATA_CACHE.dailyDrops = normalizedDrops;
+                await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+            } else {
+                DATA_CACHE.dailyDrops = normalizedDrops;
+            }
 
             const hadLegacyEnvelopeColors = DATA_CACHE.envelopes.some(
                 (item) => normalizeEnvelopeColor(item?.color) !== (typeof item?.color === 'string' ? item.color.trim() : ''),
@@ -1604,6 +1744,87 @@ export const StorageService = {
         }
     },
 
+    // ── Daily Drop ──────────────────────────────────────────────────────────
+    getDailyDrops: (): DailyDrop[] => DATA_CACHE.dailyDrops,
+
+    /** Stable per-device responder key: real user id when paired, else display name. */
+    resolveMyDropKey: (profile?: CoupleProfile): string => {
+        const p = profile || StorageService.getCoupleProfile();
+        if (cleanString(p.partnerUserId)) {
+            const myId = StorageService.getMyUserId();
+            if (myId) return myId;
+        }
+        return cleanString(p.myName) || 'me';
+    },
+
+    /**
+     * Today's drop, generated deterministically if absent. The shell is persisted
+     * LOCAL-ONLY (source 'sync', no cloud push) so an empty row can never clobber a
+     * partner who has already answered in the cloud — only submitDropResponse pushes.
+     */
+    getTodayDrop: (profile?: CoupleProfile): DailyDrop => {
+        const p = profile || StorageService.getCoupleProfile();
+        const coupleId = cleanString(p.coupleId) || 'solo';
+        const date = localDateKey();
+        const id = `${coupleId}_${date}`;
+        const forced = devForcedDropType();
+        const existing = DATA_CACHE.dailyDrops.find((d) => d.id === id);
+        if (existing && (!forced || existing.type === forced)) return existing;
+        const drop = buildDailyDrop(coupleId, date, buildDropContext(date), forced);
+        DATA_CACHE.dailyDrops = upsertDrop(DATA_CACHE.dailyDrops, drop);
+        void writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+        notifyUpdate({ source: 'sync', action: 'save', table: 'daily_drops', id });
+        return drop;
+    },
+
+    /** DEV/E2E ONLY — force today's drop to a specific type for previewing. No-op in production. */
+    devSetDropType: (type: DropType): void => {
+        try {
+            if (!import.meta.env?.DEV) return;
+            localStorage.setItem('lior_dev_drop_type', type);
+            const profile = StorageService.getCoupleProfile();
+            const coupleId = cleanString(profile.coupleId) || 'solo';
+            const date = localDateKey();
+            const id = `${coupleId}_${date}`;
+            const drop = buildDailyDrop(coupleId, date, buildDropContext(date), type);
+            DATA_CACHE.dailyDrops = upsertDrop(DATA_CACHE.dailyDrops, drop);
+            void writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+            try { localStorage.removeItem(`lior_drop_seen_${id}`); } catch { /* ignore */ }
+            notifyUpdate({ source: 'sync', action: 'save', table: 'daily_drops', id });
+        } catch { /* dev-only, best-effort */ }
+    },
+
+    /** Commit my response, merge it into today's row, and push the superset to the cloud. */
+    submitDropResponse: (value: string, guess?: string): void => {
+        const profile = StorageService.getCoupleProfile();
+        const key = StorageService.resolveMyDropKey(profile);
+        const base = StorageService.getTodayDrop(profile);
+        const response: DropResponse = {
+            userKey: key,
+            name: cleanString(profile.myName) || 'Me',
+            value,
+            guess: guess && guess.trim() ? guess : undefined,
+            createdAt: new Date().toISOString(),
+        };
+        const responses = { ...base.responses, [key]: response };
+        const complete = Object.keys(responses).length >= 2;
+        const merged: DailyDrop = {
+            ...base,
+            responses,
+            revealedAt: complete ? (base.revealedAt || new Date().toISOString()) : base.revealedAt,
+        };
+        void StorageService.saveDailyDrop(merged);
+    },
+
+    saveDailyDrop: (d: DailyDrop) => StorageService._saveInternal('dailyDrops', CACHE_KEYS.DAILY_DROPS, d, undefined, 'daily_drops'),
+
+    deleteDailyDrop: async (id: string) => {
+        addPendingDelete('daily_drops', id);
+        DATA_CACHE.dailyDrops = DATA_CACHE.dailyDrops.filter((d) => d.id !== id);
+        await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+        notifyUpdate({ source: 'user', action: 'delete', table: 'daily_drops', id });
+    },
+
     getKeepsakes: () => DATA_CACHE.keepsakes.map((item) => normalizeKeepsakeSender(item)),
     saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, normalizeKeepsakeSender(k), 'keep', 'keepsakes'),
     hideKeepsake: async (id: string) => {
@@ -1703,6 +1924,35 @@ export const StorageService = {
         // Also purge any stale cached copy so UI reloads cannot briefly resurrect it.
         if (isDeletedLocally(table, item.id)) {
             await this.handleCloudDelete(table, item.id);
+            return;
+        }
+
+        // ── Daily Drop: MERGE responses, never replace (clobber-safe) ──────────
+        // The generic upsert path below would overwrite the whole row, wiping a
+        // response the cloud snapshot happens not to carry. Drops union responses
+        // by userKey, so each partner's answer survives an out-of-order sync.
+        if (table === 'daily_drops') {
+            const incoming = normalizeDailyDrop(item);
+            if (!incoming) return;
+            const existing = DATA_CACHE.dailyDrops.find((d) => d.id === incoming.id);
+            const justCompleted = !!existing && !isDropComplete(existing);
+            const merged = existing ? mergeDropResponses(existing, incoming) : incoming;
+            DATA_CACHE.dailyDrops = normalizeDailyDropList(upsertDrop(DATA_CACHE.dailyDrops, merged));
+            await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+            notifyUpdate({ source: 'sync', action: 'save', table: 'daily_drops', id: incoming.id, item: merged });
+
+            // Converge the cloud if we held a response the incoming snapshot lacked
+            // (offline cross-answer). Guarded so it only fires when we ADD a key —
+            // the partner's merge of our re-push adds nothing, so it can't ping-pong.
+            const incomingKeys = new Set(Object.keys(incoming.responses || {}));
+            const addedKey = Object.keys(merged.responses).some((k) => !incomingKeys.has(k));
+            if (addedKey) void this.saveDailyDrop(merged);
+
+            // Gentle local heads-up the moment the partner's answer completes the pair.
+            if (justCompleted && isDropComplete(merged) && document.hidden
+                && 'Notification' in window && Notification.permission === 'granted') {
+                try { new Notification('Lior', { body: 'Your drop just unsealed ✨', icon: '/notification-icon.png' }); } catch {}
+            }
             return;
         }
 
@@ -1855,6 +2105,7 @@ export const StorageService = {
             surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES },
             voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES },
             private_space_items: { cache: 'privateSpaceItems', key: CACHE_KEYS.PRIVATE_SPACE_ITEMS },
+            daily_drops: { cache: 'dailyDrops', key: CACHE_KEYS.DAILY_DROPS },
         };
         if (tableToStorage[table]) {
             const cfg = tableToStorage[table];

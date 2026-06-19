@@ -104,6 +104,7 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   depths: lazyNamedView(() => import('./Depths'), 'DepthsView'),
   'love-missions': lazyNamedView(() => import('./LoveMissions'), 'LoveMissionsView'),
   heirlooms: lazyNamedView(() => import('./Heirlooms'), 'HeirloomsView'),
+  'daily-drop': lazyNamedView(() => import('./DailyDrop'), 'DailyDrop'),
 };
 
 export const getViewComponent = (view: ViewState): PreloadableViewComponent =>

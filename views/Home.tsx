@@ -10,7 +10,7 @@ import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { Haptics } from '../services/haptics';
-import { DailyQuestion } from '../components/DailyQuestion';
+import { DailyDropCard } from '../components/daily-drop/DailyDropCard';
 import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
@@ -925,9 +925,9 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             {/* ── PARTNER INSIGHT WHISPER ────────────────────────────── */}
             <InsightWhisper setView={setView} />
 
-            {/* ── TODAY'S QUESTION ─────────────────────────────────────── */}
+            {/* ── TODAY'S DROP ─────────────────────────────────────────── */}
             <div className="mb-5 relative z-10">
-                <DailyQuestion profile={profile} onUpdate={() => {}} />
+                <DailyDropCard setView={setView} />
             </div>
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
@@ -1027,30 +1027,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     </motion.div>
                 </div>
 
-                {/* Mood Board */}
-                <div className="home-reveal-item col-span-1">
-                    <motion.button
-                        type="button"
-                        aria-label="Open Aura Board"
-                        whileTap={{ scale: 0.93, y: 2 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 26 }}
-                        onClick={() => setView('mood-calendar')}
-                        className="w-full h-full cursor-pointer text-left appearance-none border-0 bg-transparent p-0"
-                    >
-                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
-                            <div className="mb-3">
-                                <div className="p-2.5 rounded-xl inline-block bg-pink-50 border border-pink-100/50">
-                                    <Sparkles size={22} className="text-pink-500" />
-                                </div>
-                            </div>
-                            <span className="font-semibold text-sm text-gray-800">Aura Board</span>
-                            <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
-                        </div>
-                    </motion.button>
-                </div>
-
                 {/* Bonsai Bloom */}
-                <div className="home-reveal-item col-span-1">
+                <div className="home-reveal-item col-span-2">
                     <motion.div
                         whileTap={{ scale: 0.93, y: 2 }}
                         transition={{ type: 'spring', stiffness: 600, damping: 26 }}

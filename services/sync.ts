@@ -390,7 +390,7 @@ class SyncServiceClass {
                 }
             }
 
-            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items'];
+            const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items', 'daily_drops'];
             const rowEnvelopeTables = new Set(['memories', 'daily_photos', 'keepsakes', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items', 'together_music']);
             const localCollectionAccessors: Record<string, () => any[]> = {
                 memories: () => StorageService.getMemories(),
@@ -409,6 +409,7 @@ class SyncServiceClass {
                 surprises: () => StorageService.getSurprises(),
                 voice_notes: () => StorageService.getVoiceNotes(),
                 private_space_items: () => StorageService.getPrivateSpaceItems(),
+                daily_drops: () => StorageService.getDailyDrops(),
             };
             const mediaPrefixes: Record<string, string> = {
                 memories: 'mem', daily_photos: 'daily', keepsakes: 'keep',
@@ -794,7 +795,7 @@ class SyncServiceClass {
             });
         this.realtimeChannels.push(this.channel);
 
-        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items'];
+        const tables = ['memories', 'notes', 'dates', 'envelopes', 'daily_photos', 'keepsakes', 'dinner_options', 'comments', 'mood_entries', 'couple_profile', 'pet_stats', 'user_status', 'together_music', 'our_room_state', 'us_bucket_items', 'us_wishlist_items', 'us_milestones', 'time_capsules', 'surprises', 'voice_notes', 'private_space_items', 'daily_drops'];
         tables.forEach(table => {
             const tableChannel = SupabaseService.client?.channel(`public:${table}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table, filter: `couple_id=eq.${coupleId}` }, (payload) => {
