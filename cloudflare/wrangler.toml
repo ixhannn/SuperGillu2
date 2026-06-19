@@ -14,6 +14,10 @@ bucket_name = "lior-media"
 #   wrangler secret put ADMIN_DASHBOARD_TOKEN
 #   wrangler secret put SUPABASE_URL
 #   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+#   wrangler secret put MEDIA_URL_SIGNING_SECRET   # HMAC secret; MUST match the
+#                                                  # sign-media edge fn's secret.
+#                                                  # Verifies signed media URLs on
+#                                                  # GET/HEAD. Never ship to client.
 # Managed media writes are authorized with the caller's Supabase session,
 # not a shared client-side upload secret. (The legacy UPLOAD_KEY /
 # X-Upload-Key fallback has been removed.)
