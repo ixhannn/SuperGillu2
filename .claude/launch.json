@@ -36,6 +36,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "3021", "--strictPort"],
       "port": 3021
+    },
+    {
+      "name": "Nostalgic E2E Dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:e2e", "--", "--port", "3047", "--strictPort"],
+      "port": 3047
     }
   ]
 }

@@ -1,0 +1,437 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Dinner Decider — "Raised Objects" (colourful)
+   Real, solid objects RESTING ON TOP of the theme-coloured surface — moulded
+   from a warm, accent-tinted clay (smooth, no literal material), given form by
+   a top-left key light, and made to physically EXIST by layered drop shadows
+   they cast onto the surface below. Nothing carved in; everything lifted out.
+
+   • --clay = var(--color-surface) is the SURFACE; objects are moulded from
+     --clay-warm (clay + ~20% accent) so they read colourful and pop off the bg.
+   • Realism = SHADOW + FORM, not texture.
+   • Compositor-safe: box-shadow only changes on a one-shot press; nothing loops.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.dd-screen {
+  --clay: var(--color-surface);
+  /* warm accent-tinted clay the objects are moulded from */
+  --clay-warm: color-mix(in srgb, var(--clay) 80%, rgb(var(--theme-particle-1-rgb)) 20%);
+  --obj-hi: color-mix(in srgb, var(--clay-warm) 62%, white 38%);
+  --obj-lo: color-mix(in srgb, var(--clay-warm) 78%, black 22%);
+  --obj-crest: rgba(255, 255, 255, 0.7);
+  --obj-underside: rgba(0, 0, 0, 0.09);
+  --obj-contact: rgba(0, 0, 0, 0.14);
+  --obj-cast: rgba(var(--theme-particle-1-rgb), 0.30);   /* wide, soft, warm */
+  --color-accent-on-clay: var(--color-lior-600);
+}
+
+/* ── The theme-coloured surface the objects sit on ─────────────────────── */
+.dd-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(135% 105% at 50% 36%, transparent 48%, color-mix(in srgb, var(--clay) 84%, rgb(var(--theme-particle-1-rgb)) 16%) 100%),
+    radial-gradient(110% 75% at 50% 8%, color-mix(in srgb, var(--clay) 80%, white 20%), transparent 55%),
+    var(--clay);
+}
+
+/* ── Stage ──────────────────────────────────────────────────────────────── */
+.dd-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  margin-inline: auto;
+  margin-bottom: 0.5rem;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+/* ── The wheel = a raised, domed disc floating above the surface ─────────── */
+.dd-bezel {
+  position: relative;
+  width: 96%;
+  height: 96%;
+  border-radius: 50%;
+  padding: 4%;
+  z-index: 1;
+  background: radial-gradient(circle at 36% 28%,
+      var(--obj-hi) 0%, var(--clay-warm) 52%, var(--obj-lo) 100%);
+  box-shadow:
+    0 3px 6px var(--obj-contact),
+    0 14px 26px -8px var(--obj-cast),
+    0 34px 60px -18px var(--obj-cast),
+    inset 0 3px 2px var(--obj-crest),
+    inset 0 -10px 18px var(--obj-underside);
+}
+
+/* ── The rotating face seated flush into the rim ────────────────────────── */
+.dd-wheel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 38% 30%,
+      var(--obj-hi), var(--clay-warm) 60%, var(--obj-lo) 100%);
+  transition: transform 3000ms cubic-bezier(0.16, 0.84, 0.28, 1);
+  will-change: transform;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--clay-warm) 74%, white 26%),
+    inset 0 4px 8px var(--obj-underside),
+    inset 0 -2px 5px rgba(255, 255, 255, 0.30);
+}
+.dd-slice-label {
+  fill: var(--color-text-primary);
+  paint-order: stroke;
+  stroke: rgba(20, 10, 16, 0.42);
+  stroke-width: 0.012;
+  stroke-linejoin: round;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.dd-bloom { animation: dd-bloom 0.65s ease-out forwards; }
+@keyframes dd-bloom {
+  0%   { opacity: 0; }
+  35%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── Centre hub = a raised knob sitting proud of the face ───────────────── */
+.dd-hub {
+  position: absolute;
+  z-index: 3;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--color-accent-on-clay);
+  background: radial-gradient(circle at 38% 30%,
+      var(--obj-hi), var(--clay-warm) 58%, var(--obj-lo));
+  box-shadow:
+    0 2px 4px var(--obj-contact),
+    0 9px 18px -6px var(--obj-cast),
+    inset 0 2px 1px var(--obj-crest),
+    inset 0 -4px 7px var(--obj-underside);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.dd-hub svg { filter: drop-shadow(0 1px 0 var(--obj-crest)); }
+.dd-hub:not(:disabled):active {
+  transform: translateY(2px) scale(0.96);
+  box-shadow:
+    0 1px 2px var(--obj-contact),
+    0 3px 7px -3px var(--obj-cast),
+    inset 0 2px 1px var(--obj-crest);
+}
+.dd-hub:disabled { cursor: default; }
+.dd-stage.is-spinning .dd-hub { color: var(--color-accent-on-clay); }
+
+/* ── Pointer = a real 3-D peg perched at 12 o'clock ─────────────────────── */
+.dd-pointer {
+  position: absolute;
+  top: -5%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  width: 15%;
+  height: 18%;
+  pointer-events: none;
+}
+.dd-ticker {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 18%;
+  filter:
+    drop-shadow(0 2px 2px var(--obj-contact))
+    drop-shadow(0 6px 7px var(--obj-cast));
+}
+.dd-ticker.dd-ticked { animation: dd-tick-settle 0.30s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes dd-tick-settle {
+  0%   { transform: rotate(0deg); }
+  45%  { transform: rotate(-8deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* ── Spin key = a confident COLOURED accent button that sinks on tap ────── */
+.dd-spin-btn {
+  width: 100%;
+  min-height: 58px;
+  border-radius: 1.6rem;
+  padding: 1rem 1.5rem;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  background: radial-gradient(130% 150% at 30% 18%,
+      color-mix(in srgb, var(--color-lior-400) 88%, white 12%),
+      var(--color-lior-500) 52%,
+      var(--color-lior-600));
+  box-shadow:
+    0 2px 4px var(--obj-contact),
+    0 14px 26px -8px var(--obj-cast),
+    0 6px 14px -5px rgba(var(--theme-particle-1-rgb), 0.4),
+    inset 0 2px 1px rgba(255, 255, 255, 0.4),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.14);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.dd-spin-btn:not(:disabled):active {
+  transform: translateY(3px) scale(0.985);
+  box-shadow:
+    0 1px 2px var(--obj-contact),
+    0 3px 7px -3px var(--obj-cast),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.dd-spin-btn:disabled {
+  opacity: 0.5;
+  filter: saturate(0.6);
+  box-shadow:
+    0 1px 2px var(--obj-contact),
+    0 4px 10px -6px var(--obj-cast);
+  cursor: not-allowed;
+}
+
+.dd-hint { color: var(--color-text-secondary); }
+
+/* ── Winner plaque = a raised, accent-rich object ───────────────────────── */
+.dd-winner {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.6rem;
+  padding: 1.05rem 1.5rem 1.2rem;
+  text-align: center;
+  background: radial-gradient(130% 150% at 32% 18%,
+      color-mix(in srgb, var(--clay) 58%, rgb(var(--theme-particle-1-rgb)) 42%),
+      color-mix(in srgb, var(--clay) 70%, rgb(var(--theme-particle-1-rgb)) 30%));
+  box-shadow:
+    0 2px 5px var(--obj-contact),
+    0 16px 30px -10px var(--obj-cast),
+    inset 0 2px 1px rgba(255, 255, 255, 0.5),
+    inset 0 -4px 8px var(--obj-underside);
+}
+.dd-winner-eyebrow {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text-primary) 70%, var(--clay) 30%);
+}
+.dd-winner-name {
+  margin-top: 0.18rem;
+  font-size: clamp(1.6rem, 7vw, 2rem);
+  line-height: 1.08;
+  font-weight: 700;
+  color: var(--color-accent-on-clay);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.dd-spark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, rgb(var(--theme-particle-2-rgb)) 60%, white 40%);
+  box-shadow: 0 0 5px rgba(var(--theme-particle-1-rgb), 0.7);
+  opacity: 0;
+  pointer-events: none;
+  animation: dd-spark 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes dd-spark {
+  0%   { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  35%  { opacity: 1; }
+  100% { transform: translate(var(--sx), var(--sy)) scale(1); opacity: 0; }
+}
+
+/* ── Add row = a raised pill field + a raised stud, both floating ───────── */
+.dd-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 1.1rem;
+  padding: 0.9rem 1.05rem;
+  background: radial-gradient(130% 200% at 30% 10%,
+      var(--obj-hi), var(--clay-warm) 70%);
+  box-shadow:
+    0 2px 4px var(--obj-contact),
+    0 9px 18px -8px var(--obj-cast),
+    inset 0 1.5px 0 var(--obj-crest),
+    inset 0 -3px 6px var(--obj-underside);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  outline: none;
+  transition: box-shadow 0.2s ease;
+}
+.dd-input::placeholder { color: var(--color-text-secondary); opacity: 0.7; }
+.dd-input:focus {
+  box-shadow:
+    0 2px 4px var(--obj-contact),
+    0 9px 18px -8px var(--obj-cast),
+    inset 0 1.5px 0 var(--obj-crest),
+    inset 0 -3px 6px var(--obj-underside),
+    inset 0 0 0 2px color-mix(in srgb, var(--clay) 50%, rgb(var(--theme-particle-1-rgb)) 50%);
+}
+.dd-add-btn {
+  flex: none;
+  width: 3.1rem;
+  height: 3.1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1.1rem;
+  color: #fff;
+  background: radial-gradient(circle at 38% 28%,
+      color-mix(in srgb, var(--color-lior-400) 88%, white 12%),
+      var(--color-lior-500) 55%, var(--color-lior-600));
+  box-shadow:
+    0 2px 4px var(--obj-contact),
+    0 9px 18px -7px var(--obj-cast),
+    inset 0 2px 1px rgba(255, 255, 255, 0.4),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.14);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.dd-add-btn svg { filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4)); }
+.dd-add-btn:not(:disabled):active {
+  transform: translateY(2px) scale(0.94);
+  box-shadow: 0 1px 2px var(--obj-contact), 0 3px 7px -3px var(--obj-cast), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.dd-add-btn:disabled { opacity: 0.5; filter: saturate(0.6); cursor: not-allowed; }
+
+/* ── Option chips = small raised pebbles floating on the surface ────────── */
+.dd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.85rem;
+  border-radius: 999px;
+  background: radial-gradient(120% 180% at 30% 15%,
+      var(--obj-hi), var(--clay-warm) 75%);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 0.94rem;
+  max-width: 100%;
+  box-shadow:
+    0 2px 4px var(--obj-contact),
+    0 7px 14px -6px var(--obj-cast),
+    inset 0 1.5px 0 var(--obj-crest),
+    inset 0 -2px 5px var(--obj-underside);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.dd-chip:active {
+  transform: translateY(2px) scale(0.96);
+  box-shadow: 0 1px 2px var(--obj-contact), 0 3px 7px -3px var(--obj-cast), inset 0 1.5px 0 var(--obj-crest);
+}
+.dd-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 9.5rem;
+}
+.dd-chip-dot {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.5),
+    0 1px 2px var(--obj-contact);
+}
+.dd-chip-del {
+  flex: none;
+  width: 1.65rem;
+  height: 1.65rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-text-secondary);
+  transition: color 0.2s ease, background 0.2s ease;
+}
+@media (hover: hover) {
+  .dd-chip-del:hover { color: var(--color-accent-on-clay); background: color-mix(in srgb, var(--clay-warm) 86%, black 8%); }
+}
+.dd-chip-del:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--clay) 45%, rgb(var(--theme-particle-1-rgb)) 55%);
+  outline-offset: 1px;
+}
+
+/* ── Empty state = a raised tray card ───────────────────────────────────── */
+.dd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2rem 1rem;
+  border-radius: 1.75rem;
+  background: radial-gradient(130% 160% at 32% 16%, var(--obj-hi), var(--clay-warm) 72%);
+  box-shadow:
+    0 2px 5px var(--obj-contact),
+    0 12px 24px -10px var(--obj-cast),
+    inset 0 2px 1px var(--obj-crest),
+    inset 0 -4px 8px var(--obj-underside);
+}
+.dd-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 3.75rem;
+  height: 3.75rem;
+  margin-bottom: 0.9rem;
+  border-radius: 50%;
+  color: var(--color-accent-on-clay);
+  background: radial-gradient(circle at 38% 30%, var(--obj-hi), var(--clay-warm) 62%);
+  box-shadow:
+    0 2px 4px var(--obj-contact),
+    0 7px 14px -6px var(--obj-cast),
+    inset 0 1.5px 1px var(--obj-crest),
+    inset 0 -3px 6px var(--obj-underside);
+}
+.dd-empty-icon svg { filter: drop-shadow(0 1px 0 var(--obj-crest)); }
+.dd-empty-title { font-size: 0.875rem; font-weight: 700; color: var(--color-text-primary); margin-bottom: 0.2rem; }
+.dd-empty-sub { font-size: 0.75rem; font-weight: 500; color: var(--color-text-secondary); }
+
+/* ── Dark theme: elevation via glow + crest, accent stays legible ────────── */
+[data-theme="starry-night"] .dd-screen {
+  --color-accent-on-clay: var(--color-lior-300);
+  --clay-warm: color-mix(in srgb, var(--clay) 76%, rgb(var(--theme-particle-1-rgb)) 24%);
+  --obj-crest: rgba(173, 180, 255, 0.32);
+  --obj-contact: rgba(0, 0, 0, 0.5);
+  --obj-cast: rgba(var(--theme-particle-1-rgb), 0.36);
+}
+
+/* ── prefers-reduced-motion: wheel still rotates to the result ──────────── */
+@media (prefers-reduced-motion: reduce) {
+  .dd-ticker.dd-ticked { animation: none; }
+  .dd-spark,
+  .dd-bloom { display: none; }
+}
+
+/* ── Performance tiers: collapse layered shadows to one grounding shadow ─── */
+[data-tier="low"] .dd-bezel,
+[data-tier="css-only"] .dd-bezel,
+[data-tier="low"] .dd-hub,
+[data-tier="css-only"] .dd-hub,
+[data-tier="low"] .dd-spin-btn,
+[data-tier="css-only"] .dd-spin-btn,
+[data-tier="low"] .dd-add-btn,
+[data-tier="css-only"] .dd-add-btn,
+[data-tier="low"] .dd-chip,
+[data-tier="css-only"] .dd-chip,
+[data-tier="low"] .dd-winner,
+[data-tier="css-only"] .dd-winner,
+[data-tier="low"] .dd-input,
+[data-tier="css-only"] .dd-input,
+[data-tier="low"] .dd-empty,
+[data-tier="css-only"] .dd-empty,
+[data-tier="low"] .dd-empty-icon,
+[data-tier="css-only"] .dd-empty-icon { box-shadow: var(--shadow-md) !important; }
+[data-tier="low"] .dd-spark,
+[data-tier="css-only"] .dd-spark,
+[data-tier="low"] .dd-bloom,
+[data-tier="css-only"] .dd-bloom { display: none; }

@@ -569,7 +569,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
             return await Promise.race([
                 compressImage(file),
                 new Promise<string>((_, reject) => {
-                    timeoutId = setTimeout(() => reject(new Error('Image compression timed out')), 2500);
+                    timeoutId = setTimeout(() => reject(new Error('Image compression timed out')), 4500);
                 }),
             ]);
         } catch {
