@@ -10,7 +10,6 @@ import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle, DISSOLVE_VIBRATION } from '../components/HeartbeatParticles';
 import { DailyQuestion } from '../components/DailyQuestion';
-import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
@@ -923,9 +922,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </TiltCard>
             </ScrollReveal>
-
-            {/* ── PARTNER INSIGHT WHISPER ────────────────────────────── */}
-            <InsightWhisper setView={setView} />
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
             {onThisDayMemory && (
