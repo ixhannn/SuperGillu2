@@ -18,27 +18,31 @@ const staggerItem: Variants = {
   show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] } }
 };
 
-// Slice enamel is the ONLY saturated colour and is fully theme-token driven, so
-// the dish re-stains with every accent (rose, teal, ocean, starry-night, …).
-// Every structural material (walnut, brass, chrome, glass) is a fixed neutral
-// colour defined in dinner-decider.css — deriving "brass" from a theme token
-// would turn the metal cyan/indigo on most themes.
-// The two palest tokens (particle-3 / particle-5) are intentionally avoided —
-// white labels can't read on near-white enamel. The cycle stays in the
-// saturated 1/2/4 tokens, varied by opacity, for legibility + colour rhythm.
+// "Soft Clay": the whole screen is ONE moulded slab of the theme colour
+// (--clay = --color-surface). Slices aren't a separate material — they're the
+// same clay with an alternating tonal emboss + a *muted* per-slice accent rim
+// tint (14%). Accent is rationed; only the winning wedge goes saturated.
 const SLICE_TINTS = [
-  'rgba(var(--theme-particle-1-rgb),0.96)',
-  'rgba(var(--theme-particle-2-rgb),0.86)',
-  'rgba(var(--theme-particle-4-rgb),0.90)',
-  'rgba(var(--theme-particle-1-rgb),0.78)',
-  'rgba(var(--theme-particle-2-rgb),0.96)',
-  'rgba(var(--theme-particle-4-rgb),0.80)',
+  'rgba(var(--theme-particle-1-rgb),1)',
+  'rgba(var(--theme-particle-2-rgb),1)',
+  'rgba(var(--theme-particle-4-rgb),1)',
+  'rgba(var(--theme-particle-1-rgb),1)',
+  'rgba(var(--theme-particle-2-rgb),1)',
+  'rgba(var(--theme-particle-4-rgb),1)',
 ];
-// Deepen each tint toward fired vitreous enamel ("deep, not candy"). Combined
-// with the strong dark label outline below, this keeps every slice's white
-// label legible on all 9 themes without muddying the warm colour.
-const tintFor = (i: number) =>
+const accentTint = (i: number) =>
   `color-mix(in srgb, ${SLICE_TINTS[i % SLICE_TINTS.length]} 82%, var(--color-text-primary) 18%)`;
+// Clay slice fill: alternating ±10% tonal emboss carrying a strong 48% accent so
+// the segmented face reads richly colourful (warm, deep — not candy), while dark
+// labels stay well above AA (dark text on a mid-rose enamel ≈ 8:1).
+const sliceFill = (i: number) => {
+  const tonal = i % 2 === 0
+    ? 'color-mix(in srgb, var(--clay) 90%, white 10%)'
+    : 'color-mix(in srgb, var(--clay) 90%, black 10%)';
+  return `color-mix(in srgb, ${tonal} 52%, ${accentTint(i)} 48%)`;
+};
+// The winning wedge — the deepest, most saturated field on the screen.
+const WINNER_FILL = 'color-mix(in srgb, var(--clay) 32%, rgb(var(--theme-particle-1-rgb)) 68%)';
 
 // Deterministic spark layout for the winner reveal (no per-frame layout cost).
 const SPARKS = [
@@ -231,7 +235,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
   };
 
   // Pre-compute wedge geometry once so we can paint the disc in ordered layers
-  // (fills → enamel deepening → labels → pegs) without recomputing trig.
+  // (fills → deepening → labels) without recomputing trig.
   const wedges = displayedOptions.map((opt, i) => {
     const startAngle = i / displayedOptions.length;
     const endAngle = (i + 1) / displayedOptions.length;
@@ -244,18 +248,20 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
     const [labelX, labelY] = getCoordinatesForPercent(midAngle);
     return {
       opt, i, pathData,
-      pegX: startX, pegY: startY,
       labelX, labelY,
       textRotation: midAngle * 360 + 90,
       isWinning: winner !== null && opt.id === winnerId,
     };
   });
-  const showPegs = displayedOptions.length <= 12;
 
   const stageClass = `dd-stage${isSpinning ? ' is-spinning' : ''}${winner ? ' has-winner' : ''}`;
 
   return (
-    <div className="min-h-screen px-6 pt-8 pb-32">
+    <div className="dd-screen relative min-h-screen px-6 pt-8 pb-32">
+      {/* Opaque tabletop — replaces the app's translucent ambient backdrop so
+          the dial rests on a real surface (skeuomorphism needs a ground). */}
+      <div className="dd-surface" aria-hidden="true" />
+
       <ViewHeader
         title="Dinner Decider"
         subtitle="Give it a spin to settle tonight"
@@ -263,40 +269,23 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
         variant="simple"
       />
 
-      <div className="dd-skeu mx-auto w-full max-w-[22rem] flex flex-col items-center pt-2">
+      <div className="dd-skeu relative z-10 mx-auto w-full max-w-[22rem] flex flex-col items-center pt-2">
 
         {/* ── The Lazy-Susan ───────────────────────────────────────────── */}
         <div className={stageClass}>
-          <div className="dd-shadow" aria-hidden="true" />
-          <div className="dd-glow" aria-hidden="true" />
-
-          {/* Leather-and-brass ticker at 12 o'clock */}
+          {/* Clay teardrop pointer moulded at the crater lip */}
           <div className="dd-pointer" aria-hidden="true">
             <div className={`dd-ticker${winner ? ' dd-ticked' : ''}`}>
-              <svg viewBox="0 0 44 58" className="w-full h-full">
-                <defs>
-                  <linearGradient id="dd-brass-v" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stopColor="#f6e3a8" />
-                    <stop offset="0.5" stopColor="#d9b24a" />
-                    <stop offset="1" stopColor="#9c7a23" />
-                  </linearGradient>
-                  <linearGradient id="dd-leather" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stopColor="#6e4a38" />
-                    <stop offset="1" stopColor="#492e23" />
-                  </linearGradient>
-                </defs>
-                {/* stitched-leather hinge tongue */}
-                <rect x="13" y="2" width="18" height="17" rx="4.5" fill="url(#dd-leather)" />
-                <line x1="16.5" y1="6.5" x2="27.5" y2="6.5" stroke="rgba(255,221,184,0.42)" strokeWidth="0.9" strokeDasharray="1.6 1.6" strokeLinecap="round" />
-                <line x1="16.5" y1="14.5" x2="27.5" y2="14.5" stroke="rgba(255,221,184,0.42)" strokeWidth="0.9" strokeDasharray="1.6 1.6" strokeLinecap="round" />
-                {/* brass pawl */}
-                <path d="M22 54 L13.5 24 Q12.4 17.5 22 16.5 Q31.6 17.5 30.5 24 Z" fill="url(#dd-brass-v)" stroke="rgba(78,52,10,0.6)" strokeWidth="0.8" strokeLinejoin="round" />
-                <ellipse cx="20.5" cy="23" rx="4.6" ry="2.8" fill="rgba(255,255,255,0.55)" />
+              <svg viewBox="0 0 40 50" className="w-full h-full">
+                {/* raised clay peg: domed body + accent tip, pointing into the wheel */}
+                <path d="M20 48 Q4 26 20 4 Q36 26 20 48 Z" style={{ fill: 'var(--obj-hi)' }} />
+                <path d="M20 48 Q9 30 20 16 Q31 30 20 48 Z" style={{ fill: 'color-mix(in srgb, var(--clay) 22%, rgb(var(--theme-particle-1-rgb)) 78%)' }} />
+                <ellipse cx="17" cy="16" rx="4.5" ry="3" style={{ fill: 'rgba(255,255,255,0.5)' }} />
               </svg>
             </div>
           </div>
 
-          {/* Walnut rim + rotating enamel disc */}
+          {/* Wheel crater + rotating clay disc */}
           <div className="dd-bezel">
             <div
               className="dd-wheel"
@@ -315,18 +304,18 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                   </radialGradient>
                 </defs>
 
-                {/* Layer 4a/4d — fired enamel slices + cloisonné dividers */}
+                {/* Clay slices — alternating tonal emboss + engraved groove */}
                 {wedges.map(w => (
                   <g key={`fill-${w.opt.id}`}>
                     <path
                       d={w.pathData}
-                      fill={tintFor(w.i)}
-                      stroke="rgba(38,22,14,0.45)"
-                      strokeWidth="0.014"
+                      fill={w.isWinning ? WINNER_FILL : sliceFill(w.i)}
+                      stroke="color-mix(in srgb, var(--clay) 62%, black 38%)"
+                      strokeWidth="0.013"
                       style={{
                         paintOrder: 'stroke',
                         opacity: winner && !w.isWinning ? 0.45 : 1,
-                        transition: 'opacity 0.5s ease',
+                        transition: 'opacity 0.5s ease, fill 0.4s ease',
                       }}
                     />
                     {w.isWinning && (
@@ -335,11 +324,11 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                   </g>
                 ))}
 
-                {/* Layer 4c — per-disc fired-enamel deepening toward the rim */}
+                {/* subtle dome deepening toward the rim */}
                 <circle cx="0" cy="0" r="1" fill="url(#dd-deepen)" style={{ pointerEvents: 'none' }} />
 
-                {/* Layer 4e — labels (white + dark stroke = legible on every theme) */}
-                {wedges.map(w => (
+                {/* labels — dark text-primary (AA by construction); winner is label-free */}
+                {wedges.map(w => (winner && w.isWinning) ? null : (
                   <text
                     key={`label-${w.opt.id}`}
                     x={w.labelX * 0.62}
@@ -350,7 +339,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                     transform={`rotate(${w.textRotation}, ${w.labelX * 0.62}, ${w.labelY * 0.62})`}
                     className="dd-slice-label"
                     style={{
-                      opacity: winner && !w.isWinning ? 0.5 : 1,
+                      opacity: winner ? 0.5 : 1,
                       transition: 'opacity 0.5s ease',
                       pointerEvents: 'none',
                     }}
@@ -358,22 +347,11 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
                     {w.opt.text.length > 13 ? `${w.opt.text.slice(0, 13)}…` : w.opt.text}
                   </text>
                 ))}
-
-                {/* Brass ratchet pegs at each slice boundary */}
-                {showPegs && wedges.map(w => (
-                  <g key={`peg-${w.opt.id}`} style={{ pointerEvents: 'none' }}>
-                    <circle cx={w.pegX * 0.93} cy={w.pegY * 0.93} r="0.026" fill="#c79a3e" stroke="rgba(60,40,8,0.55)" strokeWidth="0.006" />
-                    <circle cx={w.pegX * 0.93 - 0.008} cy={w.pegY * 0.93 - 0.008} r="0.008" fill="rgba(255,250,230,0.85)" />
-                  </g>
-                ))}
               </svg>
             </div>
           </div>
 
-          {/* Layer 5 — fixed domed-glass crystal */}
-          <div className="dd-gloss" aria-hidden="true" />
-
-          {/* Layer 6 — turned-brass centre knob (tap to spin) */}
+          {/* Centre clay hub (tap to spin) */}
           <button
             type="button"
             className="dd-hub"
@@ -466,7 +444,7 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
             >
               {options.map((opt, i) => (
                 <motion.div key={opt.id} layout variants={staggerItem} className="dd-chip">
-                  <span className="dd-chip-dot" style={{ background: tintFor(i) }} />
+                  <span className="dd-chip-dot" style={{ background: `color-mix(in srgb, var(--clay) 30%, ${accentTint(i)} 70%)` }} />
                   <span className="dd-chip-text">{opt.text}</span>
                   <button
                     onClick={() => handleDelete(opt.id)}
