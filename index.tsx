@@ -10,6 +10,7 @@ import './styles/native-polish.css';
 import './styles/performance.css';
 import './styles/premium-hub.css';
 import './styles/polish-fixes.css';
+import './styles/dinner-decider.css';
 import { initGlobalGestures } from './utils/gesture';
 import { startRevealSafety } from './utils/revealSafety';
 import { ThemeService } from './services/theme';
