@@ -1,10 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { ViewState } from '../types';
-import { StorageService, storageEventTarget } from '../services/storage';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Droplets, Sparkles, Heart } from 'lucide-react';
-import { feedback } from '../utils/feedback';
-import { isSameDay, formatDistanceToNow } from 'date-fns';
+import { StorageService } from '../services/storage';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Heart } from 'lucide-react';
 import { daysTogetherFrom } from '../shared/dateOnly.js';
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -22,17 +20,16 @@ interface BonsaiBloomProps {
 
 /* ── Constants ──────────────────────────────────────────────────── */
 
-const HOLD_DURATION_MS = 2000;
-const HOLD_TICK_MS = 25;
-const SYNERGY_XP = 40;
-const SOLO_XP = 20;
+// The tree reaches full bloom over roughly two years of being together.
+// Growth is a quiet consequence of time, never an action.
+const FULL_BLOOM_DAYS = 730;
 
 const STAGES = [
     { name: 'Seed',          threshold: 0,    tagline: 'A tiny promise in quiet earth' },
     { name: 'Sprout',        threshold: 0.12, tagline: 'First light finds your stem' },
     { name: 'Sapling',       threshold: 0.28, tagline: 'Roots deepen, leaves unfurl' },
     { name: 'Young Tree',    threshold: 0.45, tagline: 'Growing stronger every day' },
-    { name: 'Flourishing',   threshold: 0.62, tagline: 'Your care made this possible' },
+    { name: 'Flourishing',   threshold: 0.62, tagline: 'Time has made this possible' },
     { name: 'In Bloom',      threshold: 0.80, tagline: 'Every petal, a shared memory' },
     { name: 'Eternal Bloom', threshold: 0.94, tagline: 'Love made visible' },
 ];
@@ -46,7 +43,7 @@ function getCurrentStage(growth: number) {
 
 /* ── Gentle Floating Particles ─────────────────────────────────── */
 
-const FloatingParticles: React.FC<{ count: number; isSynergy: boolean }> = React.memo(({ count, isSynergy }) => {
+const FloatingParticles: React.FC<{ count: number }> = React.memo(({ count }) => {
     const particles = useMemo(() =>
         Array.from({ length: count }, (_, i) => ({
             id: i,
@@ -70,9 +67,7 @@ const FloatingParticles: React.FC<{ count: number; isSynergy: boolean }> = React
                         top: `${p.y}%`,
                         width: p.size,
                         height: p.size,
-                        background: isSynergy
-                            ? `radial-gradient(circle, rgba(244,114,182,${0.2 + (p.id % 3) * 0.1}), transparent 70%)`
-                            : `radial-gradient(circle, rgba(167,139,250,${0.15 + (p.id % 3) * 0.08}), transparent 70%)`,
+                        background: `radial-gradient(circle, rgba(167,139,250,${0.15 + (p.id % 3) * 0.08}), transparent 70%)`,
                     }}
                     animate={{
                         x: [0, p.driftX, 0],
@@ -92,7 +87,7 @@ const FloatingParticles: React.FC<{ count: number; isSynergy: boolean }> = React
     );
 });
 
-/* ── Falling Petals (synergy only) ─────────────────────────────── */
+/* ── Falling Petals ────────────────────────────────────────────── */
 
 const FallingPetals: React.FC = React.memo(() => {
     const petals = useMemo(() =>
@@ -138,170 +133,11 @@ const FallingPetals: React.FC = React.memo(() => {
     );
 });
 
-/* ── Water Drops (during watering only) ────────────────────────── */
-
-const WaterDrops: React.FC<{ growth: number; isSynergy: boolean }> = React.memo(({ growth, isSynergy }) => {
-    const stage = getCurrentStage(growth);
-    const streamCount = stage.index >= 5 ? 5 : stage.index >= 3 ? 4 : 3;
-    const streams = useMemo(() =>
-        Array.from({ length: streamCount }, (_, i) => ({
-            id: i,
-            offset: -28 + (i / Math.max(1, streamCount - 1)) * 56 + (i % 2 === 0 ? -5 : 5),
-            top: 8 + (i % 2) * 6,
-            height: 120 + growth * 48 + (i % 3) * 10,
-            width: 4 + (i % 2) * 1.2,
-            delay: i * 0.08,
-            drift: i % 2 === 0 ? -6 : 6,
-        })),
-        [growth, streamCount],
-    );
-    const splashes = useMemo(() =>
-        Array.from({ length: 10 }, (_, i) => ({
-            id: i,
-            offset: -34 + ((i * 11) % 68),
-            size: 3 + (i % 3),
-            lift: 10 + (i % 4) * 7,
-            delay: (i % 5) * 0.08,
-            drift: i % 2 === 0 ? -10 : 10,
-        })), []);
-
-    return (
-        <div className="absolute inset-x-0 top-0 bottom-4 overflow-hidden pointer-events-none" style={{ zIndex: 12 }}>
-            {streams.map(stream => (
-                <motion.div
-                    key={`stream-${stream.id}`}
-                    className="absolute"
-                    style={{
-                        left: '50%',
-                        top: stream.top,
-                        width: stream.width,
-                        height: stream.height,
-                        marginLeft: stream.offset,
-                        borderRadius: 999,
-                        background: isSynergy
-                            ? 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(219,234,254,0.92) 18%, rgba(167,139,250,0.42) 58%, rgba(147,197,253,0.04))'
-                            : 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(191,219,254,0.9) 20%, rgba(125,211,252,0.48) 62%, rgba(147,197,253,0.04))',
-                        boxShadow: '0 0 8px rgba(147,197,253,0.22)',
-                    }}
-                    animate={{
-                        y: [-18, 8, -8],
-                        x: [0, stream.drift, 0],
-                        scaleY: [0.72, 1.08, 0.9],
-                        opacity: [0, 0.95, 0.78],
-                    }}
-                    transition={{
-                        duration: 0.72,
-                        delay: stream.delay,
-                        repeat: Infinity,
-                        ease: 'easeInOut',
-                    }}
-                />
-            ))}
-
-            {splashes.map(splash => (
-                <motion.div
-                    key={`splash-${splash.id}`}
-                    className="absolute rounded-full"
-                    style={{
-                        left: '50%',
-                        bottom: 34,
-                        width: splash.size,
-                        height: splash.size * 1.3,
-                        marginLeft: splash.offset,
-                        background: 'radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95), rgba(147,197,253,0.45))',
-                    }}
-                    animate={{
-                        y: [0, -splash.lift, 0],
-                        x: [0, splash.drift, 0],
-                        scale: [0.5, 1, 0.2],
-                        opacity: [0, 0.88, 0],
-                    }}
-                    transition={{
-                        duration: 0.78,
-                        delay: splash.delay,
-                        repeat: Infinity,
-                        ease: 'easeOut',
-                    }}
-                />
-            ))}
-
-            <motion.div
-                className="absolute left-1/2 -translate-x-1/2 rounded-full"
-                animate={{ scaleX: [0.75, 1.18, 0.9], scaleY: [0.6, 1, 0.72], opacity: [0.14, 0.38, 0.12] }}
-                transition={{ duration: 0.9, repeat: Infinity, ease: 'easeOut' }}
-                style={{
-                    bottom: 22,
-                    width: 126,
-                    height: 26,
-                    border: '1px solid rgba(191,219,254,0.55)',
-                    boxShadow: '0 0 18px rgba(125,211,252,0.18)',
-                }}
-            />
-
-            <motion.div
-                className="absolute left-1/2 -translate-x-1/2 rounded-full"
-                animate={{ scale: [0.82, 1.14, 0.9], opacity: [0.08, 0.2, 0.08] }}
-                transition={{ duration: 0.74, repeat: Infinity, ease: 'easeInOut' }}
-                style={{
-                    bottom: 26,
-                    width: 96,
-                    height: 28,
-                    background: isSynergy
-                        ? 'radial-gradient(ellipse, rgba(196,181,253,0.2), rgba(147,197,253,0.08) 55%, transparent 72%)'
-                        : 'radial-gradient(ellipse, rgba(186,230,253,0.2), rgba(147,197,253,0.08) 55%, transparent 72%)',
-                    filter: 'blur(5px)',
-                }}
-            />
-        </div>
-    );
-});
-
-/* ── Completion Burst ──────────────────────────────────────────── */
-
-const CompletionBurst: React.FC<{ active: boolean }> = React.memo(({ active }) => {
-    const particles = useMemo(() =>
-        Array.from({ length: 20 }, (_, i) => {
-            const angle = (i / 20) * Math.PI * 2;
-            const dist = 50 + (i % 3) * 25;
-            return {
-                id: i,
-                tx: Math.cos(angle) * dist,
-                ty: Math.sin(angle) * dist - 30,
-                size: 3 + (i % 3) * 2,
-                hue: i % 2 === 0 ? 340 : 280,
-                delay: (i % 4) * 0.03,
-            };
-        }), []);
-
-    if (!active) return null;
-
-    return (
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center" style={{ zIndex: 20 }}>
-            {particles.map(p => (
-                <motion.div
-                    key={p.id}
-                    className="absolute rounded-full"
-                    initial={{ x: 0, y: 60, scale: 0, opacity: 1 }}
-                    animate={{ x: p.tx, y: p.ty, scale: [0, 1.2, 0], opacity: [1, 0.8, 0] }}
-                    transition={{ duration: 0.8, delay: p.delay, ease: 'easeOut' }}
-                    style={{
-                        width: p.size,
-                        height: p.size,
-                        background: `hsla(${p.hue}, 65%, 72%, 0.8)`,
-                    }}
-                />
-            ))}
-        </div>
-    );
-});
-
 /* ── Love Tree ─────────────────────────────────────────────────── */
 
 const LoveTree: React.FC<{
     growth: number;
-    isSynergy: boolean;
-    isWatering: boolean;
-}> = React.memo(({ growth, isSynergy, isWatering }) => {
+}> = React.memo(({ growth }) => {
     const stage = getCurrentStage(growth);
     const stageBaseThreshold = STAGES[stage.index].threshold;
     const stageNextThreshold = STAGES[stage.index + 1]?.threshold ?? 1;
@@ -322,8 +158,8 @@ const LoveTree: React.FC<{
     const budCount = stage.index >= 3 ? 4 + matureStage * 4 + Math.round(stageProgress * 4) : 0;
     const hangingBloomCount = stage.index >= 5 ? 4 + (stage.index - 5) * 3 : 0;
     const fireflyCount = stage.index === 6 ? 8 : stage.index === 5 ? 3 : 0;
-    const leafHue = isSynergy ? 142 : 128 + fullTreeGrowth * 24;
-    const bloomHue = isSynergy ? 335 : 345;
+    const leafHue = 128 + fullTreeGrowth * 24;
+    const bloomHue = 345;
 
     const branches = useMemo(() => {
         if (stage.index < 2 || fullTreeGrowth < 0.08) return [];
@@ -479,9 +315,8 @@ const LoveTree: React.FC<{
                 <motion.div
                     key={`blade-${blade.id}`}
                     className="absolute left-1/2 origin-bottom rounded-full"
-                    animate={{ y: isWatering ? -1 : 0, rotate: [blade.rotate, blade.rotate + (blade.rotate > 0 ? 4 : -4), blade.rotate] }}
+                    animate={{ rotate: [blade.rotate, blade.rotate + (blade.rotate > 0 ? 4 : -4), blade.rotate] }}
                     transition={{
-                        y: { type: 'spring', stiffness: 180, damping: 16 },
                         rotate: { duration: 2.8 + (blade.id % 3) * 0.3, repeat: Infinity, ease: 'easeInOut' },
                     }}
                     style={{
@@ -499,17 +334,15 @@ const LoveTree: React.FC<{
                 <motion.div
                     className="absolute bottom-5 left-1/2 -translate-x-1/2"
                     animate={{
-                        opacity: isWatering ? [0.14, 0.32, 0.14] : [0.08, 0.16, 0.08],
-                        scale: isWatering ? [0.94, 1.08, 0.94] : [1, 1.03, 1],
+                        opacity: [0.08, 0.16, 0.08],
+                        scale: [1, 1.03, 1],
                     }}
-                    transition={{ duration: isWatering ? 0.8 : 3.2, repeat: Infinity, ease: 'easeInOut' }}
+                    transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
                     style={{
                         width: 140,
                         height: 34,
                         borderRadius: '50%',
-                        background: isSynergy
-                            ? 'radial-gradient(ellipse, rgba(244,114,182,0.16), transparent 65%)'
-                            : 'radial-gradient(ellipse, rgba(167,139,250,0.14), transparent 65%)',
+                        background: 'radial-gradient(ellipse, rgba(167,139,250,0.14), transparent 65%)',
                         filter: 'blur(7px)',
                     }}
                 />
@@ -527,11 +360,11 @@ const LoveTree: React.FC<{
                         key={`root-${root.angle}`}
                         className="absolute left-1/2 origin-left"
                         animate={{
-                            opacity: isWatering ? [0.2, 0.36, 0.2] : 0.22 + index * 0.03,
+                            opacity: 0.22 + index * 0.03,
                             scaleX: 0.74 + seedProgress * 0.5,
                         }}
                         transition={{
-                            opacity: { duration: isWatering ? 0.9 : 0.2, repeat: isWatering ? Infinity : 0, ease: 'easeInOut' },
+                            opacity: { duration: 0.2 },
                             scaleX: { type: 'spring', stiffness: 50, damping: 16 },
                         }}
                         style={{
@@ -553,11 +386,9 @@ const LoveTree: React.FC<{
                         <motion.div
                             className="absolute left-1/2"
                             animate={{
-                                y: isWatering ? -3 : 0,
                                 rotate: [-34, -38, -34],
                             }}
                             transition={{
-                                y: { type: 'spring', stiffness: 180, damping: 14 },
                                 rotate: { duration: 2.6, repeat: Infinity, ease: 'easeInOut' },
                             }}
                             style={{
@@ -573,11 +404,9 @@ const LoveTree: React.FC<{
                         <motion.div
                             className="absolute left-1/2"
                             animate={{
-                                y: isWatering ? -2 : 0,
                                 rotate: [32, 36, 32],
                             }}
                             transition={{
-                                y: { type: 'spring', stiffness: 180, damping: 14 },
                                 rotate: { duration: 2.4, repeat: Infinity, ease: 'easeInOut' },
                             }}
                             style={{
@@ -595,12 +424,10 @@ const LoveTree: React.FC<{
                     <motion.div
                         className="absolute left-1/2"
                         animate={{
-                            y: isWatering ? -2 : 0,
                             rotate: [-18, -14, -18],
                             scale: isSeedStage ? [1, 1.02, 1] : 1,
                         }}
                         transition={{
-                            y: { type: 'spring', stiffness: 180, damping: 14 },
                             rotate: { duration: 2.8, repeat: Infinity, ease: 'easeInOut' },
                             scale: { duration: 3, repeat: Infinity, ease: 'easeInOut' },
                         }}
@@ -629,11 +456,9 @@ const LoveTree: React.FC<{
                         initial={{ scaleY: 0 }}
                         animate={{
                             scaleY: 0.2 + sproutProgress * 0.8,
-                            y: isWatering ? -3 : 0,
                         }}
                         transition={{
                             scaleY: { type: 'spring', stiffness: 60, damping: 16 },
-                            y: { type: 'spring', stiffness: 180, damping: 14 },
                         }}
                         style={{
                             width: 5,
@@ -655,11 +480,9 @@ const LoveTree: React.FC<{
                             initial={{ scale: 0 }}
                             animate={{
                                 scale: 0.4 + sproutProgress * 0.6,
-                                y: isWatering ? -2 : 0,
                             }}
                             transition={{
                                 scale: { type: 'spring', stiffness: 70, damping: 14, delay: leaf.delay },
-                                y: { type: 'spring', stiffness: 180, damping: 14 },
                             }}
                             style={{
                                 bottom: leaf.y,
@@ -667,7 +490,7 @@ const LoveTree: React.FC<{
                                 height: leaf.size * 0.62,
                                 marginLeft: leaf.side < 0 ? -leaf.size - 1 : 1,
                                 borderRadius: '60% 0 60% 0',
-                                background: `linear-gradient(135deg, hsl(${isSynergy ? 140 : 122}, 48%, 70%), hsl(${isSynergy ? 150 : 128}, 45%, 46%))`,
+                                background: `linear-gradient(135deg, hsl(122, 48%, 70%), hsl(128, 45%, 46%))`,
                                 transform: `rotate(${leaf.angle}deg)`,
                                 boxShadow: '0 3px 6px rgba(0,0,0,0.06)',
                             }}
@@ -699,12 +522,10 @@ const LoveTree: React.FC<{
                     initial={{ height: 0 }}
                     animate={{
                         height: trunkH,
-                        y: isWatering ? -2 : 0,
                         rotate: trunkLean,
                     }}
                     transition={{
                         height: { type: 'spring', stiffness: 40, damping: 16 },
-                        y: { type: 'spring', stiffness: 200, damping: 14 },
                         rotate: { type: 'spring', stiffness: 80, damping: 14 },
                     }}
                     style={{
@@ -745,13 +566,9 @@ const LoveTree: React.FC<{
                     className="absolute left-1/2 -translate-x-1/2"
                     animate={{
                         scale: canopyScale,
-                        y: isWatering ? -4 : 0,
-                        rotate: isWatering ? [0, -1, 1, 0] : 0,
                     }}
                     transition={{
                         scale: { type: 'spring', stiffness: 40, damping: 16 },
-                        y: { type: 'spring', stiffness: 200, damping: 14 },
-                        rotate: { duration: 0.6, repeat: isWatering ? Infinity : 0, ease: 'easeInOut' },
                     }}
                     style={{
                         bottom: trunkH + 6 + matureStage * 2,
@@ -766,7 +583,7 @@ const LoveTree: React.FC<{
                             className="absolute"
                             animate={{
                                 rotate: [cluster.rotate, cluster.rotate + 3, cluster.rotate],
-                                y: isWatering ? [cluster.float, cluster.float + 2, cluster.float] : [cluster.float, cluster.float - 1, cluster.float],
+                                y: [cluster.float, cluster.float - 1, cluster.float],
                             }}
                             transition={{
                                 rotate: { duration: 5.2 + index * 0.4, repeat: Infinity, ease: 'easeInOut' },
@@ -801,9 +618,7 @@ const LoveTree: React.FC<{
                                 width: stage.index === 6 ? 190 : 164,
                                 height: stage.index === 6 ? 150 : 124,
                                 marginTop: -20,
-                                background: isSynergy
-                                    ? 'radial-gradient(ellipse, rgba(244,114,182,0.22), rgba(196,181,253,0.08) 58%, transparent 72%)'
-                                    : 'radial-gradient(ellipse, rgba(251,191,36,0.12), rgba(134,239,172,0.06) 58%, transparent 72%)',
+                                background: 'radial-gradient(ellipse, rgba(251,191,36,0.12), rgba(134,239,172,0.06) 58%, transparent 72%)',
                                 filter: 'blur(12px)',
                             }}
                         />
@@ -867,7 +682,6 @@ const LoveTree: React.FC<{
                                 marginTop: Math.sin(b.angle * Math.PI / 180) * b.distance * 0.6 + b.yOffset - b.size / 2 - 18,
                                 borderRadius: '50%',
                                 background: `radial-gradient(circle at 35% 35%, hsla(${bloomHue}, 75%, 82%, 0.9), hsla(${bloomHue}, 60%, 70%, 0.7))`,
-                                boxShadow: isSynergy ? `0 0 ${b.size}px rgba(244,114,182,0.3)` : undefined,
                             }}
                         />
                     ))}
@@ -924,44 +738,7 @@ const LoveTree: React.FC<{
                             }}
                         />
                     ))}
-
-                    {/* Synergy glow */}
-                    {isSynergy && (
-                        <motion.div
-                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                            animate={{ scale: [0.85, 1.1, 0.85], opacity: [0.15, 0.35, 0.15] }}
-                            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                            style={{
-                                width: 176, height: 150,
-                                borderRadius: '50%',
-                                background: 'radial-gradient(ellipse, rgba(244,114,182,0.25), transparent 55%)',
-                                filter: 'blur(12px)',
-                                marginTop: -22,
-                            }}
-                        />
-                    )}
                 </motion.div>
-            )}
-
-            {/* Watering stream and shimmer */}
-            {isWatering && (
-                <>
-                    <WaterDrops growth={growth} isSynergy={isSynergy} />
-                    <motion.div
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2"
-                        animate={{ opacity: [0.14, 0.42, 0.16], scale: [0.72, 1.16, 0.92] }}
-                        transition={{ duration: 0.82, repeat: Infinity, ease: 'easeOut' }}
-                        style={{
-                            width: 148,
-                            height: 34,
-                            borderRadius: '50%',
-                            background: isSynergy
-                                ? 'radial-gradient(ellipse, rgba(196,181,253,0.22), rgba(147,197,253,0.16) 52%, transparent 70%)'
-                                : 'radial-gradient(ellipse, rgba(147,197,253,0.24), rgba(186,230,253,0.16) 52%, transparent 70%)',
-                            filter: 'blur(9px)',
-                        }}
-                    />
-                </>
             )}
         </div>
     );
@@ -970,145 +747,32 @@ const LoveTree: React.FC<{
 /* ── Main Component ────────────────────────────────────────────── */
 
 export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
-    const [state, setState] = useState<BonsaiState>({ level: 1, xp: 0, myLastWatered: '', partnerLastWatered: '' });
-    const [holdProgress, setHoldProgress] = useState(0);
-    const [showBurst, setShowBurst] = useState(false);
-
-    const holdTimerRef = useRef<number | null>(null);
-    const resetTimerRef = useRef<number | null>(null);
-    const stateRef = useRef(state);
-    const completionRef = useRef(false);
-
     const profile = StorageService.getCoupleProfile();
-    const myName = profile.myName?.trim() || 'You';
-    const partnerName = profile.partnerName?.trim() || 'Partner';
 
     const daysTogether = useMemo(() => {
         if (!profile.anniversaryDate) return 0;
         return daysTogetherFrom(profile.anniversaryDate);
     }, [profile.anniversaryDate]);
 
-    const storage = StorageService as typeof StorageService & {
-        getBonsaiState?: () => BonsaiState;
-        saveBonsaiState?: (value: BonsaiState) => void;
-    };
-
-    useEffect(() => { stateRef.current = state; }, [state]);
-
-    useEffect(() => {
-        if (storage.getBonsaiState) setState(storage.getBonsaiState());
-        // rAF-coalesce: 'storage-update' fires for every table; without this
-        // we re-read + setState on each event in a sync burst. One read per
-        // frame is plenty and keeps the bonsai canvas from re-rendering in a
-        // tight loop during sync pulls.
-        let pending = false;
-        const handler = (): void => {
-            if (pending || !storage.getBonsaiState) return;
-            pending = true;
-            requestAnimationFrame(() => {
-                pending = false;
-                if (storage.getBonsaiState) setState(storage.getBonsaiState());
-            });
-        };
-        storageEventTarget.addEventListener('bonsaiUpdated', handler);
-        storageEventTarget.addEventListener('storage-update', handler);
-        return () => {
-            storageEventTarget.removeEventListener('bonsaiUpdated', handler);
-            storageEventTarget.removeEventListener('storage-update', handler);
-        };
-    }, []);
-
-    const clearTimers = useCallback(() => {
-        if (holdTimerRef.current !== null) { window.clearInterval(holdTimerRef.current); holdTimerRef.current = null; }
-        if (resetTimerRef.current !== null) { window.clearTimeout(resetTimerRef.current); resetTimerRef.current = null; }
-    }, []);
-
-    useEffect(() => () => clearTimers(), [clearTimers]);
-
     /* ── Derived state ──────────────────────────────────────── */
 
-    const isMyWatered = isSameDay(new Date(), state.myLastWatered ? new Date(state.myLastWatered) : new Date(0));
-    const isPartnerWatered = isSameDay(new Date(), state.partnerLastWatered ? new Date(state.partnerLastWatered) : new Date(0));
-    const isSynergy = isMyWatered && isPartnerWatered;
-    const normalizedGrowth = Math.min(1, (state.level * 100 + state.xp) / 2000);
-    const isWatering = holdProgress > 0 && holdProgress < 100;
+    // Growth is a quiet consequence of time spent together, never an action.
+    // A missing anniversary leaves the tree at its earliest seed stage.
+    const normalizedGrowth = Math.min(1, daysTogether / FULL_BLOOM_DAYS);
     const stage = getCurrentStage(normalizedGrowth);
-    const xpToNext = Math.max(0, 100 - state.xp);
-
-    /* ── Hold-to-water ritual ───────────────────────────────── */
-
-    const completeNurture = useCallback(() => {
-        if (completionRef.current) return;
-        completionRef.current = true;
-        clearTimers();
-        feedback.celebrate();
-        setShowBurst(true);
-        setTimeout(() => setShowBurst(false), 1000);
-
-        const current = stateRef.current;
-        const partnerWateredToday = isSameDay(new Date(), current.partnerLastWatered ? new Date(current.partnerLastWatered) : new Date(0));
-        let newXp = current.xp + (partnerWateredToday ? SYNERGY_XP : SOLO_XP);
-        let newLvl = current.level;
-        if (newXp >= 100) { newXp -= 100; newLvl += 1; }
-
-        const nextState: BonsaiState = {
-            ...current, level: newLvl, xp: newXp, myLastWatered: new Date().toISOString(),
-        };
-
-        if (storage.saveBonsaiState) storage.saveBonsaiState(nextState);
-        stateRef.current = nextState;
-        setState(nextState);
-        setHoldProgress(100);
-
-        resetTimerRef.current = window.setTimeout(() => {
-            setHoldProgress(0);
-            completionRef.current = false;
-        }, 1500);
-    }, [clearTimers, storage]);
-
-    const tickRef = useRef(0);
-    const startNurture = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-        if (isMyWatered || holdTimerRef.current !== null) return;
-        event.preventDefault();
-        feedback.tap();
-        clearTimers();
-        tickRef.current = 0;
-        completionRef.current = false;
-
-        holdTimerRef.current = window.setInterval(() => {
-            tickRef.current += 1;
-            const progress = Math.min(100, (tickRef.current * HOLD_TICK_MS / HOLD_DURATION_MS) * 100);
-            setHoldProgress(progress);
-
-            if ([25, 50, 75].some(m => Math.abs(progress - m) < 1.5 && progress >= m)) feedback.light();
-            if (progress >= 100 && !completionRef.current) window.setTimeout(() => completeNurture(), 0);
-        }, HOLD_TICK_MS);
-    }, [isMyWatered, clearTimers, completeNurture]);
-
-    const stopNurture = useCallback(() => {
-        if (completionRef.current) return;
-        clearTimers();
-        resetTimerRef.current = window.setTimeout(() => setHoldProgress(0), 250);
-    }, [clearTimers]);
+    const isBloom = stage.index >= 5;
 
     /* ── Render ──────────────────────────────────────────────── */
 
-    const RITUAL_RING = 2 * Math.PI * 50;
-
     return (
         <div className="relative w-full min-h-screen select-none" style={{
-            background: isSynergy
-                ? 'linear-gradient(180deg, #fdf2f8 0%, #fce7f3 25%, #fff1f2 50%, #fff7ed 80%, #fef3f2 100%)'
-                : 'linear-gradient(180deg, #faf5ff 0%, #f5f3ff 25%, #fdf2f8 50%, #fff7ed 80%, #fefce8 100%)',
+            background: 'linear-gradient(180deg, #faf5ff 0%, #f5f3ff 25%, #fdf2f8 50%, #fff7ed 80%, #fefce8 100%)',
         }}>
             {/* Floating particles */}
-            <FloatingParticles count={isSynergy ? 10 : 6} isSynergy={isSynergy} />
+            <FloatingParticles count={6} />
 
-            {/* Synergy petals */}
-            {isSynergy && <FallingPetals />}
-
-            {/* Completion celebration */}
-            <CompletionBurst active={showBurst} />
+            {/* Petals drift once the tree is in bloom */}
+            {isBloom && <FallingPetals />}
 
             {/* ── Content ────────────────────────────────────── */}
             <div
@@ -1144,25 +808,8 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
                             </span>
                         </div>
 
-                        {/* Level badge */}
-                        <div
-                            className="flex h-10 items-center rounded-2xl px-3 gap-1.5"
-                            style={{
-                                background: isSynergy
-                                    ? 'linear-gradient(135deg, rgba(244,114,182,0.12), rgba(168,85,247,0.08))'
-                                    : 'rgba(255,255,255,0.7)',
-                                border: isSynergy
-                                    ? '1px solid rgba(244,114,182,0.2)'
-                                    : '1px solid rgba(0,0,0,0.06)',
-                                backdropFilter: 'blur(12px)',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                            }}
-                        >
-                            {isSynergy && <Sparkles size={12} className="text-pink-400" />}
-                            <span className="text-[11px] font-bold text-gray-600">
-                                {isSynergy ? 'Bloom' : `Lv ${state.level}`}
-                            </span>
-                        </div>
+                        {/* Symmetry spacer */}
+                        <div className="h-10 w-10" />
                     </div>
 
                     {/* ── Stage title ─────────────────────────── */}
@@ -1205,260 +852,36 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
                             backdropFilter: 'blur(20px)',
                         }}
                     >
-                        <LoveTree growth={normalizedGrowth} isSynergy={isSynergy} isWatering={isWatering} />
-
-                        {/* Growth bar at bottom */}
-                        <div className="px-5 pb-4 pt-2">
-                            <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-medium">
-                                    Growth
-                                </span>
-                                <span className="text-[10px] text-gray-400 font-mono">
-                                    {Math.round(normalizedGrowth * 100)}%
-                                </span>
-                            </div>
-                            <div className="h-[4px] rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.05)' }}>
-                                <motion.div
-                                    className="h-full rounded-full"
-                                    animate={{ width: `${Math.max(normalizedGrowth * 100, 2)}%` }}
-                                    transition={{ type: 'spring', stiffness: 60, damping: 16 }}
-                                    style={{
-                                        background: isSynergy
-                                            ? 'linear-gradient(90deg, #f9a8d4, #c084fc)'
-                                            : 'linear-gradient(90deg, #86efac, #6ee7b7)',
-                                    }}
-                                />
-                            </div>
-                        </div>
+                        <LoveTree growth={normalizedGrowth} />
                     </div>
 
-                    {/* ── Watering Action ─────────────────────── */}
-                    <div className="mt-6">
-                        <AnimatePresence mode="wait">
-                            {!isMyWatered ? (
-                                <motion.div
-                                    key="water"
-                                    initial={{ opacity: 0, y: 16 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -10 }}
-                                    className="flex flex-col items-center"
-                                >
-                                    {/* Hold button */}
-                                    <motion.button
-                                        type="button"
-                                        aria-label="Hold to water"
-                                        onPointerDown={startNurture}
-                                        onPointerUp={stopNurture}
-                                        onPointerLeave={stopNurture}
-                                        onPointerCancel={stopNurture}
-                                        className="relative flex h-[6.5rem] w-[6.5rem] items-center justify-center rounded-full"
-                                        style={{ touchAction: 'none' }}
-                                        animate={{ scale: holdProgress > 0 ? 0.94 : 1 }}
-                                        transition={{ type: 'spring', stiffness: 200, damping: 16 }}
-                                    >
-                                        {/* Soft outer aura */}
-                                        <motion.div
-                                            className="absolute inset-[-8px] rounded-full"
-                                            animate={{
-                                                opacity: holdProgress > 0 ? [0.3, 0.5, 0.3] : [0.06, 0.12, 0.06],
-                                                scale: holdProgress > 0 ? [1, 1.06, 1] : [1, 1.03, 1],
-                                            }}
-                                            transition={{ duration: holdProgress > 0 ? 0.6 : 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                                            style={{
-                                                background: holdProgress > 0
-                                                    ? 'radial-gradient(circle, rgba(147,197,253,0.3), transparent 60%)'
-                                                    : 'radial-gradient(circle, rgba(196,181,253,0.15), transparent 65%)',
-                                            }}
-                                        />
-
-                                        {/* SVG progress ring */}
-                                        <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 112 112">
-                                            <circle cx="56" cy="56" r="50" stroke="rgba(0,0,0,0.05)" strokeWidth="2.5" fill="none" />
-                                            <motion.circle
-                                                cx="56" cy="56" r="50"
-                                                stroke="url(#ring-grad)"
-                                                strokeWidth="3"
-                                                fill="none"
-                                                strokeLinecap="round"
-                                                animate={{ strokeDashoffset: RITUAL_RING - (RITUAL_RING * holdProgress) / 100 }}
-                                                transition={{ duration: 0.05 }}
-                                                strokeDasharray={RITUAL_RING}
-                                            />
-                                            <defs>
-                                                <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                    <stop offset="0%" stopColor="#93c5fd" />
-                                                    <stop offset="50%" stopColor="#c4b5fd" />
-                                                    <stop offset="100%" stopColor="#f9a8d4" />
-                                                </linearGradient>
-                                            </defs>
-                                        </svg>
-
-                                        {/* Inner button face */}
-                                        <div
-                                            className="relative flex h-[5rem] w-[5rem] flex-col items-center justify-center rounded-full"
-                                            style={{
-                                                background: 'linear-gradient(180deg, #fff 0%, #f8f6ff 100%)',
-                                                border: '1px solid rgba(0,0,0,0.06)',
-                                                boxShadow: '0 4px 16px rgba(0,0,0,0.06), inset 0 1px 0 #fff',
-                                            }}
-                                        >
-                                            <motion.div
-                                                animate={{
-                                                    rotate: holdProgress > 0 ? [0, 8, -8, 0] : 0,
-                                                    scale: holdProgress > 0 ? [1, 1.1, 1] : 1,
-                                                }}
-                                                transition={{ duration: 0.35, repeat: holdProgress > 0 ? Infinity : 0, ease: 'easeInOut' }}
-                                            >
-                                                <Droplets
-                                                    size={22}
-                                                    className={holdProgress > 0 ? 'text-blue-400' : 'text-gray-400'}
-                                                />
-                                            </motion.div>
-                                            <span className="mt-0.5 text-[7px] uppercase tracking-[0.2em] text-gray-300 font-medium">
-                                                Hold
-                                            </span>
-                                        </div>
-                                    </motion.button>
-
-                                    {/* Label */}
-                                    <div className="text-center mt-4">
-                                        <p className="text-[13px] font-medium text-gray-500">
-                                            {holdProgress > 0
-                                                ? `Nurturing... ${Math.round(holdProgress)}%`
-                                                : 'Press and hold to nurture'}
-                                        </p>
-                                        <p className="mt-1 text-[11px] text-gray-400">
-                                            {isPartnerWatered
-                                                ? `${partnerName} already cared today \u2014 +${SYNERGY_XP} XP!`
-                                                : `+${SOLO_XP} XP per ritual`}
-                                        </p>
-                                    </div>
-                                </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="done"
-                                    initial={{ opacity: 0, y: 16 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -10 }}
-                                    className="rounded-[1.5rem] p-5"
-                                    style={{
-                                        background: isSynergy
-                                            ? 'linear-gradient(135deg, rgba(244,114,182,0.08), rgba(168,85,247,0.05))'
-                                            : 'rgba(255,255,255,0.6)',
-                                        border: isSynergy
-                                            ? '1px solid rgba(244,114,182,0.15)'
-                                            : '1px solid rgba(0,0,0,0.05)',
-                                        boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                                        backdropFilter: 'blur(16px)',
-                                    }}
-                                >
-                                    <div className="flex items-center gap-3.5">
-                                        <div
-                                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[0.875rem]"
-                                            style={{
-                                                background: isSynergy ? 'rgba(244,114,182,0.1)' : 'rgba(134,239,172,0.1)',
-                                                border: isSynergy ? '1px solid rgba(244,114,182,0.15)' : '1px solid rgba(134,239,172,0.15)',
-                                            }}
-                                        >
-                                            {isSynergy
-                                                ? <Sparkles size={18} className="text-pink-400" />
-                                                : <Heart size={17} className="text-emerald-400" fill="currentColor" />}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[13px] font-medium text-gray-700 leading-snug">
-                                                {isSynergy ? 'The garden is in full bloom' : 'Care given for today'}
-                                            </p>
-                                            <p className="text-[11px] text-gray-400 mt-0.5">
-                                                {isSynergy
-                                                    ? 'Both of you showed up. The petals opened wider.'
-                                                    : `Waiting for ${partnerName} to visit.`}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-
-                    {/* ── Care Status ─────────────────────────── */}
-                    <div className="mt-5 grid grid-cols-2 gap-2.5">
-                        {[
-                            { name: myName, done: isMyWatered, time: state.myLastWatered, accent: '#f472b6' },
-                            { name: partnerName, done: isPartnerWatered, time: state.partnerLastWatered, accent: '#818cf8' },
-                        ].map(person => (
-                            <div
-                                key={person.name}
-                                className="rounded-[1.25rem] p-3.5"
-                                style={{
-                                    background: person.done ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.35)',
-                                    border: `1px solid ${person.done ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.04)'}`,
-                                    boxShadow: person.done ? '0 2px 10px rgba(0,0,0,0.04)' : 'none',
-                                    backdropFilter: 'blur(12px)',
-                                }}
-                            >
-                                <div className="flex items-center gap-2 mb-1.5">
-                                    <div
-                                        className="w-2 h-2 rounded-full"
-                                        style={{
-                                            background: person.done ? person.accent : 'rgba(0,0,0,0.1)',
-                                            boxShadow: person.done ? `0 0 5px ${person.accent}44` : 'none',
-                                        }}
-                                    />
-                                    <span className="text-[12px] font-medium text-gray-600">{person.name}</span>
-                                </div>
-                                <p className="text-[11px] text-gray-400">
-                                    {person.done && person.time
-                                        ? formatDistanceToNow(new Date(person.time), { addSuffix: true })
-                                        : 'Not yet today'}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* ── XP + Info ───────────────────────────── */}
+                    {/* ── Days together (the only quiet stat) ── */}
                     <div
-                        className="mt-3 rounded-[1.25rem] p-4"
+                        className="mt-6 rounded-[1.5rem] p-5 text-center"
                         style={{
-                            background: 'rgba(255,255,255,0.45)',
+                            background: 'rgba(255,255,255,0.5)',
                             border: '1px solid rgba(0,0,0,0.05)',
-                            backdropFilter: 'blur(12px)',
-                            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+                            backdropFilter: 'blur(16px)',
+                            boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
                         }}
                     >
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                                <Sparkles size={12} className="text-purple-300" />
-                                <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-medium">
-                                    Level {state.level}
-                                </span>
-                            </div>
-                            <span className="text-[10px] text-gray-400">{xpToNext} XP to next</span>
+                        <div className="flex items-center justify-center gap-1.5">
+                            <Heart size={12} className="text-pink-300" fill="currentColor" />
+                            <span className="text-[10px] uppercase tracking-[0.25em] text-gray-400 font-medium">
+                                This is your tree
+                            </span>
                         </div>
-                        <div className="h-[5px] rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.04)' }}>
-                            <motion.div
-                                className="h-full rounded-full"
-                                animate={{ width: `${state.xp === 0 ? 0 : Math.max(state.xp, 3)}%` }}
-                                transition={{ type: 'spring', stiffness: 80, damping: 14 }}
-                                style={{ background: 'linear-gradient(90deg, #c4b5fd, #f9a8d4)' }}
-                            />
-                        </div>
-
-                        {/* Days together & level in compact row */}
-                        <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.04)' }}>
-                            {daysTogether > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                    <Heart size={11} className="text-pink-300" fill="currentColor" />
-                                    <span className="text-[11px] text-gray-400">
-                                        <span className="font-semibold text-gray-600">{daysTogether}</span> days together
-                                    </span>
-                                </div>
+                        <p className="mt-2 text-[13.5px] text-gray-500 leading-relaxed">
+                            {daysTogether > 0 ? (
+                                <>
+                                    It has grown over{' '}
+                                    <span className="font-semibold text-gray-700">{daysTogether}</span>{' '}
+                                    {daysTogether === 1 ? 'day' : 'days'} together.
+                                </>
+                            ) : (
+                                <>It begins the day your story does — add your anniversary to watch it grow.</>
                             )}
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-[11px] text-gray-400">
-                                    Stage <span className="font-semibold text-gray-600">{stage.index + 1}</span>/{STAGES.length}
-                                </span>
-                            </div>
-                        </div>
+                        </p>
                     </div>
 
                     {/* Breathing room */}
