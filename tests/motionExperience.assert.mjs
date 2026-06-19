@@ -85,3 +85,22 @@ for (const [block, name] of navigationKeyframes) {
     `${name} should stay on transform and opacity only for smooth compositor-thread animation.`,
   );
 }
+
+// The background depth-recede (.lior-ambient-world, set via html[data-nav-depth])
+// animates the LIVE full-screen WebGL background on every page open/close. It
+// MUST stay on opacity + transform only: an animated `filter: blur()` there is a
+// non-compositor Gaussian recomputed every frame and was the real cause of the
+// ~340ms open/close hitch on mid-range Android (regression fixed 2026-06-19).
+// The @keyframes scan above misses it because the recede is a CSS *transition*.
+const ambientWorldBlocks = [...rootFixesSource.matchAll(/\.lior-ambient-world[^{]*\{([^}]*)\}/g)];
+assert.ok(
+  ambientWorldBlocks.length >= 2,
+  'Expected the .lior-ambient-world depth-recede rules to exist in root-fixes.css.',
+);
+for (const [, body] of ambientWorldBlocks) {
+  assert.doesNotMatch(
+    body,
+    /\b(?:filter|backdrop-filter|blur)\b/,
+    'The background depth-recede (.lior-ambient-world) must not use filter/blur — it composites over the live full-screen WebGL canvas, so a per-frame Gaussian hitches mid-range Android. Use opacity + transform only; blur a static snapshot if ever needed.',
+  );
+}

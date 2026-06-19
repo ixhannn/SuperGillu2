@@ -58,18 +58,27 @@ export function useTileOpen(): (
 
     const target = findLiftTarget(event.currentTarget as HTMLElement);
     if (target) {
-      // Brief press-lift on the tapped card. Feature tiles (icon cards) open
-      // their destination with a clean directional push — there is no shared
-      // image to morph into, so a real container-morph there only ever read as
-      // a cheap growing box. The true Apple-Photos shared-element morph is
-      // reserved for surfaces that DO share an image (e.g. memory photos).
+      // Brief press-lift on the tapped card.
       target.classList.add(LIFT_CLASS);
       window.setTimeout(() => {
         target.classList.remove(LIFT_CLASS);
       }, LIFT_MS + 40);
+
+      // Bloom the next page OUT OF the card the finger touched. We publish the
+      // card's viewport-space centre as --lior-open-x/y and flag the open as an
+      // "expand"; TransitionEngine.navigate() upgrades the push to its expand
+      // branch, which reads these vars to set the new page's transform-origin —
+      // so the entrance scales up from the tapped tile instead of screen-centre.
+      // (This is the subtle content bloom, NOT the old clip/box morph that read
+      // as cheap. The engine consumes + clears the flag on the next navigate.)
+      const r = target.getBoundingClientRect();
+      const root = document.documentElement;
+      root.style.setProperty('--lior-open-x', `${Math.round(r.left + r.width / 2)}px`);
+      root.style.setProperty('--lior-open-y', `${Math.round(r.top + r.height / 2)}px`);
+      root.dataset.liorOpenExpand = '1';
     }
 
-    // Push the destination in. The lift runs concurrently with the slide.
+    // Push the destination in. The lift runs concurrently with the bloom.
     navigate();
   }, []);
 }

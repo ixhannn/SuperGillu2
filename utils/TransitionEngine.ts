@@ -184,12 +184,14 @@ class TransitionEngineImpl {
     }
 
     // Background depth recede: a page OPEN/CLOSE drops the whole ambient
-    // background back (dim + soft blur + scale) so the page comes forward —
-    // CSS reads html[data-nav-depth] (see styles/root-fixes.css). Tab switches
+    // background back (dim + slight scale) so the page comes forward — CSS reads
+    // html[data-nav-depth] (see styles/root-fixes.css). Tab switches
     // deliberately never set it, so the persistent stage stays put when moving
-    // between root tabs. Cleared in wrappedComplete once the nav settles.
-    const navDepth =
-      effectiveDir === 'push' || effectiveDir === 'pop' || effectiveDir === 'expand';
+    // between root tabs. Gated behind !_mo so reduced-motion users get a still
+    // background (a depth-zoom on every open is exactly the vestibular trigger
+    // they opted out of). Cleared in wrappedComplete once the nav settles.
+    const navDepth = !this._mo &&
+      (effectiveDir === 'push' || effectiveDir === 'pop' || effectiveDir === 'expand');
     if (navDepth && typeof document !== 'undefined') {
       document.documentElement.dataset.navDepth = '1';
     }

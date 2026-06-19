@@ -166,20 +166,25 @@ html[data-transitioning="1"] [data-lior-motion-veil="true"] {
   transform: translateZ(0);
   transition:
     opacity   420ms var(--lior-ease-silk),
-    filter    420ms var(--lior-ease-silk),
     transform 420ms var(--lior-ease-silk);
 }
 
+/* Depth recede = opacity-dim + a hair of scale ONLY. An earlier version also
+   animated `filter: blur()` on this selector — but it sits over the LIVE
+   full-screen WebGL background, so that is a non-compositor Gaussian recomputed
+   every frame and was the real cause of the ~340ms open/close HITCH on
+   mid-range Android. Opacity + transform are compositor-only and read as depth
+   on their own. Do NOT reintroduce `filter` here (or in the transition list
+   above) — motionExperience.assert.mjs guards against it. If a blur is ever
+   wanted, blur a static SNAPSHOT, never the live canvas. */
 html[data-nav-depth="1"] .lior-ambient-world {
-  opacity: 0.5;
-  filter: blur(6px) saturate(0.92);
-  transform: translateZ(0) scale(1.035);
-  transition-duration: 340ms;
+  opacity: 0.46;
+  transform: translateZ(0) scale(1.04);
+  transition-duration: 320ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .lior-ambient-world {
-    filter: none !important;
     transform: translateZ(0) !important;
     transition: opacity 200ms linear;
   }
