@@ -371,12 +371,36 @@ const App = () => {
   const pendingNavigationRef = useRef<{ view: ViewState; options: NavigationOptions } | null>(null);
   const navigateToRef = useRef<(view: ViewState, options?: NavigationOptions) => void>(() => {});
 
+  // Rapid hardware/edge back presses routinely arrive while a pop animation
+  // still holds the transition lock (~300ms). Dropping them feels broken;
+  // letting them fall through to minimize closed the whole app. Instead we
+  // count the extra backs queued behind the lock and replay them one per
+  // animation as it releases — each gesture pops exactly one level.
+  const pendingBackRef = useRef(0);
+  const performBackRef = useRef<() => void>(() => {});
+
   const drainPendingNavigation = useCallback(() => {
     const pending = pendingNavigationRef.current;
     if (!pending) return;
     pendingNavigationRef.current = null;
     if (pending.view === currentViewRef.current) return;
     navigateToRef.current(pending.view, pending.options);
+  }, []);
+
+  // Replay one queued back press, if any. Returns true when it started a
+  // navigation (which re-arms the lock and will finalize → drain the next one),
+  // so the caller knows a transition is in flight again.
+  const drainPendingBack = useCallback((): boolean => {
+    if (pendingBackRef.current <= 0) return false;
+    if (historyStack.current.length === 0) {
+      // Unwound to the root tab while backs were still queued — nothing left to
+      // pop, so discard the surplus rather than bouncing off 'home'.
+      pendingBackRef.current = 0;
+      return false;
+    }
+    pendingBackRef.current -= 1;
+    performBackRef.current();
+    return true;
   }, []);
 
   const finalizeNavigation = useCallback((token: number) => {
@@ -388,8 +412,11 @@ const App = () => {
       pendingNavigationMetricRef.current = null;
     }
     transitionLockRef.current = false;
+    // Queued back presses take priority over a parked forward tap: a user
+    // spamming back wants to keep unwinding the stack one screen at a time.
+    if (drainPendingBack()) return;
     drainPendingNavigation();
-  }, [drainPendingNavigation]);
+  }, [drainPendingBack, drainPendingNavigation]);
 
   useEffect(() => {
     mountedTabsRef.current = mountedTabs;
@@ -485,6 +512,9 @@ const App = () => {
       pendingNavigationRef.current = null;
       return;
     }
+    // A fresh forward intent supersedes any back presses queued behind the
+    // lock — stop unwinding the stack once the user has chosen a destination.
+    pendingBackRef.current = 0;
     if (transitionLockRef.current) {
       pendingNavigationRef.current = { view, options };
       return;
@@ -549,6 +579,12 @@ const App = () => {
         .then(() => {
           requestAnimationFrame(() => {
             transitionLockRef.current = false;
+            // A back gesture pressed while the chunk loaded wins over the
+            // forward intent: honour it (cancelling this navigation) instead
+            // of committing a destination the user is trying to leave. This
+            // also keeps pendingBackRef from stranding on this lock, which
+            // never reaches finalizeNavigation.
+            if (drainPendingBack()) return;
             if (pendingNavigationRef.current) {
               // A newer tap arrived while the chunk loaded — honour it
               // instead of committing this stale destination first.
@@ -566,20 +602,24 @@ const App = () => {
           DiagnosticsService.recordError('navigation.preload', error, { view });
           transitionLockRef.current = false;
           toast.show("Couldn't open that screen — check your connection", 'error');
+          // Replay a back queued during the failed load rather than leaving it
+          // stranded on a lock that will never finalize.
+          if (drainPendingBack()) return;
           drainPendingNavigation();
         });
       return;
     }
 
     commitNavigation();
-  }, [drainPendingNavigation, getCurrentScroll, runNavigation]);
+  }, [drainPendingBack, drainPendingNavigation, getCurrentScroll, runNavigation]);
 
   useEffect(() => {
     navigateToRef.current = navigateTo;
   }, [navigateTo]);
 
-  const goBack = useCallback(() => {
-    if (transitionLockRef.current) return;
+  // Pop one level off the in-app history and animate back to it. Shared by the
+  // UI back control, the hardware back button, and the queued-back replay.
+  const performBack = useCallback(() => {
     const prev        = currentViewRef.current;
     const destination = historyStack.current.pop() ?? 'home';
 
@@ -589,6 +629,23 @@ const App = () => {
     // screen beneath settles back — not a sideways pop.
     runNavigation(destination, prev === 'add-memory' ? 'modal-close' : 'pop');
   }, [getCurrentScroll, runNavigation]);
+
+  useEffect(() => {
+    performBackRef.current = performBack;
+  }, [performBack]);
+
+  const goBack = useCallback(() => {
+    if (transitionLockRef.current) {
+      // Mid-animation: queue the press (capped at the history depth) so it is
+      // replayed when the lock releases instead of being dropped — same
+      // behaviour as the hardware back button.
+      if (historyStack.current.length > pendingBackRef.current) {
+        pendingBackRef.current += 1;
+      }
+      return;
+    }
+    performBack();
+  }, [performBack]);
 
   const canGoBack = historyStack.current.length > 0;
   const navigationActionsValue = useMemo(() => ({
@@ -1002,17 +1059,26 @@ const App = () => {
         window.dispatchEvent(event);
         if (event.defaultPrevented) return true;
 
-        if (historyStack.current.length > 0 && !transitionLockRef.current) {
-          const prev        = currentViewRef.current;
-          const destination = historyStack.current.pop() ?? 'home';
-
-          scrollPositions.current[prev] = getCurrentScroll();
-          currentViewRef.current        = destination;
-          runNavigation(destination, prev === 'add-memory' ? 'modal-close' : 'pop');
+        // A pop animation still owns the screen (~300ms). A second back gesture
+        // landing inside that window must NOT fall through to minimize — that
+        // is the bug that closed the whole app on rapid back presses. Queue it
+        // (capped at the remaining history) to replay when the lock releases,
+        // and swallow the event either way so the app is never backgrounded
+        // mid-transition.
+        if (transitionLockRef.current) {
+          if (historyStack.current.length > pendingBackRef.current) {
+            pendingBackRef.current += 1;
+          }
           return true;
         }
 
-        // Already at root — minimize the app (Android pattern).
+        if (historyStack.current.length > 0) {
+          // Shared sheet-aware pop (modal-close for the composer, else 'pop').
+          performBackRef.current();
+          return true;
+        }
+
+        // Already at root and idle — minimize the app (Android pattern).
         NativeShellService.minimizeApp();
         return true;
       },
