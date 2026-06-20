@@ -22,7 +22,7 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
     </div>
 );
 
-const lastUpdated = 'April 2025';
+const lastUpdated = 'June 2026';
 
 export const PrivacyPolicy: React.FC<Props> = ({ setView, fromAuth, onBack }) => {
     const handleBack = () => {

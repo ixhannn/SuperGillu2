@@ -119,9 +119,13 @@
     <!-- Push Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Local notifications: exact-time delivery (Android 12+) and survive reboot -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Local notifications: inexact, Doze-friendly delivery + survive reboot.
+         Deliberately NOT requesting SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM:
+         daily relationship nudges don't need to-the-second timing, and
+         USE_EXACT_ALARM is a Play "special use" permission reserved for
+         alarm/clock/calendar apps (requires a special-access declaration and is
+         rejected otherwise). The notification scheduler keeps allowWhileIdle so
+         delivery still fires during Doze, just without exact-alarm scheduling. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Wake lock for background sync -->
