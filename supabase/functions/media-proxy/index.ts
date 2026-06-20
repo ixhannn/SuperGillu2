@@ -1,7 +1,22 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { parseManagedMediaKey } from '../../../shared/mediaPolicy.js';
 
 const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'];
+
+// Legacy feature tables (top-level `couple_id` column + `data` jsonb holding the
+// storage path) used to bind a legacy media ref to its owning couple. Mirrors
+// the union in public.storage_audit_legacy_refs. Each entry lists the jsonb
+// fields under `data` that may hold a storage path for that feature.
+const LEGACY_REF_TABLES: ReadonlyArray<{ table: string; fields: readonly string[] }> = [
+  { table: 'memories', fields: ['storagePath', 'videoStoragePath'] },
+  { table: 'daily_photos', fields: ['storagePath', 'videoStoragePath'] },
+  { table: 'keepsakes', fields: ['storagePath', 'videoStoragePath'] },
+  { table: 'time_capsules', fields: ['storagePath'] },
+  { table: 'surprises', fields: ['storagePath'] },
+  { table: 'voice_notes', fields: ['audioStoragePath'] },
+  { table: 'together_music', fields: ['music_url'] },
+];
 
 const makeJson = (cors: Record<string, string>) =>
   (body: unknown, status = 200) =>
@@ -72,6 +87,75 @@ async function blobToDataUri(blob: Blob) {
   return `data:${contentType};base64,${btoa(chunks.join(''))}`;
 }
 
+// Untyped-schema client: edge functions talk to PostgREST without generated DB
+// types, and `ReturnType<typeof createClient>` resolves to a `never`-schema
+// variant that doesn't match an actual createClient() call (supabase-js v2
+// generic quirk) — so query rows collapse to `never`. `<any, any, any>` keeps it
+// a SupabaseClient while letting row shapes through.
+type ServiceClient = SupabaseClient<any, any, any>;
+
+/**
+ * Resolve the set of couple IDs the authenticated user belongs to, using a
+ * service-role read of couple_memberships (mirrors sign-media + the Worker's
+ * isUserInCouple). Returns an empty set when the user belongs to no couple.
+ */
+async function resolveMemberCoupleIds(service: ServiceClient, userId: string): Promise<Set<string>> {
+  const { data, error } = await service
+    .from('couple_memberships')
+    .select('couple_id')
+    .eq('user_id', userId);
+  if (error || !data) return new Set();
+  return new Set(data.map((row: { couple_id: string }) => row.couple_id));
+}
+
+/**
+ * Resolve the couple that OWNS the requested media ref, failing closed (null)
+ * when it cannot be bound to a couple. Resolution order:
+ *   1. Managed v2 key  -> coupleId encoded in the key (parseManagedMediaKey).
+ *   2. media_assets authority -> row whose r2_key matches any candidate ref.
+ *   3. Legacy feature tables  -> row whose data->>'<field>' matches a candidate
+ *      ref (mirrors public.storage_audit_legacy_refs).
+ * `candidates` are the distinct path forms a caller may have supplied for the
+ * same object (the raw storagePath plus each parsed bucket/key).
+ */
+async function resolveOwningCoupleId(
+  service: ServiceClient,
+  candidates: readonly string[],
+): Promise<string | null> {
+  const refs = Array.from(new Set(candidates.filter((value) => value && value.length > 0)));
+  if (refs.length === 0) return null;
+
+  // 1. Managed v2 keys carry their owning couple in the key itself.
+  for (const ref of refs) {
+    const parsed = parseManagedMediaKey(ref);
+    if (parsed?.coupleId) return parsed.coupleId;
+  }
+
+  // 2. media_assets is the authority for tracked objects (keyed by r2_key).
+  const { data: assetRows } = await service
+    .from('media_assets')
+    .select('couple_id')
+    .in('r2_key', refs)
+    .limit(1);
+  if (assetRows?.length && assetRows[0].couple_id) return assetRows[0].couple_id as string;
+
+  // 3. Legacy refs live in the feature tables' data jsonb, with a top-level
+  //    couple_id column. Probe each table/field for a matching storage path.
+  for (const { table, fields } of LEGACY_REF_TABLES) {
+    for (const field of fields) {
+      const { data: rows } = await service
+        .from(table)
+        .select('couple_id')
+        .in(`data->>${field}`, refs)
+        .limit(1);
+      if (rows?.length && rows[0].couple_id) return rows[0].couple_id as string;
+    }
+  }
+
+  // Cannot bind the ref to any couple -> fail closed.
+  return null;
+}
+
 Deno.serve(async (req) => {
   const cors = { ...corsHeaders(req), 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
   const json = makeJson(cors);
@@ -112,6 +196,30 @@ Deno.serve(async (req) => {
   const targets = parsedRef
     ? [{ bucket: parsedRef.bucket, key: parsedRef.key }]
     : LEGACY_SUPABASE_BUCKETS.map((bucket) => ({ bucket, key: stripLeadingSlash(storagePath) }));
+
+  // ── Couple-ownership gate (close media-proxy IDOR) ────────────────────────
+  // Before downloading anything, bind the requested ref to its OWNING couple
+  // and confirm the caller is a member of it. The caller may legitimately store
+  // the ref in several equivalent forms, so probe every candidate path the
+  // feature tables / media_assets could hold. Fail CLOSED: if the ref cannot be
+  // bound to a couple the caller belongs to, refuse without touching storage.
+  const refCandidates = [
+    storagePath,
+    stripLeadingSlash(storagePath),
+    parsedRef?.key ?? '',
+    parsedRef?.absoluteUrl ?? '',
+    ...targets.map((target) => target.key),
+  ];
+
+  const owningCoupleId = await resolveOwningCoupleId(service, refCandidates);
+  if (!owningCoupleId) {
+    return json({ error: 'Forbidden' }, 403);
+  }
+
+  const memberCoupleIds = await resolveMemberCoupleIds(service, userData.user.id);
+  if (!memberCoupleIds.has(owningCoupleId)) {
+    return json({ error: 'Forbidden' }, 403);
+  }
 
   for (const target of targets) {
     if (!isAllowedBucket(target.bucket) || !target.key) continue;

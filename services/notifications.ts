@@ -92,6 +92,7 @@ const KIND_VIEWS: Record<NotificationSchedule['kind'], string> = {
   'film-ready': 'daily-video',
   'cycle-3-days': 'us',
   'daily-ritual': 'home',
+  'daily-drop': 'daily-drop',
 };
 
 type NativePermissionState = 'granted' | 'denied' | 'prompt';
@@ -139,6 +140,8 @@ const DEFAULT_PREFS: NotificationPrefs = {
   partnerNudgeEnabled: true,
   ritualEnabled: true,
   ritualTime: '20:00',
+  dropEnabled: true,
+  dropTime: '19:30',
 };
 
 let pushRegistrationListenerBound = false;
@@ -324,6 +327,17 @@ export const NotificationsService = {
         fireAt: when.toISOString(),
         title: 'Today’s question is waiting',
         body: 'Answer together — they won’t see yours until they answer too.',
+      });
+    }
+
+    if (prefs.dropEnabled) {
+      const when = nextOccurrenceOf(prefs.dropTime);
+      queued.push({
+        id: `daily-drop-${when.toISOString().slice(0, 10)}`,
+        kind: 'daily-drop',
+        fireAt: when.toISOString(),
+        title: 'Today’s drop is waiting 🎁',
+        body: 'Open it before midnight — it disappears.',
       });
     }
 
@@ -589,6 +603,31 @@ export const NotificationsService = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ type: 'heartbeat', senderName }),
+      });
+    } catch { /* fire-and-forget */ }
+  },
+
+  /**
+   * Push the partner about today's Daily Drop. Fire-and-forget.
+   *  - 'dropped'  : I answered first → "{me} dropped something for you"
+   *  - 'nudge'    : I'm waiting on them → "{me} is waiting on you"
+   *  - 'unsealed' : I answered second → "{me} answered — your drop unsealed"
+   */
+  async triggerDropPush(subtype: 'dropped' | 'nudge' | 'unsealed', senderName: string): Promise<void> {
+    if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
+    try {
+      const token = await SupabaseService.getAccessToken();
+      if (!token) return;
+      const { url } = SupabaseService.getProjectConfig();
+      if (!url) return;
+
+      await fetch(`${url}/functions/v1/send-partner-nudge`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'daily_drop', subtype, senderName }),
       });
     } catch { /* fire-and-forget */ }
   },

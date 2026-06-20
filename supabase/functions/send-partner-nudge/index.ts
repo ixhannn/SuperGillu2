@@ -59,10 +59,13 @@ Deno.serve(async (req: Request) => {
   // 'pulse_check' (default) — nudge the partner if they haven't checked in.
   // 'heartbeat'             — partner tapped the heartbeat button.
   // 'daily_answer'          — partner answered today's question (always sends).
-  const reqBody = await req.json().catch(() => ({})) as { type?: string; senderName?: string };
-  const type = reqBody.type === 'heartbeat' || reqBody.type === 'daily_answer'
-    ? reqBody.type
+  // 'daily_drop'            — Daily Drop nudge (subtype: dropped/nudge/unsealed).
+  const reqBody = await req.json().catch(() => ({})) as { type?: string; senderName?: string; subtype?: string };
+  const type = reqBody.type === 'heartbeat' ? 'heartbeat'
+    : reqBody.type === 'daily_answer' ? 'daily_answer'
+    : reqBody.type === 'daily_drop' ? 'daily_drop'
     : 'pulse_check';
+  const subtype = (reqBody.subtype || '').toString();
   const senderName = (reqBody.senderName || '').toString().trim().slice(0, 40);
 
   // Service-role client for privileged reads
@@ -133,6 +136,19 @@ Deno.serve(async (req: Request) => {
       : "Your partner answered today's question";
     body  = 'Tap to see what you both said';
     view  = 'home';
+  } else if (type === 'daily_drop') {
+    // Today's Daily Drop \u2014 the reciprocal daily ritual.
+    if (subtype === 'unsealed') {
+      title = `\u{2728} ${who} answered`;
+      body  = 'Your drop just unsealed \u2014 see what you both said.';
+    } else if (subtype === 'nudge') {
+      title = `\u{1F440} ${who} is waiting on you`;
+      body  = 'Your drop is sealed until you answer too.';
+    } else {
+      title = `\u{1F48C} ${who} dropped something for you`;
+      body  = "Open today's drop to answer back \u2014 it disappears at midnight.";
+    }
+    view = 'daily-drop';
   } else {
     title = '\u{1F495} Your partner is thinking of you';
     body  = "They just checked in \u2014 take a moment to share how you're feeling too.";

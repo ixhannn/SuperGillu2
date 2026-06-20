@@ -1,9 +1,20 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem, DailyDrop, DropResponse, DropType } from '../types';
+import { buildDailyDrop, nextLocalMidnightIso, isDropComplete, DROP_META, type DropBuildContext } from '../utils/dropEngine';
 import { SupabaseService } from './supabase';
 import { MediaStorageService, compressImage } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
 import { normalizeCoupleRoom, migrateFromOldRoom } from '../components/room/roomSoul';
 import { isDailyMomentExpired } from '../shared/mediaRetention.js';
+import { daysTogetherFrom, parseStoredDateOnly } from '../shared/dateOnly.js';
+import { DAILY_POOL } from '../content/dailyPrompts';
+import {
+    DAY_MILESTONES,
+    DAY_MILESTONE_PROMPTS,
+    ANNIVERSARY_PROMPTS,
+    MONTHSARY_PROMPTS,
+    SEASONAL_PROMPTS,
+    pickFromBucket,
+} from '../content/milestonePrompts';
 import {
     COUPLE_TOTAL_STORAGE_BUDGET_BYTES,
     estimateDataUriBytes,
@@ -29,12 +40,104 @@ import {
     type PendingUpload,
 } from './storage/pendingOperations';
 import { createPersonalCollectionsStorageDomain } from './storage/personalCollections';
-import { deleteRaw, getDB, readRaw, writeRaw } from './storage/rawStore';
+import { deleteRaw, destroyDatabase, getDB, readRaw, writeRaw } from './storage/rawStore';
 import { createUsCollectionsStorageDomain } from './storage/usCollections';
 export { addPendingDelete, getPendingDeletes, isDeletedLocally, removePendingDelete } from './storage/pendingOperations';
 
 const hasOwn = <T extends object>(value: T, key: PropertyKey): boolean =>
     Object.prototype.hasOwnProperty.call(value, key);
+
+// ── Daily-question selection (pure, deterministic, SHARED-seed only) ─────────
+//
+// Both partners must get the SAME prompt each day. Every input below is shared
+// identity (UTC calendar day, synced anniversaryDate, synced coupleId) — never a
+// device-local value, per-user name, or Math.random — so the function is pure
+// over shared data and resolves identically on both devices.
+
+const MS_PER_DAY = 86_400_000;
+
+/** Stable djb2 hash → non-negative int, used only for an optional couple phase-shift. */
+const djb2 = (s: string): number => {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return h;
+};
+
+/**
+ * Monotonic UTC epoch-day ordinal for a YYYY-MM-DD key. Using `Date.UTC` keeps
+ * the ordinal in lockstep with the `toISOString()` day key both devices compute,
+ * so partners in different timezones never split across midnight.
+ */
+const utcDayOrdinal = (today: string): number => {
+    const [y, m, d] = today.split('-').map(Number);
+    return Math.floor(Date.UTC(y, m - 1, d) / MS_PER_DAY);
+};
+
+/**
+ * Resolves a milestone special string for `today` from the SHARED anniversary,
+ * or null if today is not a milestone. Both partners share `anniversaryDate`, so
+ * they compute the identical milestone + the identical bucket pick.
+ */
+const milestoneQuestionFor = (today: string, anniversaryDate?: string): string | null => {
+    const anchor = parseStoredDateOnly(anniversaryDate);
+    if (!anchor) return null; // empty / legacy-bad date → no spurious "day 0" special
+
+    const todayDate = parseStoredDateOnly(today);
+    if (!todayDate) return null;
+
+    // Yearly anniversary: same month + day as the anniversary. Vary the line by
+    // how many anniversaries have passed (deterministic from shared dates).
+    if (todayDate.getMonth() === anchor.getMonth() && todayDate.getDate() === anchor.getDate()) {
+        const years = Math.max(0, todayDate.getFullYear() - anchor.getFullYear());
+        if (years >= 1) return pickFromBucket(ANNIVERSARY_PROMPTS, years - 1);
+        // years === 0 is the start date itself — fall through to normal rotation.
+    }
+
+    // Round-number "days together" milestones (100, 365, 500, 1000, …).
+    const days = daysTogetherFrom(anniversaryDate, todayDate);
+    if (days > 0 && DAY_MILESTONES.includes(days)) {
+        return DAY_MILESTONE_PROMPTS[days];
+    }
+
+    // Monthly "monthsary": same day-of-month as the anniversary (but not the
+    // yearly anniversary, handled above). Vary by elapsed month count.
+    if (days > 0 && todayDate.getDate() === anchor.getDate()) {
+        const months =
+            (todayDate.getFullYear() - anchor.getFullYear()) * 12 +
+            (todayDate.getMonth() - anchor.getMonth());
+        if (months >= 1) return pickFromBucket(MONTHSARY_PROMPTS, months - 1);
+    }
+
+    return null;
+};
+
+/**
+ * Picks today's prompt deterministically from shared inputs only.
+ *
+ * Precedence: seasonal fixed-date → anniversary/day/monthsary milestone →
+ * widened-pool rotation. The rotation is a clean +1-per-day walk through the
+ * full ~195-item pool (a contiguous, no-repeat cycle ~2.6x the old 75-day gap),
+ * optionally phase-shifted per couple by a shared coupleId offset (cosmetic;
+ * identical for both partners, so determinism holds).
+ */
+const selectDailyQuestion = (
+    today: string,
+    anniversaryDate?: string,
+    coupleId?: string,
+): string => {
+    // 1) Seasonal specials on a few fixed MM-DD dates (calendar date is shared).
+    const seasonal = SEASONAL_PROMPTS[today.slice(5)];
+    if (seasonal) return seasonal;
+
+    // 2) Milestone specials derived from the shared anniversaryDate.
+    const milestone = milestoneQuestionFor(today, anniversaryDate);
+    if (milestone) return milestone;
+
+    // 3) Normal widened-pool rotation by monotonic UTC day ordinal.
+    const offset = coupleId ? djb2(coupleId) : 0;
+    const idx = (((utcDayOrdinal(today) + offset) % DAILY_POOL.length) + DAILY_POOL.length) % DAILY_POOL.length;
+    return DAILY_POOL[idx];
+};
 
 const CACHE_KEYS = {
     MEMORIES: 'lior_memories',
@@ -64,6 +167,7 @@ const CACHE_KEYS = {
     SURPRISES: 'lior_surprises',
     VOICE_NOTES: 'lior_voice_notes',
     PRIVATE_SPACE_ITEMS: 'lior_private_space_items',
+    DAILY_DROPS: 'lior_daily_drops',
 };
 
 const ACCOUNT_LOCAL_KEYS = {
@@ -410,6 +514,7 @@ const DATA_CACHE = {
     surprises: [] as Surprise[],
     voiceNotes: [] as VoiceNote[],
     privateSpaceItems: [] as PrivateSpaceItem[],
+    dailyDrops: [] as DailyDrop[],
 };
 
 const DEFAULT_ENVELOPE_COLOR = 'bg-pink-500/12 text-pink-600';
@@ -465,6 +570,7 @@ const CONTENT_COLLECTION_STORES: Array<{ storageKey: string; cacheKey: keyof typ
     { storageKey: CACHE_KEYS.SURPRISES, cacheKey: 'surprises' },
     { storageKey: CACHE_KEYS.VOICE_NOTES, cacheKey: 'voiceNotes' },
     { storageKey: CACHE_KEYS.PRIVATE_SPACE_ITEMS, cacheKey: 'privateSpaceItems' },
+    { storageKey: CACHE_KEYS.DAILY_DROPS, cacheKey: 'dailyDrops' },
 ];
 const CONTENT_SINGLETON_KEYS = [
     CACHE_KEYS.PET_STATS,
@@ -814,6 +920,133 @@ const normalizeDailyPhotos = (items: DailyPhoto[], now = Date.now(), includeExpi
     return Array.from(byId.values());
 };
 
+// ── Daily Drop normalizers + merge (clobber-safe responses union) ───────────
+const normalizeDropResponse = (key: string, value: unknown): DropResponse | null => {
+    if (!value || typeof value !== 'object') return null;
+    const r = value as Partial<DropResponse> & Record<string, unknown>;
+    const valueStr = typeof r.value === 'string' ? r.value : '';
+    const userKey = cleanString(r.userKey) || cleanString(key);
+    if (!userKey) return null;
+    return {
+        userKey,
+        name: cleanString(r.name) || 'Someone',
+        value: valueStr,
+        guess: typeof r.guess === 'string' && r.guess.trim() ? r.guess : undefined,
+        createdAt: coerceIsoDate(r.createdAt) || new Date().toISOString(),
+    };
+};
+
+const normalizeDailyDrop = (value: unknown): DailyDrop | null => {
+    if (!value || typeof value !== 'object') return null;
+    const v = value as Partial<DailyDrop> & Record<string, unknown>;
+    const id = cleanString(v.id);
+    const date = cleanString(v.date);
+    const type = cleanString(v.type) as DropType;
+    const prompt = v.prompt && typeof v.prompt === 'object' ? (v.prompt as DailyDrop['prompt']) : null;
+    if (!id || !date || !type || !prompt) return null;
+
+    const responses: Record<string, DropResponse> = {};
+    const rawResponses = (v.responses && typeof v.responses === 'object') ? v.responses as Record<string, unknown> : {};
+    for (const [k, r] of Object.entries(rawResponses)) {
+        const normalized = normalizeDropResponse(k, r);
+        if (normalized) responses[normalized.userKey] = normalized;
+    }
+
+    const createdAt = coerceIsoDate(v.createdAt) || new Date().toISOString();
+    const expiresAt = coerceIsoDate(v.expiresAt) || nextLocalMidnightIso(date);
+    const complete = Object.keys(responses).length >= 2;
+    return {
+        id,
+        coupleId: cleanString(v.coupleId) || cleanString((v as Record<string, unknown>).couple_id) || 'solo',
+        date,
+        type,
+        prompt,
+        responses,
+        revealedAt: coerceIsoDate(v.revealedAt) || (complete ? createdAt : undefined),
+        createdAt,
+        expiresAt,
+    };
+};
+
+/** Union responses by userKey (newer createdAt wins); recompute revealedAt. Prompt/type are deterministic. */
+const mergeDropResponses = (base: DailyDrop, incoming: DailyDrop): DailyDrop => {
+    const responses: Record<string, DropResponse> = { ...base.responses };
+    for (const [key, resp] of Object.entries(incoming.responses || {})) {
+        const current = responses[key];
+        if (!current || new Date(resp.createdAt).getTime() >= new Date(current.createdAt).getTime()) {
+            responses[key] = resp;
+        }
+    }
+    const complete = Object.keys(responses).length >= 2;
+    const revealedAt = complete
+        ? (base.revealedAt || incoming.revealedAt || new Date().toISOString())
+        : (base.revealedAt || incoming.revealedAt);
+    return {
+        ...base,
+        prompt: base.prompt || incoming.prompt,
+        type: base.type || incoming.type,
+        expiresAt: base.expiresAt || incoming.expiresAt,
+        responses,
+        revealedAt,
+    };
+};
+
+const upsertDrop = (list: DailyDrop[], drop: DailyDrop): DailyDrop[] => {
+    const index = list.findIndex((d) => d.id === drop.id);
+    if (index === -1) return [...list, drop];
+    const next = list.slice();
+    next[index] = drop;
+    return next;
+};
+
+/** Normalize + keep the most recent 14 drops by date (drops are tiny but bounded). */
+const normalizeDailyDropList = (items: unknown[]): DailyDrop[] => {
+    const byId = new Map<string, DailyDrop>();
+    for (const item of items) {
+        const normalized = normalizeDailyDrop(item);
+        if (normalized) byId.set(normalized.id, normalized);
+    }
+    return Array.from(byId.values())
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 14);
+};
+
+const localDateKey = (d: Date = new Date()): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+/** on_this_day eligibility: a memory from this calendar day in a previous year. */
+const buildDropContext = (date: string): DropBuildContext => {
+    const anchor = new Date(`${date}T00:00:00`);
+    const throwback = DATA_CACHE.memories.find((m) => {
+        const md = new Date((m as Memory)?.date);
+        return !Number.isNaN(md.getTime())
+            && md.getDate() === anchor.getDate()
+            && md.getMonth() === anchor.getMonth()
+            && md.getFullYear() !== anchor.getFullYear();
+    });
+    return { hasThrowback: !!throwback, throwbackMemoryId: (throwback as Memory | undefined)?.id };
+};
+
+/** Dev/test-only forced drop type (see StorageService.devSetDropType). No-op in production builds. */
+const devForcedDropType = (): DropType | undefined => {
+    try {
+        if (!import.meta.env?.DEV) return undefined;
+        const fromUrl = new URLSearchParams(window.location.search).get('drop');
+        if (fromUrl && Object.prototype.hasOwnProperty.call(DROP_META, fromUrl)) {
+            try { localStorage.setItem('lior_dev_drop_type', fromUrl); } catch { /* ignore */ }
+            return fromUrl as DropType;
+        }
+        const v = localStorage.getItem('lior_dev_drop_type');
+        return v && Object.prototype.hasOwnProperty.call(DROP_META, v) ? (v as DropType) : undefined;
+    } catch {
+        return undefined;
+    }
+};
+
 const assertManagedStorageBudget = (
     feature: ManagedStorageFeature,
     incomingBytes: number,
@@ -916,7 +1149,16 @@ export const StorageService = {
                 load(CACHE_KEYS.SURPRISES, 'surprises'),
                 load(CACHE_KEYS.VOICE_NOTES, 'voiceNotes'),
                 load(CACHE_KEYS.PRIVATE_SPACE_ITEMS, 'privateSpaceItems'),
+                load(CACHE_KEYS.DAILY_DROPS, 'dailyDrops'),
             ]);
+
+            const normalizedDrops = normalizeDailyDropList(DATA_CACHE.dailyDrops);
+            if (normalizedDrops.length !== DATA_CACHE.dailyDrops.length) {
+                DATA_CACHE.dailyDrops = normalizedDrops;
+                await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+            } else {
+                DATA_CACHE.dailyDrops = normalizedDrops;
+            }
 
             const hadLegacyEnvelopeColors = DATA_CACHE.envelopes.some(
                 (item) => normalizeEnvelopeColor(item?.color) !== (typeof item?.color === 'string' ? item.color.trim() : ''),
@@ -1593,6 +1835,88 @@ export const StorageService = {
 
     getKeepsakes: () => DATA_CACHE.keepsakes,
     saveKeepsake: (k: Keepsake) => StorageService._saveInternal('keepsakes', CACHE_KEYS.KEEPSAKES, k, 'keep', 'keepsakes'),
+
+    // ── Daily Drop ──────────────────────────────────────────────────────────
+    getDailyDrops: (): DailyDrop[] => DATA_CACHE.dailyDrops,
+
+    /** Stable per-device responder key: real user id when paired, else display name. */
+    resolveMyDropKey: (profile?: CoupleProfile): string => {
+        const p = profile || StorageService.getCoupleProfile();
+        if (cleanString(p.partnerUserId)) {
+            const myId = StorageService.getMyUserId();
+            if (myId) return myId;
+        }
+        return cleanString(p.myName) || 'me';
+    },
+
+    /**
+     * Today's drop, generated deterministically if absent. The shell is persisted
+     * LOCAL-ONLY (source 'sync', no cloud push) so an empty row can never clobber a
+     * partner who has already answered in the cloud — only submitDropResponse pushes.
+     */
+    getTodayDrop: (profile?: CoupleProfile): DailyDrop => {
+        const p = profile || StorageService.getCoupleProfile();
+        const coupleId = cleanString(p.coupleId) || 'solo';
+        const date = localDateKey();
+        const id = `${coupleId}_${date}`;
+        const forced = devForcedDropType();
+        const existing = DATA_CACHE.dailyDrops.find((d) => d.id === id);
+        if (existing && (!forced || existing.type === forced)) return existing;
+        const drop = buildDailyDrop(coupleId, date, buildDropContext(date), forced);
+        DATA_CACHE.dailyDrops = upsertDrop(DATA_CACHE.dailyDrops, drop);
+        void writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+        notifyUpdate({ source: 'sync', action: 'save', table: 'daily_drops', id });
+        return drop;
+    },
+
+    /** DEV/E2E ONLY — force today's drop to a specific type for previewing. No-op in production. */
+    devSetDropType: (type: DropType): void => {
+        try {
+            if (!import.meta.env?.DEV) return;
+            localStorage.setItem('lior_dev_drop_type', type);
+            const profile = StorageService.getCoupleProfile();
+            const coupleId = cleanString(profile.coupleId) || 'solo';
+            const date = localDateKey();
+            const id = `${coupleId}_${date}`;
+            const drop = buildDailyDrop(coupleId, date, buildDropContext(date), type);
+            DATA_CACHE.dailyDrops = upsertDrop(DATA_CACHE.dailyDrops, drop);
+            void writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+            try { localStorage.removeItem(`lior_drop_seen_${id}`); } catch { /* ignore */ }
+            notifyUpdate({ source: 'sync', action: 'save', table: 'daily_drops', id });
+        } catch { /* dev-only, best-effort */ }
+    },
+
+    /** Commit my response, merge it into today's row, and push the superset to the cloud. */
+    submitDropResponse: (value: string, guess?: string): void => {
+        const profile = StorageService.getCoupleProfile();
+        const key = StorageService.resolveMyDropKey(profile);
+        const base = StorageService.getTodayDrop(profile);
+        const response: DropResponse = {
+            userKey: key,
+            name: cleanString(profile.myName) || 'Me',
+            value,
+            guess: guess && guess.trim() ? guess : undefined,
+            createdAt: new Date().toISOString(),
+        };
+        const responses = { ...base.responses, [key]: response };
+        const complete = Object.keys(responses).length >= 2;
+        const merged: DailyDrop = {
+            ...base,
+            responses,
+            revealedAt: complete ? (base.revealedAt || new Date().toISOString()) : base.revealedAt,
+        };
+        void StorageService.saveDailyDrop(merged);
+    },
+
+    saveDailyDrop: (d: DailyDrop) => StorageService._saveInternal('dailyDrops', CACHE_KEYS.DAILY_DROPS, d, undefined, 'daily_drops'),
+
+    deleteDailyDrop: async (id: string) => {
+        addPendingDelete('daily_drops', id);
+        DATA_CACHE.dailyDrops = DATA_CACHE.dailyDrops.filter((d) => d.id !== id);
+        await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+        notifyUpdate({ source: 'user', action: 'delete', table: 'daily_drops', id });
+    },
+
     hideKeepsake: async (id: string) => {
         const list = DATA_CACHE.keepsakes.map(k => k.id === id ? { ...k, isHidden: true } : k);
         DATA_CACHE.keepsakes = list;
@@ -1690,6 +2014,35 @@ export const StorageService = {
         // Also purge any stale cached copy so UI reloads cannot briefly resurrect it.
         if (isDeletedLocally(table, item.id)) {
             await this.handleCloudDelete(table, item.id);
+            return;
+        }
+
+        // ── Daily Drop: MERGE responses, never replace (clobber-safe) ──────────
+        // The generic upsert path below would overwrite the whole row, wiping a
+        // response the cloud snapshot happens not to carry. Drops union responses
+        // by userKey, so each partner's answer survives an out-of-order sync.
+        if (table === 'daily_drops') {
+            const incoming = normalizeDailyDrop(item);
+            if (!incoming) return;
+            const existing = DATA_CACHE.dailyDrops.find((d) => d.id === incoming.id);
+            const justCompleted = !!existing && !isDropComplete(existing);
+            const merged = existing ? mergeDropResponses(existing, incoming) : incoming;
+            DATA_CACHE.dailyDrops = normalizeDailyDropList(upsertDrop(DATA_CACHE.dailyDrops, merged));
+            await writeRaw(STORES.DATA, CACHE_KEYS.DAILY_DROPS, DATA_CACHE.dailyDrops);
+            notifyUpdate({ source: 'sync', action: 'save', table: 'daily_drops', id: incoming.id, item: merged });
+
+            // Converge the cloud if we held a response the incoming snapshot lacked
+            // (offline cross-answer). Guarded so it only fires when we ADD a key —
+            // the partner's merge of our re-push adds nothing, so it can't ping-pong.
+            const incomingKeys = new Set(Object.keys(incoming.responses || {}));
+            const addedKey = Object.keys(merged.responses).some((k) => !incomingKeys.has(k));
+            if (addedKey) void this.saveDailyDrop(merged);
+
+            // Gentle local heads-up the moment the partner's answer completes the pair.
+            if (justCompleted && isDropComplete(merged) && document.hidden
+                && 'Notification' in window && Notification.permission === 'granted') {
+                try { new Notification('Lior', { body: 'Your drop just unsealed ✨', icon: '/notification-icon.png' }); } catch {}
+            }
             return;
         }
 
@@ -1842,6 +2195,7 @@ export const StorageService = {
             surprises: { cache: 'surprises', key: CACHE_KEYS.SURPRISES },
             voice_notes: { cache: 'voiceNotes', key: CACHE_KEYS.VOICE_NOTES },
             private_space_items: { cache: 'privateSpaceItems', key: CACHE_KEYS.PRIVATE_SPACE_ITEMS },
+            daily_drops: { cache: 'dailyDrops', key: CACHE_KEYS.DAILY_DROPS },
         };
         if (tableToStorage[table]) {
             const cfg = tableToStorage[table];
@@ -2042,6 +2396,40 @@ export const StorageService = {
         const activeUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID) || SupabaseService.getCachedUserId();
         backupCurrentProfileForAccount(activeUserId);
         backupCurrentContentForAccount(activeUserId);
+    },
+
+    /**
+     * IRREVERSIBLE local wipe for in-app account deletion. Unlike
+     * prepareForSignOut (which BACKS UP the active account so it can be restored
+     * on next sign-in), this leaves no recoverable trace: every localStorage /
+     * sessionStorage key AND the entire IndexedDB database (memories, cached
+     * media, per-account backups) are destroyed. Call this ONLY after the
+     * server-side delete-account function has confirmed success, then sign out
+     * and reload. Best-effort — never throws, so a storage quirk can't strand
+     * the user on a deleted account.
+     */
+    purgeAllLocalData: async (): Promise<void> => {
+        try {
+            localStorage.clear();
+        } catch {
+            // Private-mode / locked storage — nothing more we can do.
+        }
+        try {
+            sessionStorage.clear();
+        } catch {
+            // Ignore.
+        }
+        // In-memory caches must not survive into the next (signed-out) render.
+        try {
+            MEDIA_MEMORY_CACHE.clear();
+        } catch {
+            // Ignore — best-effort.
+        }
+        try {
+            await destroyDatabase();
+        } catch {
+            // destroyDatabase already swallows its own errors; guard anyway.
+        }
     },
 
     hasCompletedOnboarding: (): boolean => {
@@ -2256,94 +2644,12 @@ export const StorageService = {
         const existing = (profile.questions ?? []).find(q => q.date === today);
         if (existing) return existing;
 
-        // Deterministic question from pool using date hash
-        // Mix: ~55 light/fun, ~25 reflective, ~10 deep — heavy ones sprinkled, not daily
-        const QUESTIONS = [
-            // ── Light & Fun ──
-            "If today had a flavor, what would it be?",
-            "What's the most useless talent you have?",
-            "If we swapped lives for one day, what's the first thing you'd do?",
-            "What's a guilty pleasure you've never fully admitted to me?",
-            "What's your go-to order when you genuinely can't decide?",
-            "If you had to describe today using only a movie title, what would it be?",
-            "What's a weird habit you have that I probably don't know about?",
-            "What's the last song you had stuck in your head all day?",
-            "What's something you bought recently that you absolutely did not need?",
-            "If we were any two animals, what would we be and why?",
-            "What's something on your phone you'd be mildly embarrassed if I saw?",
-            "What's a childhood snack you still secretly love?",
-            "What's a conspiracy theory you kind of half-believe?",
-            "What would your reality TV show be called?",
-            "What's the most random thing you googled this week?",
-            "If today had a color, what would it be?",
-            "What's a small luxury that makes your day noticeably better?",
-            "What's a smell that instantly takes you somewhere else?",
-            "If you could have any superpower just for tomorrow, what would you pick?",
-            "What's something tiny that actually made today a little better?",
-            "What's the last photo you took on your phone?",
-            "If we had a theme song right now, what would it be?",
-            "What's a word in another language you love the sound of?",
-            "What's something you've been procrastinating on for way too long?",
-            "What's a show or movie you could rewatch forever?",
-            "If you could rename yourself, would you? What to?",
-            "What's the weirdest dream you've had recently?",
-            "What's a skill you wish you had but never actually learned?",
-            "What's your comfort food right now, no judgment?",
-            "If you could teleport anywhere for exactly one hour, where?",
-            "What's a place you really want to show me someday?",
-            "What's a compliment someone gave you that you still think about?",
-            "What's something you've been watching or reading lately?",
-            "What would you do if you had a completely free, unplanned day tomorrow?",
-            "If you could have dinner with any fictional character, who and why?",
-            "What's a small thing you're quietly looking forward to this week?",
-            "What's a word you always spell wrong no matter how many times you look it up?",
-            "What's something you used to be obsessed with that you've completely moved on from?",
-            "If you could only keep three apps on your phone, which ones?",
-            "What's something that always makes you feel instantly better?",
-
-            // ── Reflective & Warm ──
-            "What's something you learned about yourself recently that surprised you?",
-            "What's a decision you made lately that you feel genuinely good about?",
-            "What's a memory from us that you come back to more than I probably know?",
-            "What does a perfect lazy day actually look like for you?",
-            "What's something you're quietly proud of yourself for?",
-            "What's something you wish people understood about you without having to explain it?",
-            "What's a version of our future that you love imagining?",
-            "What's something I do that means more to you than I probably realize?",
-            "What's a quality in yourself that you're actively trying to grow?",
-            "What made you feel most understood recently?",
-            "What does feeling at home feel like to you?",
-            "What's a moment from the last few months you'd want to live again?",
-            "What's something you've let go of that felt hard but turned out to be right?",
-            "What's something we do together that feels like its own little world?",
-            "What's a way I've grown recently that you've noticed?",
-            "What's something about our relationship that still surprises you?",
-            "What's a goal you set for yourself this year — how's it going honestly?",
-            "What's something you're still figuring out about yourself?",
-            "What's something you're grateful for that you don't say out loud enough?",
-            "What does a good day feel like for you lately — what's the common thread?",
-            "What's a memory from your childhood you love revisiting?",
-            "What's a book, song, or film that genuinely changed how you think?",
-            "What's something about love that you understand now that you didn't before?",
-            "What's something small I do that you'd miss a lot if I stopped?",
-            "If you wrote me a letter tonight, what would the first line be?",
-
-            // ── Deep & Vulnerable (occasional — roughly 1 in 9 days) ──
-            "What's something you've been carrying alone lately that you haven't said out loud?",
-            "What's something you wish you could go back and tell a younger version of yourself?",
-            "What's a part of you that you find genuinely hard to share, even with me?",
-            "What's something you're afraid to want too much — in case it doesn't happen?",
-            "When was the last time you felt truly at peace, and what was happening?",
-            "What's a wound that's still healing, even slowly?",
-            "What do you need more of that you find hard to ask for?",
-            "What does feeling loved by me look like on a really hard day?",
-            "What's a fear about us you've never said out loud?",
-            "What's a question you wish I would ask you more?",
-        ];
-
-        const parts = today.split('-').map(Number);
-        const hash = parts[0] * 31 + parts[1] * 7 + parts[2];
-        const question = QUESTIONS[Math.abs(hash) % QUESTIONS.length];
+        // Selection is a PURE function of SHARED inputs only (UTC calendar day,
+        // plus the synced anniversaryDate/coupleId). No device-local value, no
+        // per-user name, no Math.random — so both partners resolve the SAME
+        // prompt for the same day. The first device to resolve `today` freezes
+        // the string into the QuestionEntry; the other reads it back identically.
+        const question = selectDailyQuestion(today, profile.anniversaryDate, profile.coupleId);
 
         const entry: QuestionEntry = { date: today, question, answers: {} };
         const updated = [...(profile.questions ?? []).filter(q => {

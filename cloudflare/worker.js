@@ -29,7 +29,20 @@ import {
  *   ADMIN_DASHBOARD_TOKEN       - secret for admin dashboard/API access
  *   SUPABASE_URL                - secret/base URL for the Supabase project
  *   SUPABASE_SERVICE_ROLE_KEY   - secret for cleanup-task RPC + task updates
+ *   MEDIA_URL_SIGNING_SECRET    - HMAC secret shared with the sign-media edge fn;
+ *                                 used to verify short-lived signed media URLs on
+ *                                 GET/HEAD reads. Server-only; never in the client
+ *                                 bundle. Must match sign-media's signing secret.
  */
+
+// Signed-URL rollout gate. While `true`, GET/HEAD reads with NO `sig` query fall
+// back to the legacy unsigned behaviour so existing clients keep working; any
+// request that DOES carry a `sig` is still verified strictly. TODO flip to false
+// after client adoption to enforce signatures on every managed-media read.
+const ALLOW_UNSIGNED_MEDIA = true;
+// TTL ceiling (seconds) for the private Cache-Control we set on a signed hit.
+// Must not exceed the sign-media TTL (900s) so caches never outlive a signature.
+const SIGNED_MEDIA_MAX_AGE_SECONDS = 900;
 
 const CLEANUP_ROUTE = '/__internal/cleanup';
 const ADMIN_ROUTE_PREFIX = '/__admin';
@@ -115,7 +128,7 @@ function corsHeaders(origin) {
   };
 }
 
-function objectHeaders(obj, cors) {
+function objectHeaders(obj, cors, options = {}) {
   const headers = new Headers(cors);
   if (typeof obj.writeHttpMetadata === 'function') {
     obj.writeHttpMetadata(headers);
@@ -123,7 +136,14 @@ function objectHeaders(obj, cors) {
 
   headers.set('Content-Type', obj.httpMetadata?.contentType || headers.get('Content-Type') || 'application/octet-stream');
   headers.set('Content-Disposition', 'inline');
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  if (options.private) {
+    // Signed reads are per-user and short-lived: keep them out of shared caches
+    // and never let the cached copy outlive the URL signature.
+    const maxAge = Math.max(0, Math.min(SIGNED_MEDIA_MAX_AGE_SECONDS, Number(options.maxAge) || 0));
+    headers.set('Cache-Control', `private, max-age=${maxAge}`);
+  } else {
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
   headers.set('Accept-Ranges', 'bytes');
   if (typeof obj.size === 'number') headers.set('Content-Length', String(obj.size));
   if (obj.httpEtag) headers.set('ETag', obj.httpEtag);
@@ -363,6 +383,49 @@ function parsePositiveInteger(value, fallback) {
 async function sha256Hex(buffer) {
   const digest = await crypto.subtle.digest('SHA-256', buffer);
   return bufferToHex(digest);
+}
+
+// Constant-time comparison of two lowercase-hex strings of equal length.
+// Returns false immediately on a length mismatch (length is not secret here).
+function timingSafeEqualHex(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * Verify a signed-media credential against the sign-media SIGNING CONTRACT.
+ *
+ *   secret  = env.MEDIA_URL_SIGNING_SECRET (shared with the sign-media edge fn)
+ *   message = `${key}\n${exp}`  (key = R2 object key, NO leading slash)
+ *   sig     = lowercase hex HMAC-SHA256(message, secret)
+ *   exp     = INTEGER unix seconds; the URL is valid only while exp > now()
+ *
+ * Returns true only when the signature is well-formed, matches, and is unexpired.
+ * Returns false (fail closed) if the secret is unset or any input is malformed.
+ */
+async function verifyMediaSignature(key, exp, sig, env) {
+  const secret = env.MEDIA_URL_SIGNING_SECRET;
+  if (!secret) return false;
+  if (typeof sig !== 'string' || !/^[0-9a-f]+$/.test(sig)) return false;
+
+  const expSeconds = Number(exp);
+  if (!Number.isInteger(expSeconds) || expSeconds <= 0) return false;
+  if (expSeconds <= Math.floor(Date.now() / 1000)) return false;
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const message = new TextEncoder().encode(`${key}\n${expSeconds}`);
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, message);
+  return timingSafeEqualHex(bufferToHex(signature), sig.toLowerCase());
 }
 
 async function supabaseRequest(env, path, init = {}) {
@@ -2571,6 +2634,42 @@ export default {
       }
     }
 
+    // Bulk-purge every R2 object for one couple — used by the delete-account edge
+    // function (GDPR/Apple erasure) when the deleting user was the couple's sole
+    // remaining member. Gated by the same internal cleanup secret (server-to-server
+    // only; the client never calls this).
+    if (request.method === 'POST' && url.pathname === '/__internal/purge-couple') {
+      const purgeToken = request.headers.get('X-Cleanup-Token');
+      if (!env.CLEANUP_INTERNAL_TOKEN || !purgeToken || purgeToken !== env.CLEANUP_INTERNAL_TOKEN) {
+        return new Response('Unauthorized', { status: 401, headers: cors });
+      }
+      try {
+        const body = await request.json().catch(() => ({}));
+        const coupleId = typeof body?.coupleId === 'string' ? body.coupleId.trim() : '';
+        // Strict guard: a single couple id only. Reject empty (would match the
+        // whole v2/couples/ prefix => purge EVERY couple) and anything with '/'
+        // or '.' so the prefix can neither be widened nor escaped.
+        if (!/^[A-Za-z0-9_-]+$/.test(coupleId)) {
+          return jsonResponse({ ok: false, error: 'invalid coupleId' }, 400, cors);
+        }
+        const prefix = `v2/couples/${coupleId}/`;
+        let cursor;
+        let deleted = 0;
+        do {
+          const page = await env.LIOR_BUCKET.list({ prefix, cursor });
+          const keys = page.objects.map((object) => object.key);
+          if (keys.length) {
+            await Promise.all(keys.map((key) => env.LIOR_BUCKET.delete(key).catch(() => {})));
+            deleted += keys.length;
+          }
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+        return jsonResponse({ ok: true, coupleId, deleted }, 200, cors);
+      } catch (error) {
+        return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+      }
+    }
+
     if (url.pathname.startsWith(ADMIN_ROUTE_PREFIX)) {
       if (!env.ADMIN_DASHBOARD_TOKEN) {
         return jsonResponse({ ok: false, error: 'ADMIN_DASHBOARD_TOKEN is not configured' }, 500, cors);
@@ -2686,21 +2785,52 @@ export default {
       return new Response('Invalid path', { status: 400, headers: cors });
     }
 
-    if (request.method === 'HEAD') {
-      const obj = await env.LIOR_BUCKET.head(key);
-      if (!obj) {
-        return new Response('Not Found', { status: 404, headers: cors });
-      }
-      return new Response(null, { status: 200, headers: objectHeaders(obj, cors) });
-    }
+    // ── Signed-URL read guard (GET/HEAD on private managed media) ────────────
+    // <img>/<video> tags can't send Authorization, so the signature minted by
+    // the sign-media edge fn rides in the URL query (`exp` + `sig`). For managed
+    // keys we verify it here before serving. The `key` passed to the bucket and
+    // the verifier is the leading-slash-stripped path from sanitizeKey, which is
+    // exactly the normalized key sign-media signed (parseManagedMediaKey.key).
+    if (request.method === 'HEAD' || request.method === 'GET') {
+      const sig = url.searchParams.get('sig');
+      const exp = url.searchParams.get('exp');
+      const isManaged = isManagedWriteKey(key);
+      // Cache-Control hint applied to the response when a signature is honoured.
+      let signedMaxAge = 0;
 
-    if (request.method === 'GET') {
+      if (isManaged) {
+        if (sig) {
+          // A signature was supplied: it MUST be valid + unexpired, or we refuse.
+          const valid = await verifyMediaSignature(key, exp, sig, env);
+          if (!valid) {
+            return new Response('Forbidden', { status: 403, headers: cors });
+          }
+          signedMaxAge = Number(exp) - Math.floor(Date.now() / 1000);
+        } else if (!ALLOW_UNSIGNED_MEDIA) {
+          // Enforcement mode: managed media with no signature is rejected.
+          return new Response('Forbidden', { status: 403, headers: cors });
+        }
+        // else: dual-accept rollout — no sig present, fall through to unsigned.
+      }
+
+      // A private, short-lived Cache-Control is used only on a verified signature;
+      // unsigned/non-managed reads keep the long-lived immutable public cache.
+      const headerOptions = signedMaxAge > 0 ? { private: true, maxAge: signedMaxAge } : {};
+
+      if (request.method === 'HEAD') {
+        const obj = await env.LIOR_BUCKET.head(key);
+        if (!obj) {
+          return new Response('Not Found', { status: 404, headers: cors });
+        }
+        return new Response(null, { status: 200, headers: objectHeaders(obj, cors, headerOptions) });
+      }
+
       const obj = await env.LIOR_BUCKET.get(key, { range: request.headers });
       if (!obj) {
         return new Response('Not Found', { status: 404, headers: cors });
       }
 
-      const headers = objectHeaders(obj, cors);
+      const headers = objectHeaders(obj, cors, headerOptions);
       const hasRange = request.headers.has('Range') && obj.range;
       if (hasRange) {
         const end = obj.range.offset + obj.range.length - 1;

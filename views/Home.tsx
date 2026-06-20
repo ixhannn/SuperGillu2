@@ -10,8 +10,8 @@ import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
 import { Haptics } from '../services/haptics';
+import { DailyDropCard } from '../components/daily-drop/DailyDropCard';
 import { DailyQuestion } from '../components/DailyQuestion';
-import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
@@ -790,14 +790,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 </div>
             </ScrollReveal>
 
-            {/* ── TODAY'S QUESTION — the daily two-person ritual ───────────
-                Placed first, directly under the hero: it is the one thing
-                both partners should see and do together every day. Delight
-                tiles (pet, bonsai, aura) live below it. */}
-            <div className="mb-5 relative z-10">
-                <DailyQuestion profile={profile} onUpdate={() => {}} />
-            </div>
-
             {/* ── ACTION BUTTONS — Heartbeat & Pets ───────────────────── */}
             <ScrollReveal variant="popIn" delay={0.09}>
                 <div className="mb-5 flex gap-3 relative z-10">
@@ -1004,11 +996,15 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 </TiltCard>
             </ScrollReveal>
 
-            {/* ── PARTNER INSIGHT WHISPER ────────────────────────────── */}
-            {/* Reveal order 5 — quiet partner insight, arrives as an aside. */}
-            <ScrollReveal variant="fadeUp" delay={0.27}>
-                <InsightWhisper setView={setView} />
-            </ScrollReveal>
+            {/* ── TODAY'S DROP ─────────────────────────────────────────── */}
+            <div className="mb-5 relative z-10">
+                <DailyDropCard setView={setView} />
+            </div>
+
+            {/* ── TODAY'S QUESTION — the daily two-person ritual ───────── */}
+            <div className="mb-5 relative z-10">
+                <DailyQuestion profile={profile} onUpdate={() => {}} />
+            </div>
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
             {onThisDayMemory && (() => {
@@ -1115,28 +1111,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     </div>
                 </div>
 
-                {/* Mood Board */}
-                <div className="home-reveal-item col-span-1">
-                    <button
-                        type="button"
-                        aria-label="Open Aura Board"
-                        onClick={(e) => open(e, () => setView('mood-calendar'))}
-                        className="w-full h-full cursor-pointer text-left appearance-none border-0 bg-transparent p-0"
-                    >
-                        <div className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
-                            <div className="mb-3">
-                                <div className="p-2.5 rounded-xl inline-block bg-pink-50 border border-pink-100/50">
-                                    <Sparkles size={22} className="text-pink-500" />
-                                </div>
-                            </div>
-                            <span className="font-semibold text-sm text-gray-800">Aura Board</span>
-                            <span className="text-xs text-gray-400 mt-1">Your shared pulse</span>
-                        </div>
-                    </button>
-                </div>
-
                 {/* Bonsai Bloom */}
-                <div className="home-reveal-item col-span-1">
+                <div className="home-reveal-item col-span-2">
                     <div
                         onClick={(e) => open(e, () => setView('bonsai-bloom'))}
                         className="w-full h-full cursor-pointer"
@@ -1148,7 +1124,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                             </div>
                             <span className="font-semibold text-sm text-gray-800">Bonsai</span>
-                            <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
+                            <span className="text-xs text-gray-400 mt-1">Your tree, grown by your days together</span>
                         </div>
                     </div>
                 </div>

@@ -7,14 +7,18 @@
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-/** Maximum dimension (width or height) for compressed images */
-export const IMAGE_MAX_SIZE = 800;
+/**
+ * Maximum dimension (width or height) for compressed images.
+ * 1600px keeps photos sharp on modern high-DPI phone screens (an 800px image
+ * shown full-width on a 1080p+/retina display gets upscaled and looks soft).
+ */
+export const IMAGE_MAX_SIZE = 1600;
 
 /** Maximum dimension for video thumbnails (smaller for fast grid rendering) */
 export const THUMB_MAX_SIZE = 600;
 
-/** JPEG quality for all compressed outputs */
-export const IMAGE_QUALITY = 0.7;
+/** JPEG quality for all compressed outputs (0.82 ≈ visually near-lossless for photos) */
+export const IMAGE_QUALITY = 0.82;
 
 /** Maximum video file size in bytes (25 MB) */
 export const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
@@ -46,7 +50,10 @@ const clampDimensions = (
 export const compressImage = async (file: File): Promise<string> => {
     const { default: imageCompression } = await import('browser-image-compression');
     const options = {
-        maxSizeMB: 0.2, // ~200KB
+        // ~1MB ceiling (well under the 8 MiB server limit). Generous enough that
+        // the quality/dimension settings above are what actually shape the output,
+        // instead of quality being crushed down to hit a tiny byte target.
+        maxSizeMB: 1,
         maxWidthOrHeight: IMAGE_MAX_SIZE,
         useWebWorker: true,
         fileType: 'image/jpeg',
