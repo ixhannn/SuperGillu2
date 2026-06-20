@@ -12,7 +12,6 @@ import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/Hear
 import { Haptics } from '../services/haptics';
 import { DailyDropCard } from '../components/daily-drop/DailyDropCard';
 import { DailyQuestion } from '../components/DailyQuestion';
-import { InsightWhisper } from '../components/InsightWhisper';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
 import { calendarDayDifference, daysTogetherFrom, getNextAnnualOccurrence, parseStoredDateOnly } from '../shared/dateOnly.js';
@@ -1005,12 +1004,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 </TiltCard>
             </ScrollReveal>
 
-            {/* ── PARTNER INSIGHT WHISPER ────────────────────────────── */}
-            {/* Reveal order 5 — quiet partner insight, arrives as an aside. */}
-            <ScrollReveal variant="fadeUp" delay={0.27}>
-                <InsightWhisper setView={setView} />
-            </ScrollReveal>
-
             {/* ── TODAY'S DROP ─────────────────────────────────────────── */}
             <div className="mb-5 relative z-10">
                 <DailyDropCard setView={setView} />
@@ -1134,7 +1127,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                             </div>
                             <span className="font-semibold text-sm text-gray-800">Bonsai</span>
-                            <span className="text-xs text-gray-400 mt-1">Watch us grow together</span>
+                            <span className="text-xs text-gray-400 mt-1">Your tree, grown by your days together</span>
                         </div>
                     </div>
                 </div>
