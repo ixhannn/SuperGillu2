@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     ArrowRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
     Image as ImageIcon, Activity, Plus, Share2,
@@ -28,6 +28,25 @@ type Step =
     | 'myName' | 'anniversary' | 'first-question' | 'done';
 
 const FEEL_KEYS: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5'];
+
+// Full step order — used to derive travel direction (forward vs back) so every
+// layer animates in the same coordinated direction for a continuous feel.
+const STEP_ORDER: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'myName', 'anniversary', 'first-question', 'done'];
+
+// Directional, depth-layered transition variants. `custom` carries the travel
+// direction (+1 forward / -1 back). The headline copy travels furthest
+// (foreground), the phone's screen content a little less (mid-ground) — together
+// they read as one camera move from slide to slide.
+const COPY_VARIANTS = {
+    enter: (d: number) => ({ opacity: 0, x: d * 44 }),
+    center: { opacity: 1, x: 0 },
+    exit: (d: number) => ({ opacity: 0, x: d * -44 }),
+};
+const SCREEN_VARIANTS = {
+    enter: (d: number) => ({ opacity: 0, x: d * 28 }),
+    center: { opacity: 1, x: 0 },
+    exit: (d: number) => ({ opacity: 0, x: d * -28 }),
+};
 
 const PHX = 147;   // phone centre x within the 294-wide composition column
 const PHY = 190;   // phone centre y — memory cards erupt from here
@@ -257,10 +276,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     const skyRef = useRef<HTMLCanvasElement>(null);
     const devCanvasRef = useRef<HTMLCanvasElement>(null);
     const intensityTargetRef = useRef(0.15);
+    const panRef = useRef(0);          // transient background pan, kicked on each advance
+    const [dir, setDir] = useState(1); // travel direction (+1 forward / -1 back)
 
     const isFeel = FEEL_KEYS.includes(step);
     const feelIndex = FEEL_KEYS.indexOf(step);
     const feelSlide = isFeel ? ACT1[feelIndex] : null;
+    const isIconMode = feelSlide?.mode === 'icon';
 
     const scene = useMemo(() => {
         if (feelSlide) return { sky: feelSlide.sky, sun: feelSlide.sun, glow: feelSlide.glow, cons: feelSlide.cons };
@@ -268,7 +290,16 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         return ACT2_SCENE;
     }, [feelSlide, step]);
 
-    useEffect(() => { intensityTargetRef.current = scene.cons; }, [scene.cons]);
+    useEffect(() => {
+        // Signature "gather" beat on the final slide: the lights gather to ~0.82,
+        // take a brief breath, then bloom to full — felt, not a linear fade.
+        if (step === 'feel5') {
+            intensityTargetRef.current = 0.82;
+            const id = setTimeout(() => { intensityTargetRef.current = 1; }, 260);
+            return () => clearTimeout(id);
+        }
+        intensityTargetRef.current = scene.cons;
+    }, [step, scene.cons]);
 
     const daysApart = useMemo(() => {
         if (!anniversary) return 0;
@@ -277,7 +308,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     }, [anniversary]);
 
     const advance = (next: Step) => {
-        void Haptics.tap();
+        // The "Building it" slide is where the two lights converge — an intimate
+        // lub-dub instead of the usual light tick.
+        if (next === 'feel4') void Haptics.heartbeat();
+        else void Haptics.tap();
+        const d = STEP_ORDER.indexOf(next) >= STEP_ORDER.indexOf(step) ? 1 : -1;
+        setDir(d);
+        panRef.current = -d * 22; // background drifts opposite to travel — parallax depth
         setStep(next);
     };
 
@@ -383,14 +420,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             ctx.globalCompositeOperation = 'lighter';
             for (const p of dust) {
                 const tw = .5 + .5 * Math.sin(t * p.sp + p.ph);
-                const px = p.x * W + Math.sin(t * .3 + p.ph) * 4;
+                const px = p.x * W + Math.sin(t * .3 + p.ph) * 4 + panRef.current * 0.6;
                 const py = p.y * H + Math.cos(t * .24 + p.ph) * 4;
                 ctx.globalAlpha = p.a * tw * .8;
                 const sz = p.r * 7;
                 ctx.drawImage(sprites[p.c], px - sz / 2, py - sz / 2, sz, sz);
             }
             if (intensity > 0.04) {
-                const pts = cstars.map(c => [c[0] * W, c[1] * H]);
+                const pts = cstars.map(c => [c[0] * W + panRef.current, c[1] * H]);
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.lineWidth = .7;
                 for (let m = 0; m < pts.length; m++) {
@@ -439,6 +476,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         const loop = () => {
             t += 0.016;
             intensity += (intensityTargetRef.current - intensity) * 0.05;
+            panRef.current += (0 - panRef.current) * 0.08; // ease the pan kick back to rest
             drawSky(); drawDev();
             raf = requestAnimationFrame(loop);
         };
@@ -492,53 +530,82 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             {/* ── Act I: the phone-in-clouds hero ─────────────────────────── */}
             {isFeel && feelSlide && (
                 <div className="lo-ob-comp">
-                    {feelSlide.mode === 'icon' ? (
-                        <>
-                            <div className="lo-ob-icon"><img src="/icon-128.png" alt="Lior" /></div>
-                            <div className="lo-ob-name">Lior</div>
-                        </>
-                    ) : (
-                        <motion.div
-                            className="lo-ob-dev"
-                            key={`dev-${step}`}
-                            initial={{ opacity: 0, y: 16, scale: 0.94 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-                        >
-                            <div className="lo-ob-devscr">
-                                <div className="lo-ob-devisland" />
-                                <div className="lo-ob-devstat"><span>9:41</span><StatusIcons color="#8a4436" h={7.5} /></div>
-                                <motion.div
-                                    className="lo-ob-devbody"
-                                    key={`devbody-${step}`}
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    transition={{ delay: 0.18, duration: 0.36 }}
-                                >
-                                    {devContentFor(step)}
-                                </motion.div>
-                                <canvas ref={devCanvasRef} className="lo-ob-devcons" width={144} height={318} aria-hidden />
+                    {/* The icon (slide 1) and the phone both PERSIST across Act I —
+                        their visibility cross-fades via CSS, so the device never
+                        unmounts/remounts between slides. Only the screen content and
+                        the erupting cards transition. */}
+                    <div
+                        className="lo-ob-icon"
+                        style={{
+                            opacity: isIconMode ? 1 : 0,
+                            transform: isIconMode ? 'scale(1)' : 'scale(0.7)',
+                            pointerEvents: isIconMode ? 'auto' : 'none',
+                        }}
+                    >
+                        <img src="/icon-128.png" alt="Lior" />
+                    </div>
+                    <div className="lo-ob-name" style={{ opacity: isIconMode ? 1 : 0 }}>Lior</div>
+
+                    <div
+                        className="lo-ob-dev"
+                        style={{
+                            opacity: isIconMode ? 0 : 1,
+                            transform: isIconMode ? 'translateY(28px) scale(0.92)' : 'translateY(0) scale(1)',
+                            pointerEvents: isIconMode ? 'none' : 'auto',
+                        }}
+                    >
+                        <div className="lo-ob-devscr">
+                            <div className="lo-ob-devisland" />
+                            <div className="lo-ob-devstat"><span>9:41</span><StatusIcons color="#8a4436" h={7.5} /></div>
+                            <div className="lo-ob-devbody-wrap">
+                                <AnimatePresence custom={dir}>
+                                    <motion.div
+                                        className="lo-ob-devbody"
+                                        key={`devbody-${step}`}
+                                        custom={dir}
+                                        variants={SCREEN_VARIANTS}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+                                    >
+                                        {devContentFor(step)}
+                                    </motion.div>
+                                </AnimatePresence>
                             </div>
-                        </motion.div>
-                    )}
+                            <canvas ref={devCanvasRef} className="lo-ob-devcons" width={144} height={318} aria-hidden />
+                        </div>
+                    </div>
 
                     <div className="lo-ob-mist" />
 
                     <div className="lo-ob-cards">
-                        {feelSlide.cards.map((c, i) => (
-                            <motion.div
-                                key={`${step}-${c.id}`}
-                                className="lo-ob-card"
-                                style={{ left: c.x, top: c.y, width: c.w }}
-                                initial={{ x: PHX - (c.x + c.w / 2), y: PHY - (c.y + 22), scale: 0.32, opacity: 0, rotate: 0 }}
-                                animate={{ x: 0, y: 0, scale: 1, opacity: 1, rotate: c.r }}
-                                transition={{ delay: 0.18 + i * 0.12, type: 'spring', damping: 26, stiffness: 250 }}
-                            >
-                                <div className="lo-ob-cfloat" style={{ ['--d' as string]: `${c.d}s` } as React.CSSProperties}>
-                                    {c.content}
-                                </div>
-                            </motion.div>
-                        ))}
+                        <AnimatePresence>
+                            {feelSlide.cards.map((c, i) => {
+                                // Tiered springs: foreground cards snap in first (snappier),
+                                // deeper layers settle gently — a layered "eruption", not a flat stagger.
+                                const spring = i === 0
+                                    ? { type: 'spring' as const, stiffness: 380, damping: 32, mass: 0.8 }
+                                    : i === 1
+                                        ? { type: 'spring' as const, stiffness: 260, damping: 30, mass: 0.9 }
+                                        : { type: 'spring' as const, stiffness: 200, damping: 28, mass: 1.1 };
+                                return (
+                                    <motion.div
+                                        key={`${step}-${c.id}`}
+                                        className="lo-ob-card"
+                                        style={{ left: c.x, top: c.y, width: c.w }}
+                                        initial={{ x: PHX - (c.x + c.w / 2), y: PHY - (c.y + 22), scale: 0.32, opacity: 0, rotate: 0 }}
+                                        animate={{ x: 0, y: 0, scale: 1, opacity: 1, rotate: c.r }}
+                                        exit={{ x: PHX - (c.x + c.w / 2), y: PHY - (c.y + 22), scale: 0.3, opacity: 0, rotate: 0, transition: { duration: 0.32, ease: [0.4, 0, 0.2, 1] } }}
+                                        transition={{ delay: 0.16 + i * 0.1, ...spring }}
+                                    >
+                                        <div className="lo-ob-cfloat" style={{ ['--d' as string]: `${c.d}s` } as React.CSSProperties}>
+                                            {c.content}
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </AnimatePresence>
                     </div>
                 </div>
             )}
@@ -622,10 +689,23 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             {/* ── Bottom panel: copy (Act I) + progress + CTA ─────────────── */}
             <div className="lo-ob-panel">
                 {isFeel && feelSlide && (
-                    <motion.div key={`copy-${step}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
-                        <h1 className="lo-ob-h">{feelSlide.h}</h1>
-                        <p className="lo-ob-s">{feelSlide.s}</p>
-                    </motion.div>
+                    <div className="lo-ob-copy-wrap">
+                        <AnimatePresence custom={dir}>
+                            <motion.div
+                                className="lo-ob-copy"
+                                key={`copy-${step}`}
+                                custom={dir}
+                                variants={COPY_VARIANTS}
+                                initial="enter"
+                                animate="center"
+                                exit="exit"
+                                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                            >
+                                <h1 className="lo-ob-h">{feelSlide.h}</h1>
+                                <p className="lo-ob-s">{feelSlide.s}</p>
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
                 )}
 
                 {isFeel && (

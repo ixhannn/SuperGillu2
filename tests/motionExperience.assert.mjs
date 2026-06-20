@@ -8,6 +8,7 @@ const nativePolishSource = read('styles/native-polish.css');
 const transitionEngineSource = read('utils/TransitionEngine.ts');
 const layoutSource = read('components/Layout.tsx');
 const appSource = read('App.tsx');
+const onboardingCss = read('styles/onboarding.css');
 
 assert.match(
   rootFixesSource,
@@ -102,5 +103,30 @@ for (const [, body] of ambientWorldBlocks) {
     body,
     /\b(?:filter|backdrop-filter|blur)\b/,
     'The background depth-recede (.lior-ambient-world) must not use filter/blur — it composites over the live full-screen WebGL canvas, so a per-frame Gaussian hitches mid-range Android. Use opacity + transform only; blur a static snapshot if ever needed.',
+  );
+}
+
+// Onboarding (styles/onboarding.css) renders frosted glass + a dust/constellation
+// canvas + cloud/mist that drift continuously. STATIC blur on bounded glass is
+// fine, but ANIMATED filter/backdrop-filter is the same ~340ms blur-jank hazard.
+// Guard the two ways it could sneak in: @keyframes and CSS transitions.
+const onbKeyframes = [...onboardingCss.matchAll(/@keyframes\s+([^{\s]+)\s*\{((?:[^{}]+|\{[^{}]*\})*)\}/g)];
+assert.ok(
+  onbKeyframes.length >= 3,
+  'Expected the onboarding ambient keyframes (card float, icon breath, days pop) to be declared.',
+);
+for (const [, name, body] of onbKeyframes) {
+  assert.doesNotMatch(
+    body,
+    /\b(?:filter|backdrop-filter|blur)\b/,
+    `onboarding @keyframes ${name} must animate transform/opacity only — it runs over the live constellation canvas + frosted glass, so an animated blur would hitch mid-range Android.`,
+  );
+}
+const onbTransitions = [...onboardingCss.matchAll(/transition:\s*([^;}]+)[;}]/g)];
+for (const [, decl] of onbTransitions) {
+  assert.doesNotMatch(
+    decl,
+    /\b(?:filter|backdrop-filter|all)\b/,
+    `onboarding "transition: ${decl.trim()}" must not animate filter/backdrop-filter (or use "all", which can implicitly animate blur over the live canvas).`,
   );
 }
