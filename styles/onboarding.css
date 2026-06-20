@@ -1,0 +1,433 @@
+/*
+ * Onboarding — warm "phone in the clouds" experience.
+ *
+ * A first-run, pre-theme surface: a warm golden-hour sky from which a phone
+ * rises out of soft cloud mist, with memory cards erupting from its frame and
+ * a constellation that builds across the five emotion slides. Runs full-bleed
+ * on the real device (no fake outer chrome — the OS draws the real status bar);
+ * the only mock "phone" is the dreamlike one in the background.
+ *
+ * Performance contract (see tests/motionExperience.assert.mjs + memory):
+ *   - NEVER animate filter / backdrop-filter (the ~340ms Android nav hitch).
+ *     Blur radii here are STATIC; only transform + opacity animate.
+ *   - One canvas for clouds/dust/constellation, one tiny canvas inside the phone.
+ *   - prefers-reduced-motion collapses to a static warm gradient.
+ */
+
+/* Shell: full-bleed on a real device; a neutral backdrop that centres the
+ * onboarding into a phone-sized frame on wide (desktop preview) viewports. */
+.lo-ob-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #100b0d;
+  overflow: hidden;
+}
+.lo-ob {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Afacad Flux', var(--font-ui, system-ui), sans-serif;
+  background: linear-gradient(180deg, #ffaf4d, #ffc873 20%, #ffe2ad 38%, #fffaf4 62%);
+  transition: background 900ms cubic-bezier(.16, 1, .3, 1);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+@media (min-width: 480px) {
+  .lo-ob {
+    width: 402px;
+    height: min(872px, 96vh);
+    border-radius: 46px;
+    box-shadow: 0 40px 110px rgba(0, 0, 0, .5), 0 12px 40px rgba(0, 0, 0, .4);
+  }
+}
+
+/* ── Ambient light ─────────────────────────────────────────────── */
+.lo-ob-glow {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 70px);
+  margin-left: -150px;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 214, 156, .55), rgba(255, 196, 150, .18) 46%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 900ms ease;
+}
+.lo-ob-sun {
+  position: absolute;
+  right: -28px;
+  top: calc(env(safe-area-inset-top) + 28px);
+  width: 156px;
+  height: 156px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 38%, rgba(255, 255, 255, .55), rgba(255, 236, 196, .22) 55%, transparent 72%);
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 900ms ease;
+}
+
+/* ── The scene region (top of screen) ──────────────────────────── */
+.lo-ob-scene {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(env(safe-area-inset-top) + 14px);
+  height: 452px;
+  z-index: 2;
+  pointer-events: none;
+}
+.lo-ob-sky {            /* constellation + dust canvas */
+  position: absolute;
+  left: -28%;
+  width: 156%;
+  top: 0;
+  height: 452px;
+  pointer-events: none;
+}
+.lo-ob-cloud {
+  position: absolute;
+  left: -28%;
+  width: 156%;
+  top: 244px;
+  height: 230px;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 56% at 50% 22%, rgba(255, 206, 158, .34), transparent 66%),
+    radial-gradient(44% 56% at 14% 58%, rgba(255, 255, 255, .98), transparent 70%),
+    radial-gradient(54% 66% at 42% 46%, #fff, transparent 72%),
+    radial-gradient(46% 60% at 70% 58%, rgba(255, 255, 255, .97), transparent 70%),
+    radial-gradient(50% 60% at 92% 52%, rgba(255, 255, 255, .95), transparent 70%),
+    radial-gradient(120% 52% at 50% 94%, rgba(255, 250, 244, .98), transparent 78%);
+  filter: blur(10px);          /* STATIC blur — never animated */
+}
+.lo-ob-fade {
+  position: absolute;
+  left: 0; right: 0;
+  top: 332px;
+  height: 130px;
+  background: linear-gradient(180deg, rgba(255, 250, 244, 0), #fffaf4 82%);
+  pointer-events: none;
+}
+
+/* ── Composition column (phone + cards), 294 wide, centered ────── */
+.lo-ob-comp {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 14px);
+  transform: translateX(-50%);
+  width: 294px;
+  height: 452px;
+  z-index: 3;
+}
+
+/* App icon (slide 1) */
+.lo-ob-icon {
+  position: absolute;
+  left: 50%;
+  top: 116px;
+  margin-left: -48px;
+  width: 96px;
+  height: 96px;
+  border-radius: 27px;
+  background: rgba(255, 255, 255, .78);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1.5px solid rgba(255, 255, 255, .92);
+  box-shadow: 0 0 72px 18px rgba(255, 188, 128, .56), 0 18px 34px rgba(200, 110, 70, .3), inset 0 1.5px 0 rgba(255, 255, 255, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 600ms ease, transform 820ms cubic-bezier(.16, 1, .3, 1);
+  z-index: 4;
+}
+.lo-ob-icon img {
+  width: 68px;
+  height: 68px;
+  border-radius: 16px;
+  object-fit: cover;
+}
+.lo-ob-name {
+  position: absolute;
+  left: 0; right: 0;
+  top: 226px;
+  text-align: center;
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 24px;
+  letter-spacing: .04em;
+  color: #fff;
+  text-shadow: 0 2px 18px rgba(180, 90, 50, .5);
+  transition: opacity 600ms ease;
+  z-index: 4;
+}
+
+/* The background phone — dissolves into mist at the bottom */
+.lo-ob-dev {
+  position: absolute;
+  left: 50%;
+  top: 52px;
+  width: 152px;
+  height: 326px;
+  margin-left: -76px;
+  border-radius: 32px;
+  background: linear-gradient(150deg, #4a423e, #120b09);
+  padding: 4px;
+  box-shadow: 0 0 54px rgba(160, 90, 50, .26), inset 0 0 0 .5px rgba(255, 255, 255, .12);
+  transition: transform 820ms cubic-bezier(.16, 1, .3, 1), opacity 600ms ease;
+  will-change: transform;
+  z-index: 3;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 56%, rgba(0, 0, 0, 0) 82%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 56%, rgba(0, 0, 0, 0) 82%);
+}
+.lo-ob-devscr {
+  position: relative;
+  width: 100%; height: 100%;
+  border-radius: 28px;
+  overflow: hidden;
+  background: linear-gradient(170deg, #fff4e8, #ffe6ef);
+}
+.lo-ob-devisland {
+  position: absolute;
+  left: 50%; top: 7px;
+  margin-left: -20px;
+  width: 40px; height: 11px;
+  border-radius: 7px;
+  background: #150c09;
+  z-index: 3;
+}
+.lo-ob-devstat {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 12px 0;
+  font-size: 9px;
+  font-weight: 700;
+  color: #8a4436;
+  letter-spacing: .02em;
+  z-index: 2;
+}
+.lo-ob-devbody { padding: 11px 13px 0; transition: opacity 360ms ease; }
+.lo-ob-devbody .dh { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 14px; color: #7a3a30; margin: 0 0 9px; }
+.lo-ob-devbody .dgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.lo-ob-devbody .dgrid span { display: block; height: 33px; border-radius: 8px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45); }
+.lo-ob-devbody .dlabel { font-size: 9.5px; color: #b07a52; margin-top: 9px; }
+.lo-ob-devbody .dcard { background: rgba(255, 255, 255, .66); border: 1px solid rgba(255, 255, 255, .72); border-radius: 12px; padding: 10px; box-shadow: 0 4px 12px rgba(200, 120, 90, .12); }
+.lo-ob-devbody .dq { font-family: 'Fraunces', Georgia, serif; font-size: 12px; color: #5a3a32; line-height: 1.28; margin-bottom: 8px; }
+.lo-ob-devbody .dpill { display: inline-block; font-size: 9px; font-weight: 600; color: #fff; background: linear-gradient(100deg, #e8365a, #f0846b); padding: 3px 10px; border-radius: 99px; }
+.lo-ob-devbody .drow { height: 9px; border-radius: 5px; background: rgba(122, 58, 48, .12); margin-top: 9px; }
+.lo-ob-devbody .dtwo { position: relative; height: 48px; margin: 8px 0 2px; }
+.lo-ob-devbody .dtwo .a, .lo-ob-devbody .dtwo .b { position: absolute; top: 5px; width: 38px; height: 38px; border-radius: 50%; border: 2px solid; }
+.lo-ob-devbody .dtwo .a { left: 30px; border-color: #ff9fb6; box-shadow: 0 0 15px rgba(255, 159, 182, .55); }
+.lo-ob-devbody .dtwo .b { left: 54px; border-color: #ffcd92; box-shadow: 0 0 15px rgba(255, 205, 146, .55); }
+.lo-ob-devbody .dcons { height: 72px; border-radius: 13px; background: linear-gradient(160deg, #ffe6c6, #ffd0d8); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5); }
+.lo-ob-devcons { position: absolute; inset: 0; }
+
+.lo-ob-mist {
+  position: absolute;
+  left: -28%;
+  width: 156%;
+  top: 270px;
+  height: 150px;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 58% at 26% 50%, rgba(255, 255, 255, .95), transparent 72%),
+    radial-gradient(46% 64% at 60% 44%, rgba(255, 255, 255, .97), transparent 72%),
+    radial-gradient(40% 56% at 86% 54%, rgba(255, 255, 255, .92), transparent 72%);
+  filter: blur(9px);           /* STATIC blur */
+}
+
+/* Memory cards that erupt from the phone */
+.lo-ob-cards { position: absolute; inset: 0; z-index: 5; }
+.lo-ob-card {
+  position: absolute;
+  background: rgba(255, 255, 255, .98);
+  border: 1px solid rgba(255, 255, 255, .92);
+  border-radius: 16px;
+  padding: 10px 13px;
+  box-shadow: 0 18px 40px rgba(190, 110, 60, .22), 0 6px 16px rgba(170, 90, 50, .12);
+  transition: transform 820ms cubic-bezier(.16, 1, .3, 1), opacity 520ms ease;
+  will-change: transform, opacity;
+}
+.lo-ob-card .ttl { font-weight: 500; font-size: 11.5px; color: #3a2e2a; line-height: 1.2; }
+.lo-ob-card .sub { font-size: 10px; color: #b07a52; margin-top: 1px; }
+.lo-ob-cfloat { animation: loObFloat var(--d, 7s) ease-in-out infinite alternate; will-change: transform; }
+@keyframes loObFloat { from { transform: translateY(0); } to { transform: translateY(-8px); } }
+
+/* ── Lower panel — copy + progress + CTA ───────────────────────── */
+.lo-ob-panel {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 30px);
+  width: calc(100% - 52px);
+  max-width: 340px;
+  z-index: 7;
+}
+.lo-ob-h {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  font-size: 32px;
+  line-height: 1.06;
+  letter-spacing: -.016em;
+  color: #28211d;
+  margin: 0 0 14px;
+  white-space: pre-line;
+  transition: opacity 460ms ease, transform 560ms cubic-bezier(.16, 1, .3, 1);
+}
+.lo-ob-s {
+  font-size: 15px;
+  line-height: 1.56;
+  color: #968b80;
+  margin: 0 0 24px;
+  max-width: 280px;
+  transition: opacity 460ms ease, transform 560ms cubic-bezier(.16, 1, .3, 1);
+}
+.lo-ob-prog { display: flex; gap: 6px; align-items: center; margin: 0 0 20px; }
+.lo-ob-tk {
+  width: 6px; height: 6px;
+  border-radius: 99px;
+  background: rgba(120, 70, 50, .22);
+  transition: all 440ms cubic-bezier(.16, 1, .3, 1);
+}
+.lo-ob-tk.on { width: 24px; background: linear-gradient(90deg, #e8365a, #f0a76b); box-shadow: 0 1px 7px rgba(232, 54, 90, .4); }
+.lo-ob-cta {
+  width: 100%;
+  height: 58px;
+  border-radius: 100px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Afacad Flux', var(--font-ui, system-ui), sans-serif;
+  font-weight: 500;
+  font-size: 16.5px;
+  color: #fff;
+  background: linear-gradient(180deg, #2c1a1f, #160c10);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 18px 36px rgba(150, 72, 52, .28), 0 5px 13px rgba(60, 25, 28, .3), inset 0 1px 0 rgba(255, 255, 255, .18);
+  transition: transform 220ms cubic-bezier(.16, 1, .3, 1), box-shadow 220ms ease;
+}
+.lo-ob-cta:active { transform: scale(.975); }
+.lo-ob-cta i, .lo-ob-cta svg { opacity: .82; transition: transform 320ms cubic-bezier(.16, 1, .3, 1); }
+.lo-ob-cta:active i, .lo-ob-cta:active svg { transform: translateX(4px); }
+.lo-ob-cta[disabled] { opacity: .45; cursor: default; box-shadow: none; }
+.lo-ob-skip {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #9a8b80;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ── Act II — setup steps (centered glass forms in the same world) */
+.lo-ob-form {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 52px);
+  max-width: 340px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: center;
+}
+.lo-ob-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #b08566;
+  margin: 0 0 18px;
+}
+.lo-ob-namebig {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 38px;
+  color: #7a2e44;
+  min-height: 46px;
+  letter-spacing: -.01em;
+  margin-bottom: 10px;
+}
+.lo-ob-namebig .ph { color: rgba(122, 46, 68, .26); }
+.lo-ob-formh {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  font-size: 26px;
+  line-height: 1.12;
+  color: #2a211d;
+  margin: 0 0 8px;
+}
+.lo-ob-forms { font-size: 14px; line-height: 1.5; color: #94897e; margin: 0 0 20px; }
+.lo-ob-input, .lo-ob-ta {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 16px;
+  color: #2a211d;
+  background: rgba(255, 255, 255, .58);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .8);
+  border-radius: 18px;
+  padding: 16px 18px;
+  outline: none;
+  text-align: center;
+  box-shadow: 0 10px 26px rgba(190, 110, 60, .14), inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+.lo-ob-ta { min-height: 96px; resize: none; line-height: 1.5; text-align: left; }
+.lo-ob-input:focus, .lo-ob-ta:focus { border-color: rgba(232, 54, 90, .45); }
+.lo-ob-days {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-size: 48px;
+  color: #7a2e44;
+  line-height: 1;
+  margin: 6px 0 2px;
+}
+.lo-ob-days small { display: block; font-family: 'Afacad Flux', sans-serif; font-weight: 400; font-size: 13px; color: rgba(74, 26, 40, .6); margin-top: 4px; letter-spacing: .02em; }
+.lo-ob-qcard {
+  background: rgba(255, 255, 255, .56);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .8);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 12px 28px rgba(190, 110, 60, .14), inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+.lo-ob-qlabel { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: rgba(232, 54, 90, .72); margin: 0 0 6px; }
+.lo-ob-qtext { font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 18px; line-height: 1.28; color: #2a211d; margin: 0; font-style: italic; }
+.lo-ob-seal { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12.5px; color: rgba(74, 26, 40, .6); margin: 4px 0 18px; }
+.lo-ob-invite {
+  display: flex; align-items: center; gap: 14px;
+  background: rgba(255, 255, 255, .56);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .8);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 12px 28px rgba(190, 110, 60, .14), inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+.lo-ob-qr { width: 70px; height: 70px; flex: none; border-radius: 14px; background: rgba(255, 255, 255, .7); display: flex; align-items: center; justify-content: center; color: #7a2e44; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
+.lo-ob-code { font-family: 'Fraunces', Georgia, serif; font-weight: 700; font-size: 22px; letter-spacing: .16em; color: #7a2e44; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lo-ob-cfloat { animation: none; }
+  .lo-ob, .lo-ob-h, .lo-ob-s, .lo-ob-dev, .lo-ob-icon, .lo-ob-name { transition: opacity 200ms ease; }
+}

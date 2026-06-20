@@ -1,9 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
-import { Heart, ArrowRight, Calendar, UserPlus, Sparkles, MessageCircleHeart, EyeOff, BookHeart } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+    ArrowRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
+    Image as ImageIcon, Activity, Plus, Share2,
+} from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { Haptics } from '../services/haptics';
 import { dateInputValueToStoredDate, daysTogetherFrom, parseStoredDateOnly, todayInputValue } from '../shared/dateOnly.js';
+import '../styles/onboarding.css';
 
 interface OnboardingProps {
     onComplete: (myName: string, partnerName: string) => void;
@@ -16,366 +20,277 @@ interface OnboardingProps {
     onPairNow?: (myName: string, partnerName: string) => void;
 }
 
-type Step = 'welcome' | 'how-it-works' | 'myName' | 'anniversary' | 'first-question' | 'done';
+// Act I = five emotion slides (the phone-in-clouds hero). Act II = the
+// reskinned setup steps. The Step order + the finalizeOnboarding sequence are
+// load-bearing and unchanged from the previous design.
+type Step =
+    | 'feel1' | 'feel2' | 'feel3' | 'feel4' | 'feel5'
+    | 'myName' | 'anniversary' | 'first-question' | 'done';
 
-// ─── Floating particle system ─────────────────────────────────────────────────
+const FEEL_KEYS: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5'];
 
-interface Particle {
-    id: number;
-    x: number;       // % from left
-    size: number;    // px
-    delay: number;   // s
-    duration: number; // s
-    opacity: number;
-    rotate: number;  // final rotation deg
-}
+const PHX = 147;   // phone centre x within the 294-wide composition column
+const PHY = 190;   // phone centre y — memory cards erupt from here
 
-function useParticles(count: number): Particle[] {
-    return useMemo(() => Array.from({ length: count }, (_, i) => ({
-        id: i,
-        x: 5 + (i / count) * 90 + (Math.sin(i * 2.4) * 6),
-        size: 8 + Math.abs(Math.sin(i * 1.7)) * 14,
-        delay: (i * 0.38) % 4,
-        duration: 5 + Math.abs(Math.cos(i * 1.3)) * 4,
-        opacity: 0.08 + Math.abs(Math.sin(i * 2.1)) * 0.16,
-        rotate: Math.sin(i * 3.1) * 40,
-    })), [count]);
-}
+const prefersReducedMotion = (): boolean =>
+    typeof window !== 'undefined' &&
+    !!window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const FloatingParticles: React.FC<{ burst?: boolean }> = ({ burst }) => {
-    const particles = useParticles(18);
+// ─── Card content builders (lucide icons — no hearts) ─────────────────────────
 
-    return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
-            {particles.map((p) => (
-                <motion.div
-                    key={p.id}
-                    style={{
-                        position: 'absolute',
-                        left: `${p.x}%`,
-                        bottom: '-40px',
-                        width: p.size,
-                        height: p.size,
-                    }}
-                    animate={burst ? {
-                        y: [0, -(window.innerHeight + 80)],
-                        opacity: [0, p.opacity * 2, 0],
-                        rotate: [0, p.rotate],
-                        scale: [0.6, 1.1, 0.8],
-                    } : {
-                        y: [0, -(window.innerHeight + 80)],
-                        opacity: [0, p.opacity, p.opacity, 0],
-                        rotate: [0, p.rotate],
-                    }}
-                    transition={{
-                        duration: burst ? p.duration * 0.6 : p.duration,
-                        delay: burst ? p.delay * 0.2 : p.delay,
-                        repeat: Infinity,
-                        ease: 'linear',
-                    }}
-                >
-                    <Heart
-                        size={p.size}
-                        fill="currentColor"
-                        style={{ color: `rgba(var(--theme-particle-2-rgb), 1)`, width: '100%', height: '100%' }}
-                    />
-                </motion.div>
-            ))}
+const memCard = (grad: string, a: string, b: string): React.ReactNode => (
+    <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+        <span style={{ width: 32, height: 32, borderRadius: 9, flex: 'none', background: grad }} />
+        <div style={{ lineHeight: 1.25 }}>
+            <div className="ttl">{a}</div>
+            <div className="sub">{b}</div>
         </div>
-    );
-};
-
-// ─── Radial heart burst (done screen) ────────────────────────────────────────
-
-const BurstHearts: React.FC = () => {
-    const count = 14;
-    const bursts = useMemo(() => Array.from({ length: count }, (_, i) => {
-        const angle = (i / count) * 360;
-        const rad = (angle * Math.PI) / 180;
-        const dist = 90 + Math.random() * 60;
-        return {
-            id: i,
-            tx: Math.cos(rad) * dist,
-            ty: Math.sin(rad) * dist,
-            size: 10 + Math.random() * 14,
-            delay: Math.random() * 0.18,
-            duration: 0.55 + Math.random() * 0.3,
-        };
-    }), []);
-
-    return (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1 }}>
-            {bursts.map((b) => (
-                <motion.div
-                    key={b.id}
-                    style={{ position: 'absolute' }}
-                    initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
-                    animate={{
-                        opacity: [0, 1, 0],
-                        scale: [0, 1.2, 0.6],
-                        x: b.tx,
-                        y: b.ty,
-                    }}
-                    transition={{
-                        duration: b.duration,
-                        delay: b.delay,
-                        ease: [0.16, 1, 0.3, 1],
-                    }}
-                >
-                    <Heart
-                        size={b.size}
-                        fill="currentColor"
-                        style={{ color: 'var(--color-nav-active)' }}
-                    />
-                </motion.div>
-            ))}
-        </div>
-    );
-};
-
-// ─── Live name display ────────────────────────────────────────────────────────
-
-const LiveNameDisplay: React.FC<{ name: string }> = ({ name }) => {
-    const displayed = name || '';
-    const chars = displayed.split('');
-    const isEmpty = chars.length === 0;
-
-    return (
-        <div
-            className="w-full text-center mb-3 min-h-[72px] flex items-center justify-center"
-            aria-hidden
-        >
-            <AnimatePresence mode="popLayout">
-                {isEmpty ? (
-                    <motion.span
-                        key="placeholder"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 0.22 }}
-                        exit={{ opacity: 0 }}
-                        className="font-serif text-[3rem] leading-none"
-                        style={{ color: 'var(--color-text-primary)' }}
-                    >
-                        ___
-                    </motion.span>
-                ) : (
-                    <motion.div
-                        key="name"
-                        className="flex items-center justify-center flex-wrap gap-x-0.5"
-                    >
-                        {chars.map((ch, i) => (
-                            <motion.span
-                                key={`${ch}-${i}`}
-                                initial={{ opacity: 0, y: 10, scale: 0.85 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                transition={{ type: 'spring' as const, damping: 18, stiffness: 380, delay: 0 }}
-                                className="font-serif leading-none"
-                                style={{
-                                    fontSize: chars.length > 10 ? '2.2rem' : chars.length > 7 ? '2.8rem' : '3.2rem',
-                                    color: 'var(--color-text-primary)',
-                                    display: 'inline-block',
-                                    textShadow: '0 2px 16px rgba(196,104,126,0.18)',
-                                }}
-                            >
-                                {ch === ' ' ? '\u00A0' : ch}
-                            </motion.span>
-                        ))}
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
-};
-
-// ─── Animated days counter ────────────────────────────────────────────────────
-
-const DaysCounter: React.FC<{ days: number }> = ({ days }) => {
-    const motionVal = useMotionValue(0);
-    const rounded = useTransform(motionVal, (v) => Math.round(v).toLocaleString());
-    const [display, setDisplay] = useState('0');
-
-    useEffect(() => {
-        const controls = animate(motionVal, days, { duration: 1.2, ease: [0.16, 1, 0.3, 1] });
-        const unsub = rounded.on('change', (v) => setDisplay(v));
-        return () => { controls.stop(); unsub(); };
-    }, [days, motionVal, rounded]);
-
-    return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.85, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ type: 'spring' as const, damping: 20, stiffness: 300 }}
-            className="flex flex-col items-center gap-1 py-4"
-        >
-            <span
-                className="font-serif leading-none"
-                style={{ fontSize: '3.5rem', color: 'var(--color-nav-active)', textShadow: '0 4px 24px rgba(196,104,126,0.35)' }}
-            >
-                {display}
-            </span>
-            <span className="text-[13px] font-semibold tracking-[0.1em] uppercase" style={{ color: 'var(--color-text-secondary)' }}>
-                days of love
-            </span>
-        </motion.div>
-    );
-};
-
-// ─── Shared button ────────────────────────────────────────────────────────────
-
-const PrimaryButton: React.FC<{
-    label: string;
-    disabled?: boolean;
-    onClick: () => void;
-    icon?: React.ReactNode;
-    glow?: boolean;
-}> = ({ label, disabled, onClick, icon, glow }) => (
-    <motion.button
-        onClick={onClick}
-        disabled={disabled}
-        whileTap={disabled ? {} : { scale: 0.97 }}
-        style={{
-            width: '100%',
-            padding: '18px',
-            borderRadius: 20,
-            background: disabled
-                ? 'rgba(196,104,126,0.22)'
-                : 'linear-gradient(135deg, #d4637a 0%, #c4687e 60%, #b85470 100%)',
-            color: disabled ? 'rgba(255,255,255,0.4)' : '#fff',
-            fontWeight: 700,
-            fontSize: 16,
-            letterSpacing: '0.025em',
-            boxShadow: disabled ? 'none'
-                : glow
-                    ? '0 0 0 1px rgba(196,104,126,0.3), 0 8px 32px rgba(196,104,126,0.5), 0 2px 8px rgba(196,104,126,0.2)'
-                    : '0 8px 28px rgba(196,104,126,0.38)',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            transition: 'background 0.25s, box-shadow 0.25s, color 0.25s',
-        }}
-    >
-        {label}
-        {icon ?? <ArrowRight size={18} strokeWidth={2.5} />}
-    </motion.button>
-);
-
-// ─── Slide transition ─────────────────────────────────────────────────────────
-
-function slide(dir: number) {
-    return {
-        initial: { x: dir > 0 ? 56 : -56, opacity: 0, scale: 0.96 },
-        animate: {
-            x: 0, opacity: 1, scale: 1,
-            transition: { type: 'spring' as const, damping: 30, stiffness: 340, mass: 0.8 },
-        },
-        exit: {
-            x: dir > 0 ? -56 : 56, opacity: 0, scale: 0.96,
-            transition: { duration: 0.16, ease: 'easeIn' as const },
-        },
-    };
-}
-
-// ─── Progress pills ───────────────────────────────────────────────────────────
-
-const ProgressPills: React.FC<{ current: number; count?: number }> = ({ current, count = 3 }) => (
-    <div className="flex gap-2 justify-center">
-        {Array.from({ length: count }, (_, i) => i).map((i) => (
-            <motion.div
-                key={i}
-                animate={{ width: i === current ? 24 : 7, opacity: i <= current ? 1 : 0.28 }}
-                transition={{ type: 'spring' as const, damping: 22, stiffness: 280 }}
-                style={{ height: 7, borderRadius: 100, background: 'var(--color-nav-active)' }}
-            />
-        ))}
     </div>
 );
 
-// ─── Orb background ───────────────────────────────────────────────────────────
-
-const Orbs: React.FC = () => (
-    <>
-        <motion.div
-            animate={{ scale: [1, 1.12, 1], opacity: [0.5, 0.65, 0.5] }}
-            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-            style={{
-                position: 'absolute', top: '-10%', right: '-14%',
-                width: 320, height: 320, borderRadius: '50%',
-                background: 'var(--theme-orb-1)', filter: 'blur(80px)', pointerEvents: 'none',
-            }}
-        />
-        <motion.div
-            animate={{ scale: [1, 1.08, 1], opacity: [0.4, 0.56, 0.4] }}
-            transition={{ duration: 7.5, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
-            style={{
-                position: 'absolute', bottom: '-12%', left: '-14%',
-                width: 300, height: 300, borderRadius: '50%',
-                background: 'var(--theme-orb-2)', filter: 'blur(80px)', pointerEvents: 'none',
-            }}
-        />
-        <motion.div
-            animate={{ scale: [1, 1.15, 1], opacity: [0.2, 0.32, 0.2] }}
-            transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 3 }}
-            style={{
-                position: 'absolute', top: '38%', left: '52%',
-                width: 200, height: 200, borderRadius: '50%',
-                background: 'var(--theme-orb-3)', filter: 'blur(60px)', pointerEvents: 'none',
-            }}
-        />
-    </>
+const chipCard = (icon: React.ReactNode, text: string): React.ReactNode => (
+    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+        {icon}
+        <span className="ttl">{text}</span>
+    </div>
 );
+
+const waveCard = (text: string): React.ReactNode => (
+    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+        <span style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            {[6, 12, 8, 14, 9, 11].map((h, i) => (
+                <span key={i} style={{ width: 2, height: h, borderRadius: 2, background: '#f0a36b' }} />
+            ))}
+        </span>
+        <span className="ttl">{text}</span>
+    </div>
+);
+
+const dotsCard = (text: string): React.ReactNode => (
+    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+        <span style={{ display: 'flex', gap: 3 }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff9fb6', boxShadow: '0 0 9px #ff9fb6' }} />
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffcd92', boxShadow: '0 0 9px #ffcd92' }} />
+        </span>
+        <span className="ttl">{text}</span>
+    </div>
+);
+
+const menuCard: React.ReactNode = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <MessageCircle size={13} style={{ color: '#c4683a' }} /><span className="ttl">Reply</span>
+        </div>
+        <div style={{ height: 1, background: 'rgba(120,60,40,.1)' }} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <ImageIcon size={13} style={{ color: '#c4683a' }} /><span className="ttl">Keep</span>
+        </div>
+    </div>
+);
+
+interface CardDef { id: string; content: React.ReactNode; x: number; y: number; w: number; r: number; d: number; }
+
+interface FeelSlide {
+    key: Step;
+    h: string;
+    s: string;
+    cta: string;
+    sky: string;
+    sun: number;
+    glow: number;
+    cons: number;
+    mode: 'icon' | 'dev';
+    cards: CardDef[];
+}
+
+const ACT1: FeelSlide[] = [
+    {
+        key: 'feel1',
+        h: 'A place that’s\nonly yours.',
+        s: 'Every relationship deserves a world of its own.',
+        cta: 'Start our story',
+        sky: 'linear-gradient(180deg,#ffaf4d,#ffc873 20%,#ffe2ad 38%,#fffaf4 62%)',
+        sun: 1, glow: 1, cons: 0, mode: 'icon', cards: [],
+    },
+    {
+        key: 'feel2',
+        h: 'Moments move\nfaster than\nwe can hold them.',
+        s: 'The ordinary days are the ones we miss most.',
+        cta: 'Continue',
+        sky: 'linear-gradient(180deg,#ff9a5e,#ffbe83 22%,#ffdcb8 40%,#fffaf5 62%)',
+        sun: 0.8, glow: 0.7, cons: 0.12, mode: 'dev',
+        cards: [
+            { id: 'm', content: memCard('linear-gradient(135deg,#ffd3a0,#ff9bb6)', 'Jun 14', 'Sea Point'), x: 28, y: 56, w: 152, r: -5, d: 7 },
+            { id: 'v', content: waveCard('0:12'), x: 190, y: 150, w: 94, r: 6, d: 8 },
+            { id: 'a', content: chipCard(<Calendar size={15} style={{ color: '#c4683a' }} />, '3 years'), x: 186, y: 210, w: 96, r: 4, d: 6.5 },
+        ],
+    },
+    {
+        key: 'feel3',
+        h: 'The little things\nbecome\nthe big things.',
+        s: 'A small note. A quiet question. A day remembered.',
+        cta: 'Continue',
+        sky: 'linear-gradient(180deg,#ff8f7e,#ffb693 24%,#ffd9c4 42%,#fffaf6 62%)',
+        sun: 0.7, glow: 0.6, cons: 0.28, mode: 'dev',
+        cards: [
+            { id: 'q', content: chipCard(<MessageCircle size={15} style={{ color: '#c4683a' }} />, 'a quiet question'), x: 28, y: 58, w: 150, r: -5, d: 7.5 },
+            { id: 'menu', content: menuCard, x: 184, y: 150, w: 104, r: 5, d: 8 },
+            { id: 'n', content: <div className="ttl" style={{ fontStyle: 'italic', color: '#5a4a42' }}>“thinking of you”</div>, x: 40, y: 214, w: 120, r: -3, d: 6.8 },
+        ],
+    },
+    {
+        key: 'feel4',
+        h: 'Not just keeping\nyour story.\nBuilding it.',
+        s: 'Two of you, gathering into something only you share.',
+        cta: 'Continue',
+        sky: 'linear-gradient(180deg,#ff7d92,#ffaa8f 26%,#ffd2c2 44%,#fffaf6 62%)',
+        sun: 0.6, glow: 0.55, cons: 0.72, mode: 'dev',
+        cards: [
+            { id: 'sync', content: dotsCard('in sync'), x: 28, y: 58, w: 122, r: -5, d: 7 },
+            { id: 'song', content: memCard('linear-gradient(135deg,#ffc0d4,#c79bff)', 'our song', 'on repeat'), x: 172, y: 120, w: 114, r: 5, d: 8 },
+            { id: 'rhythm', content: chipCard(<Activity size={15} style={{ color: '#e8657a' }} />, 'one rhythm'), x: 184, y: 176, w: 104, r: 4, d: 6.6 },
+            { id: 'mem', content: chipCard(<Plus size={15} style={{ color: '#c4683a' }} />, '+1 memory'), x: 178, y: 232, w: 108, r: 6, d: 7.2 },
+        ],
+    },
+    {
+        key: 'feel5',
+        h: 'This is where\nyour story\nlives.',
+        s: 'Welcome to Lior.',
+        cta: 'Begin',
+        sky: 'linear-gradient(180deg,#ff8a63,#ffb27e 22%,#ffd6a8 42%,#fff6ec 64%)',
+        sun: 0.9, glow: 0.85, cons: 1, mode: 'dev',
+        cards: [
+            { id: 'con', content: chipCard(<Sparkles size={15} style={{ color: '#c4683a' }} />, 'your constellation'), x: 30, y: 58, w: 152, r: -5, d: 7 },
+            { id: 'days', content: memCard('linear-gradient(135deg,#ffd98a,#ff9bb0)', '1,284', 'days together'), x: 176, y: 202, w: 112, r: 5, d: 8 },
+        ],
+    },
+];
+
+// In-phone screen content per Act-I slide (cross-fades as the user advances).
+const devContentFor = (step: Step): React.ReactNode => {
+    switch (step) {
+        case 'feel2':
+            return (
+                <>
+                    <div className="dh">Memories</div>
+                    <div className="dgrid">
+                        {['linear-gradient(135deg,#ffd0a4,#ff9fb6)', 'linear-gradient(135deg,#ffc0d4,#c79bff)', 'linear-gradient(135deg,#ffe3a4,#ffb27e)', 'linear-gradient(135deg,#c0e0ff,#ffc0d4)', 'linear-gradient(135deg,#ffe3a4,#ff9fb6)', 'linear-gradient(135deg,#ffd0a4,#c79bff)'].map((g, i) => (
+                            <span key={i} style={{ background: g }} />
+                        ))}
+                    </div>
+                    <div className="dlabel">127 moments saved</div>
+                </>
+            );
+        case 'feel3':
+            return (
+                <>
+                    <div className="dh">Today</div>
+                    <div className="dcard">
+                        <div className="dq">“What made you smile today?”</div>
+                        <div className="dpill">your turn</div>
+                    </div>
+                    <div className="drow" />
+                </>
+            );
+        case 'feel4':
+            return (
+                <>
+                    <div className="dh">Us</div>
+                    <div className="dtwo"><span className="a" /><span className="b" /></div>
+                    <div className="dlabel">in sync · 48 days</div>
+                </>
+            );
+        case 'feel5':
+            return (
+                <>
+                    <div className="dh">Your story</div>
+                    <div className="dcons" />
+                    <div className="dlabel">1,284 days together</div>
+                </>
+            );
+        default:
+            return null;
+    }
+};
+
+// ─── Status-bar icons (inline SVG so they never depend on an icon font) ────────
+
+const StatusIcons: React.FC<{ color: string; h: number }> = ({ color, h }) => {
+    const w = Math.round(h * 5.05);
+    return (
+        <svg width={w} height={h} viewBox="0 0 62 12" fill="none" style={{ display: 'block' }} aria-hidden>
+            <rect x="0" y="6.5" width="3" height="4.5" rx=".8" fill={color} />
+            <rect x="4.6" y="4.6" width="3" height="6.4" rx=".8" fill={color} />
+            <rect x="9.2" y="2.7" width="3" height="8.3" rx=".8" fill={color} />
+            <rect x="14.1" y="1" width="3" height="10" rx=".8" fill={color} />
+            <path d="M30 11 L24.3 6.3 A7.3 7.3 0 0 1 35.7 6.3 Z" fill={color} />
+            <rect x="43.5" y="2.4" width="14.6" height="7.7" rx="2.4" fill="none" stroke={color} strokeWidth="1" opacity=".55" />
+            <rect x="44.9" y="3.7" width="10" height="5.1" rx="1.4" fill={color} />
+            <path d="M59.4 4.7 a1.6 1.6 0 0 1 0 2.6" stroke={color} strokeWidth="1.1" fill="none" opacity=".55" strokeLinecap="round" />
+        </svg>
+    );
+};
+
+// ─── The living sky: dust + a constellation that builds with each slide ────────
+
+const ACT2_SCENE = {
+    sky: 'linear-gradient(180deg,#ff9a6a,#ffc28e 24%,#ffe0be 44%,#fffaf4 64%)',
+    sun: 0.7, glow: 0.55, cons: 0.55,
+};
+const DONE_SCENE = {
+    sky: 'linear-gradient(180deg,#ff8a63,#ffb27e 22%,#ffd6a8 42%,#fff6ec 64%)',
+    sun: 0.95, glow: 0.9, cons: 1,
+};
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow }) => {
-    const [step, setStep] = useState<Step>('welcome');
-    const [dir, setDir] = useState(1);
+    const [step, setStep] = useState<Step>('feel1');
     const [myName, setMyName] = useState('');
     const [anniversary, setAnniversary] = useState('');
     const [firstAnswer, setFirstAnswer] = useState('');
-    const [showBurst, setShowBurst] = useState(false);
+    const [firstQuestion, setFirstQuestion] = useState('');
     const nameRef = useRef<HTMLInputElement>(null);
     const answerRef = useRef<HTMLTextAreaElement>(null);
 
-    // Today's ritual question — resolved lazily when the user reaches the
-    // first-question step (and only then), so the question text matches exactly
-    // what getTodayQuestion will key the persisted answer to at finalize time.
-    const [firstQuestion, setFirstQuestion] = useState('');
+    const skyRef = useRef<HTMLCanvasElement>(null);
+    const devCanvasRef = useRef<HTMLCanvasElement>(null);
+    const intensityTargetRef = useRef(0.15);
+
+    const isFeel = FEEL_KEYS.includes(step);
+    const feelIndex = FEEL_KEYS.indexOf(step);
+    const feelSlide = isFeel ? ACT1[feelIndex] : null;
+
+    const scene = useMemo(() => {
+        if (feelSlide) return { sky: feelSlide.sky, sun: feelSlide.sun, glow: feelSlide.glow, cons: feelSlide.cons };
+        if (step === 'done') return DONE_SCENE;
+        return ACT2_SCENE;
+    }, [feelSlide, step]);
+
+    useEffect(() => { intensityTargetRef.current = scene.cons; }, [scene.cons]);
 
     const daysApart = useMemo(() => {
         if (!anniversary) return 0;
-        const parsedAnniversary = parseStoredDateOnly(anniversary);
-        return parsedAnniversary ? daysTogetherFrom(parsedAnniversary) : 0;
+        const parsed = parseStoredDateOnly(anniversary);
+        return parsed ? daysTogetherFrom(parsed) : 0;
     }, [anniversary]);
 
-    const dotIndex = step === 'myName' ? 0 : step === 'anniversary' ? 1 : step === 'first-question' ? 2 : -1;
-
-    const advance = async (next: Step) => {
-        void Haptics.tap(); // step transition — a light tap, not the romantic heartbeat
-        setDir(1);
+    const advance = (next: Step) => {
+        void Haptics.tap();
         setStep(next);
     };
 
-    // Persist the collected name + anniversary, optionally the user's first
-    // ritual answer, and mark onboarding complete. Shared by both the "I'll do
-    // it later" (skip) and "Invite your partner" (pair now) paths so the two
-    // finalize IDENTICALLY — the only difference is where the user lands
-    // afterward. Must run BEFORE any navigation so the user is never bounced
-    // back to onboarding and never loses their input.
-    //
-    // ORDER IS LOAD-BEARING:
-    //   1. saveCoupleProfile — writes myName + anniversary. submitQuestionAnswer
-    //      keys the answer by profile.myName, so the name MUST be persisted first.
-    //   2. If a first answer was entered: getTodayQuestion(myName, '') to ensure
-    //      today's QuestionEntry exists in the profile (submitQuestionAnswer is a
-    //      no-op returning false when the entry is missing), THEN
-    //      submitQuestionAnswer(answer) to record it under profile.myName.
-    //   3. markOnboardingComplete.
+    // ── Persistence (ORDER IS LOAD-BEARING — unchanged) ──────────────────────
+    //   1. saveCoupleProfile writes myName + anniversary. submitQuestionAnswer
+    //      keys the answer by profile.myName, so the name MUST persist first.
+    //   2. If a first answer was entered: getTodayQuestion(myName,'') to ensure
+    //      today's QuestionEntry exists, THEN submitQuestionAnswer(answer).
+    //   3. markOnboardingComplete last.
     const finalizeOnboarding = () => {
         const profile = StorageService.getCoupleProfile();
         const trimmedName = myName.trim();
 
-        // (1) Profile first — establishes profile.myName for the answer key.
         StorageService.saveCoupleProfile({
             ...profile,
             myName: trimmedName,
@@ -384,726 +299,362 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 : profile.anniversaryDate,
         });
 
-        // (2) Persist the first answer ONLY if one was typed, and only after the
-        // profile (and thus today's question entry) exists.
         const trimmedAnswer = firstAnswer.trim();
         if (trimmedAnswer) {
-            // Initialize today's QuestionEntry so submitQuestionAnswer can find it.
             StorageService.getTodayQuestion(trimmedName, '');
             StorageService.submitQuestionAnswer(trimmedAnswer);
         }
 
-        // (3) Mark complete last.
         StorageService.markOnboardingComplete();
     };
 
-    // Resolve today's ritual question text when the user reaches the first
-    // question step. getTodayQuestion is deterministic per date and idempotent
-    // (it returns the existing entry if already created), so calling it here
-    // surfaces exactly the question whose answer finalize will persist.
-    const enterFirstQuestion = async () => {
+    // Resolve today's ritual question only when reaching that step, so the text
+    // matches exactly what getTodayQuestion will key the answer to at finalize.
+    const enterFirstQuestion = () => {
         if (!firstQuestion) {
             const entry = StorageService.getTodayQuestion(myName.trim(), '');
             setFirstQuestion(entry.question);
         }
-        await advance('first-question');
+        advance('first-question');
     };
 
     const handleComplete = async () => {
-        setShowBurst(true);
         await Haptics.celebrate();
         finalizeOnboarding();
-        setTimeout(() => onComplete(myName.trim(), ''), 600);
+        setTimeout(() => onComplete(myName.trim(), ''), 240);
     };
 
     const handlePairNow = async () => {
         await Haptics.heartbeat();
-        // Finalize FIRST — only then hand off to the pairing hub. If onPairNow
-        // is not wired, fall back to the normal completion path so the button
-        // never strands the user mid-onboarding.
         finalizeOnboarding();
-        if (onPairNow) {
-            onPairNow(myName.trim(), '');
-        } else {
-            onComplete(myName.trim(), '');
-        }
+        if (onPairNow) onPairNow(myName.trim(), '');
+        else onComplete(myName.trim(), '');
     };
 
     useEffect(() => {
-        if (step === 'myName') setTimeout(() => nameRef.current?.focus(), 400);
+        if (step === 'myName') setTimeout(() => nameRef.current?.focus(), 420);
         if (step === 'first-question') setTimeout(() => answerRef.current?.focus(), 450);
     }, [step]);
 
-    return (
-        <div
-            className="min-h-screen flex flex-col relative overflow-hidden"
-            style={{ background: 'var(--theme-bg-main)', color: 'var(--color-text-primary)' }}
-        >
-            <Orbs />
-            <FloatingParticles burst={showBurst} />
+    // ── Canvas: dust + constellation (+ tiny in-phone constellation) ─────────
+    useEffect(() => {
+        const sky = skyRef.current;
+        if (!sky) return;
+        const ctx = sky.getContext('2d');
+        if (!ctx) return;
+        const reduce = prefersReducedMotion();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        let W = 0, H = 0;
 
-            {/* Progress */}
-            <div className="relative z-10 w-full max-w-sm mx-auto px-6 pt-14 flex-shrink-0">
-                {dotIndex >= 0 && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                    >
-                        <ProgressPills current={dotIndex} count={3} />
-                    </motion.div>
-                )}
+        const sizeSky = () => {
+            W = sky.clientWidth || 460;
+            H = sky.clientHeight || 452;
+            sky.width = W * dpr;
+            sky.height = H * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        };
+        sizeSky();
+        window.addEventListener('resize', sizeSky);
+
+        const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+        const warm = ['#ffe1b0', '#ffb7c8', '#fff1e2', '#ffcd92', '#ff9fb6'];
+        const sprite = (col: string) => {
+            const s = document.createElement('canvas');
+            s.width = s.height = 36;
+            const g = s.getContext('2d')!;
+            const rg = g.createRadialGradient(18, 18, 0, 18, 18, 18);
+            rg.addColorStop(0, col); rg.addColorStop(.4, col); rg.addColorStop(1, 'rgba(255,255,255,0)');
+            g.fillStyle = rg; g.beginPath(); g.arc(18, 18, 18, 0, 6.2832); g.fill();
+            return s;
+        };
+        const sprites: Record<string, HTMLCanvasElement> = {};
+        warm.forEach(c => { sprites[c] = sprite(c); });
+
+        const dust = Array.from({ length: 26 }, () => ({
+            x: Math.random(), y: rnd(0, .6), r: rnd(.5, 1.7), a: rnd(.18, .55),
+            ph: Math.random() * 6.2832, sp: rnd(.3, .9), c: warm[(Math.random() * warm.length) | 0],
+        }));
+        const cstars = [[.34, .25], [.46, .16], [.6, .27], [.5, .36], [.4, .43], [.6, .43], [.5, .52]];
+
+        let raf = 0, t = 0, intensity = 0.15;
+
+        const drawSky = () => {
+            ctx.clearRect(0, 0, W, H);
+            ctx.globalCompositeOperation = 'lighter';
+            for (const p of dust) {
+                const tw = .5 + .5 * Math.sin(t * p.sp + p.ph);
+                const px = p.x * W + Math.sin(t * .3 + p.ph) * 4;
+                const py = p.y * H + Math.cos(t * .24 + p.ph) * 4;
+                ctx.globalAlpha = p.a * tw * .8;
+                const sz = p.r * 7;
+                ctx.drawImage(sprites[p.c], px - sz / 2, py - sz / 2, sz, sz);
+            }
+            if (intensity > 0.04) {
+                const pts = cstars.map(c => [c[0] * W, c[1] * H]);
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.lineWidth = .7;
+                for (let m = 0; m < pts.length; m++) {
+                    for (let n = m + 1; n < pts.length; n++) {
+                        const d = Math.hypot(pts[m][0] - pts[n][0], pts[m][1] - pts[n][1]);
+                        if (d < 150) {
+                            ctx.strokeStyle = `rgba(232,110,90,${(intensity * .4 * (1 - d / 150)).toFixed(3)})`;
+                            ctx.beginPath(); ctx.moveTo(pts[m][0], pts[m][1]); ctx.lineTo(pts[n][0], pts[n][1]); ctx.stroke();
+                        }
+                    }
+                }
+                ctx.globalCompositeOperation = 'lighter';
+                for (let k = 0; k < pts.length; k++) {
+                    const tw = .6 + .4 * Math.sin(t * .9 + k);
+                    ctx.globalAlpha = intensity * tw;
+                    const sz = 7 + intensity * 5;
+                    ctx.drawImage(sprites[warm[k % warm.length]], pts[k][0] - sz / 2, pts[k][1] - sz / 2, sz, sz);
+                }
+            }
+            ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+        };
+
+        const drawDev = () => {
+            const dev = devCanvasRef.current;
+            if (!dev) return;
+            const dcx = dev.getContext('2d');
+            if (!dcx) return;
+            dcx.clearRect(0, 0, dev.width, dev.height);
+            if (intensity > 0.45) {
+                dcx.globalCompositeOperation = 'lighter';
+                const dp = [[40, 70], [64, 58], [88, 72], [52, 86], [76, 86]];
+                for (let q = 0; q < dp.length; q++) {
+                    const a = (intensity - .4) * 1.4 * (.6 + .4 * Math.sin(t + q));
+                    dcx.globalAlpha = Math.min(1, a);
+                    dcx.fillStyle = '#ff9c5a';
+                    dcx.beginPath(); dcx.arc(dp[q][0], dp[q][1], 2, 0, 6.2832); dcx.fill();
+                }
+                dcx.globalAlpha = (intensity - .4) * .8;
+                dcx.strokeStyle = 'rgba(255,150,110,.7)';
+                dcx.lineWidth = .8;
+                dcx.beginPath(); dcx.moveTo(40, 70); dcx.lineTo(64, 58); dcx.lineTo(88, 72); dcx.stroke();
+                dcx.globalAlpha = 1; dcx.globalCompositeOperation = 'source-over';
+            }
+        };
+
+        const loop = () => {
+            t += 0.016;
+            intensity += (intensityTargetRef.current - intensity) * 0.05;
+            drawSky(); drawDev();
+            raf = requestAnimationFrame(loop);
+        };
+
+        if (reduce) { intensity = intensityTargetRef.current; drawSky(); drawDev(); }
+        else raf = requestAnimationFrame(loop);
+
+        return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', sizeSky); };
+    }, []);
+
+    // ── Live animated days counter for the anniversary step ──────────────────
+    const [daysDisplay, setDaysDisplay] = useState(0);
+    useEffect(() => {
+        if (!daysApart) { setDaysDisplay(0); return; }
+        let raf = 0; const start = performance.now();
+        const tick = (now: number) => {
+            const p = Math.min(1, (now - start) / 1000);
+            const e = 1 - Math.pow(1 - p, 3);
+            setDaysDisplay(Math.round(daysApart * e));
+            if (p < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [daysApart]);
+
+    // ── Bottom CTA wiring per step ───────────────────────────────────────────
+    const ctaForStep = (): { label: string; onClick: () => void; disabled?: boolean } => {
+        if (isFeel) {
+            const next = feelIndex < 4 ? FEEL_KEYS[feelIndex + 1] : 'myName';
+            return { label: feelSlide!.cta, onClick: () => advance(next) };
+        }
+        if (step === 'myName') return { label: 'Continue', disabled: !myName.trim(), onClick: () => myName.trim() && advance('anniversary') };
+        if (step === 'anniversary') return { label: 'Continue', onClick: () => enterFirstQuestion() };
+        if (step === 'first-question') return { label: 'Save · continue', disabled: !firstAnswer.trim(), onClick: () => firstAnswer.trim() && advance('done') };
+        return { label: 'Invite your partner', onClick: () => void handlePairNow() };
+    };
+    const cta = ctaForStep();
+
+    return (
+        <div className="lo-ob-shell">
+        <div className="lo-ob" style={{ background: scene.sky, color: '#2a211d' }}>
+            <div className="lo-ob-glow" style={{ opacity: scene.glow }} />
+            <div className="lo-ob-sun" style={{ opacity: scene.sun }} />
+
+            <div className="lo-ob-scene">
+                <canvas ref={skyRef} className="lo-ob-sky" aria-hidden />
+                <div className="lo-ob-cloud" />
+                <div className="lo-ob-fade" />
             </div>
 
-            {/* Step content */}
-            <div className="relative z-10 w-full max-w-sm mx-auto px-6 flex-1 flex items-center">
-                <AnimatePresence mode="wait">
-
-                    {/* ══════════════════════════════════════════════════════
-                        WELCOME
-                    ═══════════════════════════════════════════════════════ */}
-                    {step === 'welcome' && (
-                        <motion.div key="welcome" {...slide(dir)} className="w-full py-8">
-                            {/* Logo */}
-                            <div className="flex justify-center mb-10">
+            {/* ── Act I: the phone-in-clouds hero ─────────────────────────── */}
+            {isFeel && feelSlide && (
+                <div className="lo-ob-comp">
+                    {feelSlide.mode === 'icon' ? (
+                        <>
+                            <div className="lo-ob-icon"><img src="/icon-128.png" alt="Lior" /></div>
+                            <div className="lo-ob-name">Lior</div>
+                        </>
+                    ) : (
+                        <motion.div
+                            className="lo-ob-dev"
+                            key={`dev-${step}`}
+                            initial={{ opacity: 0, y: 16, scale: 0.94 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+                        >
+                            <div className="lo-ob-devscr">
+                                <div className="lo-ob-devisland" />
+                                <div className="lo-ob-devstat"><span>9:41</span><StatusIcons color="#8a4436" h={7.5} /></div>
                                 <motion.div
-                                    initial={{ scale: 0, rotate: -30, opacity: 0 }}
-                                    animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                                    transition={{ type: 'spring' as const, damping: 14, stiffness: 200, delay: 0.05 }}
-                                    style={{
-                                        width: 96, height: 96,
-                                        borderRadius: '2rem',
-                                        background: 'rgba(255,255,255,0.76)',
-                                        backdropFilter: 'blur(24px)',
-                                        WebkitBackdropFilter: 'blur(24px)',
-                                        border: '1.5px solid rgba(255,255,255,0.92)',
-                                        boxShadow: '0 24px 64px rgba(196,104,126,0.32), 0 4px 16px rgba(196,104,126,0.14), inset 0 1px 0 rgba(255,255,255,1)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        position: 'relative',
-                                    }}
-                                >
-                                    <motion.img
-                                        src="/icon-128.png"
-                                        alt="Lior"
-                                        className="h-[68px] w-[68px] object-cover"
-                                        style={{ borderRadius: 15 }}
-                                        animate={{ scale: [1, 1.035, 1] }}
-                                        transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                                    />
-                                    {/* Sparkle */}
-                                    <motion.div
-                                        style={{ position: 'absolute', top: -6, right: -6 }}
-                                        animate={{ scale: [1, 1.5, 1], rotate: [0, 25, 0], opacity: [0.7, 1, 0.7] }}
-                                        transition={{ duration: 2.8, repeat: Infinity, repeatDelay: 0.8 }}
-                                    >
-                                        <Sparkles size={18} style={{ color: '#f59e0b' }} />
-                                    </motion.div>
-                                </motion.div>
-                            </div>
-
-                            {/* Headline — staggered words */}
-                            <div className="text-center mb-4">
-                                {['A private universe', 'just for', 'the two of you.'].map((line, i) => (
-                                    <motion.p
-                                        key={line}
-                                        initial={{ opacity: 0, y: 18 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: 0.18 + i * 0.1, type: 'spring' as const, damping: 26, stiffness: 300 }}
-                                        className="font-serif leading-snug"
-                                        style={{
-                                            fontSize: i === 0 ? '2rem' : i === 1 ? '1.5rem' : '2.1rem',
-                                            color: i === 2 ? 'var(--color-nav-active)' : 'var(--color-text-primary)',
-                                            fontStyle: i === 1 ? 'italic' : 'normal',
-                                        }}
-                                    >
-                                        {line}
-                                    </motion.p>
-                                ))}
-                            </div>
-
-                            {/* Pill tags */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.52 }}
-                                className="flex justify-center gap-2 flex-wrap mb-12"
-                            >
-                                {['Private', 'Beautiful', 'Yours forever'].map((tag) => (
-                                    <span
-                                        key={tag}
-                                        className="px-3 py-1 rounded-full text-[12px] font-semibold"
-                                        style={{
-                                            background: 'rgba(255,255,255,0.50)',
-                                            backdropFilter: 'blur(12px)',
-                                            border: '1px solid rgba(255,255,255,0.75)',
-                                            color: 'var(--color-text-secondary)',
-                                        }}
-                                    >
-                                        {tag}
-                                    </span>
-                                ))}
-                            </motion.div>
-
-                            <motion.div
-                                initial={{ opacity: 0, y: 14 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.62 }}
-                            >
-                                <PrimaryButton label="Begin your story" glow onClick={() => advance('how-it-works')} />
-                            </motion.div>
-                        </motion.div>
-                    )}
-
-                    {/* ══════════════════════════════════════════════════════
-                        HOW IT WORKS — the daily ritual explainer
-                    ═══════════════════════════════════════════════════════ */}
-                    {step === 'how-it-works' && (
-                        <motion.div key="how-it-works" {...slide(dir)} className="w-full py-6">
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.06 }}
-                                className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-3"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                How Lior works
-                            </motion.p>
-
-                            <motion.h2
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.1, type: 'spring' as const, damping: 24 }}
-                                className="font-serif text-[1.85rem] text-center leading-snug mb-2"
-                                style={{ color: 'var(--color-text-primary)' }}
-                            >
-                                One question.<br />
-                                <span style={{ color: 'var(--color-nav-active)' }}>Every day.</span>
-                            </motion.h2>
-
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.18 }}
-                                className="text-[14px] text-center mb-7 px-2"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                A tiny ritual that quietly grows into your story.
-                            </motion.p>
-
-                            {/* The three beats of the ritual */}
-                            <div className="flex flex-col gap-3 mb-8">
-                                {[
-                                    {
-                                        icon: <MessageCircleHeart size={20} style={{ color: 'var(--color-nav-active)' }} />,
-                                        title: 'A question a day',
-                                        body: 'Each morning, one gentle prompt — just for the two of you.',
-                                    },
-                                    {
-                                        icon: <EyeOff size={20} style={{ color: 'var(--color-nav-active)' }} />,
-                                        title: 'Answer privately',
-                                        body: "You each answer on your own. Neither can peek at the other's.",
-                                    },
-                                    {
-                                        icon: <Heart size={20} fill="currentColor" style={{ color: 'var(--color-nav-active)' }} />,
-                                        title: 'Reveal together',
-                                        body: 'Once you’ve both answered, it opens — and only then.',
-                                    },
-                                    {
-                                        icon: <BookHeart size={20} style={{ color: 'var(--color-nav-active)' }} />,
-                                        title: 'It becomes your story',
-                                        body: 'Day by day, your answers gather into something only you share.',
-                                    },
-                                ].map((beat, i) => (
-                                    <motion.div
-                                        key={beat.title}
-                                        initial={{ opacity: 0, x: -16 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: 0.24 + i * 0.1, type: 'spring' as const, damping: 26, stiffness: 300 }}
-                                        className="flex items-start gap-3.5 px-4 py-3.5 rounded-2xl text-left"
-                                        style={{
-                                            background: 'rgba(255,255,255,0.50)',
-                                            backdropFilter: 'blur(16px)',
-                                            WebkitBackdropFilter: 'blur(16px)',
-                                            border: '1px solid rgba(255,255,255,0.78)',
-                                            boxShadow: '0 4px 18px rgba(232,160,176,0.10)',
-                                        }}
-                                    >
-                                        <div
-                                            className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
-                                            style={{ background: 'rgba(196,104,126,0.12)' }}
-                                        >
-                                            {beat.icon}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[14px] font-bold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>
-                                                {beat.title}
-                                            </p>
-                                            <p className="text-[12.5px] leading-snug" style={{ color: 'var(--color-text-secondary)' }}>
-                                                {beat.body}
-                                            </p>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
-
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.7 }}
-                            >
-                                <PrimaryButton label="Let’s set you up" glow onClick={() => advance('myName')} />
-                            </motion.div>
-                        </motion.div>
-                    )}
-
-                    {/* ══════════════════════════════════════════════════════
-                        YOUR NAME
-                    ═══════════════════════════════════════════════════════ */}
-                    {step === 'myName' && (
-                        <motion.div key="myName" {...slide(dir)} className="w-full py-6">
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.08 }}
-                                className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-8"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                Step 1 of 3
-                            </motion.p>
-
-                            {/* Live name preview */}
-                            <LiveNameDisplay name={myName} />
-
-                            <motion.h2
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.1 }}
-                                className="font-serif text-[1.65rem] text-center mb-1.5"
-                                style={{ color: 'var(--color-text-primary)' }}
-                            >
-                                What's your name?
-                            </motion.h2>
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.16 }}
-                                className="text-[14px] text-center mb-7"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                How you'll appear in your shared space.
-                            </motion.p>
-
-                            {/* Input */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.2 }}
-                                className="mb-5"
-                            >
-                                <input
-                                    ref={nameRef}
-                                    value={myName}
-                                    onChange={(e) => setMyName(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' && myName.trim()) advance('anniversary'); }}
-                                    autoCapitalize="words"
-                                    autoCorrect="off"
-                                    autoComplete="off"
-                                    spellCheck={false}
-                                    maxLength={32}
-                                    placeholder="Type your name…"
-                                    style={{
-                                        background: 'rgba(255,255,255,0.62)',
-                                        backdropFilter: 'blur(20px)',
-                                        WebkitBackdropFilter: 'blur(20px)',
-                                        border: '1.5px solid rgba(255,255,255,0.88)',
-                                        boxShadow: '0 8px 32px rgba(232,160,176,0.15), inset 0 1px 0 rgba(255,255,255,0.95)',
-                                        borderRadius: 20,
-                                        width: '100%',
-                                        padding: '18px 22px',
-                                        fontSize: 18,
-                                        fontWeight: 600,
-                                        color: 'var(--color-text-primary)',
-                                        outline: 'none',
-                                        textAlign: 'center',
-                                        caretColor: 'var(--color-nav-active)',
-                                    }}
-                                />
-                            </motion.div>
-
-                            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.26 }}>
-                                <PrimaryButton
-                                    label="Continue"
-                                    disabled={!myName.trim()}
-                                    onClick={() => myName.trim() && advance('anniversary')}
-                                />
-                            </motion.div>
-                        </motion.div>
-                    )}
-
-                    {/* ══════════════════════════════════════════════════════
-                        ANNIVERSARY
-                    ═══════════════════════════════════════════════════════ */}
-                    {step === 'anniversary' && (
-                        <motion.div key="anniversary" {...slide(dir)} className="w-full py-6">
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.06 }}
-                                className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-6"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                Step 2 of 3
-                            </motion.p>
-
-                            <motion.h2
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.1, type: 'spring' as const, damping: 24 }}
-                                className="font-serif text-[1.8rem] text-center leading-snug mb-2"
-                            >
-                                When did{' '}
-                                <span style={{ color: 'var(--color-nav-active)' }}>{myName}</span>'s
-                                <br />story begin?
-                            </motion.h2>
-
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.18 }}
-                                className="text-[14px] text-center mb-7"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                The day everything changed.
-                            </motion.p>
-
-                            {/* Date input */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.22 }}
-                                style={{
-                                    background: 'rgba(255,255,255,0.62)',
-                                    backdropFilter: 'blur(20px)',
-                                    WebkitBackdropFilter: 'blur(20px)',
-                                    border: '1.5px solid rgba(255,255,255,0.88)',
-                                    boxShadow: '0 8px 32px rgba(232,160,176,0.15), inset 0 1px 0 rgba(255,255,255,0.95)',
-                                    borderRadius: 20,
-                                    padding: '16px 20px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 12,
-                                    marginBottom: 8,
-                                }}
-                            >
-                                <Calendar size={20} style={{ color: 'var(--color-nav-active)', flexShrink: 0 }} />
-                                <input
-                                    type="date"
-                                    value={anniversary}
-                                    onChange={(e) => setAnniversary(e.target.value)}
-                                    max={todayInputValue()}
-                                    style={{
-                                        background: 'transparent',
-                                        border: 'none',
-                                        outline: 'none',
-                                        fontSize: 17,
-                                        fontWeight: 600,
-                                        color: anniversary ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                                        width: '100%',
-                                        cursor: 'pointer',
-                                    }}
-                                />
-                            </motion.div>
-
-                            {/* Days counter — appears when date is chosen */}
-                            <AnimatePresence>
-                                {anniversary && daysApart > 0 && (
-                                    <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        className="overflow-hidden"
-                                    >
-                                        <DaysCounter days={daysApart} />
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-
-                            <motion.div
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.28 }}
-                                className="mt-3 mb-3"
-                            >
-                                <PrimaryButton
-                                    label={anniversary ? 'Save our date' : 'Set anniversary'}
-                                    disabled={!anniversary}
-                                    onClick={() => anniversary && enterFirstQuestion()}
-                                    icon={<Heart size={17} fill="currentColor" />}
-                                />
-                            </motion.div>
-
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.36 }}>
-                                <button
-                                    onClick={() => enterFirstQuestion()}
-                                    className="w-full py-3 text-[14px] font-medium"
-                                    style={{ color: 'var(--color-text-secondary)', background: 'none', border: 'none' }}
-                                >
-                                    Skip for now
-                                </button>
-                            </motion.div>
-                        </motion.div>
-                    )}
-
-                    {/* ══════════════════════════════════════════════════════
-                        FIRST QUESTION — answer today's actual ritual prompt
-                    ═══════════════════════════════════════════════════════ */}
-                    {step === 'first-question' && (
-                        <motion.div key="first-question" {...slide(dir)} className="w-full py-6">
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.06 }}
-                                className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] mb-3"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                Step 3 of 3
-                            </motion.p>
-
-                            <motion.div
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.1 }}
-                                className="flex items-center justify-center gap-1.5 mb-3"
-                            >
-                                <Sparkles size={13} style={{ color: 'var(--color-nav-active)' }} />
-                                <span className="text-[11px] uppercase tracking-widest font-bold" style={{ color: 'var(--color-nav-active)' }}>
-                                    Today's Question
-                                </span>
-                            </motion.div>
-
-                            {/* The actual ritual question for today */}
-                            <motion.h2
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.14, type: 'spring' as const, damping: 24 }}
-                                className="font-serif text-[1.5rem] italic text-center leading-snug mb-5 px-1"
-                                style={{ color: 'var(--color-text-primary)' }}
-                            >
-                                “{firstQuestion}”
-                            </motion.h2>
-
-                            {/* Answer input */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.2 }}
-                                className="mb-3"
-                                style={{
-                                    background: 'rgba(255,255,255,0.62)',
-                                    backdropFilter: 'blur(20px)',
-                                    WebkitBackdropFilter: 'blur(20px)',
-                                    border: '1.5px solid rgba(255,255,255,0.88)',
-                                    boxShadow: '0 8px 32px rgba(232,160,176,0.15), inset 0 1px 0 rgba(255,255,255,0.95)',
-                                    borderRadius: 20,
-                                    padding: '6px 8px',
-                                }}
-                            >
-                                <textarea
-                                    ref={answerRef}
-                                    value={firstAnswer}
-                                    onChange={(e) => {
-                                        setFirstAnswer(e.target.value);
-                                        if (e.target.value.length > 0) Haptics.select();
-                                    }}
-                                    placeholder="Write your answer…"
-                                    rows={3}
-                                    maxLength={300}
-                                    inputMode="text"
-                                    autoCapitalize="sentences"
-                                    autoCorrect="on"
-                                    spellCheck
-                                    style={{
-                                        background: 'transparent',
-                                        border: 'none',
-                                        outline: 'none',
-                                        resize: 'none',
-                                        width: '100%',
-                                        padding: '12px 14px',
-                                        fontSize: 16,
-                                        fontWeight: 500,
-                                        lineHeight: 1.5,
-                                        color: 'var(--color-text-primary)',
-                                        caretColor: 'var(--color-nav-active)',
-                                    }}
-                                />
-                            </motion.div>
-
-                            {/* The pull: their answer waits for the partner */}
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.28 }}
-                                className="text-[12.5px] text-center mb-6 px-3 leading-snug"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                                Saved just for you — it stays hidden until your partner answers too. The perfect reason to invite them.
-                            </motion.p>
-
-                            <motion.div
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.32 }}
-                                className="mb-2"
-                            >
-                                <PrimaryButton
-                                    label="Save & continue"
-                                    disabled={!firstAnswer.trim()}
-                                    onClick={() => firstAnswer.trim() && advance('done')}
-                                    icon={<Heart size={17} fill="currentColor" />}
-                                />
-                            </motion.div>
-
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
-                                <button
-                                    onClick={() => { setFirstAnswer(''); advance('done'); }}
-                                    className="w-full py-3 text-[14px] font-medium"
-                                    style={{ color: 'var(--color-text-secondary)', background: 'none', border: 'none' }}
-                                >
-                                    Skip for now
-                                </button>
-                            </motion.div>
-                        </motion.div>
-                    )}
-
-                    {/* ══════════════════════════════════════════════════════
-                        DONE
-                    ═══════════════════════════════════════════════════════ */}
-                    {step === 'done' && (
-                        <motion.div key="done" {...slide(dir)} className="w-full py-8 text-center relative">
-                            {showBurst && <BurstHearts />}
-
-                            {/* Main heart icon with glow */}
-                            <div className="flex justify-center mb-8 relative">
-                                <motion.div
-                                    initial={{ scale: 0, rotate: -20 }}
-                                    animate={{ scale: 1, rotate: 0 }}
-                                    transition={{ type: 'spring' as const, damping: 12, stiffness: 220, delay: 0.04 }}
-                                    style={{
-                                        width: 100, height: 100,
-                                        borderRadius: '2rem',
-                                        background: 'rgba(255,255,255,0.72)',
-                                        backdropFilter: 'blur(24px)',
-                                        border: '1.5px solid rgba(255,255,255,0.92)',
-                                        boxShadow: '0 0 60px rgba(196,104,126,0.5), 0 20px 64px rgba(196,104,126,0.3), inset 0 1px 0 rgba(255,255,255,1)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                    }}
-                                >
-                                    <motion.img
-                                        src="/icon-128.png"
-                                        alt="Lior"
-                                        className="h-[72px] w-[72px] object-cover"
-                                        style={{ borderRadius: 16 }}
-                                        animate={{ scale: [1, 1.04, 1] }}
-                                        transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                                    />
-                                </motion.div>
-
-                                {/* Orbiting sparkles */}
-                                {[0, 120, 240].map((deg, i) => (
-                                    <motion.div
-                                        key={deg}
-                                        style={{ position: 'absolute', top: '50%', left: '50%' }}
-                                        animate={{ rotate: [deg, deg + 360] }}
-                                        transition={{ duration: 6 + i, repeat: Infinity, ease: 'linear' }}
-                                    >
-                                        <motion.div style={{ x: 56, y: -6 }}>
-                                            <Sparkles size={12 + i * 2} style={{ color: '#f59e0b', opacity: 0.7 + i * 0.1 }} />
-                                        </motion.div>
-                                    </motion.div>
-                                ))}
-                            </div>
-
-                            {/* Name reveal */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.3, type: 'spring' as const, damping: 22 }}
-                                className="mb-2"
-                            >
-                                <p className="text-[13px] font-semibold uppercase tracking-[0.16em] mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                                    Welcome
-                                </p>
-                                <h2
-                                    className="font-serif leading-tight"
-                                    style={{
-                                        fontSize: myName.length > 10 ? '2.4rem' : '3rem',
-                                        color: 'var(--color-text-primary)',
-                                        textShadow: '0 2px 20px rgba(196,104,126,0.22)',
-                                    }}
-                                >
-                                    {myName}
-                                </h2>
-                                <motion.p
+                                    className="lo-ob-devbody"
+                                    key={`devbody-${step}`}
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
-                                    transition={{ delay: 0.5 }}
-                                    className="text-[15px] mt-2 mb-8"
-                                    style={{ color: 'var(--color-text-secondary)' }}
+                                    transition={{ delay: 0.18, duration: 0.36 }}
                                 >
-                                    Your space is ready. ✦
-                                </motion.p>
-                            </motion.div>
-
-                            {/* Invite partner — real action, routes to the pairing hub */}
-                            <motion.button
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.54 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={handlePairNow}
-                                className="w-full mb-5 px-4 py-3.5 rounded-2xl flex items-center gap-3 text-left"
-                                style={{
-                                    background: 'rgba(255,255,255,0.46)',
-                                    border: '1.5px solid rgba(255,255,255,0.82)',
-                                    backdropFilter: 'blur(16px)',
-                                }}
-                            >
-                                <div
-                                    className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
-                                    style={{ background: 'rgba(196,104,126,0.12)' }}
-                                >
-                                    <UserPlus size={18} style={{ color: 'var(--color-nav-active)' }} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                                        Invite your partner
-                                    </p>
-                                    <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-                                        Show a QR or share a code
-                                    </p>
-                                </div>
-                                <ArrowRight size={18} strokeWidth={2.5} style={{ color: 'var(--color-nav-active)', flexShrink: 0 }} />
-                            </motion.button>
-
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.64 }}>
-                                <PrimaryButton
-                                    label="I'll do it later"
-                                    glow
-                                    onClick={handleComplete}
-                                    icon={<Heart size={17} fill="currentColor" />}
-                                />
-                            </motion.div>
+                                    {devContentFor(step)}
+                                </motion.div>
+                                <canvas ref={devCanvasRef} className="lo-ob-devcons" width={144} height={318} aria-hidden />
+                            </div>
                         </motion.div>
                     )}
 
-                </AnimatePresence>
-            </div>
+                    <div className="lo-ob-mist" />
 
-            <div className="relative z-10 pb-10 flex-shrink-0" />
+                    <div className="lo-ob-cards">
+                        {feelSlide.cards.map((c, i) => (
+                            <motion.div
+                                key={`${step}-${c.id}`}
+                                className="lo-ob-card"
+                                style={{ left: c.x, top: c.y, width: c.w }}
+                                initial={{ x: PHX - (c.x + c.w / 2), y: PHY - (c.y + 22), scale: 0.32, opacity: 0, rotate: 0 }}
+                                animate={{ x: 0, y: 0, scale: 1, opacity: 1, rotate: c.r }}
+                                transition={{ delay: 0.18 + i * 0.12, type: 'spring', damping: 26, stiffness: 250 }}
+                            >
+                                <div className="lo-ob-cfloat" style={{ ['--d' as string]: `${c.d}s` } as React.CSSProperties}>
+                                    {c.content}
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Act II: setup steps (centered glass forms) ──────────────── */}
+            {step === 'myName' && (
+                <motion.div className="lo-ob-form" key="myName" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
+                    <p className="lo-ob-eyebrow">Step 1 of 3</p>
+                    <div className="lo-ob-namebig">{myName ? myName : <span className="ph">your name</span>}</div>
+                    <h2 className="lo-ob-formh">What should we call you?</h2>
+                    <p className="lo-ob-forms">How you’ll appear in your shared space.</p>
+                    <input
+                        ref={nameRef}
+                        className="lo-ob-input"
+                        value={myName}
+                        onChange={(e) => setMyName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && myName.trim()) advance('anniversary'); }}
+                        autoCapitalize="words" autoCorrect="off" autoComplete="off" spellCheck={false}
+                        maxLength={32} placeholder="Type your name…"
+                    />
+                </motion.div>
+            )}
+
+            {step === 'anniversary' && (
+                <motion.div className="lo-ob-form" key="anniversary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
+                    <p className="lo-ob-eyebrow">Step 2 of 3</p>
+                    <h2 className="lo-ob-formh">When did your story begin?</h2>
+                    <p className="lo-ob-forms">The day everything changed.</p>
+                    <div className="lo-ob-input" style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+                        <Calendar size={20} style={{ color: '#e8657a', flexShrink: 0 }} />
+                        <input
+                            type="date" value={anniversary} max={todayInputValue()}
+                            onChange={(e) => setAnniversary(e.target.value)}
+                            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: anniversary ? '#2a211d' : '#94897e', width: '100%', cursor: 'pointer' }}
+                        />
+                    </div>
+                    {anniversary && daysApart > 0 && (
+                        <div className="lo-ob-days">{daysDisplay.toLocaleString()}<small>days together — and counting</small></div>
+                    )}
+                </motion.div>
+            )}
+
+            {step === 'first-question' && (
+                <motion.div className="lo-ob-form" key="first-question" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
+                    <p className="lo-ob-eyebrow">Step 3 of 3</p>
+                    <div className="lo-ob-qcard">
+                        <p className="lo-ob-qlabel">Today’s question</p>
+                        <p className="lo-ob-qtext">“{firstQuestion}”</p>
+                    </div>
+                    <textarea
+                        ref={answerRef}
+                        className="lo-ob-ta"
+                        value={firstAnswer}
+                        onChange={(e) => { setFirstAnswer(e.target.value); if (e.target.value.length > 0) void Haptics.select(); }}
+                        placeholder="Write your answer…"
+                        rows={3} maxLength={300}
+                        autoCapitalize="sentences" autoCorrect="on" spellCheck
+                    />
+                    <p className="lo-ob-seal"><Lock size={14} /> Sealed until your partner answers too.</p>
+                </motion.div>
+            )}
+
+            {step === 'done' && (
+                <motion.div className="lo-ob-form" key="done" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
+                    <div className="lo-ob-icon" style={{ position: 'relative', left: 'auto', top: 'auto', margin: '0 auto 20px' }}>
+                        <img src="/icon-128.png" alt="Lior" />
+                    </div>
+                    <p className="lo-ob-eyebrow">Welcome</p>
+                    <h2 className="lo-ob-formh" style={{ fontSize: myName.length > 10 ? '30px' : '36px', marginBottom: 18 }}>{myName || 'You’re all set'}</h2>
+                    <div className="lo-ob-invite">
+                        <div className="lo-ob-qr"><QrCode size={40} /></div>
+                        <div style={{ textAlign: 'left' }}>
+                            <p className="lo-ob-qlabel">Their invite</p>
+                            <div className="lo-ob-code">L·9K·4Q</div>
+                            <p className="lo-ob-seal" style={{ justifyContent: 'flex-start', margin: '6px 0 0' }}><Share2 size={13} /> Show the code or share a link.</p>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* ── Bottom panel: copy (Act I) + progress + CTA ─────────────── */}
+            <div className="lo-ob-panel">
+                {isFeel && feelSlide && (
+                    <motion.div key={`copy-${step}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
+                        <h1 className="lo-ob-h">{feelSlide.h}</h1>
+                        <p className="lo-ob-s">{feelSlide.s}</p>
+                    </motion.div>
+                )}
+
+                {isFeel && (
+                    <div className="lo-ob-prog">
+                        {FEEL_KEYS.map((k, i) => (
+                            <div key={k} className={`lo-ob-tk${i === feelIndex ? ' on' : ''}`} />
+                        ))}
+                    </div>
+                )}
+
+                <button className="lo-ob-cta" disabled={cta.disabled} onClick={cta.onClick}>
+                    <span>{cta.label}</span>
+                    <ArrowRight size={17} strokeWidth={2.4} />
+                </button>
+
+                {isFeel && (
+                    <button className="lo-ob-skip" onClick={() => advance('myName')}>Skip intro</button>
+                )}
+                {step === 'anniversary' && (
+                    <button className="lo-ob-skip" onClick={() => enterFirstQuestion()}>Skip for now</button>
+                )}
+                {step === 'first-question' && (
+                    <button className="lo-ob-skip" onClick={() => { setFirstAnswer(''); advance('done'); }}>Skip for now</button>
+                )}
+                {step === 'done' && (
+                    <button className="lo-ob-skip" onClick={() => void handleComplete()}>I’ll do it later</button>
+                )}
+            </div>
+        </div>
         </div>
     );
 };

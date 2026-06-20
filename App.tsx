@@ -1105,6 +1105,20 @@ const App = () => {
     return <ActiveView setView={navigateTo} />;
   }, [currentView, navigateTo]);
 
+  // Dev-only standalone preview of the onboarding flow. Open the app with
+  // ?onboarding=1 to view it in isolation — bypasses init + the cloud-auth gate,
+  // so it works even when Supabase isn't configured in this checkout. Reloads to
+  // a clean URL on finish/exit. Inert in production builds.
+  if (import.meta.env.DEV && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('onboarding') === '1') {
+    const exitOnboardingPreview = () => { window.location.href = window.location.pathname; };
+    return (
+      <ErrorBoundary>
+        <Onboarding onComplete={exitOnboardingPreview} onPairNow={exitOnboardingPreview} />
+      </ErrorBoundary>
+    );
+  }
+
   // Global Loading State
   if (!isInitialized) {
     return <RouteLoader />;
