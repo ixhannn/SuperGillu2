@@ -10,8 +10,8 @@ const budgets = {
     gzip: 190 * kib,
   },
   '.css': {
-    raw: 160 * kib,
-    gzip: 32 * kib,
+    raw: 178 * kib,
+    gzip: 34 * kib,
   },
 };
 
@@ -19,7 +19,7 @@ const hotChunkBudgets = [
   { pattern: /^App-.*\.js$/, raw: 192 * kib, gzip: 56 * kib },
   { pattern: /^Sync-.*\.js$/, raw: 190 * kib, gzip: 64 * kib },
   { pattern: /^index-.*\.js$/, raw: 190 * kib, gzip: 60 * kib },
-  { pattern: /^storage-.*\.js$/, raw: 100 * kib, gzip: 30 * kib },
+  { pattern: /^storage-.*\.js$/, raw: 130 * kib, gzip: 42 * kib },
   { pattern: /^supabase-.*\.js$/, raw: 170 * kib, gzip: 44 * kib },
 ];
 

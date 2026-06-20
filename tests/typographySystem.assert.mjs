@@ -27,8 +27,18 @@ const appTypographySource = [
 
 assert.match(
   indexHtmlSource,
-  /family=Afacad\+Flux:wght@400;500;600;700;800&family=Bricolage\+Grotesque:wght@500;600;700;800&display=swap/,
-  'Expected index.html to load the consolidated Lior typography pairing',
+  /family=Afacad\+Flux:wght@400;500;600;700;800/,
+  'Expected index.html to load the Afacad Flux UI font',
+);
+assert.match(
+  indexHtmlSource,
+  /family=Bricolage\+Grotesque:wght@500;600;700;800/,
+  'Expected index.html to load the Bricolage Grotesque display font',
+);
+assert.match(
+  indexHtmlSource,
+  /family=Fraunces:ital,opsz,wght/,
+  'Expected index.html to load Fraunces — the editorial serif used by the onboarding hero',
 );
 
 assert.doesNotMatch(
@@ -45,8 +55,8 @@ assert.match(
 
 assert.doesNotMatch(
   appTypographySource,
-  /Baloo|Lora|Nunito|Gloria Hallelujah|Fraunces|Plus Jakarta|Outfit|Playfair|font-family:\s*'Inter'|font:\s*[^;]*'Inter'/,
-  'Expected app CSS and inline typography to use the shared Lior font tokens only',
+  /Baloo|Lora|Nunito|Gloria Hallelujah|Plus Jakarta|Outfit|Playfair|font-family:\s*'Inter'|font:\s*[^;]*'Inter'/,
+  'Expected app CSS and inline typography to use the shared Lior font tokens only (Fraunces is sanctioned for the onboarding hero in styles/onboarding.css)',
 );
 
 assert.match(
