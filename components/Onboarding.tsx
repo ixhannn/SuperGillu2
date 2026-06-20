@@ -121,7 +121,7 @@ interface FeelSlide {
     sun: number;
     glow: number;
     cons: number;
-    mode: 'icon' | 'dev' | 'showcase';
+    mode: 'icon' | 'dev' | 'showcase' | 'finale';
     cards: CardDef[];
     tones?: ToneChip[];   // showcase mode — facet chips radiating from the icon
 }
@@ -191,15 +191,12 @@ const ACT1: FeelSlide[] = [
     },
     {
         key: 'feel6',
-        h: 'This is where\nyour story\nlives.',
+        h: 'This is where\nyour story lives.',
         s: 'Welcome to Lior.',
         cta: 'Begin',
         sky: 'linear-gradient(180deg,#ff8a63,#ffb27e 22%,#ffd6a8 42%,#fff6ec 64%)',
-        sun: 0.9, glow: 0.85, cons: 1, mode: 'dev',
-        cards: [
-            { id: 'con', content: chipCard(<Sparkles size={15} style={{ color: '#c4683a' }} />, 'your constellation'), x: 30, y: 58, w: 152, r: -5, d: 7 },
-            { id: 'days', content: memCard('linear-gradient(135deg,#ffd98a,#ff9bb0)', '1,284', 'days together'), x: 176, y: 202, w: 112, r: 5, d: 8 },
-        ],
+        sun: 0.95, glow: 0.9, cons: 1, mode: 'finale',
+        cards: [],
     },
 ];
 
@@ -317,6 +314,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     const feelSlide = isFeel ? ACT1[feelIndex] : null;
     const isIconMode = feelSlide?.mode === 'icon';
     const isShowcase = feelSlide?.mode === 'showcase';
+    const isFinale = feelSlide?.mode === 'finale';
     const isDev = feelSlide?.mode === 'dev';
 
     const scene = useMemo(() => {
@@ -565,73 +563,79 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             {/* ── Act I: the phone-in-clouds hero ─────────────────────────── */}
             {isFeel && feelSlide && (
                 <div className="lo-ob-comp">
-                    {/* The icon (slide 1) and the phone both PERSIST across Act I —
-                        their visibility cross-fades via CSS, so the device never
-                        unmounts/remounts between slides. Only the screen content and
-                        the erupting cards transition. */}
-                    <div
-                        className="lo-ob-icon"
-                        style={{
-                            opacity: (isIconMode || isShowcase) ? 1 : 0,
-                            transform: isShowcase ? 'scale(1.08)' : isIconMode ? 'scale(1)' : 'scale(0.7)',
-                            pointerEvents: 'none',
-                        }}
-                    >
-                        <img src="/icon-128.png" alt="Lior" />
-                    </div>
-                    <div className="lo-ob-name" style={{ opacity: isIconMode ? 1 : 0 }}>Lior</div>
-
-                    {/* Showcase (slide 5): a light beam + facet chips radiating from the mark. */}
-                    <div className="lo-ob-beam" style={{ opacity: isShowcase ? 1 : 0 }} />
-                    {isShowcase && feelSlide.tones && (
-                        <div className="lo-ob-tones">
-                            {feelSlide.tones.map((tn, i) => (
-                                <motion.div
-                                    key={`${step}-tone-${i}`}
-                                    className="lo-ob-tone"
-                                    style={{ left: tn.x, top: tn.y, width: tn.w }}
-                                    initial={{ opacity: 0, scale: 0.7, x: (PHX - (tn.x + tn.w / 2)) * 0.5, y: (160 - tn.y) * 0.5 }}
-                                    animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
-                                    transition={{ delay: 0.18 + i * 0.1, type: 'spring', damping: 24, stiffness: 240 }}
-                                >
-                                    {tn.icon}<span>{tn.label}</span>
-                                </motion.div>
-                            ))}
-                        </div>
+                    {/* Mark — icon (slide 1), showcase (slide 5), finale (welcome).
+                        CONDITIONALLY MOUNTED (not opacity-toggled) so the logo can
+                        never linger or pop onto the phone slides. */}
+                    {(isIconMode || isShowcase || isFinale) && (
+                        <motion.div
+                            key={`mark-${step}`}
+                            className="lo-ob-markwrap"
+                            initial={{ opacity: 0, scale: 0.94 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                        >
+                            {isFinale && <div className="lo-ob-finale-bloom" />}
+                            {(isShowcase || isFinale) && <div className="lo-ob-beam" />}
+                            <div
+                                className="lo-ob-icon"
+                                style={{ transform: isFinale ? 'scale(1.24)' : isShowcase ? 'scale(1.08)' : 'scale(1)' }}
+                            >
+                                <img src="/icon-128.png" alt="Lior" />
+                            </div>
+                            {isIconMode && <div className="lo-ob-name">Lior</div>}
+                            {isShowcase && feelSlide.tones && (
+                                <div className="lo-ob-tones">
+                                    {feelSlide.tones.map((tn, i) => (
+                                        <motion.div
+                                            key={`${step}-tone-${i}`}
+                                            className="lo-ob-tone"
+                                            style={{ left: tn.x, top: tn.y, width: tn.w }}
+                                            initial={{ opacity: 0, scale: 0.7, x: (PHX - (tn.x + tn.w / 2)) * 0.5, y: (160 - tn.y) * 0.5 }}
+                                            animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                                            transition={{ delay: 0.18 + i * 0.1, type: 'spring', damping: 24, stiffness: 240 }}
+                                        >
+                                            {tn.icon}<span>{tn.label}</span>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            )}
+                        </motion.div>
                     )}
 
-                    <div
-                        className="lo-ob-dev"
-                        style={{
-                            opacity: isDev ? 1 : 0,
-                            transform: isDev ? 'translateY(0) scale(1)' : 'translateY(28px) scale(0.92)',
-                            pointerEvents: isDev ? 'auto' : 'none',
-                        }}
-                    >
-                        <div className="lo-ob-devscr">
-                            <div className="lo-ob-devisland" />
-                            <div className="lo-ob-devstat"><span>9:41</span><StatusIcons color="#8a4436" h={7.5} /></div>
-                            <div className="lo-ob-devbody-wrap">
-                                <AnimatePresence custom={dir}>
-                                    <motion.div
-                                        className="lo-ob-devbody"
-                                        key={`devbody-${step}`}
-                                        custom={dir}
-                                        variants={SCREEN_VARIANTS}
-                                        initial="enter"
-                                        animate="center"
-                                        exit="exit"
-                                        transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
-                                    >
-                                        {devContentFor(step)}
-                                    </motion.div>
-                                </AnimatePresence>
+                    {/* Phone — only the dev slides; the constant key persists it across them. */}
+                    {isDev && (
+                        <motion.div
+                            key="phone"
+                            className="lo-ob-dev"
+                            initial={{ opacity: 0, y: 24, scale: 0.94 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                        >
+                            <div className="lo-ob-devscr">
+                                <div className="lo-ob-devisland" />
+                                <div className="lo-ob-devstat"><span>9:41</span><StatusIcons color="#8a4436" h={7.5} /></div>
+                                <div className="lo-ob-devbody-wrap">
+                                    <AnimatePresence custom={dir}>
+                                        <motion.div
+                                            className="lo-ob-devbody"
+                                            key={`devbody-${step}`}
+                                            custom={dir}
+                                            variants={SCREEN_VARIANTS}
+                                            initial="enter"
+                                            animate="center"
+                                            exit="exit"
+                                            transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+                                        >
+                                            {devContentFor(step)}
+                                        </motion.div>
+                                    </AnimatePresence>
+                                </div>
+                                <canvas ref={devCanvasRef} className="lo-ob-devcons" width={144} height={318} aria-hidden />
                             </div>
-                            <canvas ref={devCanvasRef} className="lo-ob-devcons" width={144} height={318} aria-hidden />
-                        </div>
-                    </div>
+                        </motion.div>
+                    )}
 
-                    <div className="lo-ob-mist" />
+                    {isDev && <div className="lo-ob-mist" />}
 
                     <div className="lo-ob-cards">
                         <AnimatePresence>
