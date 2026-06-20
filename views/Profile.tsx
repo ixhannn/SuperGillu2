@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, Volume2, VolumeX, Vibrate, Zap, Sparkles, Mic, Gift, Lock } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Camera, X, Heart, Save, Palette, Check, Download, Upload, Database, ShieldCheck, HardDrive, LogOut, Music, Trash2, AlertCircle, AlertTriangle, Volume2, VolumeX, Vibrate, Zap, Sparkles, Mic, Gift, Lock } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from '../utils/toast';
@@ -187,6 +189,12 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
     });
     const [isSaving, setIsSaving] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
+    // Account deletion (Apple 5.1.1(v) / GDPR). Two-step: a type-to-confirm
+    // sheet ('DELETE') gates the final ConfirmModal so it can never be a single
+    // accidental tap.
+    const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [isDeleting, setIsDeleting] = useState(false);
     const [hapticsOn, setHapticsOn] = useState(Haptics.isEnabled());
     const [audioOn, setAudioOn] = useState(Audio.isEnabled());
     const [storageInfo, setStorageInfo] = useState<{ used: string, type: string }>({ used: '0 KB', type: 'Checking...' });
@@ -416,6 +424,86 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                 }
             },
         });
+    };
+
+    // ── Account deletion ───────────────────────────────────────────────────────
+    // Calls the `delete-account` Edge Function (server erases the auth user +
+    // per-user data + couple membership; if the caller is the sole remaining
+    // member it also purges the shared space + media). On success we wipe ALL
+    // local state, sign out, and route to Auth. Mirrors the authed-fetch pattern
+    // used by NotificationService.triggerPartnerNudge.
+    const DELETE_CONFIRM_WORD = 'DELETE';
+    const canConfirmDelete = deleteConfirmText.trim().toUpperCase() === DELETE_CONFIRM_WORD;
+
+    const openDeleteFlow = () => {
+        setDeleteConfirmText('');
+        setDeleteSheetOpen(true);
+        Haptics.warning();
+    };
+
+    const closeDeleteFlow = () => {
+        if (isDeleting) return;
+        setDeleteSheetOpen(false);
+        setDeleteConfirmText('');
+    };
+
+    const performAccountDeletion = async () => {
+        if (!canConfirmDelete || isDeleting) return;
+        setIsDeleting(true);
+        try {
+            if (!SupabaseService.isConfigured() || !SupabaseService.client) {
+                toast.show("Account deletion isn't available right now. Please try again later.", 'error');
+                setIsDeleting(false);
+                return;
+            }
+            const token = await SupabaseService.getAccessToken();
+            const { url } = SupabaseService.getProjectConfig();
+            if (!token || !url) {
+                toast.show("We couldn't verify your session. Please sign in again and retry.", 'error');
+                setIsDeleting(false);
+                return;
+            }
+
+            let response: Response;
+            try {
+                response = await fetch(`${url}/functions/v1/delete-account`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({}),
+                });
+            } catch {
+                toast.show("We couldn't reach our servers. Check your connection and try again.", 'error');
+                setIsDeleting(false);
+                return;
+            }
+
+            if (!response.ok) {
+                // The server intentionally fails LOUD (e.g. auth-user delete failed)
+                // so we never clear local data for a still-existing account.
+                toast.show("We couldn't delete your account just now. Please try again.", 'error');
+                setIsDeleting(false);
+                return;
+            }
+
+            // Success: the account is gone server-side. Leave no local trace.
+            await StorageService.purgeAllLocalData();
+            try {
+                await SupabaseService.client.auth.signOut();
+            } catch {
+                // Session is already invalid server-side; ignore.
+            }
+            SupabaseService.setCachedUserId(null);
+            // Hard reload so every in-memory store/component resets to a clean,
+            // signed-out state and the app routes back to Auth.
+            window.location.reload();
+        } catch (error) {
+            console.error(error);
+            toast.show("Something went wrong while deleting your account. Please try again.", 'error');
+            setIsDeleting(false);
+        }
     };
 
     const handleDownloadBackup = async () => {
@@ -980,9 +1068,125 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                             <p className="flex-1 text-[15px] font-medium" style={{ color: '#dc2626' }}>Sign Out</p>
                         </button>
                     </div>
+
+                    {/* ── DANGER ZONE — delete account ──────────────────────── */}
+                    {/* Kept subtle (a single red-tinted row, no big masthead) to
+                        match the warm-minimal taste, but clearly separated from
+                        Sign Out so it reads as a distinct, weightier action. */}
+                    <button
+                        onClick={openDeleteFlow}
+                        className="mt-3 w-full flex items-center gap-3 px-4 min-h-[48px] rounded-2xl spring-press text-left active:opacity-70"
+                        style={{
+                            background: 'rgba(220,38,38,0.04)',
+                            border: '1px solid rgba(220,38,38,0.14)',
+                        }}
+                    >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#fef2f2' }}>
+                            <Trash2 size={14} style={{ color: '#dc2626' }} />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-[15px] font-semibold" style={{ color: '#dc2626' }}>Delete Account</p>
+                            <p className="text-[11.5px] mt-0.5 leading-snug font-medium" style={{ color: '#dc2626', opacity: 0.6 }}>
+                                Permanently remove your account and data
+                            </p>
+                        </div>
+                    </button>
                 </div>
 
             </div>
+
+            {/* ── DELETE ACCOUNT — type-to-confirm sheet ───────────────────── */}
+            {ReactDOM.createPortal(
+                <AnimatePresence>
+                    {deleteSheetOpen && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[200] flex items-center justify-center p-6"
+                            style={{ backgroundColor: 'rgba(21,12,16,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+                            onClick={closeDeleteFlow}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.92, opacity: 0, y: 12 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 1.02, opacity: 0, y: 8 }}
+                                transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+                                role="dialog"
+                                aria-modal="true"
+                                aria-label="Delete account"
+                                className="bg-white/97 w-full max-w-[360px] p-7 shadow-float relative overflow-hidden"
+                                style={{ borderRadius: 'var(--radius-xl)' }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex flex-col items-center text-center mb-5">
+                                    <div className="p-3.5 rounded-2xl mb-4" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                                        <AlertTriangle size={24} strokeWidth={2} />
+                                    </div>
+                                    <h3 className="font-serif font-bold text-xl leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                                        Delete your account?
+                                    </h3>
+                                </div>
+
+                                <div className="text-[14px] leading-relaxed space-y-2.5 mb-5" style={{ color: 'var(--color-text-secondary)' }}>
+                                    <p>Your account and personal data will be permanently deleted.</p>
+                                    <p>
+                                        If you're the only one here, your shared space and all photos and media go too.
+                                        If your partner stays, your shared memories remain with them.
+                                    </p>
+                                    <p className="font-semibold" style={{ color: '#dc2626' }}>This can't be undone.</p>
+                                </div>
+
+                                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                                    Type <span className="font-bold tracking-wide" style={{ color: '#dc2626' }}>DELETE</span> to confirm
+                                </label>
+                                <input
+                                    type="text"
+                                    value={deleteConfirmText}
+                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                    disabled={isDeleting}
+                                    autoCapitalize="characters"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    placeholder="DELETE"
+                                    aria-label="Type DELETE to confirm account deletion"
+                                    className="w-full px-3.5 py-3 mb-5 rounded-xl text-[15px] font-semibold tracking-wide outline-none placeholder:opacity-30 placeholder:font-medium placeholder:tracking-normal"
+                                    style={{
+                                        color: 'var(--color-text-primary)',
+                                        background: 'rgba(0,0,0,0.03)',
+                                        border: `1.5px solid ${canConfirmDelete ? 'rgba(220,38,38,0.45)' : 'rgba(0,0,0,0.08)'}`,
+                                    }}
+                                />
+
+                                <div className="flex flex-col gap-2.5">
+                                    <button
+                                        onClick={performAccountDeletion}
+                                        disabled={!canConfirmDelete || isDeleting}
+                                        className="w-full py-4 rounded-xl font-bold text-[14px] leading-none uppercase tracking-widest text-white transition-all active:scale-95 flex items-center justify-center gap-2"
+                                        style={{
+                                            background: '#dc2626',
+                                            opacity: (!canConfirmDelete || isDeleting) ? 0.4 : 1,
+                                            cursor: (!canConfirmDelete || isDeleting) ? 'not-allowed' : 'pointer',
+                                            boxShadow: '0 8px 22px rgba(220,38,38,0.22)',
+                                        }}
+                                    >
+                                        {isDeleting ? <><Save size={14} className="animate-spin" /> Deleting…</> : 'Delete Account'}
+                                    </button>
+                                    <button
+                                        onClick={closeDeleteFlow}
+                                        disabled={isDeleting}
+                                        className="w-full py-4 rounded-xl font-bold text-[13px] leading-none uppercase tracking-widest active:scale-95 transition-all"
+                                        style={{ background: 'rgba(var(--theme-particle-2-rgb),0.06)', color: 'var(--color-text-secondary)', opacity: isDeleting ? 0.5 : 1 }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
             <ConfirmModal
                 isOpen={!!confirmState}

@@ -40,7 +40,7 @@ import {
     type PendingUpload,
 } from './storage/pendingOperations';
 import { createPersonalCollectionsStorageDomain } from './storage/personalCollections';
-import { deleteRaw, getDB, readRaw, writeRaw } from './storage/rawStore';
+import { deleteRaw, destroyDatabase, getDB, readRaw, writeRaw } from './storage/rawStore';
 import { createUsCollectionsStorageDomain } from './storage/usCollections';
 export { addPendingDelete, getPendingDeletes, isDeletedLocally, removePendingDelete } from './storage/pendingOperations';
 
@@ -2396,6 +2396,40 @@ export const StorageService = {
         const activeUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID) || SupabaseService.getCachedUserId();
         backupCurrentProfileForAccount(activeUserId);
         backupCurrentContentForAccount(activeUserId);
+    },
+
+    /**
+     * IRREVERSIBLE local wipe for in-app account deletion. Unlike
+     * prepareForSignOut (which BACKS UP the active account so it can be restored
+     * on next sign-in), this leaves no recoverable trace: every localStorage /
+     * sessionStorage key AND the entire IndexedDB database (memories, cached
+     * media, per-account backups) are destroyed. Call this ONLY after the
+     * server-side delete-account function has confirmed success, then sign out
+     * and reload. Best-effort — never throws, so a storage quirk can't strand
+     * the user on a deleted account.
+     */
+    purgeAllLocalData: async (): Promise<void> => {
+        try {
+            localStorage.clear();
+        } catch {
+            // Private-mode / locked storage — nothing more we can do.
+        }
+        try {
+            sessionStorage.clear();
+        } catch {
+            // Ignore.
+        }
+        // In-memory caches must not survive into the next (signed-out) render.
+        try {
+            MEDIA_MEMORY_CACHE.clear();
+        } catch {
+            // Ignore — best-effort.
+        }
+        try {
+            await destroyDatabase();
+        } catch {
+            // destroyDatabase already swallows its own errors; guard anyway.
+        }
     },
 
     hasCompletedOnboarding: (): boolean => {

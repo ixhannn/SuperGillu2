@@ -2634,6 +2634,42 @@ export default {
       }
     }
 
+    // Bulk-purge every R2 object for one couple — used by the delete-account edge
+    // function (GDPR/Apple erasure) when the deleting user was the couple's sole
+    // remaining member. Gated by the same internal cleanup secret (server-to-server
+    // only; the client never calls this).
+    if (request.method === 'POST' && url.pathname === '/__internal/purge-couple') {
+      const purgeToken = request.headers.get('X-Cleanup-Token');
+      if (!env.CLEANUP_INTERNAL_TOKEN || !purgeToken || purgeToken !== env.CLEANUP_INTERNAL_TOKEN) {
+        return new Response('Unauthorized', { status: 401, headers: cors });
+      }
+      try {
+        const body = await request.json().catch(() => ({}));
+        const coupleId = typeof body?.coupleId === 'string' ? body.coupleId.trim() : '';
+        // Strict guard: a single couple id only. Reject empty (would match the
+        // whole v2/couples/ prefix => purge EVERY couple) and anything with '/'
+        // or '.' so the prefix can neither be widened nor escaped.
+        if (!/^[A-Za-z0-9_-]+$/.test(coupleId)) {
+          return jsonResponse({ ok: false, error: 'invalid coupleId' }, 400, cors);
+        }
+        const prefix = `v2/couples/${coupleId}/`;
+        let cursor;
+        let deleted = 0;
+        do {
+          const page = await env.LIOR_BUCKET.list({ prefix, cursor });
+          const keys = page.objects.map((object) => object.key);
+          if (keys.length) {
+            await Promise.all(keys.map((key) => env.LIOR_BUCKET.delete(key).catch(() => {})));
+            deleted += keys.length;
+          }
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+        return jsonResponse({ ok: true, coupleId, deleted }, 200, cors);
+      } catch (error) {
+        return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+      }
+    }
+
     if (url.pathname.startsWith(ADMIN_ROUTE_PREFIX)) {
       if (!env.ADMIN_DASHBOARD_TOKEN) {
         return jsonResponse({ ok: false, error: 'ADMIN_DASHBOARD_TOKEN is not configured' }, 500, cors);
