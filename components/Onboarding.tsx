@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    ArrowRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
-    Image as ImageIcon, Activity, Plus, Share2,
+    ChevronRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
+    Image as ImageIcon, Activity, Plus, Share2, Star,
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { Haptics } from '../services/haptics';
@@ -24,14 +24,14 @@ interface OnboardingProps {
 // reskinned setup steps. The Step order + the finalizeOnboarding sequence are
 // load-bearing and unchanged from the previous design.
 type Step =
-    | 'feel1' | 'feel2' | 'feel3' | 'feel4' | 'feel5'
+    | 'feel1' | 'feel2' | 'feel3' | 'feel4' | 'feel5' | 'feel6'
     | 'myName' | 'anniversary' | 'first-question' | 'done';
 
-const FEEL_KEYS: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5'];
+const FEEL_KEYS: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'feel6'];
 
 // Full step order — used to derive travel direction (forward vs back) so every
 // layer animates in the same coordinated direction for a continuous feel.
-const STEP_ORDER: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'myName', 'anniversary', 'first-question', 'done'];
+const STEP_ORDER: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'feel6', 'myName', 'anniversary', 'first-question', 'done'];
 
 // Directional, depth-layered transition variants. `custom` carries the travel
 // direction (+1 forward / -1 back). The headline copy travels furthest
@@ -110,6 +110,8 @@ const menuCard: React.ReactNode = (
 
 interface CardDef { id: string; content: React.ReactNode; x: number; y: number; w: number; r: number; d: number; }
 
+interface ToneChip { icon: React.ReactNode; label: string; x: number; y: number; w: number; }
+
 interface FeelSlide {
     key: Step;
     h: string;
@@ -119,8 +121,9 @@ interface FeelSlide {
     sun: number;
     glow: number;
     cons: number;
-    mode: 'icon' | 'dev';
+    mode: 'icon' | 'dev' | 'showcase';
     cards: CardDef[];
+    tones?: ToneChip[];   // showcase mode — facet chips radiating from the icon
 }
 
 const ACT1: FeelSlide[] = [
@@ -174,6 +177,20 @@ const ACT1: FeelSlide[] = [
     },
     {
         key: 'feel5',
+        h: 'Everything you share,\nin one place.',
+        s: 'Memories, milestones, and the little things in between.',
+        cta: 'Continue',
+        sky: 'linear-gradient(180deg,#ff8763,#ffb07e 22%,#ffd4a6 42%,#fff6ec 64%)',
+        sun: 0.85, glow: 0.78, cons: 0.55, mode: 'showcase', cards: [],
+        tones: [
+            { icon: <ImageIcon size={14} style={{ color: '#c4683a' }} />, label: 'Memories', x: 10, y: 100, w: 108 },
+            { icon: <Star size={14} style={{ color: '#c4683a' }} />, label: 'Milestones', x: 176, y: 100, w: 108 },
+            { icon: <MessageCircle size={14} style={{ color: '#c4683a' }} />, label: 'Little notes', x: 2, y: 202, w: 116 },
+            { icon: <Sparkles size={14} style={{ color: '#e8657a' }} />, label: 'Quiet moments', x: 166, y: 202, w: 124 },
+        ],
+    },
+    {
+        key: 'feel6',
         h: 'This is where\nyour story\nlives.',
         s: 'Welcome to Lior.',
         cta: 'Begin',
@@ -220,7 +237,7 @@ const devContentFor = (step: Step): React.ReactNode => {
                     <div className="dlabel">in sync · 48 days</div>
                 </>
             );
-        case 'feel5':
+        case 'feel6':
             return (
                 <>
                     <div className="dh">Your story</div>
@@ -299,6 +316,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     const feelIndex = FEEL_KEYS.indexOf(step);
     const feelSlide = isFeel ? ACT1[feelIndex] : null;
     const isIconMode = feelSlide?.mode === 'icon';
+    const isShowcase = feelSlide?.mode === 'showcase';
+    const isDev = feelSlide?.mode === 'dev';
 
     const scene = useMemo(() => {
         if (feelSlide) return { sky: feelSlide.sky, sun: feelSlide.sun, glow: feelSlide.glow, cons: feelSlide.cons };
@@ -307,9 +326,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     }, [feelSlide, step]);
 
     useEffect(() => {
-        // Signature "gather" beat on the final slide: the lights gather to ~0.82,
-        // take a brief breath, then bloom to full — felt, not a linear fade.
-        if (step === 'feel5') {
+        // Signature "gather" beat on the welcome slide: the lights gather to
+        // ~0.82, take a brief breath, then bloom to full — felt, not a linear fade.
+        if (step === 'feel6') {
             intensityTargetRef.current = 0.82;
             const id = setTimeout(() => { intensityTargetRef.current = 1; }, 260);
             return () => clearTimeout(id);
@@ -521,7 +540,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     // ── Bottom CTA wiring per step ───────────────────────────────────────────
     const ctaForStep = (): { label: string; onClick: () => void; disabled?: boolean } => {
         if (isFeel) {
-            const next = feelIndex < 4 ? FEEL_KEYS[feelIndex + 1] : 'myName';
+            const next = feelIndex < FEEL_KEYS.length - 1 ? FEEL_KEYS[feelIndex + 1] : 'myName';
             return { label: feelSlide!.cta, onClick: () => advance(next) };
         }
         if (step === 'myName') return { label: 'Continue', disabled: !myName.trim(), onClick: () => myName.trim() && advance('anniversary') };
@@ -553,21 +572,40 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                     <div
                         className="lo-ob-icon"
                         style={{
-                            opacity: isIconMode ? 1 : 0,
-                            transform: isIconMode ? 'scale(1)' : 'scale(0.7)',
-                            pointerEvents: isIconMode ? 'auto' : 'none',
+                            opacity: (isIconMode || isShowcase) ? 1 : 0,
+                            transform: isShowcase ? 'scale(1.08)' : isIconMode ? 'scale(1)' : 'scale(0.7)',
+                            pointerEvents: 'none',
                         }}
                     >
                         <img src="/icon-128.png" alt="Lior" />
                     </div>
                     <div className="lo-ob-name" style={{ opacity: isIconMode ? 1 : 0 }}>Lior</div>
 
+                    {/* Showcase (slide 5): a light beam + facet chips radiating from the mark. */}
+                    <div className="lo-ob-beam" style={{ opacity: isShowcase ? 1 : 0 }} />
+                    {isShowcase && feelSlide.tones && (
+                        <div className="lo-ob-tones">
+                            {feelSlide.tones.map((tn, i) => (
+                                <motion.div
+                                    key={`${step}-tone-${i}`}
+                                    className="lo-ob-tone"
+                                    style={{ left: tn.x, top: tn.y, width: tn.w }}
+                                    initial={{ opacity: 0, scale: 0.7, x: (PHX - (tn.x + tn.w / 2)) * 0.5, y: (160 - tn.y) * 0.5 }}
+                                    animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                                    transition={{ delay: 0.18 + i * 0.1, type: 'spring', damping: 24, stiffness: 240 }}
+                                >
+                                    {tn.icon}<span>{tn.label}</span>
+                                </motion.div>
+                            ))}
+                        </div>
+                    )}
+
                     <div
                         className="lo-ob-dev"
                         style={{
-                            opacity: isIconMode ? 0 : 1,
-                            transform: isIconMode ? 'translateY(28px) scale(0.92)' : 'translateY(0) scale(1)',
-                            pointerEvents: isIconMode ? 'none' : 'auto',
+                            opacity: isDev ? 1 : 0,
+                            transform: isDev ? 'translateY(0) scale(1)' : 'translateY(28px) scale(0.92)',
+                            pointerEvents: isDev ? 'auto' : 'none',
                         }}
                     >
                         <div className="lo-ob-devscr">
@@ -734,7 +772,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
 
                 <button className="lo-ob-cta" disabled={cta.disabled} onClick={cta.onClick}>
                     <span>{cta.label}</span>
-                    <ArrowRight size={17} strokeWidth={2.4} />
+                    <span className="lo-ob-chevrons" aria-hidden>
+                        <ChevronRight size={16} strokeWidth={2.6} />
+                        <ChevronRight size={16} strokeWidth={2.6} />
+                        <ChevronRight size={16} strokeWidth={2.6} />
+                    </span>
                 </button>
 
                 {isFeel && (
