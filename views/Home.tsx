@@ -996,14 +996,14 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                 </TiltCard>
             </ScrollReveal>
 
-            {/* ── TODAY'S DROP ─────────────────────────────────────────── */}
-            <div className="mb-5 relative z-10">
-                <DailyDropCard setView={setView} />
-            </div>
-
             {/* ── TODAY'S QUESTION — the daily two-person ritual ───────── */}
             <div className="mb-5 relative z-10">
                 <DailyQuestion profile={profile} onUpdate={() => {}} />
+            </div>
+
+            {/* ── TODAY'S DROP ─────────────────────────────────────────── */}
+            <div className="mb-5 relative z-10">
+                <DailyDropCard setView={setView} />
             </div>
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
