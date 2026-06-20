@@ -102,3 +102,43 @@ export const deleteRaw = async (store: string, key: string) => {
     tx.onerror = () => reject(tx.error);
   });
 };
+
+/**
+ * Destroy the entire IndexedDB database (all stores, all keys). Used by
+ * irreversible account deletion to leave no local trace of the deleted account's
+ * memories / media. Closes the cached connection first so the deleteDatabase
+ * request is not blocked by an open handle. Best-effort: resolves even if the
+ * delete is blocked or errors, so a half-deleted account can never wedge the
+ * post-deletion local wipe + reload.
+ */
+export const destroyDatabase = async (): Promise<void> => {
+  // Drop the cached open handle so deleteDatabase isn't blocked.
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      db.close();
+    } catch {
+      // Ignore — we're tearing everything down anyway.
+    }
+    dbPromise = null;
+  }
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    try {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = finish;
+      req.onerror = finish;
+      // If another tab/connection holds the DB open the delete is blocked; the
+      // store rows are still unreachable to this signed-out client, so don't hang.
+      req.onblocked = finish;
+    } catch {
+      finish();
+    }
+  });
+};

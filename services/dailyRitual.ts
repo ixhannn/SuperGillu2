@@ -139,8 +139,9 @@ const promptHash = (question: string): string => {
 
 /**
  * Thin wrapper over `StorageService.getTodayQuestion` that preserves the
- * existing deterministic 75-question pool + 90-day pruning, then derives a
- * stable `promptId`. No DB needed — the question is computed client-side.
+ * deterministic shared-seed selection over the widened ~195-prompt pool +
+ * 90-day pruning, then derives a stable `promptId`. No DB needed — the question
+ * is computed client-side.
  */
 export const getDailyPrompt = async (ctx: DailyRitualContext): Promise<DailyPrompt> => {
   const { StorageService } = await import('./storage');
