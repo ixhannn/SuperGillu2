@@ -7,6 +7,15 @@ const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
 const exists = (relativePath) => existsSync(path.join(root, relativePath));
 
+// Strip comments so security guards scan real code, not documentation that
+// legitimately names the very thing it removed (e.g. "the X-Upload-Key
+// fallback was removed"). Keeps the guard strict against actual reintroduction.
+const stripComments = (source) =>
+  source
+    .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+    .replace(/(^|[^:])\/\/.*$/gm, '$1') // // line comments (preserve http://)
+    .replace(/^\s*#.*$/gm, ''); // full-line # comments (.env)
+
 const packageJson = JSON.parse(read('package.json'));
 const [major, minor, patch] = packageJson.version.split('.').map((part) => Number.parseInt(part, 10));
 const expectedVersionCode = major * 10000 + minor * 100 + patch;
@@ -48,7 +57,7 @@ for (const [label, source] of [
   ['.env.example', envExample],
 ]) {
   assert.doesNotMatch(
-    source,
+    stripComments(source),
     /VITE_R2_UPLOAD_KEY|X-Upload-Key|UPLOAD_KEY/,
     `${label} should not reference the legacy client upload-key path.`,
   );

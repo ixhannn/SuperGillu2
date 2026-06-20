@@ -1,4 +1,5 @@
 import { MediaAssetUploadInput, SupabaseService } from './supabase';
+import { isE2EAppMode } from './e2eHarness';
 import {
     estimateDataUriBytes,
     getMaxUploadBytesForManagedAsset,
@@ -544,6 +545,8 @@ export const MediaStorageService = {
 
     async uploadMedia(base64DataUri: string, storagePath: string, options: UploadMediaOptions = {}): Promise<string | null> {
         if (!base64DataUri) return null;
+        // In browser e2e mode we never touch remote storage — skip quietly.
+        if (isE2EAppMode()) return null;
         if (!WORKER_URL) {
             console.warn('[R2] VITE_R2_WORKER_URL not configured - upload skipped.');
             return null;
