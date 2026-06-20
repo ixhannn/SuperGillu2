@@ -275,9 +275,25 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
 
     const skyRef = useRef<HTMLCanvasElement>(null);
     const devCanvasRef = useRef<HTMLCanvasElement>(null);
+    const shellRef = useRef<HTMLDivElement>(null);
     const intensityTargetRef = useRef(0.15);
     const panRef = useRef(0);          // transient background pan, kicked on each advance
     const [dir, setDir] = useState(1); // travel direction (+1 forward / -1 back)
+
+    // Desktop preview only: scale the fixed 402x872 phone frame uniformly to fit
+    // the window so the true 9:19.5 aspect is never distorted (the @media frame
+    // reads --lo-ob-scale). No-op on real mobile (full-bleed, scale stays 1).
+    useEffect(() => {
+        const el = shellRef.current;
+        if (!el || typeof window === 'undefined') return;
+        const fit = () => {
+            const s = Math.min(1, (window.innerHeight - 24) / 872, (window.innerWidth - 24) / 402);
+            el.style.setProperty('--lo-ob-scale', String(Math.max(0.4, s)));
+        };
+        fit();
+        window.addEventListener('resize', fit);
+        return () => window.removeEventListener('resize', fit);
+    }, []);
 
     const isFeel = FEEL_KEYS.includes(step);
     const feelIndex = FEEL_KEYS.indexOf(step);
@@ -516,7 +532,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     const cta = ctaForStep();
 
     return (
-        <div className="lo-ob-shell">
+        <div className="lo-ob-shell" ref={shellRef}>
         <div className="lo-ob" style={{ background: scene.sky, color: '#2a211d' }}>
             <div className="lo-ob-glow" style={{ opacity: scene.glow }} />
             <div className="lo-ob-sun" style={{ opacity: scene.sun }} />

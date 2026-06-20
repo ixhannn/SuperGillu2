@@ -58,10 +58,16 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 @media (min-width: 480px) {
+  /* Desktop preview only: a true 9:19.5 phone (402x872) that is uniformly
+   * SCALED to fit the window (never height-clamped, which would distort the
+   * aspect). --lo-ob-scale is set in JS from the viewport. On a real device
+   * this @media doesn't apply and the onboarding is full-bleed. */
   .lo-ob {
     width: 402px;
-    height: min(872px, 96vh);
+    height: 872px;
     border-radius: 46px;
+    transform: scale(var(--lo-ob-scale, 1));
+    transform-origin: center center;
     box-shadow: 0 40px 110px rgba(0, 0, 0, .5), 0 12px 40px rgba(0, 0, 0, .4);
   }
 }
