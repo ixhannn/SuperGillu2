@@ -116,7 +116,7 @@ assert.match(
 
 assert.match(
   usSource,
-  /className="us-view min-h-screen pb-32"/,
+  /className="us-view min-h-screen pb-32(?:\s|")/,
   'Expected the Us page to expose a scoped hook for mobile header spacing.',
 );
 
