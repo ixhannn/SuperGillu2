@@ -553,6 +553,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         <div className="lo-ob" style={{ background: scene.sky, color: '#2a211d' }}>
             <div className="lo-ob-glow" style={{ opacity: scene.glow }} />
             <div className="lo-ob-sun" style={{ opacity: scene.sun }} />
+            <div className="lo-ob-rays" style={{ opacity: scene.sun * 0.85 }} />
 
             <div className="lo-ob-scene">
                 <canvas ref={skyRef} className="lo-ob-sky" aria-hidden />
@@ -575,6 +576,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                         >
                             {isFinale && <div className="lo-ob-finale-bloom" />}
+                            {isFinale && <div className="lo-ob-finale-ring" />}
+                            {isFinale && <div className="lo-ob-finale-ring r2" />}
                             {(isShowcase || isFinale) && <div className="lo-ob-beam" />}
                             <div
                                 className="lo-ob-icon"

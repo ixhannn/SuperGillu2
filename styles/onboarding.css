@@ -98,6 +98,24 @@
   z-index: 1;
   transition: opacity 900ms ease;
 }
+/* Volumetric god-rays from the sun (top-right). Static, masked to fade out. */
+.lo-ob-rays {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) - 30px);
+  right: -22%;
+  width: 150%;
+  height: 95%;
+  pointer-events: none;
+  z-index: 1;
+  background: conic-gradient(from 196deg at 86% 8%,
+    transparent 0deg, rgba(255, 240, 206, .13) 7deg, transparent 15deg,
+    transparent 26deg, rgba(255, 240, 206, .10) 33deg, transparent 41deg,
+    transparent 54deg, rgba(255, 240, 206, .08) 60deg, transparent 69deg,
+    transparent 360deg);
+  -webkit-mask-image: radial-gradient(62% 62% at 86% 8%, #000, transparent 76%);
+  mask-image: radial-gradient(62% 62% at 86% 8%, #000, transparent 76%);
+  transition: opacity 900ms ease;
+}
 
 /* ── The scene region (top of screen) ──────────────────────────── */
 .lo-ob-scene {
@@ -121,8 +139,8 @@
   position: absolute;
   left: -28%;
   width: 156%;
-  top: 244px;
-  height: 230px;
+  top: 238px;
+  height: 252px;
   pointer-events: none;
   background:
     radial-gradient(120% 56% at 50% 22%, rgba(255, 206, 158, .34), transparent 66%),
@@ -131,7 +149,7 @@
     radial-gradient(46% 60% at 70% 58%, rgba(255, 255, 255, .97), transparent 70%),
     radial-gradient(50% 60% at 92% 52%, rgba(255, 255, 255, .95), transparent 70%),
     radial-gradient(120% 52% at 50% 94%, rgba(255, 250, 244, .98), transparent 78%);
-  filter: blur(10px);          /* STATIC blur — never animated */
+  filter: blur(12px);          /* STATIC blur — never animated */
 }
 .lo-ob-fade {
   position: absolute;
@@ -198,6 +216,28 @@
   animation: loObBloom 6s ease-in-out infinite;
 }
 @keyframes loObBloom { 0%, 100% { transform: scale(0.92); opacity: .82; } 50% { transform: scale(1.06); opacity: 1; } }
+/* Finale "arrival" rings — soft halos emanating from the mark. */
+.lo-ob-finale-ring {
+  position: absolute;
+  left: 50%;
+  top: 104px;
+  margin-left: -60px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 200, 168, .5);
+  box-shadow: 0 0 18px rgba(255, 196, 160, .3);
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  animation: loObRing 4s ease-out infinite;
+}
+.lo-ob-finale-ring.r2 { animation-delay: 2s; }
+@keyframes loObRing {
+  0% { transform: scale(.55); opacity: 0; }
+  16% { opacity: .5; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
 .lo-ob-name {
   position: absolute;
   left: 0; right: 0;
@@ -364,10 +404,10 @@
   font-family: 'Fraunces', Georgia, serif;
   font-weight: 550;
   font-optical-sizing: auto;
-  font-variation-settings: 'opsz' 40;
-  font-size: 33px;
-  line-height: 1.08;
-  letter-spacing: -.022em;
+  font-variation-settings: 'opsz' 44;
+  font-size: 36px;
+  line-height: 1.04;
+  letter-spacing: -.024em;
   color: #2a201c;
   margin: 0 0 14px;
   white-space: pre-line;
@@ -538,5 +578,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lo-ob-cfloat, .lo-ob-icon img, .lo-ob-days, .lo-ob-finale-bloom { animation: none; }
+  .lo-ob-finale-ring { animation: none; opacity: .32; }
   .lo-ob, .lo-ob-h, .lo-ob-s, .lo-ob-dev, .lo-ob-icon, .lo-ob-name { transition: opacity 200ms ease; }
 }
