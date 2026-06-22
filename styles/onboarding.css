@@ -122,8 +122,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(env(safe-area-inset-top) + 14px);
-  height: 452px;
+  top: calc(env(safe-area-inset-top) + 34px);
+  height: 470px;
   z-index: 2;
   pointer-events: none;
 }
@@ -132,15 +132,15 @@
   left: -28%;
   width: 156%;
   top: 0;
-  height: 452px;
+  height: 470px;
   pointer-events: none;
 }
 .lo-ob-cloud {
   position: absolute;
   left: -28%;
   width: 156%;
-  top: 238px;
-  height: 252px;
+  top: 250px;
+  height: 256px;
   pointer-events: none;
   background:
     radial-gradient(120% 56% at 50% 22%, rgba(255, 206, 158, .34), transparent 66%),
@@ -154,8 +154,8 @@
 .lo-ob-fade {
   position: absolute;
   left: 0; right: 0;
-  top: 332px;
-  height: 130px;
+  top: 356px;
+  height: 150px;
   background: linear-gradient(180deg, rgba(255, 250, 244, 0), #fffaf4 82%);
   pointer-events: none;
 }
@@ -164,10 +164,10 @@
 .lo-ob-comp {
   position: absolute;
   left: 50%;
-  top: calc(env(safe-area-inset-top) + 14px);
+  top: calc(env(safe-area-inset-top) + 34px);
   transform: translateX(-50%);
   width: 294px;
-  height: 452px;
+  height: 470px;
   z-index: 3;
 }
 
@@ -294,19 +294,19 @@
 .lo-ob-dev {
   position: absolute;
   left: 50%;
-  top: 52px;
-  width: 152px;
-  height: 326px;
-  margin-left: -76px;
-  border-radius: 32px;
+  top: 78px;
+  width: 176px;
+  height: 372px;
+  margin-left: -88px;
+  border-radius: 34px;
   background: linear-gradient(150deg, #4a423e, #120b09);
   padding: 4px;
   box-shadow: 0 0 54px rgba(160, 90, 50, .26), inset 0 0 0 .5px rgba(255, 255, 255, .12);
   transition: transform 820ms cubic-bezier(.16, 1, .3, 1), opacity 600ms ease;
   will-change: transform;
   z-index: 3;
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 56%, rgba(0, 0, 0, 0) 82%);
-  mask-image: linear-gradient(180deg, #000 0%, #000 56%, rgba(0, 0, 0, 0) 82%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0, 0, 0, 0) 86%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0, 0, 0, 0) 86%);
 }
 .lo-ob-devscr {
   position: relative;
@@ -356,8 +356,8 @@
   position: absolute;
   left: -28%;
   width: 156%;
-  top: 270px;
-  height: 150px;
+  top: 296px;
+  height: 178px;
   z-index: 4;
   pointer-events: none;
   background:
@@ -387,7 +387,7 @@
 /* Continuity wrappers: the container persists while its children cross-fade
  * between slides (so nothing collapses mid-transition). */
 .lo-ob-devbody-wrap { position: relative; min-height: 150px; }
-.lo-ob-copy-wrap { position: relative; min-height: 168px; }
+.lo-ob-copy-wrap { position: relative; min-height: 150px; }
 .lo-ob-copy { position: absolute; left: 0; right: 0; top: 0; }
 
 /* ── Lower panel — copy + progress + CTA ───────────────────────── */
@@ -395,7 +395,7 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom) + 30px);
+  bottom: calc(env(safe-area-inset-bottom) + 46px);
   width: calc(100% - 52px);
   max-width: 340px;
   z-index: 7;
@@ -409,7 +409,7 @@
   line-height: 1.04;
   letter-spacing: -.024em;
   color: #2a201c;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   white-space: pre-line;
   text-wrap: balance;
   text-rendering: optimizeLegibility;
@@ -421,44 +421,101 @@
   font-size: 15.5px;
   line-height: 1.62;
   color: #8a7a70;
-  margin: 0 0 26px;
-  max-width: 282px;
+  margin: 0 0 24px;
+  max-width: 290px;
+  text-wrap: balance;          /* even lines — no stranded last word */
   transition: opacity 460ms ease, transform 560ms cubic-bezier(.16, 1, .3, 1);
 }
-.lo-ob-prog { display: flex; gap: 6px; align-items: center; margin: 0 0 20px; }
-.lo-ob-tk {
-  width: 6px; height: 6px;
-  border-radius: 99px;
-  background: rgba(120, 70, 50, .22);
-  transition: width 440ms cubic-bezier(.16, 1, .3, 1), background 440ms ease, box-shadow 440ms ease;
+/* Progress = warm "tactile" clay: lit honey beads resting in a soft recessed
+ * trough. Done beads are raised + amber; the current bead is larger + lit (with
+ * a STATIC glow halo); remaining beads are recessed sockets. All depth is static
+ * box-shadow — nothing animated (honors the blur-jank guard). */
+.lo-ob-prog {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  margin: 0 0 24px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(214, 158, 116, .14), rgba(255, 250, 243, .55));
+  box-shadow: inset 0 1.5px 3px rgba(150, 95, 55, .18), inset 0 -1px 1px rgba(255, 255, 255, .75), 0 1px 0 rgba(255, 255, 255, .6);
 }
-.lo-ob-tk.on { width: 24px; background: linear-gradient(90deg, #e8365a, #f0a76b); box-shadow: 0 0 14px rgba(232, 54, 90, .45), 0 2px 7px rgba(232, 54, 90, .28), inset 0 1px 1px rgba(255, 255, 255, .35); }
+.lo-ob-bead {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin: 0 5px;
+  background: radial-gradient(circle at 35% 30%, #edc79f, #c78f5d);
+  box-shadow: inset 0 -1px 1px rgba(120, 70, 35, .35), inset 0 1px 1px rgba(255, 255, 255, .6);
+}
+.lo-ob-bead.next {
+  background: linear-gradient(180deg, rgba(168, 120, 82, .30), rgba(168, 120, 82, .20));
+  box-shadow: inset 0 1px 1.5px rgba(120, 75, 40, .32);
+}
+.lo-ob-bead.now {
+  position: relative;
+  width: 12px; height: 12px;
+  margin: 0 8px;
+  background: radial-gradient(circle at 34% 28%, #ffe0ad, #ef9a4e 52%, #d97b2f);
+  box-shadow: inset 0 -1.5px 2px rgba(150, 75, 20, .45), inset 0 1.5px 2px rgba(255, 255, 255, .85), 0 1px 3px rgba(210, 120, 50, .55);
+}
+.lo-ob-bead.now::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 24px; height: 24px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(238, 154, 78, .32), rgba(238, 154, 78, 0) 70%);
+  pointer-events: none;
+}
+/* Primary CTA = a warm clay "raised object": espresso fill, layered inset
+ * highlight/shade for convex depth, a grounding warm drop shadow, and a soft
+ * top sheen. Pressable (transform only). */
 .lo-ob-cta {
+  position: relative;
   width: 100%;
-  height: 58px;
-  border-radius: 100px;
   border: none;
   cursor: pointer;
+  padding: 0;
+  border-radius: 19px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #4a2c1d, #2a160d);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), inset 0 -2px 6px rgba(0, 0, 0, .26), 0 10px 22px -8px rgba(90, 50, 28, .5), 0 2px 5px rgba(74, 40, 22, .28);
   font-family: 'Afacad Flux', var(--font-ui, system-ui), sans-serif;
+  transition: transform 200ms cubic-bezier(.16, 1, .3, 1);
+}
+.lo-ob-cta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 19px;
+  background: linear-gradient(180deg, rgba(255, 224, 180, .16), rgba(255, 224, 180, 0) 42%);
+  pointer-events: none;
+}
+.lo-ob-cta:active { transform: translateY(1px) scale(.99); }
+.lo-ob-cta[disabled] { opacity: .5; cursor: default; }
+.lo-ob-cta-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 17px 0;
   font-weight: 500;
   font-size: 16.5px;
-  color: #fff;
-  background: radial-gradient(78% 150% at 100% 50%, rgba(255, 168, 120, .26), transparent 58%), radial-gradient(135% 92% at 30% 0%, rgba(255, 255, 255, .13), transparent 56%), linear-gradient(180deg, #3a231a, #190d0a);
-  display: flex; align-items: center; justify-content: center; gap: 9px;
-  box-shadow: 0 22px 48px rgba(120, 55, 40, .34), 0 7px 18px rgba(60, 24, 22, .3), inset 0 1px 0 rgba(255, 255, 255, .2);
-  transition: transform 220ms cubic-bezier(.16, 1, .3, 1), box-shadow 220ms ease;
+  letter-spacing: .01em;
+  color: #fdf3e8;
 }
-.lo-ob-cta:active { transform: scale(.965); }
-/* "Next ›››" — three fading chevrons that nudge forward on press. */
-.lo-ob-chevrons { display: inline-flex; align-items: center; }
-.lo-ob-chevrons svg { margin-left: -7px; color: #fff; transition: transform 320ms cubic-bezier(.16, 1, .3, 1); }
-.lo-ob-chevrons svg:first-child { margin-left: 0; opacity: .92; }
-.lo-ob-chevrons svg:nth-child(2) { opacity: .55; }
-.lo-ob-chevrons svg:nth-child(3) { opacity: .32; }
-.lo-ob-cta:active .lo-ob-chevrons svg { transform: translateX(4px); }
-.lo-ob-cta:active .lo-ob-chevrons svg:nth-child(2) { transform: translateX(6px); }
-.lo-ob-cta:active .lo-ob-chevrons svg:nth-child(3) { transform: translateX(8px); }
-.lo-ob-cta[disabled] { opacity: .45; cursor: default; box-shadow: none; }
+.lo-ob-cta-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px; height: 25px;
+  border-radius: 50%;
+  background: rgba(255, 224, 180, .16);
+  box-shadow: inset 0 0 0 1px rgba(255, 224, 180, .18);
+  color: #ffe6c8;
+}
 .lo-ob-skip {
   display: block;
   width: 100%;

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    ChevronRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
+    ArrowRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
     Image as ImageIcon, Activity, Plus, Share2, Star,
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
@@ -49,7 +49,7 @@ const SCREEN_VARIANTS = {
 };
 
 const PHX = 147;   // phone centre x within the 294-wide composition column
-const PHY = 190;   // phone centre y — memory cards erupt from here
+const PHY = 226;   // phone centre y — memory cards erupt from here (tracks the enlarged, lowered phone)
 
 const prefersReducedMotion = (): boolean =>
     typeof window !== 'undefined' &&
@@ -169,16 +169,16 @@ const ACT1: FeelSlide[] = [
         sky: 'linear-gradient(180deg,#ff7d92,#ffaa8f 26%,#ffd2c2 44%,#fffaf6 62%)',
         sun: 0.6, glow: 0.55, cons: 0.72, mode: 'dev',
         cards: [
-            { id: 'sync', content: dotsCard('in sync'), x: 28, y: 58, w: 122, r: -5, d: 7 },
-            { id: 'song', content: memCard('linear-gradient(135deg,#ffc0d4,#c79bff)', 'our song', 'on repeat'), x: 172, y: 120, w: 114, r: 5, d: 8 },
-            { id: 'rhythm', content: chipCard(<Activity size={15} style={{ color: '#e8657a' }} />, 'one rhythm'), x: 184, y: 176, w: 104, r: 4, d: 6.6 },
-            { id: 'mem', content: chipCard(<Plus size={15} style={{ color: '#c4683a' }} />, '+1 memory'), x: 178, y: 232, w: 108, r: 6, d: 7.2 },
+            { id: 'sync', content: dotsCard('in sync'), x: 28, y: 40, w: 122, r: -5, d: 7 },
+            { id: 'song', content: memCard('linear-gradient(135deg,#ffc0d4,#c79bff)', 'our song', 'on repeat'), x: 172, y: 118, w: 114, r: 5, d: 8 },
+            { id: 'rhythm', content: chipCard(<Activity size={15} style={{ color: '#e8657a' }} />, 'one rhythm'), x: 184, y: 180, w: 104, r: 4, d: 6.6 },
+            { id: 'mem', content: chipCard(<Plus size={15} style={{ color: '#c4683a' }} />, '+1 memory'), x: 178, y: 240, w: 108, r: 6, d: 7.2 },
         ],
     },
     {
         key: 'feel5',
         h: 'Everything you share,\nin one place.',
-        s: 'Memories, milestones, and the little things in between.',
+        s: 'Memories, milestones, and everything in between.',
         cta: 'Continue',
         sky: 'linear-gradient(180deg,#ff8763,#ffb07e 22%,#ffd4a6 42%,#fff6ec 64%)',
         sun: 0.85, glow: 0.78, cons: 0.55, mode: 'showcase', cards: [],
@@ -770,19 +770,18 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 )}
 
                 {isFeel && (
-                    <div className="lo-ob-prog">
-                        {FEEL_KEYS.map((k, i) => (
-                            <div key={k} className={`lo-ob-tk${i === feelIndex ? ' on' : ''}`} />
-                        ))}
+                    <div className="lo-ob-prog" role="progressbar" aria-valuemin={1} aria-valuemax={FEEL_KEYS.length} aria-valuenow={feelIndex + 1} aria-label={`Step ${feelIndex + 1} of ${FEEL_KEYS.length}`}>
+                        {FEEL_KEYS.map((k, i) => {
+                            const cls = i === feelIndex ? 'now' : i > feelIndex ? 'next' : '';
+                            return <span key={k} className={`lo-ob-bead${cls ? ' ' + cls : ''}`} aria-hidden />;
+                        })}
                     </div>
                 )}
 
                 <button className="lo-ob-cta" disabled={cta.disabled} onClick={cta.onClick}>
-                    <span>{cta.label}</span>
-                    <span className="lo-ob-chevrons" aria-hidden>
-                        <ChevronRight size={16} strokeWidth={2.6} />
-                        <ChevronRight size={16} strokeWidth={2.6} />
-                        <ChevronRight size={16} strokeWidth={2.6} />
+                    <span className="lo-ob-cta-inner">
+                        <span>{cta.label}</span>
+                        <span className="lo-ob-cta-arrow" aria-hidden><ArrowRight size={15} strokeWidth={2.4} /></span>
                     </span>
                 </button>
 
