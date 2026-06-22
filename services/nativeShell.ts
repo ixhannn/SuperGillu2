@@ -50,6 +50,7 @@ let state: NativeShellState = {
 };
 
 let started = false;
+let startEpoch = 0;
 let cleanupFns: Array<() => void> = [];
 let currentBackHandler: BackHandler | null = null;
 const listeners = new Set<(next: NativeShellState) => void>();
@@ -111,8 +112,10 @@ const refreshPendingCounts = () => {
 };
 
 const addCleanupHandle = async (handleOrPromise: ListenerHandle | Promise<ListenerHandle>) => {
+  const epoch = startEpoch;
   try {
     const handle = await handleOrPromise;
+    if (epoch !== startEpoch) { void handle.remove(); return; }
     cleanupFns.push(() => { void handle.remove(); });
   } catch {}
 };
@@ -389,6 +392,7 @@ export const NativeShellService = {
     cleanupFns = [];
     currentBackHandler = null;
     started = false;
+    startEpoch += 1;
   },
 
   getState(): NativeShellState {
