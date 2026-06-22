@@ -133,7 +133,6 @@ export default {
                 'number-roll': 'numberRoll 0.8s cubic-bezier(0.23, 1, 0.32, 1) both',
                 'wiggle-spring': 'wiggleSpring 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
                 'spin-slow': 'spin 8s linear infinite',
-                'aurora': 'auroraShift 12s ease-in-out infinite alternate',
             },
             keyframes: {
                 float: {
@@ -218,11 +217,6 @@ export default {
                     '60%': { transform: 'rotate(-3deg)' },
                     '80%': { transform: 'rotate(2deg)' },
                     '100%': { transform: 'rotate(0deg)' },
-                },
-                auroraShift: {
-                    '0%': { backgroundPosition: '0% 50%' },
-                    '50%': { backgroundPosition: '100% 50%' },
-                    '100%': { backgroundPosition: '0% 50%' },
                 },
             }
         }

@@ -158,6 +158,9 @@ class HapticsService {
   private _pointerMoved = false;
   private _inSelectionSession = false;
   private _lastScrollTickAt = 0;
+  /** Last Taptic warm-up time. Re-warming within this window is redundant (engine still warm) and emits no tick — see warmUp(). */
+  private _lastWarmAt = 0;
+  private readonly _warmCoalesceMs = 250;
 
   constructor() {
     this._bindInteractionGuards();
@@ -286,6 +289,11 @@ class HapticsService {
    */
   warmUp(): void {
     if (!this.enabled || !isNative() || isAndroid()) return;
+    // Coalesce rapid re-warms: the engine stays warm briefly after a prepare, and
+    // selectionStart/End emit no tick, so skipping a redundant warm is imperceptible.
+    const now = nowMs();
+    if (now - this._lastWarmAt < this._warmCoalesceMs) return;
+    this._lastWarmAt = now;
     void CapHaptics.selectionStart().then(() => CapHaptics.selectionEnd()).catch(() => { /* ignore */ });
   }
 

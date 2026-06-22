@@ -4,6 +4,7 @@ import { motion, AnimatePresence, animate, useMotionValue, type PanInfo } from '
 import { Lock, Stamp } from 'lucide-react';
 import { GOLD, GoldCTA } from '../GoldKit';
 import { feedback } from '../../../utils/feedback';
+import { useNativeShell } from '../../../hooks/useNativeShell';
 import '../../../styles/premium-hub.css';
 
 /**
@@ -26,6 +27,9 @@ const MAX_CHARS = 600;
 const SHEET_SPRING = { type: 'spring', stiffness: 400, damping: 41, mass: 1 } as const;
 
 export const ComposeSheet: React.FC<ComposeSheetProps> = ({ open, authorName, prompt, accent, onClose, onSeal }) => {
+    // Lift the sheet above the IME — the textarea autofocuses 420ms after the
+    // sheet enters, and overlay keyboard mode does not resize the WebView.
+    const { keyboardOpen, keyboardHeight } = useNativeShell();
     const [text, setText] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,7 +90,13 @@ export const ComposeSheet: React.FC<ComposeSheetProps> = ({ open, authorName, pr
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0, transition: { duration: 0.22 } }}
                     className="fixed inset-0 z-[200] flex items-end justify-center"
-                    style={{ backgroundColor: 'rgba(13,7,15,0.66)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+                    style={{
+                        backgroundColor: 'rgba(13,7,15,0.66)',
+                        backdropFilter: 'blur(18px)',
+                        WebkitBackdropFilter: 'blur(18px)',
+                        paddingBottom: keyboardOpen ? keyboardHeight : undefined,
+                        transition: 'padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    }}
                     onClick={onClose}
                 >
                     <motion.div

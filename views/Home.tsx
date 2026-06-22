@@ -8,7 +8,7 @@ import { SyncService, syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
 import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
-import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticles';
+import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticlesLazy';
 import { Haptics } from '../services/haptics';
 import { DailyDropCard } from '../components/daily-drop/DailyDropCard';
 import { DailyQuestion } from '../components/DailyQuestion';

@@ -1,5 +1,6 @@
 import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem, DailyDrop, DropResponse, DropType } from '../types';
 import { buildDailyDrop, nextLocalMidnightIso, isDropComplete, DROP_META, type DropBuildContext } from '../utils/dropEngine';
+import { LruStringCache } from '../utils/lruCache';
 import { SupabaseService } from './supabase';
 import { MediaStorageService, compressImage } from './mediaStorage';
 import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
@@ -530,7 +531,14 @@ const normalizeEnvelope = (value: Envelope | Partial<Envelope>): Envelope => ({
 const normalizeEnvelopeList = (items: Envelope[] | Partial<Envelope>[]): Envelope[] =>
     items.map((item) => normalizeEnvelope(item));
 
-const MEDIA_MEMORY_CACHE = new Map<string, string>();
+// In-RAM resolved-media cache (base64 data URIs / remote URLs). Bounded so a
+// long media-scrolling session can't grow the heap without limit and trip an
+// Android WebView OOM reclaim. Per-item inserts are already guarded to <2MB at
+// the call sites; this caps the *aggregate* at ~32MB (every value is
+// reconstructable from IndexedDB / cloud, so eviction only costs a re-resolve).
+const MEDIA_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+const MEDIA_CACHE_MAX_ENTRIES = 240;
+const MEDIA_MEMORY_CACHE = new LruStringCache<string>(MEDIA_CACHE_MAX_BYTES, MEDIA_CACHE_MAX_ENTRIES);
 export const storageEventTarget = new EventTarget();
 const SANITIZED_TEXT_KEYS = new Set([
     'text',

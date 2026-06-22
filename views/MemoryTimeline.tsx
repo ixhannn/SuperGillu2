@@ -30,16 +30,16 @@ const MOOD_MAP: Record<string, string> = { love: '😍', funny: '😂', party: '
 /* ─── Convert base64 video to blob URL for smooth playback ─── */
 function useVideoBlobUrl(src: string | null): string | null {
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
-    const prevUrl = useRef<string | null>(null);
 
     useEffect(() => {
         if (!src) { setBlobUrl(null); return; }
-        // Already a blob or object URL — use as-is
+        // Already a blob / remote URL — use as-is. We did not create it, so we
+        // must never revoke it.
         if (src.startsWith('blob:') || src.startsWith('http')) {
             setBlobUrl(src);
             return;
         }
-        // Base64 data URL — convert to blob
+        // Base64 data URL — decode into a blob object URL we own.
         if (src.startsWith('data:')) {
             try {
                 const [header, data] = src.split(',');
@@ -49,18 +49,18 @@ function useVideoBlobUrl(src: string | null): string | null {
                 for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
                 const blob = new Blob([buf], { type: mime });
                 const url = URL.createObjectURL(blob);
-                if (prevUrl.current) URL.revokeObjectURL(prevUrl.current);
-                prevUrl.current = url;
                 setBlobUrl(url);
+                // Revoke the URL we created on src change AND on unmount. The old
+                // code returned out of this branch before registering a cleanup,
+                // so the last decoded video's bytes leaked native memory for the
+                // WebView's lifetime — an OOM-kill on long video timelines.
+                return () => URL.revokeObjectURL(url);
             } catch {
-                setBlobUrl(src); // fallback
+                setBlobUrl(src); // not decodable — fall back to the raw src
             }
             return;
         }
         setBlobUrl(src);
-        return () => {
-            if (prevUrl.current) URL.revokeObjectURL(prevUrl.current);
-        };
     }, [src]);
 
     return blobUrl;

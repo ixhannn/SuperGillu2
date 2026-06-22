@@ -59,7 +59,20 @@ const emit = (): void => {
 };
 
 const setState = (patch: Partial<RelationshipState>): void => {
-  state = { ...state, ...patch };
+  const next = { ...state, ...patch };
+  // Skip the emit entirely when nothing actually changed — the state shape is
+  // fully flat, so a shallow key-by-key compare is exact. This prevents
+  // subscribers (useRelationship) from re-rendering on no-op updates while
+  // delivering identical values for every real change.
+  let changed = false;
+  for (const key of Object.keys(next) as (keyof RelationshipState)[]) {
+    if (state[key] !== next[key]) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return;
+  state = next;
   emit();
 };
 

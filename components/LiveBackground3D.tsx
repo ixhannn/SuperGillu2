@@ -298,15 +298,33 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
     });
 
     // ── Resize ────────────────────────────────────────────────────
-    const resize = () => {
+    // Coalesce resize bursts (mobile keyboard / orientation fire many per
+    // frame) into a single rAF, and early-out when the size is unchanged so
+    // the full GL drawing buffer is only reallocated when dimensions truly
+    // change. The final applied size is always window.innerWidth/Height, so
+    // the rendered framebuffer is identical.
+    let lastW = -1;
+    let lastH = -1;
+    let resizeRaf = 0;
+    const applyResize = () => {
       const W = window.innerWidth;
       const H = window.innerHeight;
+      if (W === lastW && H === lastH) return;
+      lastW = W;
+      lastH = H;
       renderer.setSize(W, H);
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
     };
-    resize();
-    window.addEventListener('resize', resize, { passive: true });
+    const onResize = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        applyResize();
+      });
+    };
+    applyResize();
+    window.addEventListener('resize', onResize, { passive: true });
 
     // ── Scroll parallax ───────────────────────────────────────────
     // The app scrolls inside the fixed mobile shell, not the window.
@@ -363,7 +381,8 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
     return () => {
       stopThemeObserver();
       AnimationEngine.unregister('live-bg-3d');
-      window.removeEventListener('resize', resize);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      window.removeEventListener('resize', onResize);
       if (scrollRoot) {
         scrollRoot.removeEventListener('scroll', onScroll);
       } else {

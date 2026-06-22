@@ -54,10 +54,6 @@ let lastTs  = 0;
 // Touch state (forwarded from main thread)
 let touchX = -9999, touchY = -9999, touching = false;
 
-// Alpha cache: int(alpha * 100) → rgba string prefix+alpha suffix
-// Avoids string allocation in hot loop. Populated lazily.
-const alphaCache = new Map<number, number>();
-
 // ── Particle initialisation ──────────────────────────────────────────────────
 function initParticles(newCount: number): void {
   count = Math.min(newCount, MAX_COUNT);

@@ -655,20 +655,22 @@ export const InsightEngine = {
       // Check minimum confidence
       if (model.dataConfidence < tmpl.minConfidence) continue;
 
-      // Check cooldown
-      const lastOfType = deepInsights.find(i =>
-        i.targetUserId === userId &&
-        deepInsights.some(d => d.id === i.id && d.category === tmpl.category)
-      );
-      // More precise cooldown check by template id
-      const lastByTemplate = deepInsights
-        .filter(i => i.targetUserId === userId)
-        .find(i => {
-          // Match by insight text pattern (since we don't store template id)
-          const generated = tmpl.condition(model) ? tmpl.generate(model) : null;
-          return generated && i.category === tmpl.category &&
-            differenceInDays(new Date(), new Date(i.createdAt)) < tmpl.cooldownDays;
-        });
+      // Cooldown: skip this template if a same-category insight was created
+      // within its cooldown window — but only when the template currently
+      // qualifies. condition()/generate() are pure functions of the model, so
+      // the gate is evaluated ONCE here instead of re-running both for every
+      // existing insight inside a find() (an O(templates × insights) scan).
+      // generate() always returns an object, so the old `generated` truthiness
+      // gate is exactly `condition(model)`. The previous `lastOfType` find was
+      // dead (computed, never read) and ran its own nested O(n²) scan — removed.
+      let qualifies = false;
+      try { qualifies = tmpl.condition(model); } catch { qualifies = false; }
+      const lastByTemplate = qualifies
+        ? deepInsights.find(i =>
+            i.targetUserId === userId &&
+            i.category === tmpl.category &&
+            differenceInDays(new Date(), new Date(i.createdAt)) < tmpl.cooldownDays)
+        : undefined;
       if (lastByTemplate) continue;
 
       // Check condition
