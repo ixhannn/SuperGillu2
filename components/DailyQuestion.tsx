@@ -9,7 +9,7 @@ import { syncEventTarget } from '../services/sync';
 import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
 import { toast } from '../utils/toast';
-import { HeartbeatParticles, HeartbeatParticlesHandle } from './HeartbeatParticles';
+import { HeartbeatParticles, HeartbeatParticlesHandle } from './HeartbeatParticlesLazy';
 import { PrimingModal } from './PrimingModal';
 import { useRelationship } from '../hooks/useRelationship';
 

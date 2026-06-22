@@ -354,8 +354,24 @@ class TransitionEngineImpl {
     const W   = window.innerWidth;
     const cfg = dirConfig(dir, W);
 
-    // ① Snapshot outgoing page
-    const clone = c.cloneNode(true) as HTMLElement;
+    // ① Snapshot outgoing page.
+    // Clone ONLY the visible (active) layer, not the whole shell container. The
+    // container holds every mounted keep-alive tab; cached tabs are
+    // `display:none` but `cloneNode(true)` still deep-copies their
+    // multi-thousand-node React trees — a synchronous allocation that grows with
+    // every tab ever visited and is the hitch felt right before the bloom. We
+    // shallow-clone the container (preserving its box) and graft a deep clone of
+    // just the one `.is-active` layer (the active tab, or the page overlay), so
+    // the snapshot is visually identical with a fraction of the node count.
+    // Falls back to the full clone if no active layer resolves.
+    const activeLayer = c.querySelector('.keep-alive-shell.is-active');
+    let clone: HTMLElement;
+    if (activeLayer) {
+      clone = c.cloneNode(false) as HTMLElement;
+      clone.appendChild(activeLayer.cloneNode(true));
+    } else {
+      clone = c.cloneNode(true) as HTMLElement;
+    }
     const rect  = c.getBoundingClientRect();
     clone.setAttribute('aria-hidden', 'true');
     clone.style.cssText = [
