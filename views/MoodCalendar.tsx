@@ -1455,6 +1455,9 @@ const CheckInSheet: React.FC<{
 };
 
 // ── Main view ─────────────────────────────────────────────────────────────
+// Stable empty array for day-cells with no entries — avoids a fresh [] per cell.
+const NO_MOOD_ENTRIES: MoodEntry[] = [];
+
 export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [moodEntries, setMoodEntries] = useState<MoodEntry[]>([]);
@@ -1502,6 +1505,23 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
     const monthStart = startOfMonth(currentDate);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: endOfMonth(currentDate) });
     const paddingDays = Array.from({ length: monthStart.getDay() }).map((_, i) => i);
+
+    // Pre-bucket entries by local calendar day so each grid cell is an O(1)
+    // lookup instead of re-filtering + re-parsing every mood entry per cell
+    // (~28-31 cells × N entries each render). Keyed by local Y-M-D to match
+    // isSameDay's calendar-day semantics; null timestamps are skipped as before.
+    const entriesByDayKey = useMemo(() => {
+        const map = new Map<string, MoodEntry[]>();
+        for (const e of moodEntries) {
+            const d = parseMoodDate(e.timestamp);
+            if (!d) continue;
+            const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            const list = map.get(key);
+            if (list) list.push(e);
+            else map.set(key, [e]);
+        }
+        return map;
+    }, [moodEntries]);
 
     const detailEntries = useMemo(() => {
         if (!detailDate) return [];
@@ -1681,10 +1701,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ setView }) => {
                 <div className="grid grid-cols-7 gap-1.5">
                     {paddingDays.map((p) => <div key={`p-${p}`} />)}
                     {daysInMonth.map((day) => {
-                        const dayEntries = moodEntries.filter((e) => {
-                            const d = parseMoodDate(e.timestamp);
-                            return d ? isSameDay(d, day) : false;
-                        });
+                        const dayEntries = entriesByDayKey.get(`${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`) ?? NO_MOOD_ENTRIES;
                         const mine = dayEntries.find((e) => e.userId === myName);
                         const theirs = dayEntries.find((e) => e.userId === partnerName);
                         const mineTheme = mine ? getMoodTheme(mine.mood) : null;
