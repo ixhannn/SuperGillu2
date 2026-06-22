@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
+import { useNativeShell } from '../hooks/useNativeShell';
 import { motion, AnimatePresence, animate, useMotionValue, useReducedMotion, type PanInfo } from 'framer-motion';
 import { Mic, MicOff, Square, Play, Pause, Trash2, X } from 'lucide-react';
 import { GoldShell } from '../components/premium/GoldShell';
@@ -357,6 +358,9 @@ const PendingPreview: React.FC<{ dataUri: string; duration: number }> = ({ dataU
 // ── Main view ──────────────────────────────────────────────────────────────
 
 export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
+    // Keyboard lift for the review sheet's autoFocus title input (fixed
+    // items-end portal; overlay keyboard mode does not resize the WebView).
+    const { keyboardOpen, keyboardHeight } = useNativeShell();
     const [notes, setNotes] = useState<VoiceNote[]>([]);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
@@ -757,7 +761,13 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0, transition: { duration: 0.22 } }}
                             className="fixed inset-0 z-[200] flex items-end justify-center"
-                            style={{ backgroundColor: 'rgba(13,7,15,0.66)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+                            style={{
+                                backgroundColor: 'rgba(13,7,15,0.66)',
+                                backdropFilter: 'blur(18px)',
+                                WebkitBackdropFilter: 'blur(18px)',
+                                paddingBottom: keyboardOpen ? keyboardHeight : undefined,
+                                transition: 'padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+                            }}
                         >
                             <motion.div
                                 initial={{ y: '104%' }}

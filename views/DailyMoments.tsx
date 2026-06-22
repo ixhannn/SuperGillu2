@@ -5,6 +5,7 @@ import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, DailyPhoto, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useLiorMedia } from '../hooks/useLiorImage';
+import { useNativeShell } from '../hooks/useNativeShell';
 import { ViewHeader } from '../components/ViewHeader';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { Skeleton } from '../components/Skeleton';
@@ -283,6 +284,9 @@ const PostViewer: React.FC<{
     const commentInputRef = useRef<HTMLInputElement>(null);
     const commentsEndRef = useRef<HTMLDivElement>(null);
     const myDeviceId = StorageService.getDeviceId();
+    // Lift the comment input bar above the IME: overlay keyboard mode never
+    // resizes the WebView, so this fixed full-screen portal is otherwise covered.
+    const { keyboardOpen, keyboardHeight } = useNativeShell();
     const profile = StorageService.getCoupleProfile();
 
     // Load comments
@@ -358,7 +362,13 @@ const PostViewer: React.FC<{
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[100] flex flex-col backdrop-blur-3xl animate-fade-in"
-            style={{ background: 'color-mix(in srgb, var(--color-surface) 95%, transparent)' }}
+            style={{
+                background: 'color-mix(in srgb, var(--color-surface) 95%, transparent)',
+                // Shrink the frame above the keyboard so the comment input bar
+                // stays visible (overlay mode does not resize the WebView).
+                paddingBottom: keyboardOpen ? keyboardHeight : 0,
+                transition: 'padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+            }}
         >
             {/* ── Header ── */}
             <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 backdrop-blur-md z-20"
@@ -537,6 +547,9 @@ const PostViewer: React.FC<{
 // Memoized below as `DailyMoments` — setView is referentially stable, so
 // tab switches and other App-level renders bail out of this whole tree.
 const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
+    // Keyboard lift for the caption/upload sheet (a fixed items-end portal the
+    // IME would otherwise cover in overlay keyboard mode).
+    const { keyboardOpen, keyboardHeight } = useNativeShell();
     const [photos, setPhotos] = useState<DailyPhoto[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -817,7 +830,13 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
 
             {/* Upload Modal */}
             {isUploading && ReactDOM.createPortal(
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-xl p-0 sm:p-4">
+                <div
+                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-xl p-0 sm:p-4"
+                    style={{
+                        paddingBottom: keyboardOpen ? keyboardHeight : undefined,
+                        transition: 'padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    }}
+                >
                     <motion.div
                         initial={{ y: '100%' }}
                         animate={{ y: 0 }}
