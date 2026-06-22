@@ -312,8 +312,9 @@ function computeClosenessScore(days: number): number {
   const partnerPulses = RelationshipSignals.getPulseChecks(partnerUserId)
     .filter(p => p.createdAt >= cutoff);
 
-  const avgPulse = [...myPulses, ...partnerPulses].length > 0
-    ? [...myPulses, ...partnerPulses].reduce((s, p) => s + p.score, 0) / [...myPulses, ...partnerPulses].length
+  const allPulses = [...myPulses, ...partnerPulses];
+  const avgPulse = allPulses.length > 0
+    ? allPulses.reduce((s, p) => s + p.score, 0) / allPulses.length
     : 3;
 
   // Activity signals

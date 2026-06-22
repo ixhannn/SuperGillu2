@@ -8,7 +8,7 @@
 
 import React from 'react';
 
-export const LiveBackground: React.FC = () => (
+export const LiveBackground = React.memo(() => (
   <div
     data-testid="ambient-visuals-static-background"
     aria-hidden="true"
@@ -22,4 +22,6 @@ export const LiveBackground: React.FC = () => (
       ].join(', '),
     }}
   />
-);
+));
+
+LiveBackground.displayName = 'LiveBackground';

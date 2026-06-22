@@ -236,10 +236,10 @@ async function collectWeekData(weekStart: string): Promise<AggregatedData> {
   const moods = (StorageService.getMoodEntries?.() ?? []).filter((m) => inRange(m.timestamp));
   const memories = (StorageService.getMemories?.() ?? []).filter((m) => inRange(m.date));
   const notes = (StorageService.getNotes?.() ?? []).filter((n) => inRange(n.createdAt));
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const specialDates = (StorageService.getSpecialDates?.() ?? []).filter((s) => {
     // Check anniversaries — month+day falls within the week
     const d = new Date(s.date);
-    const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
     return weekDates.some((wd) => {
       const w = fromIso(wd);
       return d.getMonth() === w.getMonth() && d.getDate() === w.getDate();

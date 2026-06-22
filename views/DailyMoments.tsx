@@ -645,7 +645,17 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
         runSweep().catch(() => loadPhotos());
         scheduleNextExpirySweep();
         const interval = setInterval(() => runSweep().catch(() => loadPhotos()), 60000);
-        const handleStorageUpdate = () => scheduleNextExpirySweep();
+        // rAF-coalesce — a sync pull fires one 'storage-update' per pulled row,
+        // so without this we re-ran the full getDailyPhotos + countdown map +
+        // filter + sort reschedule per event instead of once per frame. The last
+        // call wins either way (each clears the prior expiryTimer and reads the
+        // same final cache), so the resulting timer is identical.
+        let reschedulePending = false;
+        const handleStorageUpdate = (): void => {
+            if (reschedulePending) return;
+            reschedulePending = true;
+            requestAnimationFrame(() => { reschedulePending = false; scheduleNextExpirySweep(); });
+        };
         storageEventTarget.addEventListener('storage-update', handleStorageUpdate);
 
         return () => {
