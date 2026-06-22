@@ -200,6 +200,25 @@ const ACT1: FeelSlide[] = [
     },
 ];
 
+// Showcase (feel5): the tiny memory-stars that sparkle inside the glass dome's
+// core, and the four category chips that orbit it (two set back, two forward).
+const SHOW_STARS: Array<{ x: string; y: string; s: number; d: string }> = [
+    { x: '40%', y: '46%', s: 3, d: '0s' },
+    { x: '54%', y: '39%', s: 2.5, d: '.7s' },
+    { x: '63%', y: '51%', s: 3, d: '1.3s' },
+    { x: '45%', y: '58%', s: 2, d: '1.9s' },
+    { x: '57%', y: '63%', s: 3.5, d: '.4s' },
+    { x: '36%', y: '54%', s: 2, d: '1s' },
+];
+
+interface ShowChip { label: string; icon: React.ReactNode; back: boolean; pos: React.CSSProperties; delay: string; icBg: string; }
+const SHOW_CHIPS: ShowChip[] = [
+    { label: 'Milestones', icon: <Star size={16} />, back: true, pos: { left: 2, top: 58 }, delay: '.5s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffe7c2,#f6a267)' },
+    { label: 'Quiet moments', icon: <Sparkles size={16} />, back: true, pos: { right: 0, top: 64 }, delay: '.9s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffe0d6,#ec9a8e)' },
+    { label: 'Memories', icon: <ImageIcon size={19} />, back: false, pos: { left: -4, top: 246 }, delay: '.2s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffefd0,#f4a45e)' },
+    { label: 'Little notes', icon: <MessageCircle size={19} />, back: false, pos: { right: -6, top: 252 }, delay: '.6s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffe6cf,#efa070)' },
+];
+
 // In-phone screen content per Act-I slide (cross-fades as the user advances).
 const devContentFor = (step: Step): React.ReactNode => {
     switch (step) {
@@ -575,32 +594,45 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                         >
-                            {isFinale && <div className="lo-ob-finale-bloom" />}
-                            {isFinale && <div className="lo-ob-finale-ring" />}
-                            {isFinale && <div className="lo-ob-finale-ring r2" />}
-                            {(isShowcase || isFinale) && <div className="lo-ob-beam" />}
-                            <div
-                                className="lo-ob-icon"
-                                style={{ transform: isFinale ? 'scale(1.24)' : isShowcase ? 'scale(1.08)' : 'scale(1)' }}
-                            >
-                                <img src="/icon-128.png" alt="Lior" />
-                            </div>
-                            {isIconMode && <div className="lo-ob-name">Lior</div>}
-                            {isShowcase && feelSlide.tones && (
-                                <div className="lo-ob-tones">
-                                    {feelSlide.tones.map((tn, i) => (
-                                        <motion.div
-                                            key={`${step}-tone-${i}`}
-                                            className="lo-ob-tone"
-                                            style={{ left: tn.x, top: tn.y, width: tn.w }}
-                                            initial={{ opacity: 0, scale: 0.7, x: (PHX - (tn.x + tn.w / 2)) * 0.5, y: (160 - tn.y) * 0.5 }}
-                                            animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
-                                            transition={{ delay: 0.18 + i * 0.1, type: 'spring', damping: 24, stiffness: 240 }}
-                                        >
-                                            {tn.icon}<span>{tn.label}</span>
-                                        </motion.div>
+                            {isShowcase ? (
+                                <div className="lo-show">
+                                    <div className="lo-show-halo" aria-hidden />
+                                    <div className="lo-show-ray" aria-hidden />
+                                    <div className="lo-show-coreglow" aria-hidden />
+                                    <div className="lo-show-pool" aria-hidden />
+                                    <div className="lo-show-dome" aria-hidden>
+                                        <div className="core" />
+                                        <div className="pip" />
+                                        <div className="cons">
+                                            {SHOW_STARS.map((s, i) => (
+                                                <span key={i} className="lo-show-star" style={{ left: s.x, top: s.y, width: s.s, height: s.s, animationDelay: s.d }} />
+                                            ))}
+                                        </div>
+                                        <div className="spec" />
+                                        <div className="rim" />
+                                    </div>
+                                    {SHOW_CHIPS.map((c) => (
+                                        <div key={c.label} className={`lo-show-chip${c.back ? ' back' : ''}`} style={{ ...c.pos, animationDelay: c.delay }}>
+                                            <div className="inner">
+                                                <span className="ic" style={{ background: c.icBg }}>{c.icon}</span>{c.label}
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
+                            ) : (
+                                <>
+                                    {isFinale && <div className="lo-ob-finale-bloom" />}
+                                    {isFinale && <div className="lo-ob-finale-ring" />}
+                                    {isFinale && <div className="lo-ob-finale-ring r2" />}
+                                    {isFinale && <div className="lo-ob-beam" />}
+                                    <div
+                                        className="lo-ob-icon"
+                                        style={{ transform: isFinale ? 'scale(1.24)' : 'scale(1)' }}
+                                    >
+                                        <img src="/icon-128.png" alt="Lior" />
+                                    </div>
+                                    {isIconMode && <div className="lo-ob-name">Lior</div>}
+                                </>
                             )}
                         </motion.div>
                     )}
