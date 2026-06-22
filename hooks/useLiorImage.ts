@@ -1,8 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { LruStringCache } from '../utils/lruCache';
 
 const mediaRequestCache = new Map<string, Promise<string | null>>();
-const mediaValueCache = new Map<string, string | null>();
+// Bounded LRU (was an unbounded Map): caps resolved-media RAM at ~32MB so the
+// warm-cache seed below stays a heap *bound*, not a heap *leak*. Evicted keys
+// simply re-resolve from IndexedDB/cloud on next access — the MRU hot set (what
+// the user is actually scrolling) is always retained, so the synchronous
+// first-paint seed is unaffected for visible media.
+const mediaValueCache = new LruStringCache<string | null>(32 * 1024 * 1024, 480);
 
 const buildMediaKey = (mediaId?: string, fallbackData?: string, storagePath?: string) => (
     [mediaId || '', storagePath || '', fallbackData ? `fallback:${fallbackData.length}` : ''].join('|')
