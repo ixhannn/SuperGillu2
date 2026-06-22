@@ -6,6 +6,7 @@ import { ViewState, DailyPhoto, Comment } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { useNativeShell } from '../hooks/useNativeShell';
+import { useInViewVideo } from '../hooks/useInViewVideo';
 import { ViewHeader } from '../components/ViewHeader';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { Skeleton } from '../components/Skeleton';
@@ -61,6 +62,8 @@ const PhotoCardBase: React.FC<{ photo: DailyPhoto, onOpen: (photo: DailyPhoto) =
     }, [photo.expiresAt]);
 
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    // Only decode/play the preview clip while it is on (or near) screen.
+    const inViewVideoRef = useInViewVideo();
 
     const openDeleteConfirm = (e: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => {
         e.stopPropagation();
@@ -118,15 +121,15 @@ const PhotoCardBase: React.FC<{ photo: DailyPhoto, onOpen: (photo: DailyPhoto) =
                     {mediaKind === 'video' ? (
                         <>
                             <motion.video
+                                ref={inViewVideoRef}
                                 initial={{ y: -20, scale: 1.15 }}
                                 whileInView={{ y: 0, scale: 1 }}
                                 viewport={{ once: true, margin: "50px 0px" }}
                                 transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-                                src={mediaUrl} 
-                                className="relative w-full h-full object-cover z-[1]" 
+                                src={mediaUrl}
+                                className="relative w-full h-full object-cover z-[1]"
                                 muted
                                 playsInline
-                                autoPlay
                                 loop
                                 preload="metadata"
                                 onError={handleMediaError}
