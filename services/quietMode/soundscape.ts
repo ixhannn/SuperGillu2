@@ -48,10 +48,14 @@ const LOVE_CHORD = [130.81, 196.0, 246.94, 293.66, 329.63];
 const TWINKLE_NOTES = [523.25, 587.33, 659.25, 783.99, 880.0];
 
 type Cleanup = () => void;
+interface StopFlag { stopped: boolean; }
 
 interface ActiveScene {
   gain: GainNode;
   cleanup: Cleanup;
+  /** Flip to true the instant a crossfade begins so the leaving scene stops
+   *  scheduling NEW voices while its tail fades (cleanup/disconnect is deferred). */
+  stop: StopFlag;
 }
 
 export class SoundscapeEngine {
@@ -139,7 +143,8 @@ export class SoundscapeEngine {
     const now = this.ctx.currentTime;
     const leaving = this.active;
     this.active = [];
-    leaving.forEach(({ gain, cleanup }) => {
+    leaving.forEach(({ gain, cleanup, stop }) => {
+      stop.stopped = true; // stop scheduling new voices immediately — only the tail fades
       try {
         gain.gain.cancelScheduledValues(now);
         gain.gain.setValueAtTime(gain.gain.value, now);
@@ -160,13 +165,15 @@ export class SoundscapeEngine {
     sceneGain.connect(this.master!);
     sceneGain.connect(this.reverbSend!);
 
-    const cleanup = this.buildScene(scene, sceneGain);
+    const stop: StopFlag = { stopped: false };
+    const cleanup = this.buildScene(scene, sceneGain, stop);
     sceneGain.gain.cancelScheduledValues(now);
     sceneGain.gain.setValueAtTime(0.0001, now);
     sceneGain.gain.linearRampToValueAtTime(1, now + FADE_IN_SEC);
 
     this.active.push({
       gain: sceneGain,
+      stop,
       cleanup: () => {
         cleanup();
         try { sceneGain.disconnect(); } catch { /* ignore */ }
@@ -199,13 +206,13 @@ export class SoundscapeEngine {
 
   // ── Scene routing ────────────────────────────────────────────────────────────
 
-  private buildScene(scene: Soundscape, out: GainNode): Cleanup {
+  private buildScene(scene: Soundscape, out: GainNode, stop: StopFlag): Cleanup {
     switch (scene) {
-      case 'love':    return this.buildLove(out);
-      case 'rain':    return this.buildRain(out);
-      case 'ocean':   return this.buildOcean(out);
-      case 'embrace': return this.buildEmbrace(out);
-      case 'wind':    return this.buildWind(out);
+      case 'love':    return this.buildLove(out, stop);
+      case 'rain':    return this.buildRain(out, stop);
+      case 'ocean':   return this.buildOcean(out, stop);
+      case 'embrace': return this.buildEmbrace(out, stop);
+      case 'wind':    return this.buildWind(out, stop);
       default:        return () => {};
     }
   }
@@ -277,10 +284,9 @@ export class SoundscapeEngine {
 
   // ── Scenes ────────────────────────────────────────────────────────────────────
 
-  private buildLove(out: GainNode): Cleanup {
+  private buildLove(out: GainNode, stoppedRef: StopFlag): Cleanup {
     const ctx = this.ctx!;
     const nodes: AudioNode[] = [];
-    const stoppedRef = { stopped: false };
 
     LOVE_CHORD.forEach((f) => {
       for (let j = 0; j < 2; j++) {
@@ -327,9 +333,8 @@ export class SoundscapeEngine {
     };
   }
 
-  private buildRain(out: GainNode): Cleanup {
+  private buildRain(out: GainNode, stoppedRef: StopFlag): Cleanup {
     const ctx = this.ctx!;
-    const stoppedRef = { stopped: false };
 
     // Rain hiss — white noise through a gentle bandpass.
     const hiss = ctx.createBufferSource();
@@ -377,7 +382,7 @@ export class SoundscapeEngine {
     };
   }
 
-  private buildOcean(out: GainNode): Cleanup {
+  private buildOcean(out: GainNode, _stoppedRef: StopFlag): Cleanup {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer(3, true);
@@ -398,10 +403,9 @@ export class SoundscapeEngine {
     };
   }
 
-  private buildEmbrace(out: GainNode): Cleanup {
+  private buildEmbrace(out: GainNode, stoppedRef: StopFlag): Cleanup {
     const ctx = this.ctx!;
     const nodes: AudioNode[] = [];
-    const stoppedRef = { stopped: false };
 
     // Low warm pad (G2 + D3).
     [98.0, 146.83].forEach((f) => {
@@ -437,7 +441,7 @@ export class SoundscapeEngine {
     };
   }
 
-  private buildWind(out: GainNode): Cleanup {
+  private buildWind(out: GainNode, _stoppedRef: StopFlag): Cleanup {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer(3, true);

@@ -4,7 +4,8 @@
 // slideshow into an active moment of calm. A soft ring expands on the inhale,
 // holds, then contracts on the exhale, following a 4-4-6 cadence (a gentle,
 // sustainable resting rhythm). Pointer-transparent so it floats over the
-// memories without stealing taps.
+// memories without stealing taps. Honours reduced-motion (passed in so it stays
+// reactive to a mid-session OS change).
 
 import React, { useEffect, useState } from 'react';
 import { prefersReducedMotion } from '../../utils/motion';
@@ -19,8 +20,12 @@ const CADENCE: Record<Phase, { next: Phase; ms: number; label: string }> = {
 
 const SCALE: Record<Phase, number> = { in: 1.18, hold: 1.18, out: 0.74 };
 
-export const BreathingGuide: React.FC = () => {
-  const reduced = prefersReducedMotion();
+interface BreathingGuideProps {
+  reduced?: boolean;
+}
+
+export const BreathingGuide: React.FC<BreathingGuideProps> = ({ reduced: reducedProp }) => {
+  const reduced = reducedProp ?? prefersReducedMotion();
   const [phase, setPhase] = useState<Phase>('in');
 
   useEffect(() => {
@@ -30,13 +35,11 @@ export const BreathingGuide: React.FC = () => {
   }, [phase]);
 
   const { label, ms } = CADENCE[phase];
-  // Hold keeps the previous scale (no visible motion), so only in/out animate.
   const transitionMs = phase === 'hold' ? 0 : ms;
 
   return (
-    <div className="absolute inset-0 z-[8] flex flex-col items-center justify-center pointer-events-none select-none">
+    <div className="absolute inset-0 z-[8] flex flex-col items-center justify-center pointer-events-none select-none" aria-hidden="true">
       <div className="relative flex items-center justify-center" style={{ width: 240, height: 240 }}>
-        {/* Outer aura */}
         <div
           className="absolute rounded-full"
           style={{
@@ -46,7 +49,6 @@ export const BreathingGuide: React.FC = () => {
             transition: `transform ${transitionMs}ms cubic-bezier(0.37,0,0.36,1)`,
           }}
         />
-        {/* Breathing ring */}
         <div
           className="absolute rounded-full"
           style={{
@@ -58,20 +60,15 @@ export const BreathingGuide: React.FC = () => {
             transition: `transform ${transitionMs}ms cubic-bezier(0.37,0,0.36,1)`,
           }}
         />
-        {/* Inner soft dot */}
         <div
           className="absolute rounded-full"
-          style={{
-            width: 8, height: 8,
-            background: 'rgba(255,255,255,0.85)',
-            boxShadow: '0 0 14px rgba(255,255,255,0.8)',
-          }}
+          style={{ width: 8, height: 8, background: 'rgba(255,255,255,0.85)', boxShadow: '0 0 14px rgba(255,255,255,0.8)' }}
         />
       </div>
       <p
         key={label}
         className="mt-10 text-white/80 text-sm tracking-[0.35em] uppercase font-light"
-        style={{ animation: 'quietFadeIn 700ms ease both' }}
+        style={{ animation: reduced ? undefined : 'quietFadeIn 700ms ease both' }}
       >
         {label}
       </p>
