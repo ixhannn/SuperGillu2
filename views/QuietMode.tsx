@@ -366,22 +366,38 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
           }}
         >
           {hasPhoto && (
-            <div
-              className="mb-9 relative overflow-hidden"
-              style={{ width: `min(80vw, ${MEASURE}px)`, aspectRatio: '4 / 5', borderRadius: 20, boxShadow: '0 50px 110px -42px rgba(0,0,0,0.92)' }}
-            >
-              <img
-                key={index}
-                src={currentImage!}
-                alt=""
-                onError={() => { if (currentMemory) imageCacheRef.current.set(currentMemory.id, null); setCurrentImage(null); }}
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{ animation: reduced ? undefined : `quietPlate ${slideMs}ms ease-out both`, willChange: 'transform' }}
+            <div className="mb-9 relative" style={{ width: `min(80vw, ${MEASURE}px)` }}>
+              {/* Premium accent halo — the photo glows in its own colour */}
+              <div
+                aria-hidden
+                className="absolute inset-[-24%] pointer-events-none"
+                style={{
+                  background: `radial-gradient(closest-side, ${rgbStr(accentLight, 0.5)} 0%, ${rgbStr(accent, 0.22)} 46%, transparent 76%)`,
+                  transition: 'background 1800ms ease',
+                  animation: reduced ? undefined : 'quietHalo 7s ease-in-out infinite',
+                }}
               />
               <div
-                className="absolute inset-0 pointer-events-none"
-                style={{ borderRadius: 20, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10), inset 0 -72px 84px -44px rgba(0,0,0,0.55)' }}
-              />
+                className="relative overflow-hidden"
+                style={{
+                  aspectRatio: '4 / 5', borderRadius: 20,
+                  boxShadow: `0 50px 110px -42px rgba(0,0,0,0.92), 0 0 90px -16px ${rgbStr(accent, 0.5)}`,
+                  transition: 'box-shadow 1800ms ease',
+                }}
+              >
+                <img
+                  key={index}
+                  src={currentImage!}
+                  alt=""
+                  onError={() => { if (currentMemory) imageCacheRef.current.set(currentMemory.id, null); setCurrentImage(null); }}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ animation: reduced ? undefined : `quietPlate ${slideMs}ms ease-out both`, willChange: 'transform' }}
+                />
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ borderRadius: 20, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10), inset 0 -72px 84px -44px rgba(0,0,0,0.55)' }}
+                />
+              </div>
             </div>
           )}
 
@@ -404,7 +420,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
             {currentMemory.text ? (
               <p
                 className={`relative font-serif text-white/95 tracking-wide ${quoteClass(currentMemory.text.length, !hasPhoto)}`}
-                style={{ textShadow: '0 2px 30px rgba(0,0,0,0.65)', display: '-webkit-box', WebkitLineClamp: hasPhoto ? 5 : 9, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                style={{ textShadow: hasPhoto ? '0 2px 30px rgba(0,0,0,0.65)' : `0 2px 30px rgba(0,0,0,0.6), 0 0 34px ${rgbStr(accent, 0.18)}`, display: '-webkit-box', WebkitLineClamp: hasPhoto ? 5 : 9, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
               >
                 {hasPhoto ? `“${currentMemory.text}”` : currentMemory.text}
               </p>
@@ -412,7 +428,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
               <p className="relative font-serif italic text-white/70 text-xl">A quiet moment</p>
             )}
 
-            <div className="relative mt-6 mb-3 w-9 h-px mx-auto" style={{ background: rgbStr(accentLight, 0.45) }} />
+            <div className="relative mt-6 mb-3 w-10 h-px mx-auto" style={{ background: rgbStr(accentLight, 0.6), boxShadow: `0 0 10px ${rgbStr(accentLight, 0.7)}` }} />
 
             {currentMemory.mood && (
               <p className="relative font-serif italic text-white/72" style={{ fontSize: '0.96rem' }}>{titleCase(currentMemory.mood)}</p>
@@ -459,26 +475,40 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
           <div className="relative mt-10 flex flex-col items-center gap-5">
             {empty ? (
               <>
-                <button
-                  onClick={(e) => { e.stopPropagation(); feedback.tapSilent(); setView('add-memory'); }}
-                  className="flex items-center gap-2.5 px-8 py-4 rounded-full text-white font-medium text-sm active:scale-95 transition-transform"
-                  style={{ background: rgbStr(accent, 0.22), border: `1px solid ${rgbStr(accentLight, 0.5)}`, backdropFilter: 'blur(12px)', boxShadow: `0 0 44px ${rgbStr(accent, 0.32)}` }}
-                >
-                  <ImagePlus size={16} aria-hidden /> Add a memory
-                </button>
+                <div className="relative">
+                  <div
+                    aria-hidden
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ width: 260, height: 140, background: `radial-gradient(closest-side, ${rgbStr(accent, 0.5)} 0%, transparent 72%)`, filter: 'blur(8px)', animation: reduced ? undefined : 'quietHalo 4.2s ease-in-out infinite' }}
+                  />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); feedback.tapSilent(); setView('add-memory'); }}
+                    className="relative flex items-center gap-2.5 px-8 py-4 rounded-full text-white font-medium text-sm active:scale-95 transition-transform"
+                    style={{ background: rgbStr(accent, 0.24), border: `1px solid ${rgbStr(accentLight, 0.5)}`, backdropFilter: 'blur(12px)', boxShadow: `0 0 44px ${rgbStr(accent, 0.34)}` }}
+                  >
+                    <ImagePlus size={16} aria-hidden /> Add a memory
+                  </button>
+                </div>
                 <button onClick={(e) => { e.stopPropagation(); exit(); }} className="text-white/45 text-xs tracking-wide py-2 px-3 active:scale-95 transition-transform">
                   Maybe later
                 </button>
               </>
             ) : (
-              <button
-                onClick={(e) => { e.stopPropagation(); void begin(); }}
-                className="group relative flex items-center gap-2.5 px-9 py-4 rounded-full text-white font-medium text-sm active:scale-95 transition-transform"
-                style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', backdropFilter: 'blur(12px)', animation: reduced ? undefined : 'quietGlow 3.8s ease-in-out infinite' }}
-              >
-                <Play size={15} fill="currentColor" aria-hidden />
-                <span>Begin</span>
-              </button>
+              <div className="relative">
+                <div
+                  aria-hidden
+                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ width: 240, height: 132, background: `radial-gradient(closest-side, ${rgbStr(accent, 0.5)} 0%, transparent 72%)`, filter: 'blur(6px)', animation: reduced ? undefined : 'quietHalo 4.2s ease-in-out infinite' }}
+                />
+                <button
+                  onClick={(e) => { e.stopPropagation(); void begin(); }}
+                  className="group relative flex items-center gap-2.5 px-9 py-4 rounded-full text-white font-medium text-sm active:scale-95 transition-transform"
+                  style={{ background: 'rgba(255,255,255,0.12)', border: `1px solid ${rgbStr(accentLight, 0.45)}`, backdropFilter: 'blur(12px)', boxShadow: `0 0 38px -6px ${rgbStr(accent, 0.45)}` }}
+                >
+                  <Play size={15} fill="currentColor" aria-hidden />
+                  <span>Begin</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -657,9 +687,9 @@ const KEYFRAMES = `
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
 }
-@keyframes quietGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.0); }
-  50%      { box-shadow: 0 0 38px 2px rgba(255,255,255,0.22); }
+@keyframes quietHalo {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.85; }
 }
 @keyframes quietProgress {
   from { transform: scaleX(0); }
