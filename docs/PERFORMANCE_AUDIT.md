@@ -3,7 +3,26 @@
 **Date:** 2026-06-22
 **Scope:** Whole app (40 views · 90+ components · 17 hooks · 50+ services · 25 utils · 12 stylesheets)
 **Method:** 12 parallel audit lenses → every P0–P2 finding adversarially re-verified against the real cited code → dedupe + prioritize.
-**Status:** Audit only. **No code changed.** This document is the Phase 1 deliverable; implementation is gated on sign-off.
+**Status:** Audit complete; implementation in progress under a strict **no-visual/no-feel-change** constraint.
+
+---
+
+## Implementation Progress (2026-06-22, branch `claude/condescending-maxwell-101f96`)
+
+**Shipped (committed, not merged): 9 commits.** Every change is verified by `tsc` + 41 vitest + 55 assertion suites + `build`/bundle-budget. Items touching the WebGL background, navigation, or native keyboard still owe an on-device pass.
+
+- **Batch 1 — memory:** bounded LRU on both base64 media caches (`utils/lruCache.ts`, +6 tests); fixed `useVideoBlobUrl` object-URL leak. *(ends long-session OOM)*
+- **Batch 2 — nav + startup:** clone only the active layer in `TransitionEngine._run`; lazy-load three.js off the Home cold path (Home 62→49 KB). *(kills pre-bloom hitch + ~870 KB off TTI)*
+- **Batch 3 — keyboard:** 4 fixed composer sheets now lift above the IME.
+- **Batch 4 — compute:** dropped the dead O(n²) insight-cooldown scan + hoisted its gate; memoized the MoodCalendar per-cell date scan.
+- **Batch 6 (partial) — media:** off-screen daily-moment preview videos pause via IntersectionObserver. *(thumbnail tier + img dims deferred — need stored dimensions)*
+- **Batch 7/8/9 (neutral subset):** relationship `setState` equality guard; closeness/weekly-recap compute-once; DailyMoments expiry-sweep rAF-coalesce; `React.memo` static LiveBackground; nativeShell teardown-race guard; haptic warm-up coalescing; LiveBackground3D resize coalescing (device-verify); removed 202 lines of dead long-press code + dead `alphaCache` + dead `auroraShift` Tailwind config.
+
+**Deliberately NOT done — each needs a look/feel change, so deferred for sign-off:**
+- `react-2` pulse-overlay GPU (scale→opacity / drop live backdrop-blur).
+- `media-3a/media-5` thumbnail tier + explicit image dimensions.
+- 30 P2/P3 items that a neutrality sweep confirmed cannot be made pixel/feel-identical: crossfade halves (`nav-2`), tile/skeleton/forge paint animations (`css-1/css-2/fm-4`), 120 fps ambient cadence (`ambient-3`), backdrop-blur layout spring (`fm-6`), list windowing/`content-visibility` (resets entrance fades — `list-2/4/5/6`), stagger clamp (`list-7`), dual-press feel (`haptics-1`), keyboard scroll/transform (`kb-3/4/5`), splash floor (`startup-2`), supabase async (`startup-3`), pixel-ratio re-apply (`ambient-2`).
+- Several audit hints were **not-found / already-fixed** on closer inspection (`react-3`, `dead-2`, `haptics-2/5`, `stutter-1`, `fm-3/5/7`, `expensive-4`).
 
 ---
 
