@@ -28,11 +28,10 @@ import {
     X,
 } from 'lucide-react';
 import { SupabaseService } from '../services/supabase';
-import {
-    isNativeGoogleSignInAvailable,
-    NativeGoogleSignInError,
-    signInWithNativeGoogle,
-} from '../services/nativeGoogleAuth';
+// Type-only import (erased at build time) so the native helper + the Capacitor
+// plugin stay OUT of the startup bundle. The runtime functions are pulled in via
+// a dynamic import inside handleGoogle, on native only.
+import type { NativeGoogleErrorCode } from '../services/nativeGoogleAuth';
 import { feedback } from '../utils/feedback';
 
 // ══════════════════════════════════════════════════════════════════════
@@ -61,7 +60,7 @@ const getEmailRedirectTo = (): string => {
 
 // Maps a native Google sign-in failure code to a calm, user-facing message.
 // 'cancelled' never reaches here (callers treat it as a silent no-op).
-const friendlyNativeGoogleError = (code: NativeGoogleSignInError['code']): string => {
+const friendlyNativeGoogleError = (code: NativeGoogleErrorCode): string => {
     switch (code) {
         case 'not_configured':
             return 'Google sign-in isn’t set up yet on this build.';
@@ -1197,26 +1196,35 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
             // Credential Manager shows the system account chooser IN the app,
             // returns a signed ID token, and we exchange it for a Supabase
             // session via signInWithIdToken — no system browser, no redirect,
-            // no deep link.
-            if (isNative && isNativeGoogleSignInAvailable()) {
-                try {
-                    await signInWithNativeGoogle();
-                    // Success → enter the app. onLogin is idempotent (the
-                    // onAuthStateChange 'SIGNED_IN' listener would also fire
-                    // it), so calling it here removes any single dependence on
-                    // that event. Leave loading=true: the unmount on entry
-                    // clears it, with no flash of the idle button.
-                    if (!recoveryModeRef.current) onLogin();
-                } catch (err) {
-                    const code = err instanceof NativeGoogleSignInError ? err.code : 'plugin_error';
-                    // User backing out of the picker is not an error — stay put.
-                    if (code !== 'cancelled') {
-                        setError(friendlyNativeGoogleError(code));
-                        feedback.error();
+            // no deep link. The helper (and the Capacitor plugin it pulls) is
+            // loaded lazily here so none of it lands in the startup bundle, and
+            // only on native so web never fetches the chunk.
+            if (isNative) {
+                const nativeGoogle = await import('../services/nativeGoogleAuth');
+                if (nativeGoogle.isNativeGoogleSignInAvailable()) {
+                    try {
+                        await nativeGoogle.signInWithNativeGoogle();
+                        // Success → enter the app. onLogin is idempotent (the
+                        // onAuthStateChange 'SIGNED_IN' listener would also fire
+                        // it), so calling it here removes any single dependence
+                        // on that event. Leave loading=true: the unmount on
+                        // entry clears it, with no flash of the idle button.
+                        if (!recoveryModeRef.current) onLogin();
+                    } catch (err) {
+                        const code = err instanceof nativeGoogle.NativeGoogleSignInError
+                            ? err.code
+                            : 'plugin_error';
+                        // User backing out of the picker is not an error — stay put.
+                        if (code !== 'cancelled') {
+                            setError(friendlyNativeGoogleError(code));
+                            feedback.error();
+                        }
+                        setLoading(false);
                     }
-                    setLoading(false);
+                    return;
                 }
-                return;
+                // Native but no web client id configured → fall through to the
+                // browser OAuth redirect below.
             }
 
             // ── FALLBACK: browser OAuth redirect ─────────────────────────────
