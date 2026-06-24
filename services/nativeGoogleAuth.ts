@@ -37,7 +37,8 @@ export type NativeGoogleErrorCode =
     | 'no_account'
     | 'no_id_token'
     | 'plugin_error'
-    | 'supabase_error';
+    | 'supabase_error'
+    | 'timeout';
 
 export class NativeGoogleSignInError extends Error {
     readonly code: NativeGoogleErrorCode;
@@ -59,7 +60,13 @@ export const friendlyNativeGoogleError = (code: NativeGoogleErrorCode): string =
         case 'not_configured':
             return 'Google sign-in isn’t set up yet on this build.';
         case 'no_account':
-            return 'No Google account available. Make sure you’re signed in to Google on this device, then try again.';
+            // NoCredentialException means EITHER no Google account on the device
+            // OR no Android OAuth client matching this build's package + signing
+            // SHA-1 (the classic "developer error"). Cover both so a signed-in
+            // user isn't told they have no account.
+            return 'Couldn’t use Google sign-in. Make sure you’re signed in to a Google account on this device — and if you are, this app build may not be registered for Google sign-in yet.';
+        case 'timeout':
+            return 'Sign-in timed out. Check your connection and try again.';
         case 'no_id_token':
             return 'Google didn’t return a sign-in token. Please try again.';
         case 'supabase_error':
@@ -98,6 +105,24 @@ const sha256Hex = async (input: string): Promise<string> => {
     const digest = await crypto.subtle.digest('SHA-256', data);
     return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 };
+
+// Bounds a promise so a stalled network can never hold the sign-in spinner open
+// forever. The token exchange (signInWithIdToken) goes through supabase-js's
+// default fetch, which has NO read timeout — if the socket connects then hangs
+// (captive portal, DNS/TLS black-hole), the await would never settle and the
+// caller's loading state would stay true with no error and no way to cancel.
+// On timeout we reject with a typed error the caller already handles.
+const withTimeout = <T>(promise: Promise<T>, ms: number, onTimeout: () => NativeGoogleSignInError): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(onTimeout()), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
+};
+
+// Token exchange ceiling. The exchange normally completes in well under a
+// second; 20s is a generous upper bound that still fails fast on a dead network.
+const EXCHANGE_TIMEOUT_MS = 20_000;
 
 // ── Plugin load + one-time initialize (idempotent, retry-safe) ────────────────
 let initialized = false;
@@ -207,12 +232,12 @@ export const signInWithNativeGoogle = async (): Promise<void> => {
         throw new NativeGoogleSignInError('no_id_token', 'Google did not return an ID token.');
     }
 
-    // 4. Exchange the ID token for a Supabase session.
-    const { error } = await sb.auth.signInWithIdToken({
-        provider: 'google',
-        token: idToken,
-        nonce: rawNonce,
-    });
+    // 4. Exchange the ID token for a Supabase session (bounded — see withTimeout).
+    const { error } = await withTimeout(
+        sb.auth.signInWithIdToken({ provider: 'google', token: idToken, nonce: rawNonce }),
+        EXCHANGE_TIMEOUT_MS,
+        () => new NativeGoogleSignInError('timeout', 'Timed out finishing sign-in.'),
+    );
     if (error) {
         throw new NativeGoogleSignInError(
             'supabase_error',
