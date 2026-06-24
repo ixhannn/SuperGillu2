@@ -160,6 +160,39 @@ const SECONDARY_NAV_PRELOADS: ViewState[] = [
   'dinner-decider',
 ];
 
+// Everything else the user can reach from Home / sub-navigation. Warmed last,
+// at the lowest priority, so by the time a tile is tapped its chunk is already
+// parsed and the navigation guard (App.tsx ~:576) commits instantly instead of
+// pausing on a cold fetch — which is what showed the blank 3D background through
+// the transparent page during the open. preloadViewModulesSequential yields to
+// main between each + drops the HEAVY_PREFETCH_VIEWS on low-end devices, so this
+// stays off the critical path. (Legal/dev pages are intentionally omitted.)
+const TERTIARY_NAV_PRELOADS: ViewState[] = [
+  'coco-pet',
+  'bonsai-bloom',
+  'private-space',
+  'premium',
+  'special-dates',
+  'notes',
+  'canvas',
+  'quiet-mode',
+  'aura-signal',
+  'voice-notes',
+  'surprises',
+  'time-capsule',
+  'duet-journal',
+  'date-studio',
+  'our-story',
+  'heirlooms',
+  'depths',
+  'love-missions',
+  'weekly-recap',
+  'daily-video',
+  'daily-drop',
+  'our-room',
+  'partner-intelligence',
+];
+
 const T_KEEP_ALIVE_TAB = 240;
 
 /** Inner component — must live inside CoachmarkProvider to access context */
@@ -698,6 +731,9 @@ const App = () => {
 
     scheduleIdlePreload(CORE_NAV_PRELOADS, 1600, 700);
     scheduleIdlePreload(SECONDARY_NAV_PRELOADS, 3200, 3600);
+    // Warm the long tail last + at the lowest priority so every tile a user can
+    // reach is parsed before they get to it — no cold-fetch pause, no blank gap.
+    scheduleIdlePreload(TERTIARY_NAV_PRELOADS, 6000, 6500);
 
     return () => {
       cancelers.forEach((cancel) => cancel());
