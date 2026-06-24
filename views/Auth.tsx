@@ -28,10 +28,6 @@ import {
     X,
 } from 'lucide-react';
 import { SupabaseService } from '../services/supabase';
-// Type-only import (erased at build time) so the native helper + the Capacitor
-// plugin stay OUT of the startup bundle. The runtime functions are pulled in via
-// a dynamic import inside handleGoogle, on native only.
-import type { NativeGoogleErrorCode } from '../services/nativeGoogleAuth';
 import { feedback } from '../utils/feedback';
 
 // ══════════════════════════════════════════════════════════════════════
@@ -56,23 +52,6 @@ const getEmailRedirectTo = (): string => {
     return isNative
         ? 'com.lior.app://auth/callback'
         : window.location.origin;
-};
-
-// Maps a native Google sign-in failure code to a calm, user-facing message.
-// 'cancelled' never reaches here (callers treat it as a silent no-op).
-const friendlyNativeGoogleError = (code: NativeGoogleErrorCode): string => {
-    switch (code) {
-        case 'not_configured':
-            return 'Google sign-in isn’t set up yet on this build.';
-        case 'no_account':
-            return 'No Google account available. Make sure you’re signed in to Google on this device, then try again.';
-        case 'no_id_token':
-            return 'Google didn’t return a sign-in token. Please try again.';
-        case 'supabase_error':
-            return 'Couldn’t finish signing in. Please try again in a moment.';
-        default:
-            return 'Google sign-in didn’t complete. Please try again.';
-    }
 };
 
 async function authProxy(type: 'login' | 'signup' | 'reset' | 'resend', email: string, password?: string) {
@@ -1216,7 +1195,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             : 'plugin_error';
                         // User backing out of the picker is not an error — stay put.
                         if (code !== 'cancelled') {
-                            setError(friendlyNativeGoogleError(code));
+                            setError(nativeGoogle.friendlyNativeGoogleError(code));
                             feedback.error();
                         }
                         setLoading(false);

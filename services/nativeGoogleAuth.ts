@@ -48,6 +48,27 @@ export class NativeGoogleSignInError extends Error {
     }
 }
 
+/**
+ * Maps a sign-in failure code to a calm, user-facing message. Lives here (the
+ * lazy-loaded module) rather than in the Auth view so none of these strings
+ * land in the startup bundle. 'cancelled' is handled by the caller as a silent
+ * no-op and never passed here.
+ */
+export const friendlyNativeGoogleError = (code: NativeGoogleErrorCode): string => {
+    switch (code) {
+        case 'not_configured':
+            return 'Google sign-in isn’t set up yet on this build.';
+        case 'no_account':
+            return 'No Google account available. Make sure you’re signed in to Google on this device, then try again.';
+        case 'no_id_token':
+            return 'Google didn’t return a sign-in token. Please try again.';
+        case 'supabase_error':
+            return 'Couldn’t finish signing in. Please try again in a moment.';
+        default:
+            return 'Google sign-in didn’t complete. Please try again.';
+    }
+};
+
 // ── Minimal structural typing for the plugin surface we use. We cast the
 //    dynamically-imported module to this so the web bundle never hard-depends on
 //    the native plugin's full type graph. ──────────────────────────────────────
