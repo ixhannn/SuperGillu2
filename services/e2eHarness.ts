@@ -17,8 +17,6 @@ const E2E_VIEWS: ViewState[] = [
   'profile',
   'quiet-mode',
   'countdowns',
-  'mood-calendar',
-  'aura-rewind',
   'aura-signal',
   'bonsai-bloom',
   'us',

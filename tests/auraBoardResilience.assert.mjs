@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const moodCalendarSource = readFileSync(new URL('../views/MoodCalendar.tsx', import.meta.url), 'utf8');
-const auraRewindSource = readFileSync(new URL('../views/AuraRewind.tsx', import.meta.url), 'utf8');
+// The Aura Board (MoodCalendar) and Aura Rewind views were removed once Daily
+// Drop replaced them as the daily-return mechanic. The mood STORAGE layer lives
+// on — partnerIntelligence, weeklyRecap, relationshipModel, our-story and
+// heirlooms still read mood entries — so the storage-resilience guards below
+// remain meaningful even though the views are gone.
 const storageSource = readFileSync(new URL('../services/storage.ts', import.meta.url), 'utf8');
 const cocoAppSource = readFileSync(new URL('../components/coco-pet/CocoApp.jsx', import.meta.url), 'utf8');
 const cocoOverlaySource = readFileSync(new URL('../components/coco-pet/CocoPetOverlay.tsx', import.meta.url), 'utf8');
@@ -18,7 +21,7 @@ assert.match(
 assert.match(
   storageSource,
   /getMoodEntries: \(\): MoodEntry\[\] => \{[\s\S]*try \{[\s\S]*normalizeMoodEntries\(JSON\.parse\(str\)\)[\s\S]*\} catch \{/,
-  'Expected corrupt mood localStorage to fail closed instead of crashing the Aura Board.',
+  'Expected corrupt mood localStorage to fail closed instead of crashing mood-driven features.',
 );
 
 assert.match(
@@ -27,40 +30,12 @@ assert.match(
   'Expected mood saves to reject malformed entries.',
 );
 
-assert.match(
-  moodCalendarSource,
-  /const getMoodTheme = \(value\?: string \| null\)(?:: MoodTheme)? => moodThemes\[normalizeMoodKey\(value\)\] \|\| moodThemes\.default;/,
-  'Expected Aura Board to use a fallback mood theme for unknown synced moods.',
-);
-
+// The Aura Board / Aura Rewind views were removed; the 'mood-calendar' and
+// 'aura-rewind' routes must no longer be registered.
 assert.doesNotMatch(
-  moodCalendarSource,
-  /moodThemes\[myMood\.mood\]\.emoji|moodThemes\[partnerMood\.mood\]\.emoji/,
-  'Aura Board must not directly dereference moodThemes for user-provided mood values.',
-);
-
-assert.match(
-  moodCalendarSource,
-  /const parseMoodDate = \(value: unknown\): Date \| null => \{[\s\S]*Number\.isFinite\(date\.getTime\(\)\)/,
-  'Expected Aura Board calendar math to ignore invalid timestamps.',
-);
-
-assert.match(
-  auraRewindSource,
-  /const getMoodWeight = \(value\?: string \| null\): number => moodWeights\[normalizeMoodKey\(value\)\] \?\? moodWeights\.default;/,
-  'Expected Aura Rewind to score unknown moods through a safe fallback.',
-);
-
-assert.match(
-  auraRewindSource,
-  /const myName = profile\.myName\?\.trim\(\) \|\| 'You';[\s\S]*const partnerName = profile\.partnerName\?\.trim\(\) \|\| 'Partner';/,
-  'Expected Aura Rewind to render sensible names when profile data is incomplete.',
-);
-
-assert.match(
-  auraRewindSource,
-  /const parseMoodDate = \(value: unknown\): Date \| null => \{[\s\S]*Number\.isFinite\(date\.getTime\(\)\)/,
-  'Expected Aura Rewind to ignore invalid timestamps.',
+  viewRegistrySource,
+  /'mood-calendar'|'aura-rewind'|MoodCalendar|AuraRewind/,
+  'Expected the removed Aura Board / Aura Rewind views to be unregistered.',
 );
 
 // The old CouplePet page has been fully removed (components/CouplePet.tsx

@@ -138,7 +138,7 @@ const parseInviteCodeFromUrl = (rawUrl: string): string | null => {
 const NOTIFICATION_VIEWS = new Set<ViewState>([
   'home', 'us', 'timeline', 'daily-moments', 'profile', 'add-memory',
   'weekly-recap', 'daily-video', 'open-when', 'surprises', 'time-capsule',
-  'mood-calendar', 'voice-notes', 'daily-drop',
+  'voice-notes', 'daily-drop',
 ]);
 
 const WhatsNew = React.lazy(() =>

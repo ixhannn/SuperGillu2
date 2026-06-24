@@ -772,7 +772,7 @@ export interface SystemMessage {
   seenAt?: string;
 }
 
-export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'countdowns' |'mood-calendar' | 'aura-rewind' | 'aura-signal' | 'bonsai-bloom' | 'coco-pet' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium' | 'our-story' | 'date-studio' | 'duet-journal' | 'depths' | 'love-missions' | 'heirlooms' | 'daily-drop';
+export type ViewState = 'home' | 'add-memory' | 'timeline' | 'special-dates' | 'notes' | 'open-when' | 'sync' | 'daily-moments' | 'dinner-decider' | 'profile' | 'quiet-mode' | 'countdowns' | 'aura-signal' | 'bonsai-bloom' | 'coco-pet' | 'us' | 'our-room' | 'canvas' | 'privacy-policy' | 'terms-of-service' | 'time-capsule' | 'surprises' | 'voice-notes' | 'private-space' | 'partner-intelligence' | 'daily-video' | 'weekly-recap' | 'storage-console' | 'premium' | 'our-story' | 'date-studio' | 'duet-journal' | 'depths' | 'love-missions' | 'heirlooms' | 'daily-drop';
 
 // ── Daily Video Moments (5-second clips → bi-weekly film) ───────────
 export interface DailyVideoClip {

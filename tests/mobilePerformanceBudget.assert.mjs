@@ -15,7 +15,6 @@ const secondaryPreloads = readPreloadArray('SECONDARY_NAV_PRELOADS');
 const idlePreloads = new Set([...corePreloads, ...secondaryPreloads]);
 
 for (const heavyView of [
-  'mood-calendar',
   'bonsai-bloom',
   'private-space',
   'time-capsule',
