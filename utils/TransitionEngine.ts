@@ -25,6 +25,20 @@ const E_SILK     = 'cubic-bezier(0.16, 1, 0.3, 1)';
 const E_STANDARD = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const E_EXIT     = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
+// Fluid spring (CSS linear() easing) — a damped spring sampled to 21 points, with
+// a small, refined overshoot-and-settle (peak ~1.037). This is the "alive" curve
+// a flat tween can't express: the page grows from the tapped tile, drifts just
+// past rest, then settles. Used for OPEN/CLOSE so the route motion reads like a
+// spring instead of a tween. It stays purely on transform + opacity, so it is
+// compositor-only; and being a sampled linear() ramp (not an overshoot bezier),
+// it satisfies the refined-curve motion guard.
+const E_SPRING   = 'linear(0,0.018,0.072,0.158,0.273,0.412,0.557,0.692,0.802,0.886,0.945,0.984,1.011,1.028,1.037,1.036,1.029,1.019,1.01,1.004,1)';
+
+// Close collapse — a gentle accelerate that lets the leaving page fall away
+// cleanly while the screen beneath settles in on the spring. No overshoot on the
+// thing being dismissed (a dismiss shouldn't spring back), just a soft start.
+const E_COLLAPSE = 'cubic-bezier(0.32, 0, 0.67, 0.25)';
+
 // ─── Gesture constants ─────────────────────────────────────────────────────────
 const CLAIM_PX    = 10;    // px before axis lock
 const EDGE_PX     = 28;    // left-edge zone that starts back gesture
@@ -68,20 +82,21 @@ function dirConfig(dir: EngineDirection, _W: number): DirConfig {
         inFrom: [ty('14px', 0.985),  '0'],
         outTo:  [ty('-10px', 1.008), '0'] };
     case 'push':
-      // OPEN: the new page BLOOMS into place — scales up from 94% + fades in,
-      // while the outgoing page (cloned on top) recedes to 105% + fades out.
-      // No sideways slide, no clip window that would expose the shared
-      // background; content morphs in place over the STILL background.
-      return { dur: T_PUSH, inEase: E_SILK, outEase: E_SILK,
+      // OPEN: the new page BLOOMS into place on the SPRING — scales up from 94%
+      // + fades in with the alive settle, while the outgoing page (cloned on top)
+      // recedes to 105% + fades out. No sideways slide, no clip window that would
+      // expose the shared background; content morphs in place over the STILL bg.
+      return { dur: 460, inEase: E_SPRING, outEase: E_SILK,
         inFrom: ['scale(0.94)', '0'],
         outTo:  ['scale(1.05)', '0'] };
     case 'pop':
-      // CLOSE: mirror of open — the leaving page (cloned on top) shrinks back to
-      // 95% + fades out while the screen beneath returns from 104% + fades in
-      // and settles. No sideways slide.
-      return { dur: 300, inEase: E_SILK, outEase: E_EXIT,
-        inFrom: ['scale(1.04)', '0'],
-        outTo:  ['scale(0.95)', '0'] };
+      // CLOSE: the leaving page (cloned on top) collapses back + fades out on the
+      // gentle accelerate (E_COLLAPSE — clean, no overshoot on a dismiss) while the
+      // screen beneath returns from 103% + fades in and SETTLES on the spring. The
+      // settle-in is what makes the close feel finished instead of abrupt.
+      return { dur: 340, inEase: E_SPRING, outEase: E_COLLAPSE,
+        inFrom: ['scale(1.03)', '0'],
+        outTo:  ['scale(0.93)', '0'] };
     case 'modal':
       return { dur: T_MODAL_OPEN,  inEase: E_SILK, outEase: E_STANDARD,
         inFrom: [ty('100%', 1),      '1'],
@@ -91,13 +106,17 @@ function dirConfig(dir: EngineDirection, _W: number): DirConfig {
         inFrom: [ty('-1.2%', 0.97),  '0.9'],
         outTo:  [ty('100%', 1),      '1'] };
     case 'expand':
-      // Tile-open bloom: identical to `push`, but _run sets transform-origin to
-      // the tapped tile's centre (--lior-open-x/y) so the new page grows OUT OF
-      // the card the finger touched. A subtle 94%→100% scale keeps the edge gap
-      // tiny so the shared background barely peeks during the bloom.
-      return { dur: T_PUSH, inEase: E_SILK, outEase: E_SILK,
-        inFrom: ['scale(0.94)', '0'],
-        outTo:  ['scale(1.05)', '0'] };
+      // Tile-open bloom — the headline morph. _run sets transform-origin to the
+      // tapped tile's centre (--lior-open-x/y) so the new page grows OUT OF the
+      // card the finger touched, and the SPRING gives it the alive grow-and-settle
+      // the flat tween lacked. Scale starts at 91% (a touch deeper than push, so
+      // the grow-from-tile reads) — the background recede (html[data-nav-depth])
+      // dims the stage behind during the bloom, so the small edge gap reads as the
+      // page lifting forward, not as a bare-background flash. Longer dur lets the
+      // spring's settle play out.
+      return { dur: 520, inEase: E_SPRING, outEase: E_SILK,
+        inFrom: ['scale(0.91)', '0'],
+        outTo:  ['scale(1.06)', '0'] };
   }
 }
 
