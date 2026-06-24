@@ -28,6 +28,11 @@ import {
     X,
 } from 'lucide-react';
 import { SupabaseService } from '../services/supabase';
+import {
+    isNativeGoogleSignInAvailable,
+    NativeGoogleSignInError,
+    signInWithNativeGoogle,
+} from '../services/nativeGoogleAuth';
 import { feedback } from '../utils/feedback';
 
 // ══════════════════════════════════════════════════════════════════════
@@ -52,6 +57,23 @@ const getEmailRedirectTo = (): string => {
     return isNative
         ? 'com.lior.app://auth/callback'
         : window.location.origin;
+};
+
+// Maps a native Google sign-in failure code to a calm, user-facing message.
+// 'cancelled' never reaches here (callers treat it as a silent no-op).
+const friendlyNativeGoogleError = (code: NativeGoogleSignInError['code']): string => {
+    switch (code) {
+        case 'not_configured':
+            return 'Google sign-in isn’t set up yet on this build.';
+        case 'no_account':
+            return 'No Google account available. Make sure you’re signed in to Google on this device, then try again.';
+        case 'no_id_token':
+            return 'Google didn’t return a sign-in token. Please try again.';
+        case 'supabase_error':
+            return 'Couldn’t finish signing in. Please try again in a moment.';
+        default:
+            return 'Google sign-in didn’t complete. Please try again.';
+    }
 };
 
 async function authProxy(type: 'login' | 'signup' | 'reset' | 'resend', email: string, password?: string) {
@@ -1151,6 +1173,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     const handleGoogle = async () => {
         feedback.tap();
         clearFeedback();
+        // Never start a Google account switch from the password-recovery form:
+        // it would replace the short-lived recovery session and skip the
+        // "set a new password" step. No-op in every normal flow.
+        if (recoveryModeRef.current) return;
 
         // Make sure the client is up before anything else — guards against
         // the user clicking Google before SupabaseService.init() resolved.
@@ -1164,14 +1190,42 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
 
         setLoading(true);
         try {
-            // Platform-aware redirect target:
-            //   • Web  → page origin (Supabase callback comes back here and
-            //     the PKCE code is auto-exchanged for a session).
-            //   • Capacitor (native) → custom URL scheme based on the app
-            //     bundle id. Android intent-filter + iOS URL types must be
-            //     registered for the scheme to deep-link back into the app.
             const isNative = typeof window !== 'undefined'
                 && Boolean((window as any).Capacitor?.isNativePlatform?.());
+
+            // ── NATIVE: OS-level Google account picker (no browser) ──────────
+            // Credential Manager shows the system account chooser IN the app,
+            // returns a signed ID token, and we exchange it for a Supabase
+            // session via signInWithIdToken — no system browser, no redirect,
+            // no deep link.
+            if (isNative && isNativeGoogleSignInAvailable()) {
+                try {
+                    await signInWithNativeGoogle();
+                    // Success → enter the app. onLogin is idempotent (the
+                    // onAuthStateChange 'SIGNED_IN' listener would also fire
+                    // it), so calling it here removes any single dependence on
+                    // that event. Leave loading=true: the unmount on entry
+                    // clears it, with no flash of the idle button.
+                    if (!recoveryModeRef.current) onLogin();
+                } catch (err) {
+                    const code = err instanceof NativeGoogleSignInError ? err.code : 'plugin_error';
+                    // User backing out of the picker is not an error — stay put.
+                    if (code !== 'cancelled') {
+                        setError(friendlyNativeGoogleError(code));
+                        feedback.error();
+                    }
+                    setLoading(false);
+                }
+                return;
+            }
+
+            // ── FALLBACK: browser OAuth redirect ─────────────────────────────
+            //   • Web → page origin (Supabase callback returns here and the PKCE
+            //     code is auto-exchanged for a session).
+            //   • Native without a configured web client id → custom URL scheme;
+            //     the deep-link listener in useEffect completes the exchange.
+            //     (Requires com.lior.app://auth/callback on the Supabase Redirect
+            //     URLs allow-list, else Supabase bounces to the Site URL.)
             const redirectTo = isNative
                 ? 'com.lior.app://auth/callback'
                 : window.location.origin;
@@ -1222,7 +1276,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
             // On web, Supabase has already triggered the redirect to
             // accounts.google.com. We leave loading=true because the page
             // navigates away.
-        } catch (err) {
+        } catch {
             setError('Could not start Google sign-in. Please check your connection.');
             feedback.error();
             setLoading(false);

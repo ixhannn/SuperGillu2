@@ -47,6 +47,18 @@ const config: CapacitorConfig = {
       smallIcon: 'ic_notification',
       iconColor: '#E91E8C',
     },
+    // Native Google Sign-In via @capgo/capacitor-social-login. Only the Google
+    // provider is bundled; Facebook is excluded so its SDK (and the
+    // com.google.android.gms.permission.AD_ID permission it drags in, which
+    // triggers a Play Console data-safety rejection) never lands in the APK.
+    SocialLogin: {
+      providers: {
+        google: true,
+        facebook: false,
+        apple: false,
+        twitter: false,
+      },
+    },
   },
 };
 
