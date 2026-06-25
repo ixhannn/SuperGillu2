@@ -975,6 +975,17 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     const reducedMotion = useReducedMotion();
     const { isConfigured } = getSupabaseAuthConfig();
 
+    // DIAGNOSTIC (temporary): surface the last native-Google sign-in outcome,
+    // even after a WebView reload, so "picked account → back to login, no error"
+    // tells us whether the token exchange failed (and why) or succeeded but the
+    // app failed to navigate. Remove once the cause is found.
+    useEffect(() => {
+        try {
+            const dbg = localStorage.getItem('lior_g_dbg');
+            if (dbg) setError(`google: ${dbg}`);
+        } catch { /* ignore */ }
+    }, []);
+
     useEffect(() => {
         if (rateLimitSecs <= 0) return;
         const id = setInterval(() => {
@@ -1183,6 +1194,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                 if (nativeGoogle.isNativeGoogleSignInAvailable()) {
                     try {
                         await nativeGoogle.signInWithNativeGoogle();
+                        // DIAGNOSTIC (temporary): record that the exchange
+                        // succeeded — survives a reload so we can tell whether
+                        // the failure is in the exchange or in navigation.
+                        try {
+                            const s = await SupabaseService.getSession();
+                            localStorage.setItem('lior_g_dbg', `OK session=${s?.user?.email ?? 'NONE'}`);
+                        } catch { /* ignore */ }
                         // Success → enter the app. onLogin is idempotent (the
                         // onAuthStateChange 'SIGNED_IN' listener would also fire
                         // it), so calling it here removes any single dependence
@@ -1193,9 +1211,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                         const code = err instanceof nativeGoogle.NativeGoogleSignInError
                             ? err.code
                             : 'plugin_error';
+                        const rawMsg = err instanceof Error ? err.message : String(err);
+                        // DIAGNOSTIC (temporary): persist + show the RAW error so
+                        // we can see exactly why sign-in failed on device.
+                        try { localStorage.setItem('lior_g_dbg', `ERR[${code}] ${rawMsg}`); } catch { /* ignore */ }
                         // User backing out of the picker is not an error — stay put.
                         if (code !== 'cancelled') {
-                            setError(nativeGoogle.friendlyNativeGoogleError(code));
+                            setError(`[${code}] ${rawMsg}`);
                             feedback.error();
                         }
                         setLoading(false);
