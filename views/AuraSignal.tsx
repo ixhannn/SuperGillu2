@@ -98,8 +98,6 @@ const SIGNAL_GROUPS: SignalGroup[] = [
 
 const SIGNALS: Signal[] = SIGNAL_GROUPS.flatMap((group) => group.signals);
 
-const GRAIN = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
-
 // One easing vocabulary — every beat speaks the same motion language.
 const GLIDE: [number, number, number, number] = [0.22, 1, 0.36, 1]; // entrances, washes, settles
 const LIFT: [number, number, number, number] = [0.16, 1, 0.3, 1];   // the release beats
@@ -114,12 +112,12 @@ const ORB_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 110px)';
 // Calm, near-neutral glow shown before a feeling is chosen.
 const GLOW_IDLE: [string, string, string] = ['#9aa3c8', '#5d63a0', '#33355f'];
 
-// A single soft glow that pools behind the content and slowly drifts. Two
-// analogous shades (light / base) of ONE colour family read as one cohesive
-// glow; the vignette contains it. Kept to two layers + modest blur for perf.
+// A single soft glow that pools behind the content and slowly drifts. ONE layer
+// (was two) + a gentler blur so a phone GPU re-composites just one screen-blended
+// pool per frame instead of two overlapping ones — the dominant on-device lag
+// source. Opacity/size are lifted slightly to keep the same luminosity solo.
 const GLOW_BLOBS = [
-    { ci: 0, cx: 50, cy: 60, size: 54, blur: 64, op: 0.62, dx: ['-6%', '7%', '-6%'], dy: ['4%', '-6%', '4%'], sc: [1, 1.12, 1], xDur: 22, yDur: 27, scDur: 19 },
-    { ci: 1, cx: 42, cy: 50, size: 44, blur: 56, op: 0.50, dx: ['7%', '-5%', '7%'], dy: ['-5%', '7%', '-5%'], sc: [1.06, 0.92, 1.06], xDur: 27, yDur: 32, scDur: 24 },
+    { ci: 0, cx: 50, cy: 58, size: 56, blur: 48, op: 0.72, dx: ['-6%', '7%', '-6%'], dy: ['4%', '-6%', '4%'], sc: [1, 1.12, 1], xDur: 22, yDur: 27, scDur: 19 },
 ] as const;
 
 // The living glow field. memo'd so a parent re-render (selection, send) never
@@ -163,9 +161,10 @@ const GlowField = memo(function GlowField({ signal, reduce }: { signal: Signal |
                 })}
             </motion.div>
 
-            {/* Vignette contains the glow as a pool; grain prevents banding */}
+            {/* Vignette contains the glow as a pool. (The SVG-turbulence grain
+                overlay was removed — its full-screen overlay-blend rasterization
+                was a continuous mobile-GPU cost for a near-imperceptible texture.) */}
             <div className="absolute inset-0" style={{ background: 'radial-gradient(116% 102% at 50% 54%, transparent 28%, rgba(4,4,7,0.55) 60%, #040406 88%)' }} />
-            <div className="absolute inset-0" style={{ opacity: 0.045, mixBlendMode: 'overlay', backgroundImage: GRAIN }} />
         </div>
     );
 });
@@ -314,8 +313,14 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
         rafRef.current = requestAnimationFrame(tick);
     };
 
-    const startCharge = () => {
+    const startCharge = (e: React.PointerEvent) => {
         if (!selected || sent || sentRef.current) return;
+        // Capture the pointer so a small finger drift off the 96px orb during the
+        // 850ms hold does NOT fire pointerleave and silently cancel the send. This
+        // is the core "I held it but nothing sent" bug on touch — made worse by
+        // whileTap shrinking the orb to scale 0.94 (a finger near the edge then
+        // falls outside the button). With capture, the orb keeps every move/up.
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* capture unsupported — degrade gracefully */ }
         feedback.tap();
         holdStartRef.current = performance.now();
         lastHapticRef.current = 0;
@@ -352,7 +357,7 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                     className="absolute left-1/2 pointer-events-none"
                     style={{
                         bottom: ORB_BOTTOM, width: '32rem', height: '32rem',
-                        borderRadius: '50%', mixBlendMode: 'screen', filter: 'blur(60px)',
+                        borderRadius: '50%', mixBlendMode: 'screen', filter: 'blur(44px)',
                         background: `radial-gradient(circle, ${activeSignal.color}, transparent 65%)`,
                         opacity: 0.1, transform: 'translateX(-50%) scale(0.6)',
                         willChange: 'opacity, transform',
@@ -473,28 +478,15 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                                             transition: 'border-color 0.5s ease, box-shadow 0.5s ease, background 0.5s ease',
                                         }}
                                     >
-                                        {/* Feeling-colour glow bleeding from behind the orb — only when selected */}
-                                        <motion.div
-                                            aria-hidden className="absolute pointer-events-none rounded-full"
-                                            style={{ left: '-12%', top: '50%', width: '62%', height: '230%', y: '-50%', background: `radial-gradient(circle, ${signal.color}, transparent 70%)`, filter: 'blur(30px)', mixBlendMode: 'screen' }}
-                                            animate={{ opacity: isSelected ? 0.55 : 0 }}
-                                            transition={{ duration: 0.5, ease: 'easeOut' }}
-                                        />
+                                        {/* (Removed for mobile-GPU perf: the per-card blur(30px) mix-blend-screen
+                                            "bleeding glow" rendered on every card, plus the infinite pulse ring +
+                                            orb scale on the selected one. Selection still reads clearly from the
+                                            card border, the glow box-shadow, and the check badge.) */}
                                         <div className="flex items-center gap-4 relative z-10">
                                             <span className="relative flex items-center justify-center flex-shrink-0" style={{ width: 46, height: 46 }}>
-                                                {isSelected && !reduce && (
-                                                    <motion.span
-                                                        aria-hidden className="absolute rounded-full"
-                                                        style={{ width: 46, height: 46, border: `1.5px solid ${signal.color}` }}
-                                                        animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-                                                        transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 0.4 }}
-                                                    />
-                                                )}
-                                                <motion.span
+                                                <span
                                                     aria-hidden className="relative rounded-full"
                                                     style={{ width: 40, height: 40, background: `radial-gradient(circle at 32% 28%, ${signal.palette[0]}, ${signal.color} 72%)`, boxShadow: `0 4px 18px ${signal.glow}, inset 0 1px 0 rgba(255,255,255,0.5)` }}
-                                                    animate={isSelected && !reduce ? { scale: [1, 1.07, 1] } : { scale: 1 }}
-                                                    transition={isSelected && !reduce ? { duration: 3.4, repeat: Infinity, ease: 'easeInOut', delay: 0.4 } : { duration: 0.3 }}
                                                 />
                                             </span>
                                             <div className="flex-1 min-w-0">
@@ -553,7 +545,6 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                             <motion.button
                                 onPointerDown={startCharge}
                                 onPointerUp={cancelCharge}
-                                onPointerLeave={cancelCharge}
                                 onPointerCancel={cancelCharge}
                                 onContextMenu={(e) => e.preventDefault()}
                                 whileTap={{ scale: 0.94 }}
