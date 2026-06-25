@@ -96,7 +96,24 @@ const CountUp: React.FC<{ value: number; className?: string; style?: React.CSSPr
         return () => controls.stop();
     }, [value, reduced]);
 
-    return <span className={className} style={style}>{display.toLocaleString()}</span>;
+    // tabular-nums + a width reserved on the FINAL value keep the number from
+    // growing/shifting as it ramps 0→value (and snapping at the 1,000 comma).
+    // text-align is inherited from each slide's container (numbers/streak =
+    // center, voices = left, dates = right), so the reserved box stays aligned.
+    return (
+        <span
+            className={className}
+            style={{
+                ...style,
+                fontVariantNumeric: 'tabular-nums',
+                fontFeatureSettings: '"tnum" 1',
+                display: 'inline-block',
+                minWidth: `${value.toLocaleString().length}ch`,
+            }}
+        >
+            {display.toLocaleString()}
+        </span>
+    );
 };
 
 /** Floating dust motes — deterministic per slide, CSS-animated, cheap. */

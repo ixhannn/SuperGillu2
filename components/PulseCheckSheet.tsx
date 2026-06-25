@@ -4,6 +4,7 @@ import { X, ChevronRight } from 'lucide-react';
 import { RelationshipSignals } from '../services/relationshipSignals';
 import { feedback } from '../utils/feedback';
 import { useSheetDismiss } from '../hooks/useSheetDismiss';
+import { useNativeShell } from '../hooks/useNativeShell';
 
 interface PulseCheckSheetProps {
   onComplete?: () => void;
@@ -26,6 +27,10 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
   const [isSubmitting, setIsSubmitting] = useState(false);
   const question = RelationshipSignals.getNextPulseQuestion();
   const { sheetDragProps, handleProps } = useSheetDismiss(() => onClose?.());
+  // Overlay keyboard mode does not resize the WebView; lift the bottom-anchored
+  // sheet above the IME so the textareas (note / gratitude) are never covered.
+  // useNativeShell seeds synchronously, so this is pixel-identical when closed.
+  const { keyboardOpen, keyboardHeight } = useNativeShell();
 
   const handleScoreSelect = useCallback((score: 1 | 2 | 3 | 4 | 5) => {
     feedback.tap();
@@ -72,14 +77,24 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.4)' }}
+      style={{
+        background: 'rgba(0,0,0,0.4)',
+        paddingBottom: keyboardOpen ? keyboardHeight : undefined,
+        transition: 'padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
+      {/* `layout` eases the panel's height between steps (score → note →
+          gratitude → done) so the bottom-anchored top edge no longer teleports
+          when a short step swaps for a tall one. The keyboard lift stays on the
+          CSS padding-bottom transition (F2.1): layout measures at commit, before
+          that transition progresses, so it never double-animates the lift. */}
       <motion.div
+        layout
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 350, layout: { type: 'spring', damping: 34, stiffness: 380 } }}
         className="w-full max-w-lg rounded-t-3xl overflow-hidden"
         style={{ background: 'var(--theme-bg-main)' }}
         {...sheetDragProps}

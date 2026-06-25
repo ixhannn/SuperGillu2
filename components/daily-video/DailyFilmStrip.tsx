@@ -104,14 +104,31 @@ interface FrameSlotProps {
     cycleReady: boolean;
 }
 
+// Warm thumbnail cache: resolved object URLs keyed by thumbnailId. Without it,
+// every FrameSlot remount seeds null and resolves the thumbnail in a post-paint
+// effect, so the shimmer pulse always paints first (a synchronized blink across
+// the strip). Seeding from this cache lets a previously-resolved cell paint its
+// frame on the first frame instead. URLs are intentionally never revoked — they
+// are reused across mounts (mirrors useLiorImage's mediaValueCache).
+const thumbUrlCache = new Map<string, string>();
+
 function FrameSlot({ clip, owner, cycleReady }: FrameSlotProps) {
-    const [thumb, setThumb] = useState<string | null>(null);
+    const [thumb, setThumb] = useState<string | null>(
+        () => (clip?.thumbnailId ? thumbUrlCache.get(clip.thumbnailId) ?? null : null),
+    );
 
     useEffect(() => {
         let cancelled = false;
         if (!clip) { setThumb(null); return; }
+        const cacheKey = clip.thumbnailId;
+        if (cacheKey && thumbUrlCache.has(cacheKey)) {
+            setThumb(thumbUrlCache.get(cacheKey)!);
+            return;
+        }
         VideoMomentsService.getThumbnailUrl(clip).then((url) => {
-            if (!cancelled) setThumb(url);
+            if (cancelled) return;
+            if (url && cacheKey) thumbUrlCache.set(cacheKey, url);
+            setThumb(url);
         });
         return () => { cancelled = true; };
     }, [clip?.id, clip?.thumbnailId]);

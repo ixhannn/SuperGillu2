@@ -101,6 +101,11 @@ export const OpenedLetterCard: React.FC<{
     onDelete: () => void;
 }> = ({ capsule, onRead, onDelete }) => {
     const { src: imageUrl, handleError } = useLiorMedia(capsule.imageId, capsule.image, capsule.storagePath);
+    // Reserve the thumbnail slot from a SYNCHRONOUS photo-metadata predicate (the
+    // same one SealedEnvelopeCard uses) — never the resolved URL. On a cold/evicted
+    // cache the box is still present on frame 1, so the title/message never slide
+    // rightward when the image resolves. Text-only letters get no box (pixel-identical).
+    const hasPhoto = !!(capsule.imageId || capsule.image || capsule.storagePath);
 
     return (
         <motion.div
@@ -118,14 +123,20 @@ export const OpenedLetterCard: React.FC<{
             style={{ background: GOLD.cardBg, border: GOLD.cardBorder }}
         >
             <div className="flex items-start gap-3.5">
-                {imageUrl && (
-                    <img
-                        src={imageUrl}
-                        alt=""
-                        onError={handleError}
-                        className="w-14 h-14 rounded-xl object-cover shrink-0"
-                        style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-                    />
+                {hasPhoto && (
+                    <div
+                        className="w-14 h-14 rounded-xl overflow-hidden shrink-0"
+                        style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)' }}
+                    >
+                        {imageUrl && (
+                            <img
+                                src={imageUrl}
+                                alt=""
+                                onError={handleError}
+                                className="w-full h-full object-cover"
+                            />
+                        )}
+                    </div>
                 )}
                 <div className="flex-1 min-w-0">
                     <h4 className="font-serif text-[15px] leading-tight" style={{ color: GOLD.textHigh }}>

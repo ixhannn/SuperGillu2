@@ -149,6 +149,33 @@ export const getDailyPrompt = async (ctx: DailyRitualContext): Promise<DailyProm
   return { date: entry.date, promptId: promptHash(entry.question), question: entry.question };
 };
 
+/**
+ * SYNCHRONOUS local baseline for today's pair — the same shape `getTodayPair`
+ * resolves to, computed with zero awaits from a `QuestionEntry` the caller
+ * already holds (via `StorageService.getTodayQuestion`). This lets the UI seed
+ * its first paint without the dynamic `import()` / cloud round-trip that
+ * otherwise leaves the card collapsed (`pair === null`) for a frame and pops it
+ * into the Home feed. The async `getTodayPair` only REFINES the seal state on
+ * top of this seed — it never changes the card's presence.
+ *
+ * `partnerAnswer` is gated on `revealed` (matching the cloud path) so the seed
+ * never carries a partner answer before the seal opens.
+ */
+export const getTodayPairLocal = (ctx: DailyRitualContext, entry: QuestionEntry): DailyPair => {
+  const mine = entry.answers?.[ctx.myName] ?? null;
+  const partner = entry.answers?.[ctx.partnerName] ?? null;
+  const revealed = Boolean(entry.revealedAt);
+  return {
+    date: entry.date,
+    promptId: promptHash(entry.question),
+    question: entry.question,
+    myAnswer: mine,
+    partnerAnswer: revealed ? partner : null,
+    revealed,
+    source: 'local',
+  };
+};
+
 interface CloudIdentity {
   client: SupabaseClient;
   userId: string;

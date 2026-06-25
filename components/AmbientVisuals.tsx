@@ -159,6 +159,11 @@ const AmbientVisualsImpl: React.FC<AmbientVisualsProps> = ({ paused = false }) =
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // Respect prefers-reduced-motion: stay on the static gradient fallback and
+    // never promote to the animated WebGL bokeh / morphing-glass scene. The CSS
+    // (@media prefers-reduced-motion) already freezes the wash/sheen layers; this
+    // gate stops the heavier WebGL layers from ever starting for that cohort.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     // Only skip the heavy WebGL ambient scene on genuinely low-power
     // hardware (≤4 cores / ≤4GB RAM / save-data). It must NOT be gated
     // by viewport width or "is native" — Lior is a mobile app and the

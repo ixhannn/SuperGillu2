@@ -408,16 +408,21 @@ const PostViewer: React.FC<{
                     <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none opacity-20" />
                 ) : mediaSrc ? (
                     <>
-                        {/* Blurred background */}
-                        <img
-                            src={mediaSrc}
-                            className="absolute inset-0 w-full h-full object-cover blur-3xl scale-110 opacity-40"
-                            alt=""
-                            aria-hidden="true"
-                            loading="lazy"
-                            decoding="async"
-                            onError={handleMediaError}
-                        />
+                        {/* Blurred background — photos only. An <img> cannot decode
+                            a video URL: it would never paint AND its onError would
+                            trip useLiorMedia into setSrc(null), blanking the whole
+                            viewer (incl. the real <video>) for remote R2 videos. */}
+                        {!isVideo && (
+                            <img
+                                src={mediaSrc}
+                                className="absolute inset-0 w-full h-full object-cover blur-3xl scale-110 opacity-40"
+                                alt=""
+                                aria-hidden="true"
+                                loading="lazy"
+                                decoding="async"
+                                onError={handleMediaError}
+                            />
+                        )}
                         {isVideo ? (
                             <video
                                 src={mediaSrc}

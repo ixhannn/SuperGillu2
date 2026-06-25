@@ -65,13 +65,14 @@ export const ConstellationCanvas: React.FC = () => {
       // rotation, URL-bar collapse) doesn't teleport the whole star field to
       // fresh random positions mid-animation. Skip on the first call (prev = 0 →
       // div-by-zero); the makeNormal() seed positions stand as-is then.
+      // ALL stars scale — including the two partner stars (isPartner 0/1) seeded
+      // at full innerWidth/Height — otherwise their centers (and the glowing
+      // thread between them) drift out of alignment with the rescaled field.
       if (prevW > 0 && prevH > 0) {
         const sx = W / prevW, sy = H / prevH;
         stars.forEach(s => {
-          if (s.isPartner === -1) {
-            s.ox *= sx;
-            s.oy *= sy;
-          }
+          s.ox *= sx;
+          s.oy *= sy;
         });
       }
     };

@@ -124,13 +124,26 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
         <AnimatePresence>
             {isOpen && (
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0, transition: { duration: 0.22 } }}
                     className="fixed inset-0 z-[200] flex items-end justify-center"
-                    style={{ backgroundColor: 'rgba(13,7,15,0.66)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
                     onClick={onClose}
                 >
+                    {/* Static 18px blur — opacity 1, never animated. Animating opacity
+                        over a full-viewport backdrop-filter makes the compositor
+                        re-resolve the blur every frame (the open/close stutter on
+                        mid/low-end WebViews). As a static sibling it resolves once and
+                        stays mounted through the exit, so it never snaps; only the
+                        cheap tint scrim below fades. */}
+                    <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+                    />
+                    <motion.div
+                        className="absolute inset-0 pointer-events-none"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0, transition: { duration: 0.22 } }}
+                        style={{ backgroundColor: 'rgba(13,7,15,0.66)' }}
+                    />
                     <motion.div
                         initial={{ y: '104%' }}
                         animate={{ y: 0 }}

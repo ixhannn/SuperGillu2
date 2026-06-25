@@ -29,7 +29,13 @@ const MOOD_MAP: Record<string, string> = { love: '😍', funny: '😂', party: '
 
 /* ─── Convert base64 video to blob URL for smooth playback ─── */
 function useVideoBlobUrl(src: string | null): string | null {
-    const [blobUrl, setBlobUrl] = useState<string | null>(null);
+    // Seed the pass-through case (blob:/http — the common cloud video) from the
+    // initializer so a warm video paints on frame 1 instead of blinking the
+    // Skeleton for a commit while the post-paint effect runs. Only data: URLs
+    // (which must be decoded into an owned blob) keep the async path.
+    const [blobUrl, setBlobUrl] = useState<string | null>(
+        () => (src && (src.startsWith('blob:') || src.startsWith('http')) ? src : null),
+    );
 
     useEffect(() => {
         if (!src) { setBlobUrl(null); return; }
@@ -206,19 +212,29 @@ const MemoryCardBase: React.FC<{
                 <Skeleton type="image" className="absolute inset-0 w-full h-full rounded-none" />
             ) : mediaUrl ? (
                 mediaKind === 'video' ? (
-                    <video
-                        src={mediaUrl}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        muted
-                        playsInline
-                        preload="metadata"
-                        onError={handleMediaError}
-                        style={{
-                            filter: memory.frame === 'film'
-                                ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
-                                : undefined,
-                        }}
-                    />
+                    <>
+                        {/* Warm fill behind the video so an undecoded first frame
+                            shows a faint theme tint, not UA-default black, against
+                            the cream card (mirrors DailyMoments grid). */}
+                        <div
+                            className="absolute inset-0"
+                            aria-hidden="true"
+                            style={{ background: 'rgba(var(--theme-particle-2-rgb), 0.08)' }}
+                        />
+                        <video
+                            src={mediaUrl}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                            onError={handleMediaError}
+                            style={{
+                                filter: memory.frame === 'film'
+                                    ? 'saturate(1.18) contrast(1.04) sepia(0.12) brightness(0.97)'
+                                    : undefined,
+                            }}
+                        />
+                    </>
                 ) : (
                     <motion.div
                         layoutId={`mem-hero-${memory.id}`}

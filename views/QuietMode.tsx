@@ -159,11 +159,23 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
     };
   }, []);
 
+  // The blurred photo bleed shown by AmbientBackdrop. We promote `currentImage`
+  // into it ONLY once the image has decoded (below), so on a photo→photo advance
+  // (where hasPhoto stays true and the wrapper's opacity crossfade never fires)
+  // the CSS background-image is never swapped to an undecoded/half-painted frame.
+  const [bleedImage, setBleedImage] = useState<string | null>(null);
+
   // Accent = sampled from the photo, or derived from the mood when there's none.
   useEffect(() => {
-    if (!currentImage) { setAccent(moodColor(currentMemory?.mood)); return; }
+    if (!currentImage) { setAccent(moodColor(currentMemory?.mood)); setBleedImage(null); return; }
     const id = currentMemory?.id;
-    if (id && accentCacheRef.current.has(id)) { setAccent(accentCacheRef.current.get(id)!); return; }
+    if (id && accentCacheRef.current.has(id)) {
+      setAccent(accentCacheRef.current.get(id)!);
+      // Accent was cached ⇒ this image was decoded on a prior pass ⇒ it is in the
+      // browser cache, so promoting it immediately won't show an undecoded frame.
+      setBleedImage(currentImage);
+      return;
+    }
     let cancelled = false;
     const img = new Image();
     // Only force a CORS fetch for true remote URLs; data:/blob: are same-origin.
@@ -173,8 +185,14 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
       const rgb = sampleFromImage(img);
       if (rgb) { if (id) accentCacheRef.current.set(id, rgb); setAccent(rgb); }
       // On failure keep the prior accent (don't snap to mood mid-show).
+      // Decoded now — safe to promote to the bleed without a half-painted frame.
+      setBleedImage(currentImage);
     };
-    img.onerror = () => {};
+    img.onerror = () => {
+      // Couldn't decode for sampling — still advance the bleed to the current
+      // slide (never leave a stale previous photo); CSS retries the load itself.
+      if (!cancelled) setBleedImage(currentImage);
+    };
     img.src = currentImage;
     return () => { cancelled = true; img.onload = null; img.onerror = null; img.src = ''; };
   }, [currentImage, currentMemory]);
@@ -343,7 +361,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
     >
       <style>{KEYFRAMES}</style>
 
-      <AmbientBackdrop accent={accent} image={currentImage} reduced={reduced} photoActive={phase === 'playing'} />
+      <AmbientBackdrop accent={accent} image={bleedImage} reduced={reduced} photoActive={phase === 'playing'} />
 
       {/* Screen-reader announcement of the current memory */}
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">

@@ -18,12 +18,14 @@ interface FilmPlayerProps {
 export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
+    const [posterUrl, setPosterUrl] = useState<string | undefined>(undefined);
     const [isPlaying, setIsPlaying] = useState(false);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
         let createdUrl: string | null = null;
+        let createdPoster: string | null = null;
         VideoMomentsService.getFilmVideoUrl(film).then((url) => {
             if (cancelled) {
                 if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
@@ -32,9 +34,21 @@ export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
             createdUrl = url;
             setVideoUrl(url);
         });
+        // A poster covers the gap between the URL resolving and the first frame
+        // decoding, so the cinema stage shows the film's own thumbnail instead of
+        // an empty dark gradient. Optional — a missing thumbnail is a no-op.
+        VideoMomentsService.getFilmThumbnailUrl(film).then((url) => {
+            if (cancelled) {
+                if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+                return;
+            }
+            createdPoster = url;
+            setPosterUrl(url ?? undefined);
+        }).catch(() => { /* poster is best-effort */ });
         return () => {
             cancelled = true;
             if (createdUrl && createdUrl.startsWith('blob:')) URL.revokeObjectURL(createdUrl);
+            if (createdPoster && createdPoster.startsWith('blob:')) URL.revokeObjectURL(createdPoster);
         };
     }, [film.id, film.videoId]);
 
@@ -58,6 +72,7 @@ export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
                     <video
                         ref={videoRef}
                         src={videoUrl}
+                        poster={posterUrl}
                         className="gdv-cinema__video"
                         playsInline
                         onLoadedData={() => setLoaded(true)}

@@ -182,6 +182,19 @@
       color: #E8EAFF;
     }
 
+    /* Same pre-bundle boot frame for the 7 light non-rose themes — otherwise a
+       cold launch by e.g. a teal/ocean user flashes the rose default until the
+       JS bundle evaluates and ThemeService paints the real gradient. Base color
+       = each theme's bgMain first stop (see services/theme.ts); dark text is
+       inherited from the html/body default, which is correct for all 7. */
+    html[data-theme="baby-pink"],  html[data-theme="baby-pink"] body  { background: #FFF4FC; background-color: #FFF4FC; }
+    html[data-theme="warm-beige"], html[data-theme="warm-beige"] body { background: #FEF8EE; background-color: #FEF8EE; }
+    html[data-theme="teal"],       html[data-theme="teal"] body       { background: #E2FBF7; background-color: #E2FBF7; }
+    html[data-theme="ocean"],      html[data-theme="ocean"] body      { background: #E8F2FF; background-color: #E8F2FF; }
+    html[data-theme="rosewood"],   html[data-theme="rosewood"] body   { background: #FEE8EF; background-color: #FEE8EF; }
+    html[data-theme="sunset"],     html[data-theme="sunset"] body     { background: #FFF4E8; background-color: #FFF4E8; }
+    html[data-theme="lavender"],   html[data-theme="lavender"] body   { background: #F6EEFF; background-color: #F6EEFF; }
+
     #root {
       width: 100%;
       height: 100%;

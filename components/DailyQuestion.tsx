@@ -4,7 +4,7 @@ import { Sparkles, Send, Flame, Bell, Lock } from 'lucide-react';
 import { CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { NotificationsService } from '../services/notifications';
-import { getRitualStreak, getTodayPair, submitAnswer, type DailyPair } from '../services/dailyRitual';
+import { getRitualStreak, getTodayPair, getTodayPairLocal, submitAnswer, type DailyPair } from '../services/dailyRitual';
 import { syncEventTarget } from '../services/sync';
 import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
@@ -43,12 +43,6 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     // Never trust profile.partnerName, which falls back to a phantom "Partner"
     // when unlinked. Gates the post-answer waiting copy below.
     const { isLinked } = useRelationship();
-    // Today's question + both answers, read through the sealed-reveal service.
-    // `pair.revealed`/`pair.partnerAnswer` are the gate: the service returns the
-    // partner answer ONLY when the seal has opened (server-side under the cloud
-    // RLS; locally when both answered). source==='local' is the pre-migration
-    // fallback and renders identically.
-    const [pair, setPair] = useState<DailyPair | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [draft, setDraft] = useState('');
     const [showNotifPrimer, setShowNotifPrimer] = useState(false);
@@ -67,6 +61,28 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
     const liveRevealRef = useRef(false);
 
     const ctx = { myName: profile.myName, partnerName: profile.partnerName };
+
+    // Today's question + both answers, read through the sealed-reveal service.
+    // `pair.revealed`/`pair.partnerAnswer` are the gate: the service returns the
+    // partner answer ONLY when the seal has opened (server-side under the cloud
+    // RLS; locally when both answered). source==='local' is the pre-migration
+    // fallback and renders identically.
+    //
+    // SEEDED SYNCHRONOUSLY from the local baseline so the card is present at full
+    // height on the first paint (no async-resolved pop-in shoving the Home feed
+    // down). The async effect below only refines the seal state. If today is
+    // already revealed at seed time (app reopened after both answered), pre-mark
+    // celebratedRef here so the one-shot reveal flourish never replays on mount.
+    const [pair, setPair] = useState<DailyPair | null>(() => {
+        try {
+            const entry = StorageService.getTodayQuestion(ctx.myName, ctx.partnerName);
+            const seed = getTodayPairLocal(ctx, entry);
+            if (seed.revealed) celebratedRef.current = seed.date;
+            return seed;
+        } catch {
+            return null;
+        }
+    });
 
     // Async best-effort load. getTodayPair never throws and degrades to the
     // local baseline, so a missing table / no .env still resolves a usable pair.

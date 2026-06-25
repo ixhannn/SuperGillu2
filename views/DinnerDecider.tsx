@@ -119,7 +119,16 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
     const load = () => setOptions(StorageService.getDinnerOptions());
     load();
 
-    const handleUpdate = () => load();
+    // Only reload on events that actually touch the dinner options (or a bulk
+    // init). Without this filter, ANY cross-table event (partner awake/asleep,
+    // a memory/profile sync, a theme write) re-ran load(); for default-options
+    // users getDinnerOptions() returns a fresh array each call, so the new
+    // `options` reference re-fired the winner-invalidation effect and wiped the
+    // spin result with no user action.
+    const handleUpdate = (e: Event) => {
+      const table = (e as CustomEvent).detail?.table;
+      if (!table || table === 'dinner_options' || table === 'init') load();
+    };
     storageEventTarget.addEventListener('storage-update', handleUpdate);
 
     // Listen for Sync signals (e.g., Partner spun the wheel)

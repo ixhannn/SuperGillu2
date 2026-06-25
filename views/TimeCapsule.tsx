@@ -437,13 +437,21 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
                 <AnimatePresence>
                     {showForm && (
                         <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0, transition: { duration: 0.22 } }}
                             className="fixed inset-0 z-[200] flex items-end justify-center"
-                            style={{ backgroundColor: 'rgba(13,7,15,0.66)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
                             onClick={() => setShowForm(false)}
                         >
+                            {/* Static 18px blur (opacity 1, never animated) so the
+                                compositor resolves the full-viewport backdrop-filter
+                                once instead of every frame of the open/close opacity
+                                ramp; only the tint scrim fades. */}
+                            <div className="absolute inset-0 pointer-events-none" style={{ backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }} />
+                            <motion.div
+                                className="absolute inset-0 pointer-events-none"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0, transition: { duration: 0.22 } }}
+                                style={{ backgroundColor: 'rgba(13,7,15,0.66)' }}
+                            />
                             <motion.div
                                 initial={{ y: '104%' }}
                                 animate={{ y: 0 }}
