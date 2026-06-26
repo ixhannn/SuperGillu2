@@ -74,6 +74,20 @@
 
         </activity>
 
+        <!-- Partner home-screen widget — shows the partner's latest photo +
+             "N days together". Data is pushed from the web layer via the
+             LiorWidget bridge plugin and rendered by PartnerWidgetProvider. -->
+        <receiver
+            android:name=".PartnerWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/partner_widget_info" />
+        </receiver>
+
         <!-- FCM defaults: when a remote push arrives while the app is
              backgrounded/killed, FirebaseMessagingService renders it natively.
              Without these it falls back to the launcher icon (renders as a white

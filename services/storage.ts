@@ -2404,6 +2404,10 @@ export const StorageService = {
         const activeUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID) || SupabaseService.getCachedUserId();
         backupCurrentProfileForAccount(activeUserId);
         backupCurrentContentForAccount(activeUserId);
+        // Wipe the native home-screen widget so an ex-partner's photo never lingers
+        // after sign-out. Dynamic import avoids a static cycle (widget.ts imports this
+        // module); the subsequent async signOut() gives it time to dispatch before reload.
+        void import('./widget').then((m) => m.WidgetService.clear()).catch(() => { /* best-effort */ });
     },
 
     /**
@@ -2417,6 +2421,14 @@ export const StorageService = {
      * the user on a deleted account.
      */
     purgeAllLocalData: async (): Promise<void> => {
+        // Clear the native home-screen widget BEFORE wiping storage so a deleted
+        // account leaves no ex-partner photo on the device. Awaited so it completes
+        // before the caller hard-reloads. Dynamic import avoids a static cycle.
+        try {
+            await import('./widget').then((m) => m.WidgetService.clear());
+        } catch {
+            // Best-effort — never block account deletion.
+        }
         try {
             localStorage.clear();
         } catch {

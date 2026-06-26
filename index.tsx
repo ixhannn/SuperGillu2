@@ -86,6 +86,10 @@ if (typeof document !== 'undefined') {
   // its reveal animation is interrupted (background/resume, throttling, etc.).
   startRevealSafety();
 
+  // Feed the native partner home-screen widget from the bootstrap chunk (keeps
+  // the native-only service out of the budgeted App bundle). No-op on web.
+  void import('./services/widget').then((m) => m.WidgetService.init());
+
   // iOS Safari only applies :active styles when a touchstart listener exists.
   // This used to be an inline ontouchstart="" on <body>, which the strict
   // production CSP (script-src 'self') would block.
