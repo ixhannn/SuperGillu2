@@ -232,6 +232,19 @@ label,
 [data-releasing="1"] {
   transition: transform 0.32s var(--lior-press-spring) !important;
   will-change: transform;
+}
+/* ── ACTIVATION POP — a control "settles with life" when it becomes selected ── */
+/* Driven globally by index.tsx watching aria-pressed/checked/selected + data-
+   active flips (only on the change, never on mount). Animates the INDEPENDENT
+   `scale` property — NOT transform — so it composes with the transform-based
+   press feedback instead of fighting it. Subtle (~5% peak): mymind, not flashy. */
+@keyframes lior-activate-pop {
+  0%   { scale: 1; }
+  38%  { scale: 1.05; }
+  100% { scale: 1; }
+}
+.lior-activate-pop {
+  animation: lior-activate-pop 0.34s var(--spring-gentle);
 } /* ── BREATHING CARDS ──────────────────────────────────────────────────────── */
 .breath-card {
   box-shadow: 0 var(--breath-shadow-y) var(--breath-shadow-blur)

@@ -90,6 +90,47 @@ if (typeof document !== 'undefined') {
   window.addEventListener('pointercancel', clearPressed, { passive: true });
   window.addEventListener('blur', clearPressed);
 
+  // ── ACTIVATION POP ──
+  // A subtle scale "settle" when a control becomes selected/active/checked —
+  // the mymind "every state change feels alive" touch. One global observer; no
+  // per-component wiring. Fires ONLY on the transition INTO an active value (a
+  // freshly-mounted active element never mutates, so it never pops). Skips
+  // framer/JS-driven elements (they carry an inline transform and animate their
+  // own scale) and anything that opted out of press feedback. Animates the
+  // independent `scale` property so it composes with the transform-based press.
+  const reduceMotionPop = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!reduceMotionPop && 'MutationObserver' in window) {
+    const ACTIVE_VALUES = new Set(['true', 'active', 'selected', 'on']);
+    const popObserver = new MutationObserver((records) => {
+      for (const r of records) {
+        if (!r.attributeName) continue;
+        const el = r.target as HTMLElement;
+        const next = el.getAttribute(r.attributeName);
+        if (
+          next && ACTIVE_VALUES.has(next) &&
+          !(r.oldValue && ACTIVE_VALUES.has(r.oldValue)) &&
+          !el.style.transform &&
+          !el.closest('[data-no-press]')
+        ) {
+          el.classList.remove('lior-activate-pop');
+          void el.offsetWidth; // restart the animation on a rapid re-toggle
+          el.classList.add('lior-activate-pop');
+        }
+      }
+    });
+    popObserver.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true,
+      attributeFilter: ['aria-pressed', 'aria-checked', 'aria-selected', 'data-active'],
+    });
+    document.body.addEventListener('animationend', (e) => {
+      if (e.animationName === 'lior-activate-pop') {
+        (e.target as HTMLElement).classList.remove('lior-activate-pop');
+      }
+    });
+  }
+
   // Boot the gesture system: [data-press] delegation + CSS injection
   initGlobalGestures();
 
