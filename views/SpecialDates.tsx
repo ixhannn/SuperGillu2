@@ -19,6 +19,7 @@ const staggerItem: Variants = {
 };
 import { ConfirmModal } from '../components/ConfirmModal';
 import { generateId } from '../utils/ids';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 interface SpecialDatesProps {
   setView: (view: ViewState) => void;
@@ -33,6 +34,9 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   // Dates hidden optimistically while their undo toast is open. The real
   // delete only happens in the toast's onExpire (deferred commit).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
+  // Grow the add-date panel OUT OF the header "+" button that opened it instead
+  // of popping from its own centre — matches the route/dialog open feel.
+  const { ref: addPanelRef, origin: addPanelOrigin } = useTapOrigin<HTMLDivElement>(showAdd);
 
   useEffect(() => {
     const load = () => setDates(StorageService.getSpecialDates());
@@ -132,7 +136,14 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
       />
 
       {showAdd && (
-        <div className="p-4 rounded-[2rem] shadow-sm mb-6 animate-pop-in glass-card">
+        <motion.div
+          ref={addPanelRef}
+          initial={{ scale: 0.88, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+          style={{ transformOrigin: addPanelOrigin }}
+          className="p-4 rounded-[2rem] shadow-sm mb-6 glass-card"
+        >
           <input
             type="text"
             placeholder="Title (e.g. Anniversary)"
@@ -155,7 +166,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
           >
             Save Date
           </button>
-        </div>
+        </motion.div>
       )}
 
       <motion.div className="space-y-4" variants={staggerContainer} initial="hidden" animate="show">

@@ -22,6 +22,7 @@ import { getDailyMomentCountdown, isDailyMomentExpired } from '../shared/mediaRe
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
 import { useSheetDismiss } from '../hooks/useSheetDismiss';
 import { useDraft } from '../hooks/useDraft';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -291,6 +292,10 @@ const PostViewer: React.FC<{
     // resizes the WebView, so this fixed full-screen portal is otherwise covered.
     const { keyboardOpen, keyboardHeight } = useNativeShell();
     const profile = StorageService.getCoupleProfile();
+    // Grow the viewer OUT OF the tapped photo grid cell instead of from screen
+    // centre — matches the route-open bloom. Falls back to centre under reduced
+    // motion / no fresh tap (handled inside the hook).
+    const { ref: viewerRef, origin: viewerOrigin } = useTapOrigin<HTMLDivElement>(true);
 
     // Load comments
     useEffect(() => {
@@ -360,13 +365,15 @@ const PostViewer: React.FC<{
 
     return ReactDOM.createPortal(
         <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            ref={viewerRef}
+            initial={{ opacity: 0, scale: 0.88 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.94 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
             className="fixed inset-0 z-[100] flex flex-col backdrop-blur-3xl animate-fade-in"
             style={{
                 background: 'color-mix(in srgb, var(--color-surface) 95%, transparent)',
+                transformOrigin: viewerOrigin,
                 // Shrink the frame above the keyboard so the comment input bar
                 // stays visible (overlay mode does not resize the WebView).
                 paddingBottom: keyboardOpen ? keyboardHeight : 0,

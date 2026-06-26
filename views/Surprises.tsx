@@ -18,6 +18,7 @@ import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 import '../styles/premium-hub.css';
 
 interface SurprisesViewProps {
@@ -306,6 +307,11 @@ interface CeremonyStageProps {
 const CeremonyStage: React.FC<CeremonyStageProps> = ({ surprise, onClose }) => {
     const [opened, setOpened] = useState(false);
     const reducedMotion = useReducedMotion();
+    // Grow the full-screen reveal OUT OF the parcel/card that was tapped instead
+    // of scaling from screen centre — matches the route-open bloom. Falls back to
+    // centre when the reveal fires programmatically (a due surprise with no fresh
+    // tap) or under reduced motion.
+    const { ref: stageRef, origin } = useTapOrigin<HTMLDivElement>(true);
 
     useEffect(() => {
         const handleBack = (e: Event) => { e.preventDefault(); onClose(); };
@@ -325,13 +331,16 @@ const CeremonyStage: React.FC<CeremonyStageProps> = ({ surprise, onClose }) => {
 
     return (
         <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            ref={stageRef}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.25 } }}
+            transition={GOLD_SOFT_SPRING}
             role="dialog"
             aria-modal="true"
             aria-label="A surprise for you"
             className="lp-stage fixed inset-0 z-[300] overflow-y-auto"
+            style={{ transformOrigin: origin }}
         >
             {/* Ambient layers */}
             <div className="lp-aurora">

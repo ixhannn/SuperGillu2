@@ -20,6 +20,7 @@ import { PullToRefresh } from '../components/PullToRefresh';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 interface MemoryTimelineProps {
     setView: (view: ViewState) => void;
@@ -75,6 +76,9 @@ function useVideoBlobUrl(src: string | null): string | null {
 /* ─── Surprise modal ─── */
 const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => void }) => {
     const { src: imageUrl, handleError: handleImgError } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
+    // Grow the card OUT OF the memory card that was tapped instead of from screen
+    // centre — matches the route/dialog bloom feel. Mounted only when open, so true.
+    const { ref: cardRef, origin } = useTapOrigin<HTMLDivElement>(true);
 
     return ReactDOM.createPortal(
         <motion.div
@@ -86,11 +90,13 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
             onClick={onClose}
         >
             <motion.div
+                ref={cardRef}
                 initial={{ scale: 0.88, opacity: 0, y: 20 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.92, opacity: 0 }}
                 transition={{ type: 'spring', stiffness: 340, damping: 28 }}
                 className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden"
+                style={{ transformOrigin: origin }}
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6 pb-7">
