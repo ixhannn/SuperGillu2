@@ -104,6 +104,10 @@ const viewRegistry: Record<ViewState, PreloadableViewComponent> = {
   'daily-drop': lazyNamedView(() => import('./DailyDrop'), 'DailyDrop'),
 };
 
+/** Every registered view id — lets callers derive preload lists without
+ *  maintaining (and shipping) a second literal array of view names. */
+export const ALL_VIEW_IDS = Object.keys(viewRegistry) as ViewState[];
+
 export const getViewComponent = (view: ViewState): PreloadableViewComponent =>
   viewRegistry[view] ?? viewRegistry.home;
 

@@ -53,7 +53,7 @@ import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
 import { scheduleIdleTask } from './utils/scheduler';
 import { toast } from './utils/toast';
-import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
+import { ALL_VIEW_IDS, getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
 import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
 import { ShareTargetService } from './services/shareTarget';
 import { PairingService } from './services/pairing';
@@ -160,38 +160,13 @@ const SECONDARY_NAV_PRELOADS: ViewState[] = [
   'dinner-decider',
 ];
 
-// Everything else the user can reach from Home / sub-navigation. Warmed last,
-// at the lowest priority, so by the time a tile is tapped its chunk is already
-// parsed and the navigation guard (App.tsx ~:576) commits instantly instead of
-// pausing on a cold fetch — which is what showed the blank 3D background through
-// the transparent page during the open. preloadViewModulesSequential yields to
-// main between each + drops the HEAVY_PREFETCH_VIEWS on low-end devices, so this
-// stays off the critical path. (Legal/dev pages are intentionally omitted.)
-const TERTIARY_NAV_PRELOADS: ViewState[] = [
-  'coco-pet',
-  'bonsai-bloom',
-  'private-space',
-  'premium',
-  'special-dates',
-  'notes',
-  'canvas',
-  'quiet-mode',
-  'aura-signal',
-  'voice-notes',
-  'surprises',
-  'time-capsule',
-  'duet-journal',
-  'date-studio',
-  'our-story',
-  'heirlooms',
-  'depths',
-  'love-missions',
-  'weekly-recap',
-  'daily-video',
-  'daily-drop',
-  'our-room',
-  'partner-intelligence',
-];
+// Everything the user can reach — just the whole registry, warmed last at the
+// lowest priority. Re-listing the views already warmed by the core/secondary
+// batches is a no-op (preload() caches its promise), and preloadViewModulesSequential
+// dedupes, yields to main between each, and drops HEAVY_PREFETCH_VIEWS on low-end
+// devices — so this stays off the critical path while guaranteeing every tile's
+// chunk is parsed before it's tapped (no cold-fetch pause, no blank-3D flash).
+const TERTIARY_NAV_PRELOADS: ViewState[] = ALL_VIEW_IDS;
 
 const T_KEEP_ALIVE_TAB = 240;
 

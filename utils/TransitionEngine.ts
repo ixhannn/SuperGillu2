@@ -201,6 +201,25 @@ class TransitionEngineImpl {
       if (de.dataset.liorOpenExpand === '1' && dir === 'push') effectiveDir = 'expand';
       if (de.dataset.liorOpenExpand) delete de.dataset.liorOpenExpand;
     }
+    // Bloom from the tapped CONTROL, not just bento tiles. Any push triggered by
+    // a recent tap (Sync pill, settings row, action button, …) grows out of the
+    // control the finger landed on. _captureTap already recorded its rect; publish
+    // its centre as the same --lior-open-x/y vars useTileOpen uses, then upgrade
+    // to expand so _run blooms from there. Fresh-tap only (<700ms): a programmatic
+    // nav with no recent tap stays a centre push.
+    if (
+      effectiveDir === 'push' &&
+      typeof document !== 'undefined' &&
+      this._tapOrigin != null &&
+      (performance.now() - this._tapOrigin.t) < 700
+    ) {
+      const o = this._tapOrigin;
+      const s = document.documentElement.style;
+      s.setProperty('--lior-open-x', `${Math.round(o.x + o.w / 2)}px`);
+      s.setProperty('--lior-open-y', `${Math.round(o.y + o.h / 2)}px`);
+      this._tapOrigin = null; // consume so a later programmatic nav re-centres
+      effectiveDir = 'expand';
+    }
 
     // Background depth recede: a page OPEN/CLOSE drops the whole ambient
     // background back (dim + slight scale) so the page comes forward — CSS reads

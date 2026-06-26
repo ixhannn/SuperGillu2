@@ -100,15 +100,14 @@ if (typeof document !== 'undefined') {
   // independent `scale` property so it composes with the transform-based press.
   const reduceMotionPop = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   if (!reduceMotionPop && 'MutationObserver' in window) {
-    const ACTIVE_VALUES = new Set(['true', 'active', 'selected', 'on']);
-    const popObserver = new MutationObserver((records) => {
+    // aria-pressed is the only selection-state attribute the app actually uses
+    // (aria-selected/checked: 0 sites) — watching just it keeps the hot path lean.
+    new MutationObserver((records) => {
       for (const r of records) {
-        if (!r.attributeName) continue;
         const el = r.target as HTMLElement;
-        const next = el.getAttribute(r.attributeName);
         if (
-          next && ACTIVE_VALUES.has(next) &&
-          !(r.oldValue && ACTIVE_VALUES.has(r.oldValue)) &&
+          el.getAttribute('aria-pressed') === 'true' &&
+          r.oldValue !== 'true' &&
           !el.style.transform &&
           !el.closest('[data-no-press]')
         ) {
@@ -117,12 +116,11 @@ if (typeof document !== 'undefined') {
           el.classList.add('lior-activate-pop');
         }
       }
-    });
-    popObserver.observe(document.body, {
+    }).observe(document.body, {
       subtree: true,
       attributes: true,
       attributeOldValue: true,
-      attributeFilter: ['aria-pressed', 'aria-checked', 'aria-selected', 'data-active'],
+      attributeFilter: ['aria-pressed'],
     });
     document.body.addEventListener('animationend', (e) => {
       if (e.animationName === 'lior-activate-pop') {
