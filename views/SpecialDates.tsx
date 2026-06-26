@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Heart, Calendar } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
-import { motion, type Variants } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { feedback } from '../utils/feedback';
@@ -18,6 +18,7 @@ const staggerItem: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const } }
 };
 import { ConfirmModal } from '../components/ConfirmModal';
+import { listRemoveExit } from '../utils/motion';
 import { generateId } from '../utils/ids';
 import { useTapOrigin } from '../hooks/useTapOrigin';
 
@@ -188,12 +189,15 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                 </button>
              </div>
         )}
+        <AnimatePresence mode="popLayout" initial={false}>
         {visibleDates.map((item, index) => {
             const { count, label } = getDaysText(item.date);
             return (
               <motion.div
                 key={item.id}
+                layout
                 variants={staggerItem}
+                exit={listRemoveExit}
                 className="relative overflow-hidden rounded-3xl"
               >
                 {/* Delete zone behind card */}
@@ -230,6 +234,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
               </motion.div>
             );
         })}
+        </AnimatePresence>
       </motion.div>
 
       <ConfirmModal

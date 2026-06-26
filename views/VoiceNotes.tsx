@@ -19,6 +19,7 @@ import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { listRemoveExit } from '../utils/motion';
 
 interface VoiceNotesViewProps {
     setView: (view: ViewState) => void;
@@ -196,7 +197,7 @@ const VoiceNoteCard: React.FC<{
             layout
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, x: -80, transition: { duration: 0.2 } }}
+            exit={listRemoveExit}
             transition={{ delay: index * 0.04, type: 'spring', stiffness: 500, damping: 32 }}
             className="relative"
         >
@@ -601,7 +602,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                                 <GoldSectionHeader label="Kept moments" className="mt-9 mb-4" />
                             </motion.div>
                             <div className="flex flex-col gap-3">
-                                <AnimatePresence mode="popLayout">
+                                <AnimatePresence mode="popLayout" initial={false}>
                                     {notes.map((note, i) => (
                                         <VoiceNoteCard key={note.id} note={note} onDelete={handleDelete} index={i} />
                                     ))}

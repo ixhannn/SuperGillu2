@@ -7,6 +7,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { listRemoveExit } from '../utils/motion';
 
 const staggerContainer: Variants = {
   hidden: {},
@@ -451,19 +452,21 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
               initial="hidden"
               animate="show"
             >
-              {options.map((opt, i) => (
-                <motion.div key={opt.id} layout variants={staggerItem} className="dd-chip">
-                  <span className="dd-chip-dot" style={{ background: `color-mix(in srgb, var(--clay) 30%, ${accentTint(i)} 70%)` }} />
-                  <span className="dd-chip-text">{opt.text}</span>
-                  <button
-                    onClick={() => handleDelete(opt.id)}
-                    aria-label={`Delete ${opt.text}`}
-                    className="dd-chip-del"
-                  >
-                    <X size={15} strokeWidth={2.6} />
-                  </button>
-                </motion.div>
-              ))}
+              <AnimatePresence mode="popLayout" initial={false}>
+                {options.map((opt, i) => (
+                  <motion.div key={opt.id} layout variants={staggerItem} exit={listRemoveExit} className="dd-chip">
+                    <span className="dd-chip-dot" style={{ background: `color-mix(in srgb, var(--clay) 30%, ${accentTint(i)} 70%)` }} />
+                    <span className="dd-chip-text">{opt.text}</span>
+                    <button
+                      onClick={() => handleDelete(opt.id)}
+                      aria-label={`Delete ${opt.text}`}
+                      className="dd-chip-del"
+                    >
+                      <X size={15} strokeWidth={2.6} />
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </motion.div>
           ) : (
             <div className="dd-empty animate-fade-in">

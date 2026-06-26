@@ -21,6 +21,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { PrivacyLock, PIN_LENGTH } from '../services/privacyLock';
 import { feedback } from '../utils/feedback';
 import { useTapOrigin } from '../hooks/useTapOrigin';
+import { listRemoveExit } from '../utils/motion';
 import { PrivateSpaceItem, PrivateSpaceItemKind, ViewState } from '../types';
 
 interface PrivateSpaceProps {
@@ -676,6 +677,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                     </div>
                 ) : (
                     <motion.div className="grid grid-cols-2 gap-3">
+                        <AnimatePresence mode="popLayout" initial={false}>
                         {filteredItems.map((item, index) => {
                             const isPhoto = item.kind === 'photo';
                             const isVideo = item.kind === 'video';
@@ -686,8 +688,10 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                             return (
                                 <motion.button
                                     key={item.id}
+                                    layout
                                     initial={{ opacity: 0, y: 14 }}
                                     animate={{ opacity: 1, y: 0 }}
+                                    exit={listRemoveExit}
                                     transition={{ type: 'spring', stiffness: 300, damping: 26, delay: Math.min(index * 0.025, 0.18) }}
                                     whileTap={{ scale: 0.965 }}
                                     onClick={() => setSelected(item)}
@@ -759,6 +763,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                                 </motion.button>
                             );
                         })}
+                        </AnimatePresence>
                     </motion.div>
                 )}
             </main>

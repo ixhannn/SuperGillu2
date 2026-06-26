@@ -8,6 +8,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { Envelope, ViewState } from '../types';
 import { feedback } from '../utils/feedback';
 import { generateId } from '../utils/ids';
+import { listRemoveExit } from '../utils/motion';
 import { useDraft } from '../hooks/useDraft';
 
 const staggerContainer: Variants = {
@@ -87,6 +88,7 @@ const EnvelopeCard: React.FC<{
     <motion.article
       layout
       variants={staggerItem}
+      exit={listRemoveExit}
       role="button"
       tabIndex={0}
       onClick={handleOpen}
@@ -347,14 +349,16 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
 
         {envelopes.length > 0 ? (
           <motion.div className="space-y-3.5" variants={staggerContainer} initial="hidden" animate="show">
-            {envelopes.map((envelope) => (
-              <EnvelopeCard
-                key={envelope.id}
-                envelope={envelope}
-                onOpen={openEnvelope}
-                onDelete={handleDelete}
-              />
-            ))}
+            <AnimatePresence mode="popLayout" initial={false}>
+              {envelopes.map((envelope) => (
+                <EnvelopeCard
+                  key={envelope.id}
+                  envelope={envelope}
+                  onOpen={openEnvelope}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </AnimatePresence>
           </motion.div>
         ) : (
           <motion.section

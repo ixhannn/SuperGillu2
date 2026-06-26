@@ -19,6 +19,7 @@ import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
 import { useTapOrigin } from '../hooks/useTapOrigin';
+import { listRemoveExit } from '../utils/motion';
 import '../styles/premium-hub.css';
 
 interface SurprisesViewProps {
@@ -145,6 +146,7 @@ const SealedCard: React.FC<SurpriseCardProps> = ({ surprise, onDelete }) => (
         layout
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
+        exit={listRemoveExit}
         transition={GOLD_SOFT_SPRING}
         className="relative overflow-hidden rounded-[1.6rem]"
         style={{
@@ -199,6 +201,7 @@ const OpenedCard: React.FC<SurpriseCardProps> = ({ surprise, onDelete }) => (
         layout
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
+        exit={listRemoveExit}
         transition={GOLD_SOFT_SPRING}
         className="flex items-start gap-3.5 rounded-[1.4rem] p-4"
         style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
@@ -887,9 +890,11 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
                     <motion.div variants={goldRise}>
                         <GoldSectionHeader label="Sealed & waiting" className="mt-7 mb-4" />
                         <div className="flex flex-col gap-3">
-                            {upcoming.map((s) => (
-                                <SealedCard key={s.id} surprise={s} onDelete={handleDelete} />
-                            ))}
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                {upcoming.map((s) => (
+                                    <SealedCard key={s.id} surprise={s} onDelete={handleDelete} />
+                                ))}
+                            </AnimatePresence>
                         </div>
                     </motion.div>
                 )}
@@ -898,9 +903,11 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
                     <motion.div variants={goldRise}>
                         <GoldSectionHeader label="Opened" className="mt-9 mb-4" />
                         <div className="flex flex-col gap-2.5">
-                            {delivered.map((s) => (
-                                <OpenedCard key={s.id} surprise={s} onDelete={handleDelete} />
-                            ))}
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                {delivered.map((s) => (
+                                    <OpenedCard key={s.id} surprise={s} onDelete={handleDelete} />
+                                ))}
+                            </AnimatePresence>
                         </div>
                     </motion.div>
                 )}

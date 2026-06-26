@@ -14,7 +14,7 @@ import { SkeletonReveal } from '../components/SkeletonReveal';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
-import { springSmooth } from '../utils/motion';
+import { springSmooth, listRemoveExit } from '../utils/motion';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PremiumModal, type PremiumFeatureContext } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
@@ -205,7 +205,7 @@ const PhotoGridItem = React.memo(({
     photo: DailyPhoto;
     onOpen: (photo: DailyPhoto) => void;
 }) => (
-    <motion.div variants={PHOTO_GRID_ITEM_VARIANTS}>
+    <motion.div layout variants={PHOTO_GRID_ITEM_VARIANTS} exit={listRemoveExit}>
         <PhotoCard photo={photo} onOpen={onOpen} />
     </motion.div>
 ));
@@ -814,9 +814,11 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
                         animate="show"
                         variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
                     >
-                        {photos.map(p => (
-                            <PhotoGridItem key={p.id} photo={p} onOpen={openPhoto} />
-                        ))}
+                        <AnimatePresence mode="popLayout" initial={false}>
+                            {photos.map(p => (
+                                <PhotoGridItem key={p.id} photo={p} onOpen={openPhoto} />
+                            ))}
+                        </AnimatePresence>
                     </motion.div>
                 ) : (
                     <div className="flex flex-col items-center justify-center py-24">

@@ -106,6 +106,17 @@ export const scrimVariants: Variants = {
   visible: { opacity: 1, transition: { duration: DUR_MODAL } },
 };
 
+// ── List-item removal — "shrink into nothing" ───────────────────────────────
+// Pair with <AnimatePresence mode="popLayout"> + `layout` on each list item so a
+// deleted row scales toward its centre and fades while the rows below slide up
+// (FLIP transforms — GPU-cheap) to close the gap, instead of an item blinking
+// out. Accelerate-out, no overshoot. Compositor-only (scale + opacity).
+export const listRemoveExit = {
+  opacity: 0,
+  scale: 0.5,
+  transition: { duration: 0.3, ease: EASE_EXIT },
+} as const;
+
 // ── Adaptive stagger step ─────────────────────────────────────────────────────
 // Long lists must not take 2s to fully reveal. Clamps the total reveal window
 // to ~480ms regardless of N (a 30-item Timeline reveals in ~480ms, not 2s).

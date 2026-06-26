@@ -4,6 +4,7 @@ import { CalendarDays, Camera, Trash2 } from 'lucide-react';
 import { GOLD, GOLD_PRESS_SPRING, goldRise } from '../GoldKit';
 import { ACCENT, CountdownRing, EnvelopeFlap, WaxSeal, formatDate, progressFor, sunrisesAway } from './SealKit';
 import { useLiorMedia } from '../../../hooks/useLiorImage';
+import { listRemoveExit } from '../../../utils/motion';
 import type { TimeCapsule } from '../../../types';
 
 /* ── Sealed / ready envelope card ───────────────────────────────────── */
@@ -24,7 +25,7 @@ export const SealedEnvelopeCard: React.FC<SealedEnvelopeCardProps> = ({ capsule,
         <motion.div
             layout
             variants={goldRise}
-            exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
+            exit={listRemoveExit}
             whileTap={{ scale: 0.97 }}
             transition={GOLD_PRESS_SPRING}
             onClick={onTap}
@@ -111,7 +112,7 @@ export const OpenedLetterCard: React.FC<{
         <motion.div
             layout
             variants={goldRise}
-            exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
+            exit={listRemoveExit}
             whileTap={{ scale: 0.97 }}
             transition={GOLD_PRESS_SPRING}
             onClick={onRead}

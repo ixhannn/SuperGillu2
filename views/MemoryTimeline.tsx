@@ -8,7 +8,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService } from '../services/sync';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
-import { springSmooth, springSnappy } from '../utils/motion';
+import { springSmooth, springSnappy, listRemoveExit } from '../utils/motion';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { useViewerGestures } from '../hooks/useViewerGestures';
 import { useLongPress } from '../hooks/useLongPress';
@@ -191,9 +191,10 @@ const MemoryCardBase: React.FC<{
     const animateEntrance = index < 9;
     return (
         <motion.div
+            layout
             initial={animateEntrance ? { opacity: 0, y: 10 } : false}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+            exit={listRemoveExit}
             transition={{ duration: 0.22, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => { feedback.light(); onOpen(memory); }}
             {...longPress}
@@ -1682,8 +1683,8 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                             />
 
                                             {/* Featured polaroid — chapter centerpiece */}
-                                            <AnimatePresence initial={false}>
-                                                <div className="mb-4 px-1">
+                                            <div className="mb-4 px-1">
+                                                <AnimatePresence mode="popLayout" initial={false}>
                                                     <MemoryCard
                                                         key={featured.id}
                                                         memory={featured}
@@ -1694,13 +1695,13 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                         onDelete={requestDelete}
                                                         onLongPress={handleCardLongPress}
                                                     />
-                                                </div>
-                                            </AnimatePresence>
+                                                </AnimatePresence>
+                                            </div>
 
                                             {/* Scrapbook grid — alternating tilts */}
                                             {rest.length > 0 && (
                                                 <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-1">
-                                                    <AnimatePresence initial={false}>
+                                                    <AnimatePresence mode="popLayout" initial={false}>
                                                         {rest.map((m, i) => (
                                                             <MemoryCard
                                                                 key={m.id}
