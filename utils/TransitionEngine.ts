@@ -173,6 +173,20 @@ class TransitionEngineImpl {
   /** Hot-swap container when the DOM element changes (e.g. re-mount). */
   setContainer(container: HTMLElement): void { this._c = container; }
 
+  /**
+   * The last-tapped control's rect (captured by _captureTap), if fresh — lets
+   * in-place overlays (dialogs, detail viewers) grow OUT OF the control that
+   * opened them, the same way route opens now bloom from the tapped tile/button.
+   * Non-consuming (several overlays may read one tap); freshness-guarded so a
+   * stale tap never anchors an unrelated later surface.
+   */
+  peekTapOrigin(maxAgeMs = 1500): { x: number; y: number; w: number; h: number } | null {
+    const o = this._tapOrigin;
+    return o && (performance.now() - o.t) < maxAgeMs
+      ? { x: o.x, y: o.y, w: o.w, h: o.h }
+      : null;
+  }
+
   /** Stash the tapped tile's geometry; the next 'expand' navigation morphs from it. */
   setMorphOrigin(origin: MorphOrigin): void { this._morphOrigin = origin; }
 

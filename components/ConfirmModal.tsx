@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle } from 'lucide-react';
 import { feedback } from '../utils/feedback';
 import { Haptics } from '../services/haptics';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 interface ConfirmModalProps {
     isOpen: boolean;
@@ -27,6 +28,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     onCancel
 }) => {
     const openedAtRef = React.useRef(0);
+    // Grow the dialog OUT OF the control that opened it (the trash/delete button,
+    // etc.) instead of from screen centre — matches the route open feel.
+    const { ref: dialogRef, origin } = useTapOrigin<HTMLDivElement>(isOpen);
 
     React.useEffect(() => {
         if (!isOpen) return;
@@ -60,15 +64,16 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     }}
                 >
                     <motion.div
-                        initial={{ scale: 0.92, opacity: 0, y: 12 }}
+                        ref={dialogRef}
+                        initial={{ scale: 0.86, opacity: 0, y: 8 }}
                         animate={{ scale: 1, opacity: 1, y: 0 }}
-                        exit={{ scale: 1.02, opacity: 0, y: 8 }}
+                        exit={{ scale: 0.94, opacity: 0, y: 6 }}
                         transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
                         role="dialog"
                         aria-modal="true"
                         aria-label={title}
                         className="bg-white/95 w-full max-w-[340px] p-8 shadow-float relative overflow-hidden"
-                        style={{ borderRadius: 'var(--radius-xl)' }}
+                        style={{ borderRadius: 'var(--radius-xl)', transformOrigin: origin }}
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Subtle top decoration */}
