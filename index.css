@@ -39,6 +39,12 @@
   --spring-bounce: var(--spring-snappy);
   --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
   --spring-gentle: cubic-bezier(0.25, 0.8, 0.25, 1);
+  /* Press-release spring — a SAMPLED linear() damped spring with a whisper of
+     overshoot (peak ~1.075 normalised; on a 0.96→1 press that's ~0.3% past rest:
+     felt, never the cheap 1.56 jitter that was removed above). This is the
+     mymind-grade "every tap springs back to life" curve, applied to the global
+     press-release (data-releasing) so every tappable surface settles with it. */
+  --lior-press-spring: linear(0, 0.09, 0.27, 0.49, 0.69, 0.84, 0.95, 1.02, 1.06, 1.075, 1.07, 1.05, 1.03, 1.013, 1.003, 1);
   --elastic-out: var(--spring-snappy);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quart: cubic-bezier(
@@ -214,8 +220,18 @@ label,
   overflow: visible;
 } /* ── PRESSING STATE — scale hint for [data-press] delegation ─────────────── */ /* attachPress also writes this directly via style, so this is belt-and-suspenders. */
 [data-pressing="true"] {
-  transform: scale(0.97);
-  transition: transform 0ms; /* instant on press, spring handles the release */
+  transform: scale(0.965);
+  transition: transform 0ms; /* instant on press; data-releasing springs the release */
+}
+/* ── PRESS RELEASE — the mymind spring-back ───────────────────────────────── */
+/* On pointer-up, index.tsx removes data-pressing and stamps data-releasing on
+   the (plain, CSS-driven) element for ~320ms, so the scale(0.965)→1 return
+   plays on the refined press-spring instead of snapping flat. !important so it
+   authoritatively owns the release on .spring-press too; framer/JS-driven
+   elements (inline transform) are skipped by index.tsx and keep their own. */
+[data-releasing="1"] {
+  transition: transform 0.32s var(--lior-press-spring) !important;
+  will-change: transform;
 } /* ── BREATHING CARDS ──────────────────────────────────────────────────────── */
 .breath-card {
   box-shadow: 0 var(--breath-shadow-y) var(--breath-shadow-blur)

@@ -39,7 +39,17 @@ if (typeof document !== 'undefined') {
   let startY = 0;
   const clearPressed = () => {
     if (!pressedEl) return;
-    delete pressedEl.dataset.pressing;
+    const el = pressedEl;
+    delete el.dataset.pressing;
+    // Spring the press back to life (the mymind release): stamp data-releasing
+    // so the scale→1 return plays on --lior-press-spring instead of snapping
+    // flat. ONLY for plain, CSS-driven surfaces — an element with an inline
+    // transform is framer/JS-controlled and owns its own release, and a CSS
+    // transition would fight its per-frame transform writes. Self-clears.
+    if (!el.style.transform) {
+      el.dataset.releasing = '1';
+      window.setTimeout(() => { if (el.dataset.releasing === '1') delete el.dataset.releasing; }, 340);
+    }
     pressedEl = null;
     activePointerId = null;
   };
@@ -62,6 +72,7 @@ if (typeof document !== 'undefined') {
         const rect = interactive.getBoundingClientRect();
         if (vw > 0 && vh > 0 && rect.width >= vw * 0.96 && rect.height >= vh * 0.8) return;
         clearPressed();
+        delete interactive.dataset.releasing; // cancel any in-flight spring-back
         interactive.dataset.pressing = 'true';
         pressedEl = interactive;
         activePointerId = e.pointerId;
