@@ -1114,6 +1114,16 @@ const scrubPairFieldsFromStorageKey = (rawKey: string): void => {
     } catch { /* ignore */ }
 };
 
+// Stable reference for the empty-state dinner menu. Returning a fresh array
+// literal on every getDinnerOptions() call allocated a new reference each time,
+// so any cross-table storage-update made DinnerDecider's [options] effect see a
+// "changed" menu and wipe the spin winner (render-stability C2.1). Frozen so a
+// caller can never mutate the shared default.
+const DEFAULT_DINNER_OPTIONS: DinnerOption[] = Object.freeze([
+    Object.freeze({ id: '1', text: 'Pizza 🍕' }),
+    Object.freeze({ id: '2', text: 'Sushi 🍣' }),
+]) as DinnerOption[];
+
 export const StorageService = {
     isInitialized: false,
     isPersisted: false,
@@ -1962,7 +1972,7 @@ export const StorageService = {
         notifyUpdate({ source: 'user', action: 'delete', table: 'envelopes', id });
     },
 
-    getDinnerOptions: () => DATA_CACHE.dinnerOptions.length ? DATA_CACHE.dinnerOptions : [{ id: '1', text: 'Pizza 🍕' }, { id: '2', text: 'Sushi 🍣' }],
+    getDinnerOptions: () => DATA_CACHE.dinnerOptions.length ? DATA_CACHE.dinnerOptions : DEFAULT_DINNER_OPTIONS,
     saveDinnerOption: (o: DinnerOption) => StorageService._saveInternal('dinnerOptions', CACHE_KEYS.DINNER_OPTIONS, o, undefined, 'dinner_options'),
     deleteDinnerOption: async (id: string) => {
         DATA_CACHE.dinnerOptions = DATA_CACHE.dinnerOptions.filter(o => o.id !== id);

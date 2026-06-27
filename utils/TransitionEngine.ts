@@ -32,7 +32,27 @@ const E_EXIT     = 'cubic-bezier(0.4, 0, 0.2, 1)';
 // spring instead of a tween. It stays purely on transform + opacity, so it is
 // compositor-only; and being a sampled linear() ramp (not an overshoot bezier),
 // it satisfies the refined-curve motion guard.
-const E_SPRING   = 'linear(0,0.018,0.072,0.158,0.273,0.412,0.557,0.692,0.802,0.886,0.945,0.984,1.011,1.028,1.037,1.036,1.029,1.019,1.01,1.004,1)';
+const E_SPRING_LINEAR = 'linear(0,0.018,0.072,0.158,0.273,0.412,0.557,0.692,0.802,0.886,0.945,0.984,1.011,1.028,1.037,1.036,1.029,1.019,1.01,1.004,1)';
+
+// CSS linear() easing only shipped in Chromium 126 (mid-2024). Navigation runs in
+// Android System WebView, which can lag well behind on un-updated devices; there,
+// an unsupported linear() value is silently ignored and the transition falls back
+// to the UA default 'ease' — the spring's settle is lost and route open/close
+// reads flat. Feature-detect once at module load (testing the exact multi-stop
+// value, so a partial impl that rejects it also degrades) and fall back to the
+// app's premium silk decelerate (E_SILK, already used for tab/modal) rather than
+// bare 'ease'. Modern WebViews — the vast majority — keep the full spring.
+const supportsLinearEasing = (): boolean => {
+  try {
+    return typeof CSS !== 'undefined'
+      && typeof CSS.supports === 'function'
+      && CSS.supports('transition-timing-function', E_SPRING_LINEAR);
+  } catch {
+    return false;
+  }
+};
+
+const E_SPRING = supportsLinearEasing() ? E_SPRING_LINEAR : E_SILK;
 
 // Close collapse — a gentle accelerate that lets the leaving page fall away
 // cleanly while the screen beneath settles in on the spring. No overshoot on the
