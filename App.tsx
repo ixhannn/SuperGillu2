@@ -46,7 +46,7 @@ import { DiagnosticsService } from './services/diagnostics';
 import { remoteErrorSink } from './services/errorSink';
 import { FrameHealthService } from './services/frameHealth';
 import { NotificationsService } from './services/notifications';
-import { AnimatePresence, motion } from 'framer-motion'; // Added for AuraSignalReceiver
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'; // Added for AuraSignalReceiver
 import { AppLaunchOverlay } from './components/AppLaunchOverlay';
 import { DevPanel } from './components/DevPanel';
 import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
@@ -1326,7 +1326,7 @@ const App = () => {
                   </ViewTransition>
                 </Suspense>
               </Layout>
-              <AuraSignalReceiver />
+              <AuraSignalReceiver setView={navigateTo} />
               <AnimatePresence>
                 {showLaunchOverlay && <AppLaunchOverlay />}
               </AnimatePresence>
@@ -1427,74 +1427,94 @@ const App = () => {
   );
 };
 
-const AuraSignalReceiver = () => {
+const AuraSignalReceiver = ({ setView }: { setView: (view: ViewState) => void }) => {
+  const reduce = useReducedMotion() ?? false;
   const [incoming, setIncoming] = useState<{ id?: string, color: string, title: string, subtitle?: string, message: string, afterglow?: string } | null>(null);
-  // Auras already shown (or dismissed) this session, keyed by their inbox id.
-  // Without this guard, an aura also persisted to the offline inbox re-pops on
-  // every storage-update — the realtime overlay carries no id, so dismissing it
-  // never removes the persisted missedAuras entry, and checkInbox re-shows it.
+  // Auras already shown (or dismissed) this session, keyed by the id now threaded
+  // end-to-end across BOTH delivery paths (realtime broadcast + the offline-inbox
+  // twin synced via couple_profile). One id ⇒ the same logical aura can never
+  // double-pop, and dismiss() can purge the persisted twin.
   const shownIds = useRef<Set<string>>(new Set());
-
-  // Check Offine Inbox on mount and storage updates
-  useEffect(() => {
-    const checkInbox = () => {
-      const profile = StorageService.getCoupleProfile();
-      if (profile?.missedAuras && profile.missedAuras.length > 0) {
-        // Find signals targeted at ME that haven't already been shown/dismissed.
-        const myMissed = profile.missedAuras.filter(
-          (a: any) => a.target === profile.myName && !shownIds.current.has(a.id),
-        );
-        if (myMissed.length > 0) {
-          const latest = myMissed[myMissed.length - 1]; // Show most recent
-          shownIds.current.add(latest.id);
-          setIncoming({ ...latest.payload, id: latest.id });
-        }
-      }
-    };
-    checkInbox();
-    storageEventTarget.addEventListener('storage-update', checkInbox);
-    return () => storageEventTarget.removeEventListener('storage-update', checkInbox);
-  }, []);
+  const dismissTimerRef = useRef<number | null>(null);
+  const dismissBtnRef = useRef<HTMLButtonElement>(null);
+  const prevFocusRef = useRef<Element | null>(null);
 
   // Clearing the overlay also removes any matching persisted inbox entry so it
-  // can't re-surface. Uses the functional setState form to read the current
-  // overlay without capturing a stale `incoming` — keeps the callback stable so
-  // the realtime auto-dismiss timeout can route through it safely.
+  // can't re-surface. Functional setState reads the live overlay without a stale
+  // `incoming` capture, keeping the callback stable.
   const dismiss = useCallback(() => {
+    if (dismissTimerRef.current) { window.clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
     setIncoming((current) => {
-      if (current?.id) {
-        StorageService.removeMissedAura(current.id);
-      }
+      if (current?.id) StorageService.removeMissedAura(current.id);
       return null;
     });
   }, []);
 
-  // Auto-dismiss timer for an incoming aura — tracked so a second aura within 6s
-  // can't dismiss the newer one early, and so it's cleared on unmount.
-  const dismissTimerRef = useRef<number | null>(null);
+  // Auto-dismiss timer — longer than the old 6s so the message + afterglow can
+  // actually be read. Re-armed per aura; cleared on dismiss/unmount.
+  const armAutoDismiss = useCallback(() => {
+    if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = window.setTimeout(() => dismiss(), 9000);
+  }, [dismiss]);
 
-  // Handle Realtime incoming signals
+  // "Send one back" — close the overlay and open Pulse so the loop is reciprocal.
+  const sendOneBack = useCallback(() => {
+    dismiss();
+    setView('aura-signal');
+  }, [dismiss, setView]);
+
+  // Check the offline inbox on mount + storage updates.
+  useEffect(() => {
+    const checkInbox = () => {
+      const profile = StorageService.getCoupleProfile();
+      if (!profile?.missedAuras || profile.missedAuras.length === 0) return;
+      const myId = StorageService.getMyUserId();
+      // Signals addressed to ME — by stable user id, with a name fallback for
+      // legacy/in-flight entries — not already shown/dismissed this session.
+      const myMissed = profile.missedAuras.filter(
+        (a: any) => (a.target === myId || a.target === profile.myName) && !shownIds.current.has(a.id),
+      );
+      if (myMissed.length === 0) return;
+      // Oldest first (array preserves send order) so earlier missed feelings are
+      // not stranded. Don't clobber one already on screen — the
+      // storage-update→checkInbox loop advances the queue as each is dismissed.
+      setIncoming((current) => {
+        if (current) return current;
+        const next = myMissed[0];
+        shownIds.current.add(next.id);
+        armAutoDismiss();
+        return { ...next.payload, id: next.id };
+      });
+    };
+    checkInbox();
+    storageEventTarget.addEventListener('storage-update', checkInbox);
+    return () => storageEventTarget.removeEventListener('storage-update', checkInbox);
+  }, [armAutoDismiss]);
+
+  // Handle realtime incoming signals.
   useEffect(() => {
     const handleSignal = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail.signalType === 'AURA_SIGNAL' && detail.payload) {
-        setIncoming(detail.payload);
-        Haptics.doubleBeat();
-        Audio.play('heartbeat');
-
-        if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-           new Notification('Lior - New Pulse', {
-               body: detail.payload.title,
-               icon: '/notification-icon.png',
-               silent: false
-           });
-        }
-
-        // Route auto-dismiss through dismiss() so a persisted inbox entry is
-        // cleared too (when the realtime payload carries an id); the shownIds
-        // guard covers the no-id realtime race where only the synced entry has one.
-        if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
-        dismissTimerRef.current = window.setTimeout(() => dismiss(), 6000); // Auto-dismiss
+      if (detail.signalType !== 'AURA_SIGNAL' || !detail.payload) return;
+      const p = detail.payload;
+      // Ignore our own echo (only matters if broadcast self-delivery is enabled).
+      const myId = StorageService.getMyUserId();
+      if (p.from && myId && p.from === myId) return;
+      // Dedupe across the realtime + inbox paths via the shared id.
+      if (p.id) {
+        if (shownIds.current.has(p.id)) return;
+        shownIds.current.add(p.id);
+      }
+      setIncoming(p);
+      Haptics.doubleBeat();
+      Audio.play('heartbeat');
+      armAutoDismiss();
+      // OS notification when backgrounded — routed through NotificationsService so
+      // native (Capacitor LocalNotifications) and web both work; the raw web
+      // Notification API was a no-op inside the native WebView.
+      if (document.hidden) {
+        const body = p.message ? `${p.title} — ${p.message}` : p.title;
+        void NotificationsService.fireImmediate('Lior — New Pulse', body, 'aura');
       }
     };
     syncEventTarget.addEventListener('signal-received', handleSignal);
@@ -1502,55 +1522,98 @@ const AuraSignalReceiver = () => {
       syncEventTarget.removeEventListener('signal-received', handleSignal);
       if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
     };
-  }, [dismiss]);
+  }, [armAutoDismiss]);
+
+  // Modal a11y: Escape to close, move focus into the dialog on open, restore it
+  // on close. (A lightweight pattern — no full focus-trap, which would fight the
+  // AnimatePresence/auto-dismiss lifecycle.)
+  useEffect(() => {
+    if (!incoming) return;
+    prevFocusRef.current = document.activeElement;
+    const focusId = window.setTimeout(() => dismissBtnRef.current?.focus(), 60);
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') dismiss(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusId);
+      window.removeEventListener('keydown', onKey);
+      const prev = prevFocusRef.current as HTMLElement | null;
+      if (prev && typeof prev.focus === 'function') prev.focus();
+    };
+  }, [incoming, dismiss]);
 
   return (
     <AnimatePresence>
       {incoming && (
         <motion.div
+          key={incoming.id ?? incoming.title}
+          role="alertdialog"
+          aria-modal="true"
+          aria-label={`A Pulse from your partner: ${incoming.title}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, scale: 1.1 }}
           onClick={dismiss}
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-8 backdrop-blur-xl"
-          style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-8"
+          style={{ backgroundColor: 'rgba(0,0,0,0.88)' }}
         >
-          {/* Incoming Aura Liquid Background */}
-          <motion.div 
-            animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute inset-0 z-0 opacity-50 blur-[100px] pointer-events-none mix-blend-screen"
-            style={{ backgroundColor: incoming.color }}
+          {/* Incoming aura glow — normal blend over the near-black scrim (NOT
+              mix-blend-screen, which forced a per-frame backdrop re-read = the
+              GPU flicker class already fixed on the sender). Static under reduced
+              motion. backdrop-blur dropped: the solid 0.88 scrim already hides the
+              page, so the blur was pure GPU cost. */}
+          <motion.div
+            aria-hidden
+            animate={reduce ? { opacity: 0.6 } : { scale: [1, 1.18, 1], opacity: [0.55, 0.8, 0.55] }}
+            transition={reduce ? { duration: 0 } : { duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute inset-0 z-0 blur-[100px] pointer-events-none"
+            style={{ backgroundColor: incoming.color, opacity: 0.6 }}
           />
 
-          <motion.div 
+          <motion.div
             initial={{ y: 50, scale: 0.9 }}
             animate={{ y: 0, scale: 1 }}
             exit={{ y: -50, scale: 0.9 }}
-            transition={{ type: 'spring', damping: 20 }}
+            transition={reduce ? { duration: 0.2 } : { type: 'spring', damping: 20 }}
+            onClick={(e) => e.stopPropagation()}
             className="relative z-10 flex flex-col items-center text-center max-w-sm"
           >
-            <div 
-              className="w-24 h-24 rounded-full mb-8 shadow-2xl animate-pulse-slow"
+            <div
+              className="w-24 h-24 rounded-full mb-8 shadow-2xl"
               style={{ backgroundColor: incoming.color, boxShadow: `0 0 80px ${incoming.color}` }}
             />
             <h2 className="font-serif font-bold text-4xl text-white mb-3 tracking-tight drop-shadow-md">
               {incoming.title}
             </h2>
             {incoming.subtitle && (
-              <p className="text-sm uppercase tracking-[0.28em] text-white/45 font-semibold mb-3">
+              <p className="text-sm uppercase tracking-[0.28em] text-white/60 font-semibold mb-3">
                 {incoming.subtitle}
               </p>
             )}
-            <p className="text-lg text-white/80 font-medium leading-relaxed drop-shadow-sm">
+            <p className="text-lg text-white/85 font-medium leading-relaxed drop-shadow-sm">
               {incoming.message}
             </p>
             {incoming.afterglow && (
-              <p className="mt-5 text-sm text-white/60 font-medium max-w-xs">
+              <p className="mt-5 text-sm text-white/65 font-medium max-w-xs">
                 {incoming.afterglow}
               </p>
             )}
-            <p className="mt-12 text-xs text-white/40 uppercase tracking-widest font-bold">Tap to dismiss</p>
+            <div className="mt-10 flex items-center gap-3">
+              <button
+                onClick={sendOneBack}
+                className="px-5 py-2.5 rounded-full text-sm font-bold text-white"
+                style={{ background: incoming.color, boxShadow: `0 8px 24px -6px ${incoming.color}` }}
+              >
+                Send one back
+              </button>
+              <button
+                ref={dismissBtnRef}
+                onClick={dismiss}
+                className="px-5 py-2.5 rounded-full text-sm font-bold text-white/75"
+                style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.18)' }}
+              >
+                Dismiss
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

@@ -2979,17 +2979,31 @@ export const StorageService = {
         StorageService.saveCoupleProfile(profile, source);
     },
 
-    addMissedAura: (payload: any) => {
+    addMissedAura: (payload: any, id: string = crypto.randomUUID()): string => {
         const profile = StorageService.getCoupleProfile();
         const msg = {
-            id: crypto.randomUUID(),
-            target: profile.partnerName,
+            id,
+            // Address by the partner's STABLE user id, not their display name —
+            // names are editable per-device and stripped from the synced profile,
+            // so name-addressing silently mis-delivered. Fall back to the name for
+            // un-paired/legacy profiles so the target is never an empty string.
+            target: profile.partnerUserId || profile.partnerName,
             timestamp: new Date().toISOString(),
-            payload
+            payload,
         };
+        // Bound the array on the SHARED couple_profile singleton: drop entries
+        // older than 48h and keep only the most recent 20, so an undelivered
+        // backlog can't grow the synced row without limit. TTL is monotonic, so
+        // every device converges (safe under the last-writer-wins merge).
+        const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+        const kept = (profile.missedAuras ?? []).filter((a: any) => {
+            const t = a?.timestamp ? Date.parse(a.timestamp) : NaN;
+            return Number.isFinite(t) ? t >= cutoff : true; // keep legacy/no-timestamp entries
+        });
         // Reassign (not nested push) so the cached profile array is never mutated.
-        profile.missedAuras = [...(profile.missedAuras ?? []), msg];
+        profile.missedAuras = [...kept, msg].slice(-20);
         StorageService.saveCoupleProfile(profile);
+        return id;
     },
 
     removeMissedAura: (id: string) => {

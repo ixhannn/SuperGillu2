@@ -103,6 +103,8 @@ const KIND_VIEWS: Record<NotificationSchedule['kind'], string> = {
   'cycle-3-days': 'us',
   'daily-ritual': 'home',
   'daily-drop': 'daily-drop',
+  // A received Pulse (aura) — tapping the OS notification opens the Pulse screen.
+  aura: 'aura-signal',
 };
 
 type NativePermissionState = 'granted' | 'denied' | 'prompt';
