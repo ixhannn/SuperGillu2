@@ -1145,6 +1145,17 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         setMode('landing');
         setSubmitAttempted(false);
         setPendingConfirmEmail(null);
+        // Reset transient sub-state so reopening the sheet never shows a stale
+        // "forgot/reset password" view or a leftover rate-limit/resend countdown.
+        // Also release the recovery gate: leaving it set with the sheet closed
+        // would block onLogin() forever (the SIGNED_IN listener is gated on it).
+        setIsForgotPassword(false);
+        setRecoveryMode(false);
+        recoveryModeRef.current = false;
+        setNewPassword('');
+        setConfirmPassword('');
+        setRateLimitSecs(0);
+        setResendCooldownSecs(0);
         clearFeedback();
     };
 
@@ -1183,38 +1194,34 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                 if (nativeGoogle.isNativeGoogleSignInAvailable()) {
                     try {
                         await nativeGoogle.signInWithNativeGoogle();
-                        // DIAGNOSTIC (temporary): record that the exchange
-                        // succeeded — survives a reload so we can tell whether
-                        // the failure is in the exchange or in navigation.
-                        try {
-                            const s = await SupabaseService.getSession();
-                            localStorage.setItem('lior_g_dbg', `OK session=${s?.user?.email ?? 'NONE'}`);
-                        } catch { /* ignore */ }
                         // Success → enter the app. onLogin is idempotent (the
                         // onAuthStateChange 'SIGNED_IN' listener would also fire
                         // it), so calling it here removes any single dependence
                         // on that event. Leave loading=true: the unmount on
                         // entry clears it, with no flash of the idle button.
                         if (!recoveryModeRef.current) onLogin();
+                        return;
                     } catch (err) {
                         const code = err instanceof nativeGoogle.NativeGoogleSignInError
                             ? err.code
                             : 'plugin_error';
-                        const rawMsg = err instanceof Error ? err.message : String(err);
-                        // DIAGNOSTIC (temporary): persist + show the RAW error so
-                        // we can see exactly why sign-in failed on device.
-                        try { localStorage.setItem('lior_g_dbg', `ERR[${code}] ${rawMsg}`); } catch { /* ignore */ }
-                        // User backing out of the picker is not an error — stay put.
-                        if (code !== 'cancelled') {
-                            setError(`[${code}] ${rawMsg}`);
-                            feedback.error();
+                        // The user backing out of the picker is deliberate — stop
+                        // here, don't shove them into a browser they didn't ask for.
+                        if (code === 'cancelled') {
+                            setLoading(false);
+                            return;
                         }
-                        setLoading(false);
+                        // Any OTHER native failure (plugin/SHA-1/no-account/token/
+                        // timeout) must NOT dead-end the user. Log it for field
+                        // diagnosis, then fall through to the browser OAuth flow
+                        // below — that path doesn't depend on the native plugin or
+                        // the app's signing SHA-1, so it still works when the
+                        // native picker can't. Email/password remains the floor.
+                        console.error('[google-signin] native path failed, falling back to browser:', code, err);
                     }
-                    return;
+                    // fall through to the browser OAuth fallback ↓
                 }
-                // Native but no web client id configured → fall through to the
-                // browser OAuth redirect below.
+                // Native unavailable (no web client id) also falls through ↓
             }
 
             // ── FALLBACK: browser OAuth redirect ─────────────────────────────
@@ -1265,7 +1272,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                 // is what Google requires. After the user completes auth
                 // there, Supabase redirects to com.lior.app://auth/callback
                 // and the deep-link listener in useEffect takes over.
-                window.open(data.url, '_blank');
+                const win = window.open(data.url, '_blank');
+                if (!win) {
+                    // Popup blocked / not routed by the shell — surface a way
+                    // forward instead of stranding the user with nothing.
+                    setError('Couldn’t open the browser for Google sign-in. Please use email and password below.');
+                    feedback.error();
+                }
                 // Reset loading — the user is now in the browser; when
                 // they return via deep link the listener handles the rest.
                 setLoading(false);
@@ -1407,6 +1420,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         feedback.tap();
         setPendingConfirmEmail(null);
         setResendCooldownSecs(0);
+        setPassword('');
+        setSubmitAttempted(false);
+        clearFeedback();
+    };
+
+    // Escape hatch from the "Check your email" panel: if the address is actually
+    // already registered, Supabase sends NO confirmation mail (enumeration
+    // protection), so the user would otherwise wait forever. Drop them onto the
+    // sign-in form with the same email pre-filled.
+    const handleAlreadyRegistered = () => {
+        feedback.tap();
+        setPendingConfirmEmail(null);
+        setResendCooldownSecs(0);
+        setIsSignUp(false);
+        setIsForgotPassword(false);
         setPassword('');
         setSubmitAttempted(false);
         clearFeedback();
@@ -1703,7 +1731,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                         exit={{ opacity: 0, transition: { duration: 0.22 } }}
                         className="fixed inset-0 z-50 flex items-center justify-center p-5"
                         style={{ background: 'rgba(8,2,8,0.72)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
-                        onClick={closeForm}
+                        // Don't allow a backdrop tap to dismiss during password
+                        // recovery — the X is hidden then too, so the user must
+                        // finish setting a new password rather than getting
+                        // stranded on the landing screen with a gated session.
+                        onClick={recoveryMode ? undefined : closeForm}
                     >
                         {/* Centered floating glass card — replaces the prior
                             bottom-sheet pattern. Reads as a premium product
@@ -1937,6 +1969,20 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                                 style={{ color: 'rgba(255,210,230,0.85)' }}
                                             >
                                                 Use a different email
+                                            </button>
+                                        </div>
+
+                                        <div
+                                            className="relative mt-2 flex items-center justify-center text-[11.5px]"
+                                            style={{ color: 'rgba(255,232,242,0.42)' }}
+                                        >
+                                            Already have an account?
+                                            <button
+                                                onClick={handleAlreadyRegistered}
+                                                className="ml-1.5 font-medium hover:opacity-80"
+                                                style={{ color: 'rgba(255,210,230,0.85)' }}
+                                            >
+                                                Sign in instead
                                             </button>
                                         </div>
                                     </div>

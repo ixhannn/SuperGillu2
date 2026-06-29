@@ -227,7 +227,22 @@ export const SupabaseService = {
 
         sessionLookupPromise = (async () => {
             try {
-                const { data, error } = await SupabaseService.client!.auth.getSession();
+                // Bound the read. getSession() can trigger a token refresh, and a
+                // stalled refresh on a flaky/cold network would otherwise hang app
+                // launch on the loading screen forever (initializeApp awaits this).
+                // On timeout, degrade to "no session" → the login screen, which is
+                // always recoverable: the session is still persisted in storage and
+                // resolves on the next launch with a working connection.
+                const SESSION_READ_TIMEOUT_MS = 8000;
+                const result = await Promise.race([
+                    SupabaseService.client!.auth.getSession(),
+                    new Promise<null>((resolve) => setTimeout(() => resolve(null), SESSION_READ_TIMEOUT_MS)),
+                ]);
+                if (!result) {
+                    console.warn('Supabase session lookup timed out; treating as no session.');
+                    return null;
+                }
+                const { data, error } = result;
                 if (error) return null;
                 return data.session ?? null;
             } catch (e) {
