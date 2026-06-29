@@ -33,7 +33,7 @@ const TOTAL         = BOKEH_COUNT + SPARKLE_COUNT;
 // makes the page's backdrop-filter glass ABOVE this full-screen canvas
 // re-resolve its blur, so rendering 30x/s instead of up to 120x/s cuts that
 // (the Home lag) ~4x. Refresh-rate-independent: 33ms gate = ~30fps on any panel.
-const RENDER_MIN_INTERVAL_MS = 1000 / 30;
+const RENDER_MIN_INTERVAL_MS = 1000 / 24;
 
 const PRESETS: Record<ParticlePreset, {
   bokehColors: string[];
