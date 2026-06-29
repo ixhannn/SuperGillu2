@@ -193,6 +193,20 @@ class TransitionEngineImpl {
   /** Hot-swap container when the DOM element changes (e.g. re-mount). */
   setContainer(container: HTMLElement): void { this._c = container; }
 
+  /**
+   * The last-tapped control's rect (captured by _captureTap), if fresh — lets
+   * in-place overlays (dialogs, detail viewers) grow OUT OF the control that
+   * opened them, the same way route opens now bloom from the tapped tile/button.
+   * Non-consuming (several overlays may read one tap); freshness-guarded so a
+   * stale tap never anchors an unrelated later surface.
+   */
+  peekTapOrigin(maxAgeMs = 1500): { x: number; y: number; w: number; h: number } | null {
+    const o = this._tapOrigin;
+    return o && (performance.now() - o.t) < maxAgeMs
+      ? { x: o.x, y: o.y, w: o.w, h: o.h }
+      : null;
+  }
+
   /** Stash the tapped tile's geometry; the next 'expand' navigation morphs from it. */
   setMorphOrigin(origin: MorphOrigin): void { this._morphOrigin = origin; }
 
@@ -220,6 +234,25 @@ class TransitionEngineImpl {
       const de = document.documentElement;
       if (de.dataset.liorOpenExpand === '1' && dir === 'push') effectiveDir = 'expand';
       if (de.dataset.liorOpenExpand) delete de.dataset.liorOpenExpand;
+    }
+    // Bloom from the tapped CONTROL, not just bento tiles. Any push triggered by
+    // a recent tap (Sync pill, settings row, action button, …) grows out of the
+    // control the finger landed on. _captureTap already recorded its rect; publish
+    // its centre as the same --lior-open-x/y vars useTileOpen uses, then upgrade
+    // to expand so _run blooms from there. Fresh-tap only (<700ms): a programmatic
+    // nav with no recent tap stays a centre push.
+    if (
+      effectiveDir === 'push' &&
+      typeof document !== 'undefined' &&
+      this._tapOrigin != null &&
+      (performance.now() - this._tapOrigin.t) < 700
+    ) {
+      const o = this._tapOrigin;
+      const s = document.documentElement.style;
+      s.setProperty('--lior-open-x', `${Math.round(o.x + o.w / 2)}px`);
+      s.setProperty('--lior-open-y', `${Math.round(o.y + o.h / 2)}px`);
+      this._tapOrigin = null; // consume so a later programmatic nav re-centres
+      effectiveDir = 'expand';
     }
 
     // Background depth recede: a page OPEN/CLOSE drops the whole ambient

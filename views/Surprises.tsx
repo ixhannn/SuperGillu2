@@ -18,6 +18,8 @@ import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
+import { useTapOrigin } from '../hooks/useTapOrigin';
+import { listRemoveExit } from '../utils/motion';
 import '../styles/premium-hub.css';
 
 interface SurprisesViewProps {
@@ -144,6 +146,7 @@ const SealedCard: React.FC<SurpriseCardProps> = ({ surprise, onDelete }) => (
         layout
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
+        exit={listRemoveExit}
         transition={GOLD_SOFT_SPRING}
         className="relative overflow-hidden rounded-[1.6rem]"
         style={{
@@ -198,6 +201,7 @@ const OpenedCard: React.FC<SurpriseCardProps> = ({ surprise, onDelete }) => (
         layout
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
+        exit={listRemoveExit}
         transition={GOLD_SOFT_SPRING}
         className="flex items-start gap-3.5 rounded-[1.4rem] p-4"
         style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
@@ -306,6 +310,11 @@ interface CeremonyStageProps {
 const CeremonyStage: React.FC<CeremonyStageProps> = ({ surprise, onClose }) => {
     const [opened, setOpened] = useState(false);
     const reducedMotion = useReducedMotion();
+    // Grow the full-screen reveal OUT OF the parcel/card that was tapped instead
+    // of scaling from screen centre — matches the route-open bloom. Falls back to
+    // centre when the reveal fires programmatically (a due surprise with no fresh
+    // tap) or under reduced motion.
+    const { ref: stageRef, origin } = useTapOrigin<HTMLDivElement>(true);
 
     useEffect(() => {
         const handleBack = (e: Event) => { e.preventDefault(); onClose(); };
@@ -325,13 +334,16 @@ const CeremonyStage: React.FC<CeremonyStageProps> = ({ surprise, onClose }) => {
 
     return (
         <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            ref={stageRef}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.25 } }}
+            transition={GOLD_SOFT_SPRING}
             role="dialog"
             aria-modal="true"
             aria-label="A surprise for you"
             className="lp-stage fixed inset-0 z-[300] overflow-y-auto"
+            style={{ transformOrigin: origin }}
         >
             {/* Ambient layers */}
             <div className="lp-aurora">
@@ -880,9 +892,11 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
                     <motion.div variants={goldRise}>
                         <GoldSectionHeader label="Sealed & waiting" className="mt-7 mb-4" />
                         <div className="flex flex-col gap-3">
-                            {upcoming.map((s) => (
-                                <SealedCard key={s.id} surprise={s} onDelete={handleDelete} />
-                            ))}
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                {upcoming.map((s) => (
+                                    <SealedCard key={s.id} surprise={s} onDelete={handleDelete} />
+                                ))}
+                            </AnimatePresence>
                         </div>
                     </motion.div>
                 )}
@@ -891,9 +905,11 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
                     <motion.div variants={goldRise}>
                         <GoldSectionHeader label="Opened" className="mt-9 mb-4" />
                         <div className="flex flex-col gap-2.5">
-                            {delivered.map((s) => (
-                                <OpenedCard key={s.id} surprise={s} onDelete={handleDelete} />
-                            ))}
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                {delivered.map((s) => (
+                                    <OpenedCard key={s.id} surprise={s} onDelete={handleDelete} />
+                                ))}
+                            </AnimatePresence>
                         </div>
                     </motion.div>
                 )}

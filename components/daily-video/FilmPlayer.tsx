@@ -5,6 +5,7 @@ import type { BiweeklyFilm } from '../../types';
 import { VideoMomentsService } from '../../services/videoMoments';
 import { feedback } from '../../utils/feedback';
 import { GOLD, GOLD_PRESS_SPRING } from '../premium/GoldKit';
+import { useTapOrigin } from '../../hooks/useTapOrigin';
 
 interface FilmPlayerProps {
     film: BiweeklyFilm;
@@ -21,6 +22,9 @@ export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
     const [posterUrl, setPosterUrl] = useState<string | undefined>(undefined);
     const [isPlaying, setIsPlaying] = useState(false);
     const [loaded, setLoaded] = useState(false);
+    // Grow the screening box OUT OF the tapped film clip instead of from screen
+    // centre. The hook falls back to centre under reduced motion / no fresh tap.
+    const { ref: cinemaRef, origin } = useTapOrigin<HTMLDivElement>(true);
 
     useEffect(() => {
         let cancelled = false;
@@ -66,7 +70,15 @@ export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
     const title = formatTitle(film.cycleStart, film.cycleEnd);
 
     return (
-        <div className="gdv-cinema">
+        <motion.div
+            ref={cinemaRef}
+            className="gdv-cinema"
+            style={{ transformOrigin: origin }}
+            initial={{ scale: 0.88, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.94, opacity: 0 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+        >
             <div className="gdv-cinema__stage cursor-pointer" onClick={toggle}>
                 {videoUrl && (
                     <video
@@ -136,7 +148,7 @@ export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
                     {film.clipCount} {film.clipCount === 1 ? 'scene' : 'scenes'} · {formatDuration(film.durationMs)}
                 </p>
             </div>
-        </div>
+        </motion.div>
     );
 }
 

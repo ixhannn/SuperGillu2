@@ -39,7 +39,17 @@ if (typeof document !== 'undefined') {
   let startY = 0;
   const clearPressed = () => {
     if (!pressedEl) return;
-    delete pressedEl.dataset.pressing;
+    const el = pressedEl;
+    delete el.dataset.pressing;
+    // Spring the press back to life (the mymind release): stamp data-releasing
+    // so the scale→1 return plays on --lior-press-spring instead of snapping
+    // flat. ONLY for plain, CSS-driven surfaces — an element with an inline
+    // transform is framer/JS-controlled and owns its own release, and a CSS
+    // transition would fight its per-frame transform writes. Self-clears.
+    if (!el.style.transform) {
+      el.dataset.releasing = '1';
+      window.setTimeout(() => { if (el.dataset.releasing === '1') delete el.dataset.releasing; }, 340);
+    }
     pressedEl = null;
     activePointerId = null;
   };
@@ -62,6 +72,7 @@ if (typeof document !== 'undefined') {
         const rect = interactive.getBoundingClientRect();
         if (vw > 0 && vh > 0 && rect.width >= vw * 0.96 && rect.height >= vh * 0.8) return;
         clearPressed();
+        delete interactive.dataset.releasing; // cancel any in-flight spring-back
         interactive.dataset.pressing = 'true';
         pressedEl = interactive;
         activePointerId = e.pointerId;
@@ -78,6 +89,45 @@ if (typeof document !== 'undefined') {
   window.addEventListener('pointerup', clearPressed, { passive: true });
   window.addEventListener('pointercancel', clearPressed, { passive: true });
   window.addEventListener('blur', clearPressed);
+
+  // ── ACTIVATION POP ──
+  // A subtle scale "settle" when a control becomes selected/active/checked —
+  // the mymind "every state change feels alive" touch. One global observer; no
+  // per-component wiring. Fires ONLY on the transition INTO an active value (a
+  // freshly-mounted active element never mutates, so it never pops). Skips
+  // framer/JS-driven elements (they carry an inline transform and animate their
+  // own scale) and anything that opted out of press feedback. Animates the
+  // independent `scale` property so it composes with the transform-based press.
+  const reduceMotionPop = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!reduceMotionPop && 'MutationObserver' in window) {
+    // aria-pressed is the only selection-state attribute the app actually uses
+    // (aria-selected/checked: 0 sites) — watching just it keeps the hot path lean.
+    new MutationObserver((records) => {
+      for (const r of records) {
+        const el = r.target as HTMLElement;
+        if (
+          el.getAttribute('aria-pressed') === 'true' &&
+          r.oldValue !== 'true' &&
+          !el.style.transform &&
+          !el.closest('[data-no-press]')
+        ) {
+          el.classList.remove('lior-activate-pop');
+          void el.offsetWidth; // restart the animation on a rapid re-toggle
+          el.classList.add('lior-activate-pop');
+        }
+      }
+    }).observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true,
+      attributeFilter: ['aria-pressed'],
+    });
+    document.body.addEventListener('animationend', (e) => {
+      if (e.animationName === 'lior-activate-pop') {
+        (e.target as HTMLElement).classList.remove('lior-activate-pop');
+      }
+    });
+  }
 
   // Boot the gesture system: [data-press] delegation + CSS injection
   initGlobalGestures();

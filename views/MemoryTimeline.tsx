@@ -8,7 +8,7 @@ import { StorageService, storageEventTarget } from '../services/storage';
 import { SyncService } from '../services/sync';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
-import { springSmooth, springSnappy } from '../utils/motion';
+import { springSmooth, springSnappy, listRemoveExit } from '../utils/motion';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { useViewerGestures } from '../hooks/useViewerGestures';
 import { useLongPress } from '../hooks/useLongPress';
@@ -20,6 +20,7 @@ import { PullToRefresh } from '../components/PullToRefresh';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 interface MemoryTimelineProps {
     setView: (view: ViewState) => void;
@@ -75,6 +76,9 @@ function useVideoBlobUrl(src: string | null): string | null {
 /* ─── Surprise modal ─── */
 const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => void }) => {
     const { src: imageUrl, handleError: handleImgError } = useLiorMedia(memory.imageId, memory.image, memory.storagePath);
+    // Grow the card OUT OF the memory card that was tapped instead of from screen
+    // centre — matches the route/dialog bloom feel. Mounted only when open, so true.
+    const { ref: cardRef, origin } = useTapOrigin<HTMLDivElement>(true);
 
     return ReactDOM.createPortal(
         <motion.div
@@ -86,11 +90,13 @@ const SurpriseModal = ({ memory, onClose }: { memory: Memory; onClose: () => voi
             onClick={onClose}
         >
             <motion.div
+                ref={cardRef}
                 initial={{ scale: 0.88, opacity: 0, y: 20 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.92, opacity: 0 }}
                 transition={{ type: 'spring', stiffness: 340, damping: 28 }}
                 className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden"
+                style={{ transformOrigin: origin }}
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6 pb-7">
@@ -185,9 +191,10 @@ const MemoryCardBase: React.FC<{
     const animateEntrance = index < 9;
     return (
         <motion.div
+            layout
             initial={animateEntrance ? { opacity: 0, y: 10 } : false}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+            exit={listRemoveExit}
             transition={{ duration: 0.22, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => { feedback.light(); onOpen(memory); }}
             {...longPress}
@@ -1678,8 +1685,8 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                             />
 
                                             {/* Featured polaroid — chapter centerpiece */}
-                                            <AnimatePresence initial={false}>
-                                                <div className="mb-4 px-1">
+                                            <div className="mb-4 px-1">
+                                                <AnimatePresence mode="popLayout" initial={false}>
                                                     <MemoryCard
                                                         key={featured.id}
                                                         memory={featured}
@@ -1690,13 +1697,13 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                         onDelete={requestDelete}
                                                         onLongPress={handleCardLongPress}
                                                     />
-                                                </div>
-                                            </AnimatePresence>
+                                                </AnimatePresence>
+                                            </div>
 
                                             {/* Scrapbook grid — alternating tilts */}
                                             {rest.length > 0 && (
                                                 <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-1">
-                                                    <AnimatePresence initial={false}>
+                                                    <AnimatePresence mode="popLayout" initial={false}>
                                                         {rest.map((m, i) => (
                                                             <MemoryCard
                                                                 key={m.id}
