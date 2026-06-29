@@ -58,6 +58,15 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
     const [image, setImage] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // Periodic tick so a capsule that becomes due WHILE the screen is open
+    // promotes from "Still sealed" to "Ready to open" without needing a remount
+    // or a storage event (getStatus is time-derived).
+    const [tick, setTick] = useState(0);
+
+    useEffect(() => {
+        const id = setInterval(() => setTick((t) => t + 1), 30_000);
+        return () => clearInterval(id);
+    }, []);
 
     useEffect(() => {
         const load = () => setCapsules(StorageService.getTimeCapsules());
@@ -95,7 +104,7 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
             sealed: [...sealed].sort(byUnlockAsc),
             opened: [...opened].sort((a, b) => byUnlockAsc(b, a)),
         };
-    }, [capsules]);
+    }, [capsules, tick]);
 
     const openComposer = () => {
         if (canCreate) {

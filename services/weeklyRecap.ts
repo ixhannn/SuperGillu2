@@ -74,6 +74,18 @@ const writeRaw = async (key: string, val: unknown): Promise<void> => {
   });
 };
 
+// ── Archive write serialization ───────────────────────────────────────
+// All ARCHIVE_KEY read-modify-write operations must run one at a time so a
+// concurrent archive/delete cannot read a stale snapshot and clobber another
+// writer's change. Chain every mutation onto a single in-flight promise.
+let archiveQueue: Promise<void> = Promise.resolve();
+
+const runExclusive = <T>(fn: () => Promise<T>): Promise<T> => {
+  const next = archiveQueue.then(fn, fn);
+  archiveQueue = next.then(() => undefined, () => undefined);
+  return next;
+};
+
 // ── Week math ─────────────────────────────────────────────────────────
 const localIso = (d: Date = new Date()): string => {
   const y = d.getFullYear();
@@ -224,13 +236,17 @@ interface AggregatedData {
 
 async function collectWeekData(weekStart: string): Promise<AggregatedData> {
   const weekEnd = getWeekEnd(weekStart);
-  const startMs = fromIso(weekStart).getTime();
-  const endMs = fromIso(weekEnd).setHours(23, 59, 59, 999);
+  // Compare on day-strings (YYYY-MM-DD), matching how weekStart/weekEnd and every
+  // other aggregation in this file key days. The previous absolute-ms window mixed
+  // local-midnight edges with UTC-parsed item timestamps, so boundary-day activity
+  // (Saturday night / Sunday) was dropped or mis-attributed east of UTC.
+  const startDay = weekStart.slice(0, 10);
+  const endDay = weekEnd.slice(0, 10);
 
   const inRange = (iso?: string): boolean => {
     if (!iso) return false;
-    const t = new Date(iso).getTime();
-    return t >= startMs && t <= endMs;
+    const day = iso.slice(0, 10);
+    return day >= startDay && day <= endDay;
   };
 
   const moods = (StorageService.getMoodEntries?.() ?? []).filter((m) => inRange(m.timestamp));
@@ -758,13 +774,15 @@ export const WeeklyRecapService = {
   },
 
   async archive(recap: WeeklyRecap): Promise<void> {
-    const list = (await readRaw<WeeklyRecap[]>(ARCHIVE_KEY)) ?? [];
-    const idx = list.findIndex((r) => r.weekStart === recap.weekStart);
-    if (idx >= 0) list[idx] = recap;
-    else list.push(recap);
-    // Keep newest first, cap to 52
-    list.sort((a, b) => b.weekStart.localeCompare(a.weekStart));
-    await writeRaw(ARCHIVE_KEY, list.slice(0, 52));
+    return runExclusive(async () => {
+      const list = (await readRaw<WeeklyRecap[]>(ARCHIVE_KEY)) ?? [];
+      const idx = list.findIndex((r) => r.weekStart === recap.weekStart);
+      if (idx >= 0) list[idx] = recap;
+      else list.push(recap);
+      // Keep newest first, cap to 52
+      list.sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+      await writeRaw(ARCHIVE_KEY, list.slice(0, 52));
+    });
   },
 
   async getArchived(weekStart: string): Promise<WeeklyRecap | null> {
@@ -778,7 +796,9 @@ export const WeeklyRecapService = {
   },
 
   async deleteArchived(weekStart: string): Promise<void> {
-    const list = (await readRaw<WeeklyRecap[]>(ARCHIVE_KEY)) ?? [];
-    await writeRaw(ARCHIVE_KEY, list.filter((r) => r.weekStart !== weekStart));
+    return runExclusive(async () => {
+      const list = (await readRaw<WeeklyRecap[]>(ARCHIVE_KEY)) ?? [];
+      await writeRaw(ARCHIVE_KEY, list.filter((r) => r.weekStart !== weekStart));
+    });
   },
 };

@@ -76,16 +76,21 @@ Deno.serve(async (req: Request) => {
     .from('couple_memberships')
     .select('user_id, couple_id')
     .eq('couple_id',
-      // Sub-select: get the caller's couple_id first
+      // Sub-select: get the caller's couple_id first. Constrain to an ACTIVE
+      // membership (NULL-safe) so a departed couple isn't resolved as current.
       (await admin
         .from('couple_memberships')
         .select('couple_id')
         .eq('user_id', user.id)
+        .or('status.is.null,status.eq.active')
         .order('created_at', { ascending: false })
         .limit(1)
         .single()
       ).data?.couple_id ?? ''
-    );
+    )
+    // Exclude departed/suspended members so the nudge targets the live partner
+    // only (mirrors delete-account's peer lookup). NULL status = legacy active.
+    .or('status.is.null,status.eq.active');
 
   if (membersError || !members?.length) return json({ ok: false, reason: 'no_couple' });
 

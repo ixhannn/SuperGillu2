@@ -216,9 +216,9 @@ const CommentBubbleBase: React.FC<{
     isReply?: boolean;
     onReply: (comment: Comment) => void;
     onDelete: (id: string) => void;
-    myDeviceId: string;
-}> = ({ comment, isReply, onReply, onDelete, myDeviceId }) => {
-    const isMine = comment.senderId === myDeviceId;
+    myId: string;
+}> = ({ comment, isReply, onReply, onDelete, myId }) => {
+    const isMine = comment.senderId === myId;
     const time = new Date(comment.createdAt);
     const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -287,7 +287,10 @@ const PostViewer: React.FC<{
     const [isSubmitting, setIsSubmitting] = useState(false);
     const commentInputRef = useRef<HTMLInputElement>(null);
     const commentsEndRef = useRef<HTMLDivElement>(null);
-    const myDeviceId = StorageService.getDeviceId();
+    // Stable per-user identity (Supabase user id; display name as legacy fallback)
+    // so comment/photo ownership is correct across a user's own devices and isn't
+    // broken when both partners share a display name. Matches MemoryTimeline.
+    const myId = StorageService.getMyUserId() || StorageService.getCoupleProfile().myName;
     // Lift the comment input bar above the IME: overlay keyboard mode never
     // resizes the WebView, so this fixed full-screen portal is otherwise covered.
     const { keyboardOpen, keyboardHeight } = useNativeShell();
@@ -320,7 +323,7 @@ const PostViewer: React.FC<{
         const newComment: Comment = {
             id: generateId(),
             postId: photo.id,
-            senderId: myDeviceId,
+            senderId: myId,
             senderName: profile.myName,
             text,
             createdAt: new Date().toISOString(),
@@ -389,11 +392,11 @@ const PostViewer: React.FC<{
                     </button>
                     <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-lior-400 to-lior-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                            {photo.senderId === myDeviceId ? profile.myName.charAt(0) : profile.partnerName.charAt(0)}
+                            {photo.senderId === myId ? profile.myName.charAt(0) : profile.partnerName.charAt(0)}
                         </div>
                         <div>
                             <p className="text-sm font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-                                {photo.senderId === myDeviceId ? profile.myName : profile.partnerName}
+                                {photo.senderId === myId ? profile.myName : profile.partnerName}
                             </p>
                             <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>
                                 {dateStr} · {timeStr}
@@ -482,7 +485,7 @@ const PostViewer: React.FC<{
                                         comment={comment}
                                         onReply={handleReply}
                                         onDelete={handleDeleteComment}
-                                        myDeviceId={myDeviceId}
+                                        myId={myId}
                                     />
                                     {/* Threaded Replies */}
                                     {(repliesByParent[comment.id] || [])
@@ -493,7 +496,7 @@ const PostViewer: React.FC<{
                                                 isReply
                                                 onReply={handleReply}
                                                 onDelete={handleDeleteComment}
-                                                myDeviceId={myDeviceId}
+                                                myId={myId}
                                             />
                                         ))
                                     }
@@ -700,6 +703,11 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
+            // Clear the input up front so every return path (premium gate,
+            // too-large gate, read failure, success) re-arms the change event —
+            // otherwise re-picking the exact same clip is a silent no-op. The
+            // captured `file` reference stays valid after clearing the value.
+            e.target.value = '';
             const profile = StorageService.getCoupleProfile();
             if (!profile.isPremium) {
                 setPremiumContext('video');
@@ -721,6 +729,12 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
             reader.onload = (ev) => {
                 setNewVideo(ev.target?.result as string);
                 setIsUploading(true);
+            };
+            reader.onerror = () => {
+                setIsUploading(false);
+                setNewImage(null);
+                setNewVideo(null);
+                toast.show("Could not load video.", 'error');
             };
             reader.readAsDataURL(file);
         }
@@ -744,7 +758,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
             expiresAt: new Date(now.getTime() + (24 * 60 * 60 * 1000)).toISOString(),
             image: newImage || undefined,
             video: newVideo || undefined,
-            senderId: StorageService.getDeviceId()
+            senderId: StorageService.getMyUserId() || StorageService.getCoupleProfile().myName,
         };
 
         try {

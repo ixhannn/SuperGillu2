@@ -52,6 +52,10 @@ const CATEGORY_ACCENTS: Record<string, { gradient: string; accent: string }> = {
     gradient: 'linear-gradient(135deg, rgba(167, 139, 250, 0.12) 0%, rgba(139, 92, 246, 0.12) 100%)',
     accent: 'rgba(167, 139, 250, 0.6)',
   },
+  ritual_observation: {
+    gradient: 'linear-gradient(135deg, rgba(110, 231, 183, 0.12) 0%, rgba(52, 211, 153, 0.12) 100%)',
+    accent: 'rgba(110, 231, 183, 0.6)',
+  },
 };
 
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -71,6 +75,7 @@ export const InsightWhisper: React.FC<InsightWhisperProps> = ({ setView }) => {
   const [legacyInsight, setLegacyInsight] = useState<PartnerInsight | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissing, setIsDismissing] = useState(false);
+  const isDismissingRef = React.useRef(false);
 
   const loadInsight = useCallback(async () => {
     // Prefer deep insights from the new engine
@@ -126,7 +131,7 @@ export const InsightWhisper: React.FC<InsightWhisperProps> = ({ setView }) => {
       timeoutHandle = window.setTimeout(() => { void initAll(); }, 200);
     }
 
-    const handleUpdate = () => loadInsight();
+    const handleUpdate = () => { if (isDismissingRef.current) return; loadInsight(); };
     insightEventTarget.addEventListener('insight-update', handleUpdate);
     partnerIntelligenceEventTarget.addEventListener('insights-update', handleUpdate);
 
@@ -140,6 +145,7 @@ export const InsightWhisper: React.FC<InsightWhisperProps> = ({ setView }) => {
   }, [loadInsight]);
 
   const handleDismiss = async () => {
+    isDismissingRef.current = true;
     setIsDismissing(true);
     feedback.tap();
 
@@ -152,6 +158,7 @@ export const InsightWhisper: React.FC<InsightWhisperProps> = ({ setView }) => {
     setTimeout(() => {
       setIsVisible(false);
       setIsDismissing(false);
+      isDismissingRef.current = false;
       loadInsight();
     }, 300);
   };
@@ -350,11 +357,13 @@ export const InsightWhisperMini: React.FC<{ onClick?: () => void }> = ({ onClick
   const [legacyInsight, setLegacyInsight] = useState<PartnerInsight | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const initAll = async () => {
       await RelationshipSignals.init();
       await RelationshipModelService.init();
       await InsightEngine.init();
       await PartnerIntelligenceService.init();
+      if (cancelled) return;
 
       const deep = InsightEngine.getUnseenInsight() || InsightEngine.getRecentInsights(1)[0];
       if (deep) {
@@ -378,6 +387,7 @@ export const InsightWhisperMini: React.FC<{ onClick?: () => void }> = ({ onClick
     insightEventTarget.addEventListener('insight-update', handleUpdate);
     partnerIntelligenceEventTarget.addEventListener('insights-update', handleUpdate);
     return () => {
+      cancelled = true;
       insightEventTarget.removeEventListener('insight-update', handleUpdate);
       partnerIntelligenceEventTarget.removeEventListener('insights-update', handleUpdate);
     };

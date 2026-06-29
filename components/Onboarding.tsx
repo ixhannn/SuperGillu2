@@ -537,7 +537,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         else raf = requestAnimationFrame(loop);
 
         return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', sizeSky); };
-    }, []);
+        // Re-run on constellation-intensity change so the reduced-motion static
+        // redraw reflects the current slide's target (the rAF path is unaffected:
+        // cleanup cancels the prior frame and a fresh loop restarts).
+    }, [scene.cons]);
 
     // ── Live animated days counter for the anniversary step ──────────────────
     const [daysDisplay, setDaysDisplay] = useState(0);
@@ -771,9 +774,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                     <div className="lo-ob-invite">
                         <div className="lo-ob-qr"><QrCode size={40} /></div>
                         <div style={{ textAlign: 'left' }}>
-                            <p className="lo-ob-qlabel">Their invite</p>
-                            <div className="lo-ob-code">L·9K·4Q</div>
-                            <p className="lo-ob-seal" style={{ justifyContent: 'flex-start', margin: '6px 0 0' }}><Share2 size={13} /> Show the code or share a link.</p>
+                            <p className="lo-ob-qlabel">One last step</p>
+                            <p className="lo-ob-seal" style={{ justifyContent: 'flex-start', margin: '6px 0 0' }}><Share2 size={13} /> Tap “Invite your partner” to get your real code.</p>
                         </div>
                     </div>
                 </motion.div>

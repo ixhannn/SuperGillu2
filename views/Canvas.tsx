@@ -63,6 +63,15 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
     };
   };
 
+  // Resolution-independent coords (0..1) for broadcasting across differently
+  // sized partner canvases. Local rendering keeps using the absolute getCoords.
+  const getNormCoords = (e: any): { x: number; y: number } => {
+    const { x, y } = getCoords(e);
+    const c = canvasRef.current;
+    if (!c || !c.width || !c.height) return { x: 0, y: 0 };
+    return { x: x / c.width, y: y / c.height };
+  };
+
   const applyDrawStyle = (ctx: CanvasRenderingContext2D, c: string, size: number, erase: boolean) => {
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
@@ -97,7 +106,9 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
     applyDrawStyle(ctx, color, brushSize, isEraser);
     ctx.beginPath();
     ctx.moveTo(x, y);
-    SyncService.sendSignal('DRAW', { x, y, type: 'start', color, brushSize, isEraser });
+    const n = getNormCoords(e);
+    const normBrush = canvasRef.current ? brushSize / canvasRef.current.width : brushSize;
+    SyncService.sendSignal('DRAW', { x: n.x, y: n.y, type: 'start', color, brushSize: normBrush, isEraser });
   };
 
   const handleMove = (e: any) => {
@@ -108,7 +119,8 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
     if (!ctx) return;
     ctx.lineTo(x, y);
     ctx.stroke();
-    SyncService.sendSignal('DRAW', { x, y, type: 'move', color, brushSize, isEraser });
+    const n = getNormCoords(e);
+    SyncService.sendSignal('DRAW', { x: n.x, y: n.y, type: 'move', color, brushSize, isEraser });
   };
 
   const stopDrawing = (e?: any) => {
@@ -125,12 +137,16 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
     const canvas = canvasRef.current;
     const ctx = getCtx();
     if (!ctx || !canvas) return;
+    // Coords/brush arrive normalized (0..1) against the sender's canvas; scale
+    // back into this device's pixel space so shared strokes stay aligned.
+    const px = (payload.x ?? 0) * canvas.width;
+    const py = (payload.y ?? 0) * canvas.height;
     if (payload.type === 'start') {
-      applyDrawStyle(ctx, payload.color, payload.brushSize, payload.isEraser);
+      applyDrawStyle(ctx, payload.color, (payload.brushSize ?? 0) * canvas.width, payload.isEraser);
       ctx.beginPath();
-      ctx.moveTo(payload.x, payload.y);
+      ctx.moveTo(px, py);
     } else if (payload.type === 'move') {
-      ctx.lineTo(payload.x, payload.y);
+      ctx.lineTo(px, py);
       ctx.stroke();
     } else if (payload.type === 'end') {
       ctx.beginPath();
@@ -209,14 +225,20 @@ export const Canvas: React.FC<CanvasProps> = ({ setView }) => {
       date: new Date().toISOString(),
       mood: '🎨',
     };
-    await StorageService.saveMemory(memory);
-    storageEventTarget.dispatchEvent(new Event('storage-update'));
-    setSaveStatus('done');
-    setTimeout(() => {
-      setShowSaveSheet(false);
-      setSaveCaption('');
+    try {
+      await StorageService.saveMemory(memory);
+      storageEventTarget.dispatchEvent(new Event('storage-update'));
+      setSaveStatus('done');
+      setTimeout(() => {
+        setShowSaveSheet(false);
+        setSaveCaption('');
+        setSaveStatus('idle');
+      }, 1200);
+    } catch (err) {
+      console.warn('[Canvas] save to memories failed', err);
+      // Restore the X button, backdrop tap, drag-dismiss, and Save retry.
       setSaveStatus('idle');
-    }, 1200);
+    }
   };
 
   // ── Setup ─────────────────────────────────────────────────────────────────

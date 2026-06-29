@@ -29,6 +29,13 @@ export function parseStoredDateOnly(value) {
     const month = Number(match[2]);
     const day = Number(match[3]);
     const parsed = new Date(year, month - 1, day);
+    if (
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      return null;
+    }
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 

@@ -47,9 +47,14 @@ Deno.serve(async (req) => {
     return json({ error: 'Unknown operation type' }, 400);
 
   // ── Get client IP ───────────────────────────────────────────────────────────
+  // Prefer the platform-set, trustworthy client IP. `x-forwarded-for` is fully
+  // client-controlled, so trusting it first let an attacker rotate a fake value
+  // per request and get a fresh ip:* rate-limit bucket every time (bypassing the
+  // IP throttle). Only fall back to it when no trusted header is present.
   const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     'unknown';
 
   const identifiers = [`ip:${ip}`, `email:${email.toLowerCase()}`];
@@ -99,14 +104,26 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── Record this attempt ─────────────────────────────────────────────────────
-  await supabase.from('auth_rate_limits').insert(
-    identifiers.map(identifier => ({ identifier, attempted_at: now.toISOString() })),
-  );
+  // ── Record an attempt (failures only) ───────────────────────────────────────
+  // Only FAILED auth operations consume a rate-limit slot. Counting successful
+  // logins/sign-outs would lock out active users on shared/CGNAT IPs and block
+  // a single user across all their devices via the email key, even though every
+  // attempt succeeded. Brute-force protection is preserved because failures
+  // still accumulate.
+  const recordAttempt = () =>
+    supabase.from('auth_rate_limits').insert(
+      identifiers.map(identifier => ({ identifier, attempted_at: now.toISOString() })),
+    );
 
-  // Async housekeeping — delete records older than 2× the window (non-blocking)
+  // Housekeeping — delete records older than 2× the window. Awaited so the
+  // request is actually sent before the edge isolate can be torn down; errors
+  // are logged rather than left as an unhandled rejection.
   const cutoff = new Date(now.getTime() - RATE_LIMIT_WINDOW_MS * 2).toISOString();
-  supabase.from('auth_rate_limits').delete().lt('attempted_at', cutoff);
+  const { error: cleanupErr } = await supabase
+    .from('auth_rate_limits')
+    .delete()
+    .lt('attempted_at', cutoff);
+  if (cleanupErr) console.error('Rate limit cleanup error:', cleanupErr.message);
 
   // ── Perform auth operation ──────────────────────────────────────────────────
   // Use the client-provided redirect target so confirmation / reset links
@@ -119,7 +136,7 @@ Deno.serve(async (req) => {
 
   if (type === 'login') {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password: password ?? '' });
-    if (error) return json({ error: error.message }, 400);
+    if (error) { await recordAttempt(); return json({ error: error.message }, 400); }
     return json({ data });
   }
 
@@ -129,7 +146,7 @@ Deno.serve(async (req) => {
       password: password ?? '',
       options: { emailRedirectTo: emailRedirect },
     });
-    if (error) return json({ error: error.message }, 400);
+    if (error) { await recordAttempt(); return json({ error: error.message }, 400); }
     return json({ data });
   }
 
@@ -141,7 +158,7 @@ Deno.serve(async (req) => {
       email,
       options: { emailRedirectTo: emailRedirect },
     });
-    if (error) return json({ error: error.message }, 400);
+    if (error) { await recordAttempt(); return json({ error: error.message }, 400); }
     return json({ data: {} });
   }
 
@@ -149,6 +166,6 @@ Deno.serve(async (req) => {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: emailRedirect,
   });
-  if (error) return json({ error: error.message }, 400);
+  if (error) { await recordAttempt(); return json({ error: error.message }, 400); }
   return json({ data: {} });
 });

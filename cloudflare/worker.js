@@ -37,8 +37,15 @@ import {
 
 // Signed-URL rollout gate. While `true`, GET/HEAD reads with NO `sig` query fall
 // back to the legacy unsigned behaviour so existing clients keep working; any
-// request that DOES carry a `sig` is still verified strictly. TODO flip to false
-// after client adoption to enforce signatures on every managed-media read.
+// request that DOES carry a `sig` is still verified strictly.
+//
+// ⚠️ SECURITY (remaining P0 — unauth media / IDOR): while this is `true`, anyone
+// who learns a managed R2 key can read that couple's private media without auth.
+// To CLOSE it, set the same MEDIA_SIGNING_SECRET on BOTH the `sign-media` Supabase
+// edge function and this worker, confirm the app is minting `?exp=&sig=` URLs
+// (services/mediaStorage.ts:signManagedUrls), then flip this to `false`. Until
+// then, unsigned managed reads are at least served `private, max-age=0` (below)
+// so the key can't be amplified through shared/CDN caches.
 const ALLOW_UNSIGNED_MEDIA = true;
 // TTL ceiling (seconds) for the private Cache-Control we set on a signed hit.
 // Must not exceed the sign-media TTL (900s) so caches never outlive a signature.
@@ -2797,6 +2804,9 @@ export default {
       const isManaged = isManagedWriteKey(key);
       // Cache-Control hint applied to the response when a signature is honoured.
       let signedMaxAge = 0;
+      // True when serving managed (private) media without a signature during the
+      // dual-accept rollout — such responses must never enter a shared cache.
+      let unsignedManaged = false;
 
       if (isManaged) {
         if (sig) {
@@ -2809,13 +2819,23 @@ export default {
         } else if (!ALLOW_UNSIGNED_MEDIA) {
           // Enforcement mode: managed media with no signature is rejected.
           return new Response('Forbidden', { status: 403, headers: cors });
+        } else {
+          // Dual-accept rollout: no signature present. This is the known unauth
+          // IDOR gap (see ALLOW_UNSIGNED_MEDIA note). We still serve, but mark the
+          // response private so a guessed key can't be amplified via CDN/shared
+          // caches — shrinking the blast radius until signatures are enforced.
+          unsignedManaged = true;
         }
-        // else: dual-accept rollout — no sig present, fall through to unsigned.
       }
 
-      // A private, short-lived Cache-Control is used only on a verified signature;
-      // unsigned/non-managed reads keep the long-lived immutable public cache.
-      const headerOptions = signedMaxAge > 0 ? { private: true, maxAge: signedMaxAge } : {};
+      // Private, short-lived Cache-Control for a verified signature; private +
+      // no-store for an unsigned managed read (keep private media out of shared
+      // caches); only genuinely public/non-managed reads keep the immutable cache.
+      const headerOptions = signedMaxAge > 0
+        ? { private: true, maxAge: signedMaxAge }
+        : unsignedManaged
+          ? { private: true, maxAge: 0 }
+          : {};
 
       if (request.method === 'HEAD') {
         const obj = await env.LIOR_BUCKET.head(key);
@@ -2872,7 +2892,10 @@ export default {
       if (asset?.couple_id && asset.couple_id !== parsedKey.coupleId) {
         return new Response('media_assets couple mismatch', { status: 409, headers: cors });
       }
-    } else if (parsedKey.ownerUserId && parsedKey.ownerUserId !== user.id) {
+    } else if (!parsedKey.ownerUserId || parsedKey.ownerUserId !== user.id) {
+      // No Supabase admin to verify couple membership: the key's owner segment is
+      // the only ownership signal. If it is absent or does not match the caller,
+      // fail closed rather than let any authenticated user write/delete the object.
       return new Response('Forbidden', { status: 403, headers: cors });
     }
 
@@ -2903,6 +2926,9 @@ export default {
         return new Response(`Payload too large (max ${sizeLimit / 1_048_576} MiB for this type)`, { status: 413, headers: cors });
       }
 
+      if (!request.body) {
+        return new Response('Empty upload body', { status: 400, headers: cors });
+      }
       const reader = request.body.getReader();
       const chunks = [];
       let total = 0;

@@ -706,7 +706,16 @@ export const ThemeService = {
     // apply in index.tsx can select the saved theme before first paint. The
     // authoritative copy still lives in the IndexedDB couple profile.
     try { localStorage.setItem('lior_theme', validId); } catch { /* private mode */ }
-    if (!options.instant) root.classList.add('theme-transitioning');
+    if (!options.instant) {
+      // Anchor the crossfade/radial reveal at the tapped control so CSS keyed off
+      // these vars (theme-transitioning) can ripple outward from the swatch. On an
+      // instant boot apply there is no origin and no reveal.
+      if (options.origin) {
+        root.style.setProperty('--theme-origin-x', `${options.origin.x}px`);
+        root.style.setProperty('--theme-origin-y', `${options.origin.y}px`);
+      }
+      root.classList.add('theme-transitioning');
+    }
 
     if (transitionTimer !== null) {
       window.clearTimeout(transitionTimer);

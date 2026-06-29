@@ -831,6 +831,11 @@ class TransitionEngineImpl {
       const remain = Math.max(10, W - dx);
       const dur    = Math.max(80, Math.min(T_POP, remain / Math.max(vel, 0.3)));
 
+      // Claim the navigation lock for the entire exit + fade-in. Without this a
+      // tab tap / programmatic navigate() during the animation would pass the
+      // `if (this._busy) return false` guard and fight this flow over the same
+      // c.style.transform/opacity — leaving the container stuck at opacity:0.
+      this._busy = true;
       this._setTransitioning(true);
 
       c.style.transition = `transform ${dur}ms ${E_STANDARD}`;
@@ -855,6 +860,7 @@ class TransitionEngineImpl {
             const cleanup = () => {
               c.style.transition = '';
               c.style.opacity    = '';
+              this._busy = false;
               this._setTransitioning(false);
             };
             c.addEventListener('transitionend', cleanup, { once: true });
@@ -864,13 +870,16 @@ class TransitionEngineImpl {
       }, dur + 16);
 
     } else {
-      // Snap back to identity
+      // Snap back to identity. Hold the navigation lock for the snap so a
+      // concurrent navigate() can't fight this transform animation.
+      this._busy = true;
       c.style.transition = `transform ${T_POP}ms ${E_STANDARD}`;
       c.style.transform  = 'translate3d(0,0,0)';
       const reset = () => {
         c.style.transition = '';
         c.style.transform  = '';
         c.style.willChange = '';
+        this._busy = false;
       };
       c.addEventListener('transitionend', reset, { once: true });
       setTimeout(reset, T_POP + 32);
@@ -886,12 +895,16 @@ class TransitionEngineImpl {
 
     const c = this._c;
     if (!c) return;
+    // Hold the navigation lock for the cancel snap-back so a concurrent
+    // navigate() can't fight this transform animation.
+    this._busy = true;
     c.style.transition = `transform ${T_POP}ms ${E_STANDARD}`;
     c.style.transform  = 'translate3d(0,0,0)';
     const reset = () => {
       c.style.transition = '';
       c.style.transform  = '';
       c.style.willChange = '';
+      this._busy = false;
     };
     c.addEventListener('transitionend', reset, { once: true });
     setTimeout(reset, T_POP + 32);

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, RefreshCcw, Share2 } from 'lucide-react';
 import type { ViewState, WeeklyRecap, RecapSection } from '../types';
@@ -47,11 +47,11 @@ export function WeeklyRecapView({ setView }: WeeklyRecapViewProps) {
     const isCurrent = weekStart === thisWeek;
     const canGoForward = weekStart < thisWeek;
 
-    useEffect(() => {
-        // Rebuild if user swaps weeks
-        void build();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [weekStart]);
+    // The hook (useWeeklyRecapData) owns the build lifecycle: its effect runs
+    // build() on mount and re-runs whenever weekStart changes, so no local
+    // rebuild effect is needed here. A duplicate trigger would run two
+    // concurrent build() calls per week change and risk clobbering the
+    // single-array archive write.
 
     return (
         <GoldShell

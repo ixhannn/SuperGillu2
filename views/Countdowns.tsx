@@ -8,6 +8,7 @@ import { countdownDateParts, formatStoredDate } from '../shared/dateOnly.js';
 import { buildCountdownEvents, getCountdownEventStatus } from '../shared/countdowns.js';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { listRemoveExit } from '../utils/motion';
+import { toast } from '../utils/toast';
 
 interface CountdownsProps {
     setView: (view: ViewState) => void;
@@ -45,6 +46,14 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
     const [dates, setDates] = useState<SpecialDate[]>([]);
     const [anniversaryDate, setAnniversaryDate] = useState<string>('');
     const [deleteTarget, setDeleteTarget] = useState<SpecialDate | null>(null);
+    // Re-render on a slow tick so the "Next Up" event and "N days to go" labels
+    // refresh at the day boundary — the per-event LiveCountdown only re-renders
+    // itself, never the parent that selects/orders the events.
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setTick((t) => t + 1), 30_000);
+        return () => clearInterval(id);
+    }, []);
 
     useEffect(() => {
         const load = () => {
@@ -74,11 +83,18 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
         });
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (!deleteTarget) return;
-        StorageService.deleteSpecialDate(deleteTarget.id);
-        setDates(prev => prev.filter(date => date.id !== deleteTarget.id));
+        const id = deleteTarget.id;
         setDeleteTarget(null);
+        setDates(prev => prev.filter(date => date.id !== id));
+        try {
+            await StorageService.deleteSpecialDate(id);
+        } catch {
+            // Persisted write failed — restore so the UI matches storage.
+            setDates(StorageService.getSpecialDates());
+            toast.show("Couldn't remove — try again", 'error');
+        }
     };
 
     const getIcon = (type: string) => {

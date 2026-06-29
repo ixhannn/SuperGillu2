@@ -28,6 +28,7 @@ export function useThrottledReload(runner: () => void): () => void {
   runnerRef.current = runner;
 
   const pendingRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
   const handlerRef = useRef<(() => void) | null>(null);
 
   if (!handlerRef.current) {
@@ -36,7 +37,8 @@ export function useThrottledReload(runner: () => void): () => void {
       pendingRef.current = true;
       // requestAnimationFrame guarantees we run at most once per visible
       // frame, regardless of how many events fire in that window.
-      requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
         pendingRef.current = false;
         try {
           runnerRef.current?.();
@@ -52,8 +54,13 @@ export function useThrottledReload(runner: () => void): () => void {
     };
   }
 
-  // Clean up the pending flag on unmount so a future mount starts clean.
-  useEffect(() => () => { pendingRef.current = false; }, []);
+  // Clean up the pending flag and cancel any in-flight rAF on unmount so a
+  // future mount starts clean and the runner can't fire post-unmount.
+  useEffect(() => () => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    pendingRef.current = false;
+  }, []);
 
   return useCallback(() => handlerRef.current?.(), []);
 }

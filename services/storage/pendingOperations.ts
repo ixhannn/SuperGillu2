@@ -27,7 +27,11 @@ const readJsonList = <T,>(key: string): T[] => {
 };
 
 const writeJsonList = (key: string, list: unknown[]) => {
-  localStorage.setItem(key, JSON.stringify(list));
+  try {
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch {
+    // localStorage full / unavailable — pending-op tracking is best-effort, never abort the caller.
+  }
 };
 
 export const getPendingUploads = (): PendingUpload[] =>

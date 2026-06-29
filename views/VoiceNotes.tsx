@@ -375,6 +375,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     const reducedMotion = useReducedMotion();
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
@@ -385,6 +386,10 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
         setNotes(StorageService.getVoiceNotes());
         return () => {
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+            if (timerRef.current) clearInterval(timerRef.current);
+            try { if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop(); } catch {}
+            streamRef.current?.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
             audioCtxRef.current?.close();
         };
     }, []);
@@ -407,8 +412,10 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
             return;
         }
 
+        let stream: MediaStream | undefined;
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
             setHasPermission(true);
 
             audioCtxRef.current = new AudioContext();
@@ -418,17 +425,24 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
             source.connect(analyserRef.current);
             drawWaveform();
 
-            const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
+                ? 'audio/mp4'
+                : MediaRecorder.isTypeSupported('audio/webm')
+                    ? 'audio/webm'
+                    : '';
+            const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+            const recordedStream = stream;
             chunksRef.current = [];
             mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
             mr.onstop = () => {
-                const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
                 const reader = new FileReader();
                 reader.onload = ev => {
                     setPendingAudio({ dataUri: ev.target?.result as string, duration: recordingDurationRef.current });
                 };
                 reader.readAsDataURL(blob);
-                stream.getTracks().forEach(t => t.stop());
+                recordedStream.getTracks().forEach(t => t.stop());
+                if (streamRef.current === recordedStream) streamRef.current = null;
                 if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
                 audioCtxRef.current?.close();
                 setWaveformData(new Array(WAVEFORM_BARS).fill(0));
@@ -445,9 +459,19 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
                 return next;
             }), 1000);
             feedback.tap();
-        } catch {
-            setHasPermission(false);
-            toast.show('Microphone access denied', 'error');
+        } catch (err) {
+            // Release any mic/audio resources acquired before the failure so the mic isn't held.
+            stream?.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+            try { audioCtxRef.current?.close(); } catch {}
+            const name = (err as DOMException)?.name;
+            if (name === 'NotAllowedError' || name === 'SecurityError') {
+                setHasPermission(false);
+                toast.show('Microphone access denied', 'error');
+            } else {
+                toast.show('Could not start recording', 'error');
+            }
         }
     };
 

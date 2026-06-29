@@ -1366,16 +1366,24 @@ const App = () => {
 
 const AuraSignalReceiver = () => {
   const [incoming, setIncoming] = useState<{ id?: string, color: string, title: string, subtitle?: string, message: string, afterglow?: string } | null>(null);
+  // Auras already shown (or dismissed) this session, keyed by their inbox id.
+  // Without this guard, an aura also persisted to the offline inbox re-pops on
+  // every storage-update — the realtime overlay carries no id, so dismissing it
+  // never removes the persisted missedAuras entry, and checkInbox re-shows it.
+  const shownIds = useRef<Set<string>>(new Set());
 
   // Check Offine Inbox on mount and storage updates
   useEffect(() => {
     const checkInbox = () => {
       const profile = StorageService.getCoupleProfile();
       if (profile?.missedAuras && profile.missedAuras.length > 0) {
-        // Find signals targeted at ME
-        const myMissed = profile.missedAuras.filter((a: any) => a.target === profile.myName);
+        // Find signals targeted at ME that haven't already been shown/dismissed.
+        const myMissed = profile.missedAuras.filter(
+          (a: any) => a.target === profile.myName && !shownIds.current.has(a.id),
+        );
         if (myMissed.length > 0) {
           const latest = myMissed[myMissed.length - 1]; // Show most recent
+          shownIds.current.add(latest.id);
           setIncoming({ ...latest.payload, id: latest.id });
         }
       }
@@ -1384,6 +1392,23 @@ const AuraSignalReceiver = () => {
     storageEventTarget.addEventListener('storage-update', checkInbox);
     return () => storageEventTarget.removeEventListener('storage-update', checkInbox);
   }, []);
+
+  // Clearing the overlay also removes any matching persisted inbox entry so it
+  // can't re-surface. Uses the functional setState form to read the current
+  // overlay without capturing a stale `incoming` — keeps the callback stable so
+  // the realtime auto-dismiss timeout can route through it safely.
+  const dismiss = useCallback(() => {
+    setIncoming((current) => {
+      if (current?.id) {
+        StorageService.removeMissedAura(current.id);
+      }
+      return null;
+    });
+  }, []);
+
+  // Auto-dismiss timer for an incoming aura — tracked so a second aura within 6s
+  // can't dismiss the newer one early, and so it's cleared on unmount.
+  const dismissTimerRef = useRef<number | null>(null);
 
   // Handle Realtime incoming signals
   useEffect(() => {
@@ -1396,25 +1421,25 @@ const AuraSignalReceiver = () => {
 
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
            new Notification('Lior - New Pulse', {
-               body: detail.payload.title, 
+               body: detail.payload.title,
                icon: '/notification-icon.png',
                silent: false
            });
         }
-        
-        setTimeout(() => setIncoming(null), 6000); // Auto-dismiss
+
+        // Route auto-dismiss through dismiss() so a persisted inbox entry is
+        // cleared too (when the realtime payload carries an id); the shownIds
+        // guard covers the no-id realtime race where only the synced entry has one.
+        if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = window.setTimeout(() => dismiss(), 6000); // Auto-dismiss
       }
     };
     syncEventTarget.addEventListener('signal-received', handleSignal);
-    return () => syncEventTarget.removeEventListener('signal-received', handleSignal);
-  }, []);
-
-  const dismiss = () => {
-    if (incoming?.id) {
-       StorageService.removeMissedAura(incoming.id);
-    }
-    setIncoming(null);
-  };
+    return () => {
+      syncEventTarget.removeEventListener('signal-received', handleSignal);
+      if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+    };
+  }, [dismiss]);
 
   return (
     <AnimatePresence>

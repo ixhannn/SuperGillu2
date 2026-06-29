@@ -780,22 +780,41 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
     const loadAndCheck = useCallback(() => {
         const all = StorageService.getSurprises();
         const now = new Date();
-        // Find first undelivered due surprise to reveal
-        const due = all.find((s) => !s.delivered && new Date(s.scheduledFor) <= now);
-        if (due) {
-            StorageService.markSurpriseDelivered(due.id);
-            setActiveSurprise(due);
+        // Deliver EVERY currently-due surprise, not just the first — otherwise a
+        // second due surprise is stranded in "Sealed & waiting" forever. The
+        // first one is surfaced for its ceremony; any others are already marked
+        // delivered and appear under "Opened".
+        const due = all.filter((s) => !s.delivered && new Date(s.scheduledFor) <= now);
+        if (due.length > 0) {
+            due.forEach((s) => StorageService.markSurpriseDelivered(s.id));
+            setActiveSurprise((cur) => cur ?? due[0]);
         }
         setSurprises(StorageService.getSurprises());
     }, []);
 
-    useEffect(() => { loadAndCheck(); }, [loadAndCheck]);
+    // Re-check periodically so a surprise that becomes due while the screen is
+    // open springs open at its minute instead of only on mount.
+    useEffect(() => {
+        loadAndCheck();
+        const id = setInterval(loadAndCheck, 30000);
+        return () => clearInterval(id);
+    }, [loadAndCheck]);
 
     const handleSave = async () => {
         if (!title.trim() || !message.trim() || !scheduledFor) return;
+        // Reject past/now timestamps — otherwise loadAndCheck marks the surprise
+        // delivered immediately and it "opens" the instant it's sealed, breaking
+        // the sealed-until-the-minute promise.
+        if (new Date(scheduledFor).getTime() <= Date.now()) {
+            toast.show('Pick a future time', 'error');
+            return;
+        }
 
         const profile = StorageService.getCoupleProfile();
-        const pending = surprises.filter((s) => !s.delivered);
+        // Read the authoritative cache, not stale React state, so a partner's
+        // surprises that synced in after the last render still count toward the
+        // free-tier limit (the gate can't be slipped on a concurrent-sync timing path).
+        const pending = StorageService.getSurprises().filter((s) => !s.delivered);
         if (!profile.isPremium && pending.length >= FREE_SURPRISE_LIMIT) {
             setShowPremiumModal(true);
             return;

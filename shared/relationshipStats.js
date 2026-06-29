@@ -64,23 +64,32 @@ export function buildLiveTogether(anniversaryDate, now = new Date()) {
     return { years: 0, months: 0, days: 0, hours: 0, minutes: 0, seconds: 0, totalSeconds: 0, isFuture: totalMs < 0 };
   }
 
-  let years = now.getFullYear() - start.getFullYear();
-  let months = now.getMonth() - start.getMonth();
-  let days = now.getDate() - start.getDate();
+  // Whole elapsed months, with one less month when we haven't reached the
+  // anniversary day-of-month yet this month. Computing days from an
+  // anniversary-anchored cursor (rather than borrowing a single previous
+  // month) is borrow-safe: it never underflows when the calendar month before
+  // `now` is shorter than the anniversary day-of-month (e.g. 31st anniversary
+  // on March 1).
+  let totalMonths = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  if (now.getDate() < start.getDate()) totalMonths -= 1;
+  totalMonths = Math.max(0, totalMonths);
+
+  const years = Math.floor(totalMonths / 12);
+  const months = totalMonths % 12;
+
+  // Anchor a cursor at the last completed monthly anniversary, clamping the
+  // day-of-month to the target month's length so overflow days don't roll
+  // forward (e.g. Jan 31 + 1 month stays in February).
+  const targetY = start.getFullYear() + Math.floor((start.getMonth() + totalMonths) / 12);
+  const targetM = ((start.getMonth() + totalMonths) % 12 + 12) % 12;
+  const daysInTargetMonth = new Date(targetY, targetM + 1, 0).getDate();
+  const cursor = new Date(targetY, targetM, Math.min(start.getDate(), daysInTargetMonth), 0, 0, 0, 0);
+  const days = Math.floor((now.getTime() - cursor.getTime()) / 86400000);
+
   // Anniversary is local midnight, so time-of-day needs no borrowing.
   const hours = now.getHours();
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
-
-  if (days < 0) {
-    const daysInPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
-    days += daysInPrevMonth;
-    months -= 1;
-  }
-  if (months < 0) {
-    months += 12;
-    years -= 1;
-  }
 
   return { years, months, days, hours, minutes, seconds, totalSeconds: Math.floor(totalMs / 1000), isFuture: false };
 }

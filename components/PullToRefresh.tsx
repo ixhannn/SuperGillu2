@@ -70,9 +70,9 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
       if (prev < threshold && finalPull >= threshold) {
         feedback.light();
       }
-
-      // Prevent native scroll chaining
-      if (e.cancelable) e.preventDefault();
+      // Native scroll chaining is suppressed by the non-passive listener
+      // registered in the effect below — calling preventDefault() here would
+      // be a no-op because React registers touchmove as a passive listener.
     }
   }, [writePull]);
 
@@ -89,11 +89,13 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
 
       try {
         await onRefresh();
+        feedback.success();
+      } catch {
+        feedback.error();
       } finally {
         isRefreshingRef.current = false;
         setIsRefreshing(false);
         writePull(0, true);
-        feedback.success();
       }
     } else {
       writePull(0, true);
@@ -104,6 +106,25 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
   useEffect(() => {
     writePull(0, false);
   }, [writePull]);
+
+  // React registers onTouchMove as a PASSIVE listener, so preventDefault()
+  // inside the synthetic handler is ignored and native scroll chaining is not
+  // suppressed. Attach a non-passive native listener so preventDefault()
+  // actually cancels the underlying scroll while the user is pulling down.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onMove = (e: TouchEvent) => {
+      if (!isPulling.current) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      if (touch.clientY - startY.current > 0 && e.cancelable) {
+        e.preventDefault();
+      }
+    };
+    el.addEventListener('touchmove', onMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onMove);
+  }, []);
 
   return (
     <div

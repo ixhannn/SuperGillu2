@@ -33,10 +33,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const setAudioSource = useCallback((url: string, durationMs?: number) => {
     setError(null);
 
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
+    const old = audioRef.current;
+    if (old) {
+      old.onloadedmetadata = old.onended = old.onerror = old.onplay = old.onpause = null;
+      old.pause();
+      old.src = '';
+      old.load();
     }
+    audioRef.current = null;
 
     const audio = new Audio(url);
     audioRef.current = audio;

@@ -49,6 +49,16 @@ type LocalNotifications = {
 const ANDROID_CHANNEL_ID = 'lior-reminders';
 let channelEnsured = false;
 
+// Web-fallback notification timers (no native scheduler available): tracked so a
+// re-arm — applySchedule runs on startup AND on every savePrefs / permission
+// grant — clears the previous ones instead of stacking duplicate setTimeouts that
+// fire the same reminder multiple times and keep running after a logical cancel.
+let webNotificationTimers: ReturnType<typeof setTimeout>[] = [];
+const clearWebNotificationTimers = () => {
+  for (const t of webNotificationTimers) clearTimeout(t);
+  webNotificationTimers = [];
+};
+
 async function ensureChannel(local: LocalNotifications): Promise<void> {
   if (channelEnsured || typeof local.createChannel !== 'function') return;
   try {
@@ -322,7 +332,10 @@ export const NotificationsService = {
     if (prefs.ritualEnabled) {
       const when = nextOccurrenceOf(prefs.ritualTime);
       queued.push({
-        id: `daily-ritual-${when.toISOString().slice(0, 10)}`,
+        // Stable id (not date-based): native schedule repeats, so re-running
+        // applySchedule must replace the same entry, not orphan a date-stamped
+        // recurring notification that cancelAll can no longer cancel by id.
+        id: 'daily-ritual',
         kind: 'daily-ritual',
         fireAt: when.toISOString(),
         title: 'Today’s question is waiting',
@@ -333,7 +346,9 @@ export const NotificationsService = {
     if (prefs.dropEnabled) {
       const when = nextOccurrenceOf(prefs.dropTime);
       queued.push({
-        id: `daily-drop-${when.toISOString().slice(0, 10)}`,
+        // Stable id (not date-based): see daily-ritual above — a repeating
+        // notification must keep a constant id so each re-schedule overwrites it.
+        id: 'daily-drop',
         kind: 'daily-drop',
         fireAt: when.toISOString(),
         title: 'Today’s drop is waiting 🎁',
@@ -359,9 +374,15 @@ export const NotificationsService = {
         // relaunched. A bare `{ at }` is one-shot and stops after the first
         // fire — the previous behaviour meant reminders silently died until the
         // next cold launch re-armed them.
+        const timeForKind =
+          s.kind === 'recap-sunday' ? prefs.recapTime
+          : s.kind === 'daily-ritual' ? prefs.ritualTime
+          : s.kind === 'daily-drop' ? prefs.dropTime
+          : prefs.dailyClipTime;
+        const hm = parseHm(timeForKind);
         const on = s.kind === 'recap-sunday'
-          ? { weekday: 1, ...parseHm(prefs.recapTime) } // Capacitor weekday: 1 = Sunday
-          : parseHm(prefs.dailyClipTime);
+          ? { weekday: 1, ...hm } // Capacitor weekday: 1 = Sunday
+          : hm;
         return {
           id: hashId(s.id),
           title: s.title,
@@ -378,18 +399,20 @@ export const NotificationsService = {
     // Web fallback: we can't pre-schedule beyond session. Use setTimeout
     // only for notifications firing in the next 2 hours (session-bound).
     else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      clearWebNotificationTimers(); // supersede any timers from a prior re-arm
       for (const s of queued) {
         const delta = new Date(s.fireAt).getTime() - Date.now();
         if (delta > 0 && delta < 2 * 60 * 60 * 1000) {
-          setTimeout(() => {
+          webNotificationTimers.push(setTimeout(() => {
             try { new Notification(s.title, { body: s.body }); } catch {}
-          }, delta);
+          }, delta));
         }
       }
     }
   },
 
   async cancelAll(): Promise<void> {
+    clearWebNotificationTimers();
     const existing = readSchedules();
     writeSchedules([]);
     const native = await getCapacitorLocalNotifications();
@@ -588,7 +611,6 @@ export const NotificationsService = {
     if (!readPrefs().partnerNudgeEnabled) return;
     const now = Date.now();
     if (now - lastHeartbeatPushAt < HEARTBEAT_PUSH_COOLDOWN_MS) return;
-    lastHeartbeatPushAt = now;
     if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
     try {
       const token = await SupabaseService.getAccessToken();
@@ -596,6 +618,10 @@ export const NotificationsService = {
       const { url } = SupabaseService.getProjectConfig();
       if (!url) return;
 
+      // Stamp the cooldown only once a send is actually about to fire — burning
+      // it on a skipped/failed precondition would silently rate-limit a real
+      // heartbeat for up to 3s even though no push went out.
+      lastHeartbeatPushAt = now;
       await fetch(`${url}/functions/v1/send-partner-nudge`, {
         method: 'POST',
         headers: {

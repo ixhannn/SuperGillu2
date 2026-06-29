@@ -198,7 +198,7 @@ export const MediaForge: React.FC<MediaForgeProps> = ({
         const v = videoRef.current;
         if (!v) return;
         if (videoPlaying) { v.pause(); setVideoPlaying(false); }
-        else              { void v.play(); setVideoPlaying(true); }
+        else              { v.play().catch(() => setVideoPlaying(false)); }
     };
 
     const KindIcon = kind === 'video' ? Video : Camera;

@@ -79,10 +79,21 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const playbackRef = useRef<HTMLAudioElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     return () => {
+      // Tear down everything on unmount — without stopping the recorder and
+      // releasing the mic tracks directly, navigating away mid-recording (e.g.
+      // hardware back) leaves the microphone live and the duration timer ticking.
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+      try {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch { /* recorder already stopped */ }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
       audioCtxRef.current?.close();
       playbackRef.current?.pause();
     };
@@ -100,8 +111,10 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   }, []);
 
   const startRecording = async () => {
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
       audioCtxRef.current = new AudioContext();
       const source = audioCtxRef.current.createMediaStreamSource(stream);
       analyserRef.current = audioCtxRef.current.createAnalyser();
@@ -109,17 +122,23 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       source.connect(analyserRef.current);
       drawWaveform();
 
-      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      // audio/webm isn't universally supported (some iOS/older WebViews reject
+      // it). Pick the first supported container so construction doesn't throw.
+      const mimeType = ['audio/webm', 'audio/mp4', 'audio/aac'].find(
+        (t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(t),
+      ) || '';
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || mimeType || 'audio/webm' });
         const reader = new FileReader();
         reader.onload = ev => {
           setPendingAudio({ dataUri: ev.target?.result as string, duration: recordingDurationRef.current });
         };
         reader.readAsDataURL(blob);
-        stream.getTracks().forEach(t => t.stop());
+        streamRef.current?.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
         audioCtxRef.current?.close();
         setWaveformData(new Array(WAVEFORM_BARS).fill(0));
@@ -136,7 +155,15 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
       }), 1000);
       feedback.tap();
     } catch {
-      toast.show('Microphone access denied', 'error');
+      // The stream may have been acquired before MediaRecorder/AudioContext
+      // construction failed — release it so the mic doesn't stay live, and
+      // report the real cause instead of a misleading "permission denied".
+      stream?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      audioCtxRef.current?.close();
+      audioCtxRef.current = null;
+      toast.show("Couldn't start recording", 'error');
     }
   };
 
@@ -265,6 +292,10 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Clear the input now (the file is already captured) so re-picking the SAME
+    // file after a gate rejection or a success still fires onChange — otherwise
+    // the picker looks dead on retry.
+    e.target.value = '';
     const profile = StorageService.getCoupleProfile();
     if (!profile.isPremium) {
       setPremiumContext('video');
@@ -307,6 +338,12 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
         bytes: file.size,
         durationSec,
       });
+    } catch (err) {
+      // Without this, a FileReader/metadata failure rejected out of this async
+      // handler as an unhandled rejection and the user got NO feedback — the
+      // processing band just vanished and the video silently disappeared.
+      console.warn('[AddMemory] video processing failed', err);
+      toast.show("Couldn't process that video. Try another.", 'error');
     } finally {
       setIsProcessingMedia(null);
     }
@@ -334,10 +371,17 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     if (!forgePending) return;
     const kind = forgePending.kind;
     setForgePending(null);
-    // Re-trigger the matching picker on the next tick.
+    // Re-trigger the matching picker on the next tick. Clear the input value
+    // first — browsers don't fire onChange when the same file is re-selected,
+    // so without this the retry silently does nothing on web.
     window.setTimeout(() => {
-      if (kind === 'video') videoInputRef.current?.click();
-      else void handlePhotoPick();
+      if (kind === 'video') {
+        if (videoInputRef.current) videoInputRef.current.value = '';
+        videoInputRef.current?.click();
+      } else {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        void handlePhotoPick();
+      }
     }, 60);
   };
 
@@ -382,8 +426,11 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     let audioMeta: { audioId: string; audioBytes: number; audioMimeType: string; audioStoragePath: string | null; audioDuration: number } | undefined;
     if (pendingAudio) {
       try {
-        const audioId = `mem_audio_${memId}`;
-        const result = await StorageService.saveVoiceNoteAudio(audioId, pendingAudio.dataUri);
+        // saveVoiceNoteAudio writes the blob to IndexedDB under `vn_${id}`, so
+        // the stored audioId must match that key for local playback to resolve.
+        // Mirror VoiceNotes.tsx: pass memId and store audioId=`vn_${memId}`.
+        const audioId = `vn_${memId}`;
+        const result = await StorageService.saveVoiceNoteAudio(memId, pendingAudio.dataUri);
         audioMeta = {
           audioId,
           audioBytes: result.byteSize,

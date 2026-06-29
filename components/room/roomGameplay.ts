@@ -573,9 +573,10 @@ export const applyAction = (room: RoomState, actionId: RoomActionId, profile?: C
 export const getOfflineRewards = (room: RoomState, profile?: CoupleProfile) => {
   const safe = normalizeRoomState(room);
   const metrics = getRoomMetrics(safe, profile);
-  const from = new Date(safe.lastIdleClaimAt || safe.lastActiveAt || new Date().toISOString());
   const now = new Date();
-  const elapsedHours = clamp((now.getTime() - from.getTime()) / 3_600_000, 0, metrics.idleCapHours);
+  const parsedFrom = new Date(safe.lastIdleClaimAt || safe.lastActiveAt || now.toISOString()).getTime();
+  const fromMs = Number.isFinite(parsedFrom) ? parsedFrom : now.getTime();
+  const elapsedHours = clamp((now.getTime() - fromMs) / 3_600_000, 0, metrics.idleCapHours);
   const coins = Math.max(0, Math.floor(metrics.passiveCoinsPerHour * elapsedHours * metrics.idleEfficiency));
   const love = Math.max(0, Math.floor(metrics.passiveLovePerHour * elapsedHours * metrics.idleEfficiency));
   const xp = Math.floor((coins * 0.14) + (love * 0.75));

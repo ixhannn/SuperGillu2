@@ -4,6 +4,13 @@ import { parseManagedMediaKey } from '../../../shared/mediaPolicy.js';
 
 const LEGACY_SUPABASE_BUCKETS = ['lior-media', 'tulika-media'];
 
+// Hard cap on the object size we will buffer + base64-encode into a single JSON
+// response. base64 inflates bytes ~33%, and the whole encoded string is held in
+// the isolate at once, so an unbounded download can OOM the edge function. This
+// bounds peak memory to a safe multiple of the cap; oversized objects are
+// refused with 413 instead of crashing the function for everyone.
+const MAX_PROXY_BYTES = 24 * 1024 * 1024;
+
 // Legacy feature tables (top-level `couple_id` column + `data` jsonb holding the
 // storage path) used to bind a legacy media ref to its owning couple. Mirrors
 // the union in public.storage_audit_legacy_refs. Each entry lists the jsonb
@@ -226,6 +233,12 @@ Deno.serve(async (req) => {
 
     const { data, error } = await service.storage.from(target.bucket).download(target.key);
     if (error || !data) continue;
+
+    // Refuse to buffer + base64-encode objects larger than the cap: doing so
+    // would hold the inflated payload entirely in the isolate and can OOM it.
+    if (data.size > MAX_PROXY_BYTES) {
+      return json({ error: 'Media too large to proxy' }, 413);
+    }
 
     return json({
       dataUri: await blobToDataUri(data),

@@ -357,7 +357,15 @@ export const SupabaseService = {
                         .select('couple_id, user_id')
                         .in('couple_id', coupleIds);
 
-                    if (!peerError && peerRows) {
+                    // A peer-lookup error must NOT be swallowed into a guess: caching
+                    // the wrong couple here is the "linked profiles unlink / data in
+                    // the wrong tenant" failure. Fail closed so the caller retries.
+                    if (peerError) {
+                        console.warn('Supabase peer membership lookup failed:', peerError);
+                        return null;
+                    }
+
+                    if (peerRows) {
                         const linkedCoupleIds = new Set(
                             peerRows
                                 .filter((row: any) => row?.user_id && row.user_id !== userId)
@@ -370,7 +378,11 @@ export const SupabaseService = {
                         }
                     }
 
-                    cachedCoupleId = coupleIds[0];
+                    // No partner found in any couple. Prefer the OLDEST membership
+                    // (the user's original couple) over a freshly auto-created solo
+                    // couple. membershipRows are ordered created_at DESC, so the last
+                    // id is the oldest.
+                    cachedCoupleId = coupleIds[coupleIds.length - 1];
                     return cachedCoupleId;
                 }
             }

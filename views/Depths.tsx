@@ -453,28 +453,28 @@ export const DepthsView: React.FC<DepthsViewProps> = ({ setView }) => {
 
     const handleToggleFavorite = useCallback((questionId: string) => {
         feedback.tap();
-        setDepthsState((prev) => {
-            const kept = prev.favorites.includes(questionId);
-            const next: DepthsState = {
-                ...prev,
-                favorites: kept ? prev.favorites.filter((id) => id !== questionId) : [...prev.favorites, questionId],
-            };
-            PremiumFeaturesStore.saveDepthsState(next);
-            return next;
-        });
+        // Merge against the freshly-synced profile state, not React-local prev, so a
+        // favorite that arrived via cloud sync but isn't yet in local state isn't dropped.
+        const base = PremiumFeaturesStore.getDepthsState();
+        const kept = base.favorites.includes(questionId);
+        const next: DepthsState = {
+            ...base,
+            favorites: kept ? base.favorites.filter((id) => id !== questionId) : [...base.favorites, questionId],
+        };
+        PremiumFeaturesStore.saveDepthsState(next);
+        setDepthsState(next);
     }, []);
 
     const handleComplete = useCallback((deckId: string) => {
         feedback.celebrate();
-        setDepthsState((prev) => {
-            const next: DepthsState = {
-                ...prev,
-                completedSessions: prev.completedSessions + 1,
-                lastDeckId: deckId,
-            };
-            PremiumFeaturesStore.saveDepthsState(next);
-            return next;
-        });
+        const base = PremiumFeaturesStore.getDepthsState();
+        const next: DepthsState = {
+            ...base,
+            completedSessions: base.completedSessions + 1,
+            lastDeckId: deckId,
+        };
+        PremiumFeaturesStore.saveDepthsState(next);
+        setDepthsState(next);
     }, []);
 
     const handleOpenDeck = useCallback((deck: DepthsDeck) => {
@@ -483,11 +483,10 @@ export const DepthsView: React.FC<DepthsViewProps> = ({ setView }) => {
             setPaywallOpen(true);
             return;
         }
-        setDepthsState((prev) => {
-            const next: DepthsState = { ...prev, lastDeckId: deck.id };
-            PremiumFeaturesStore.saveDepthsState(next);
-            return next;
-        });
+        const base = PremiumFeaturesStore.getDepthsState();
+        const next: DepthsState = { ...base, lastDeckId: deck.id };
+        PremiumFeaturesStore.saveDepthsState(next);
+        setDepthsState(next);
         setActiveDeck(deck);
     }, [isPremium]);
 

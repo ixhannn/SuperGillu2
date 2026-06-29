@@ -22,7 +22,10 @@ const openDbAtVersion = (version: number): Promise<IDBDatabase> =>
     };
     req.onsuccess = () => {
       const db = req.result;
-      db.onversionchange = () => db.close();
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
       resolve(db);
     };
     req.onerror = () => reject(req.error);
@@ -80,6 +83,7 @@ export const writeRaw = async <T = unknown>(store: string, key: string, val: T) 
     tx.objectStore(store).put(val, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
   });
 };
 
@@ -90,6 +94,7 @@ export const readRaw = async <T = unknown>(store: string, key: string): Promise<
     const req = tx.objectStore(store).get(key);
     req.onsuccess = () => resolve(req.result as T | undefined);
     req.onerror = () => reject(req.error);
+    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
   });
 };
 
@@ -100,6 +105,7 @@ export const deleteRaw = async (store: string, key: string) => {
     tx.objectStore(store).delete(key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
   });
 };
 

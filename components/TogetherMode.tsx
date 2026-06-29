@@ -12,8 +12,8 @@ export const TogetherMode = () => {
             if (started) return;
             started = true;
             StorageService.getTogetherMusic().then(src => {
-                if (src) AmbientService.startSolo();
-            });
+                if (src) AmbientService.startSolo().catch(() => undefined);
+            }).catch(() => undefined);
         };
         // Use capture so we catch the very first tap/click
         window.addEventListener('touchstart', tryStart, { once: true, capture: true, passive: true });
@@ -28,7 +28,7 @@ export const TogetherMode = () => {
         const onStart = (e: any) => {
             const startTime = typeof e.detail?.startTime === 'number' ? e.detail.startTime : Date.now();
             Haptics.doubleBeat().catch(() => undefined);
-            AmbientService.syncToSession(startTime);
+            AmbientService.syncToSession(startTime).catch(() => undefined);
         };
 
         const onEnd = () => {
