@@ -975,17 +975,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     const reducedMotion = useReducedMotion();
     const { isConfigured } = getSupabaseAuthConfig();
 
-    // DIAGNOSTIC (temporary): surface the last native-Google sign-in outcome,
-    // even after a WebView reload, so "picked account → back to login, no error"
-    // tells us whether the token exchange failed (and why) or succeeded but the
-    // app failed to navigate. Remove once the cause is found.
-    useEffect(() => {
-        try {
-            const dbg = localStorage.getItem('lior_g_dbg');
-            if (dbg) setError(`google: ${dbg}`);
-        } catch { /* ignore */ }
-    }, []);
-
     useEffect(() => {
         if (rateLimitSecs <= 0) return;
         const id = setInterval(() => {

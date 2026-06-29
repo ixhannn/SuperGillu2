@@ -205,11 +205,17 @@ export const signInWithNativeGoogle = async (): Promise<void> => {
     }
 
     // 3. Native account picker → ID token.
+    // NOTE: do NOT pass `scopes`. The plugin always requests email/profile/openid
+    // by default, and supplying a `scopes` array forces an extra Google-API
+    // authorization flow that REQUIRES a modified MainActivity — without it the
+    // plugin rejects with "You CANNOT use scopes without modifying the main
+    // activity". We only need the ID token for Supabase, so the default flow
+    // (no scopes) is exactly right and needs no native MainActivity changes.
     let idToken: string | null | undefined;
     try {
         const res = await plugin.login({
             provider: 'google',
-            options: { scopes: ['email', 'profile'], nonce: hashedNonce },
+            options: { nonce: hashedNonce },
         });
         idToken = res?.result?.idToken;
     } catch (e) {
