@@ -44,15 +44,19 @@ class AudioService {
     const saved = localStorage.getItem('lior_audio');
     if (saved !== null) this.enabled = saved === '1';
     const vol = localStorage.getItem('lior_audio_volume');
-    if (vol !== null) this.volume = Math.min(1, Math.max(0, parseFloat(vol)));
+    if (vol !== null) {
+      const parsed = parseFloat(vol);
+      if (Number.isFinite(parsed)) this.volume = Math.min(1, Math.max(0, parsed));
+    }
   }
 
   setEnabled(value: boolean) {
     this.enabled = value;
     localStorage.setItem('lior_audio', value ? '1' : '0');
-    const ctx = this.getCtx();
-    if (this.masterGain && ctx) {
-      this.masterGain.gain.setTargetAtTime(value ? this.volume : 0, ctx.currentTime, 0.05);
+    // Read the live context directly: getCtx() short-circuits to null when
+    // disabled, which would skip the ramp-to-0 and let in-flight tails keep ringing.
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(value ? this.volume : 0, this.ctx.currentTime, 0.05);
     }
   }
 

@@ -229,13 +229,27 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
     }
 
     return new Promise((resolve) => {
-      mediaRecorder.onstop = async () => {
+      let settled = false;
+
+      const finish = async () => {
+        if (settled) return;
+        settled = true;
+        if (failsafe) clearTimeout(failsafe);
+
         const duration = Date.now() - startTimeRef.current;
         const mimeType = mediaRecorder.mimeType;
         const blob = new Blob(chunksRef.current, { type: mimeType });
 
         setIsRecording(false);
         stopStream();
+
+        // A chunkless take (fast tap/release before the first 100ms flush,
+        // or a recorder that died before emitting data) yields a 0-byte blob.
+        // Resolve it as a failed take so it is never saved or uploaded.
+        if (blob.size === 0) {
+          resolve(null);
+          return;
+        }
 
         try {
           const thumbnail = await generateThumbnail(blob);
@@ -254,7 +268,18 @@ export function useVideoRecorder(): UseVideoRecorderReturn {
         }
       };
 
-      mediaRecorder.stop();
+      mediaRecorder.onstop = () => { void finish(); };
+      // If the underlying track already ended (camera revoked, app
+      // backgrounded), onstop may never fire. onerror and the timeout
+      // failsafe guarantee the promise settles so the UI cannot hang.
+      mediaRecorder.onerror = () => { void finish(); };
+      const failsafe = setTimeout(() => { void finish(); }, 3000);
+
+      try {
+        mediaRecorder.stop();
+      } catch {
+        void finish();
+      }
     });
   }, [stopStream, generateThumbnail]);
 

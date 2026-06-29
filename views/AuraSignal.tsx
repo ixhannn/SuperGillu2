@@ -113,8 +113,9 @@ const ORB_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 110px)';
 const GLOW_IDLE: [string, string, string] = ['#9aa3c8', '#5d63a0', '#33355f'];
 
 // A single soft glow that pools behind the content and slowly drifts. ONE layer
-// (was two) + a gentler blur so a phone GPU re-composites just one screen-blended
-// pool per frame instead of two overlapping ones — the dominant on-device lag
+// (was two), normal-blended over the near-black base (no mix-blend-mode), so a
+// phone GPU just translates one cached, pre-blurred pool per frame instead of
+// re-reading the backdrop to screen-blend it — the dominant on-device lag/flicker
 // source. Opacity/size are lifted slightly to keep the same luminosity solo.
 const GLOW_BLOBS = [
     { ci: 0, cx: 50, cy: 58, size: 56, blur: 48, op: 0.72, dx: ['-6%', '7%', '-6%'], dy: ['4%', '-6%', '4%'], sc: [1, 1.12, 1], xDur: 22, yDur: 27, scDur: 19 },
@@ -140,11 +141,17 @@ const GlowField = memo(function GlowField({ signal, reduce }: { signal: Signal |
             >
                 {GLOW_BLOBS.map((b, i) => {
                     const color = palette[b.ci];
-                    const op = b.op * (lit ? 1 : 0.42);
+                    // Normal blend over near-black (NOT mix-blend-mode:screen).
+                    // Screen-blending an animated, blurred layer forces the WebView
+                    // to re-read the backdrop every composited frame — the dominant
+                    // on-device flicker/jank source. Over a near-black base a soft
+                    // colour pool at this opacity is visually ~identical, with the
+                    // opacity nudged up to recover the luminosity screen gave it.
+                    const op = Math.min(1, b.op * (lit ? 1.3 : 0.55));
                     return (
                         <motion.div
                             key={i} aria-hidden className="absolute rounded-full"
-                            style={{ top: `calc(${b.cy}% - ${b.size / 2}vmax)`, left: `calc(${b.cx}% - ${b.size / 2}vmax)`, width: `${b.size}vmax`, height: `${b.size}vmax`, mixBlendMode: 'screen', filter: `blur(${b.blur}px)`, willChange: 'transform' }}
+                            style={{ top: `calc(${b.cy}% - ${b.size / 2}vmax)`, left: `calc(${b.cx}% - ${b.size / 2}vmax)`, width: `${b.size}vmax`, height: `${b.size}vmax`, filter: `blur(${b.blur}px)`, willChange: 'transform' }}
                             initial={{ backgroundColor: color, opacity: 0, x: 0, y: 0, scale: 1 }}
                             animate={reduce
                                 ? { backgroundColor: color, opacity: op }
@@ -278,8 +285,11 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
     };
 
     const fireSignal = () => {
-        if (!activeSignal || sentRef.current) return;
-        SyncService.sendSignal('AURA_SIGNAL', {
+        // NOTE: tick() already sets sentRef.current = true before calling this,
+        // so the guard must NOT re-check sentRef (that made every send a no-op).
+        // Single-fire is enforced by tick()/startCharge()/cancelCharge().
+        if (!activeSignal) return;
+        const delivered = SyncService.sendSignal('AURA_SIGNAL', {
             color: activeSignal.color,
             title: activeSignal.title,
             subtitle: activeSignal.subtitle,
@@ -295,7 +305,14 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
             setSelected(null);
             setView('home');
             // Carry a warm confirmation onto home so the return isn't hollow.
-            toast.show(`“${title}” is on its way 💫`, 'heart', 4200);
+            // Be honest when offline: it's saved and will send on reconnect.
+            toast.show(
+                delivered
+                    ? `“${title}” is on its way 💫`
+                    : `“${title}” will send when you’re back online 💫`,
+                'heart',
+                4200,
+            );
         }, 3300);
     };
 
@@ -315,6 +332,10 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
 
     const startCharge = (e: React.PointerEvent) => {
         if (!selected || sent || sentRef.current) return;
+        // Suppress the synthetic long-press / compatibility-mouse behaviours some
+        // WebViews fire on a sustained touch (they can emit a stray pointercancel
+        // mid-hold). Harmless on desktop; belt-and-suspenders on Android.
+        e.preventDefault();
         // Capture the pointer so a small finger drift off the 96px orb during the
         // 850ms hold does NOT fire pointerleave and silently cancel the send. This
         // is the core "I held it but nothing sent" bug on touch — made worse by
@@ -357,7 +378,7 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                     className="absolute left-1/2 pointer-events-none"
                     style={{
                         bottom: ORB_BOTTOM, width: '32rem', height: '32rem',
-                        borderRadius: '50%', mixBlendMode: 'screen', filter: 'blur(44px)',
+                        borderRadius: '50%', filter: 'blur(44px)',
                         background: `radial-gradient(circle, ${activeSignal.color}, transparent 65%)`,
                         opacity: 0.1, transform: 'translateX(-50%) scale(0.6)',
                         willChange: 'opacity, transform',
@@ -558,7 +579,7 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
                                 {/* Inner energy — brightens as the charge gathers (rAF-driven) */}
                                 <div
                                     ref={orbGlowRef} aria-hidden className="absolute inset-0 rounded-full"
-                                    style={{ background: 'radial-gradient(circle, #fff, transparent 70%)', mixBlendMode: 'screen', filter: 'blur(4px)', opacity: 0.3, transform: 'scale(0.9)', willChange: 'opacity, transform' }}
+                                    style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.9), transparent 70%)', filter: 'blur(4px)', opacity: 0.3, transform: 'scale(0.9)', willChange: 'opacity, transform' }}
                                 />
                                 <Send size={24} className="relative z-10 -mt-0.5" strokeWidth={2} />
                                 <span className="text-[9px] font-bold uppercase tracking-[0.18em] mt-1 relative z-10 opacity-90">

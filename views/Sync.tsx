@@ -268,10 +268,13 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
       return;
     }
 
+    let cancelled = false;
     const checkForPartner = async () => {
       try {
         const nextStatus = await PairingService.getStatus();
+        if (cancelled) return;
         const linked = await applyLinkedStatus(nextStatus);
+        if (cancelled) return;
         if (linked) {
           stopPartnerPoll();
           toast.show(`${nextStatus?.partnerName || 'Your partner'} just joined your space!`, 'success');
@@ -280,7 +283,10 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     };
 
     pollRef.current = setInterval(checkForPartner, 8000);
-    return stopPartnerPoll;
+    return () => {
+      cancelled = true;
+      stopPartnerPoll();
+    };
   }, [applyLinkedStatus, linkedPartner, pairTab, stopPartnerPoll]);
 
   // ── Camera helpers ────────────────────────────────────────────────────────────
@@ -494,8 +500,13 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
   // ── Sync actions ──────────────────────────────────────────────────────────────
   const forceSync = async () => {
     setIsSyncing(true);
-    await SyncService.init();
-    setTimeout(() => setIsSyncing(false), 1000);
+    try {
+      await SyncService.init();
+    } catch {
+      toast.show('Sync failed. Check your connection and try again.', 'error');
+    } finally {
+      setTimeout(() => setIsSyncing(false), 1000);
+    }
   };
 
   const requestPermission = async () => {
@@ -714,7 +725,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
               placeholder="8-char code"
               className="flex-1 px-3 py-2 rounded-lg text-xs font-mono tracking-wider uppercase"
               style={{ background: 'rgba(var(--theme-particle-3-rgb),0.10)', color: 'var(--color-text-primary)' }}
-              maxLength={8}
+              maxLength={12}
             />
             <button
               onClick={handleManualClaim}
@@ -1076,6 +1087,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
           confirmLabel="Unlink & Re-link"
           variant="danger"
           onConfirm={() => {
+            stopPartnerPoll();
             StorageService.clearPairLock();
             SupabaseService.setCachedCoupleId(null);
             setLinkedPartner('');

@@ -1,9 +1,9 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { LiveBackground } from './LiveBackground';
 import { SafeRender } from './SafeRender';
-import { isLowPowerDevice } from '../utils/runtimeProfile';
 import { observeDocumentAttributes, observeDocumentVisibility } from '../utils/documentObserverBus';
 import { hasPendingUserInput, scheduleIdleTask } from '../utils/scheduler';
+import { AmbientPrefs } from '../services/ambientPrefs';
 
 const LazyLiveBackground3D = React.lazy(() =>
   import('./LiveBackground3D').then((module) => ({ default: module.LiveBackground3D })),
@@ -58,6 +58,33 @@ const useAmbientMotionPaused = (paused: boolean): boolean => {
   }, []);
 
   return paused || documentPaused;
+};
+
+// The user's Settings toggle for the heavy 3D blob. Reacts live to flips.
+const useAmbient3DEnabled = (): boolean => {
+  const [enabled, setEnabled] = useState<boolean>(() => AmbientPrefs.is3DEnabled());
+  useEffect(() => AmbientPrefs.subscribe(() => setEnabled(AmbientPrefs.is3DEnabled())), []);
+  return enabled;
+};
+
+// Whether the active route is Home, read from <html data-route> (App keeps it in
+// sync). Home ALWAYS shows the blob regardless of the toggle, so this overrides
+// the preference. Reading an attribute keeps AmbientVisuals prop-free, so Layout's
+// memo and the keep-alive shells underneath never re-render on navigation.
+const useIsHomeRoute = (): boolean => {
+  const [isHome, setIsHome] = useState<boolean>(
+    () => typeof document !== 'undefined' && document.documentElement.dataset.route === 'home',
+  );
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const sync = () => {
+      const next = document.documentElement.dataset.route === 'home';
+      setIsHome((prev) => (prev === next ? prev : next));
+    };
+    sync();
+    return observeDocumentAttributes(['data-route'], sync);
+  }, []);
+  return isHome;
 };
 
 const AmbientMotionFallback: React.FC<{ paused?: boolean }> = ({ paused = false }) => (
@@ -156,6 +183,12 @@ const AmbientMotionFallback: React.FC<{ paused?: boolean }> = ({ paused = false 
 const AmbientVisualsImpl: React.FC<AmbientVisualsProps> = ({ paused = false }) => {
   const [ambientStage, setAmbientStage] = useState<AmbientStage>('fallback');
   const effectivePaused = useAmbientMotionPaused(paused);
+  const enabled3D = useAmbient3DEnabled();
+  const isHomeRoute = useIsHomeRoute();
+  // The heavy 3D blob shows when EITHER the route is Home (always on there) OR the
+  // user's global toggle is on. When false it is hidden + paused on every other
+  // page, falling back to the static gradient wash beneath.
+  const show3D = isHomeRoute || enabled3D;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -164,14 +197,10 @@ const AmbientVisualsImpl: React.FC<AmbientVisualsProps> = ({ paused = false }) =
     // (@media prefers-reduced-motion) already freezes the wash/sheen layers; this
     // gate stops the heavier WebGL layers from ever starting for that cohort.
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    // Only skip the heavy WebGL ambient scene on genuinely low-power
-    // hardware (≤4 cores / ≤4GB RAM / save-data). It must NOT be gated
-    // by viewport width or "is native" — Lior is a mobile app and the
-    // AnimationEngine is locked at the 'ultra' tier, so the signature
-    // animated background is meant to run on phones. Gating by
-    // isCompactViewport()/isNativePlatform() killed it on every real
-    // device and left only the static gradient.
-    if (isLowPowerDevice()) return;
+    // No device gating — visuals are locked to 'ultra' on every device (the user
+    // asked for this). The heavy WebGL scene is still built lazily here; whether
+    // it is actually shown/rendered is governed by `show3D` (the Settings toggle,
+    // with Home always-on) at the render + paused level below.
 
     let cancelled = false;
     const cancelers: Array<() => void> = [];
@@ -225,13 +254,24 @@ const AmbientVisualsImpl: React.FC<AmbientVisualsProps> = ({ paused = false }) =
       <LiveBackground />
       <AmbientMotionFallback paused={effectivePaused} />
       {ambientStage !== 'fallback' && (
-        <div data-testid="ambient-visuals-3d" aria-hidden="true">
+        <div
+          data-testid="ambient-visuals-3d"
+          aria-hidden="true"
+          style={{
+            // Hidden (revealing the static gradient beneath) when the blob is
+            // toggled off on a non-Home page. A soft fade so toggling / leaving
+            // Home reads as a gentle dissolve, never a pop.
+            opacity: show3D ? 1 : 0,
+            transition: 'opacity 600ms ease',
+            willChange: 'opacity',
+          }}
+        >
           <Suspense fallback={null}>
-            <SafeRender><LazyLiveBackground3D paused={effectivePaused} /></SafeRender>
+            <SafeRender><LazyLiveBackground3D paused={effectivePaused || !show3D} /></SafeRender>
           </Suspense>
           {ambientStage === 'hearts' && (
             <Suspense fallback={null}>
-              <SafeRender><LazyFloatingHeartsScene paused={effectivePaused} /></SafeRender>
+              <SafeRender><LazyFloatingHeartsScene paused={effectivePaused || !show3D} /></SafeRender>
             </Suspense>
           )}
         </div>

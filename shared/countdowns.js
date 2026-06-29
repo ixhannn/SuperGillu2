@@ -27,7 +27,12 @@ const addDays = (start, n) => {
  */
 function getNextMonthsary(start, now) {
   let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
-  const makeDate = (m) => new Date(start.getFullYear(), start.getMonth() + m, start.getDate());
+  const makeDate = (m) => {
+    const d = new Date(start.getFullYear(), start.getMonth() + m, 1);
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(start.getDate(), last));
+    return d;
+  };
   let candidate = makeDate(months);
   if (calendarDayDifference(candidate, now) < 0) {
     months += 1;

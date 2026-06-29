@@ -138,13 +138,36 @@ export const setCoupleEpoch = (ymd: string): void => {
 };
 
 // ── Identity helpers ──────────────────────────────────────────────────
-const getDeviceId = (): string => {
+
+/** The persisted, regenerate-on-clear fallback id. Used only when no durable account id exists. */
+const getFallbackDeviceId = (): string => {
   let id = localStorage.getItem('lior_device_id');
   if (!id) {
     id = `device_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     localStorage.setItem('lior_device_id', id);
   }
   return id;
+};
+
+/**
+ * Durable user identity for clip ownership / streaks / reveal gating.
+ * Prefers the authenticated account id (survives reinstall and storage clears)
+ * and only falls back to the ephemeral device id when signed out. Tying identity
+ * to the regenerated device id alone orphans previously-recorded clips when
+ * localStorage is cleared.
+ */
+const getDeviceId = (): string => {
+  // Prefer the durable authenticated account id, mirroring storage.ts's
+  // getActiveAccountScopeUserId (ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID).
+  const active = localStorage.getItem('lior_active_user_id');
+  if (active) return active;
+  // Some profiles may carry an explicit user id.
+  try {
+    const profile = JSON.parse(localStorage.getItem('lior_shared_profile') || '{}');
+    const accountId = profile.odUserId || profile.userId;
+    if (accountId) return String(accountId);
+  } catch {}
+  return getFallbackDeviceId();
 };
 
 const getCoupleId = (): string => {
@@ -161,10 +184,33 @@ let clipCache: DailyVideoClip[] | null = null;
 let filmCache: BiweeklyFilm[] | null = null;
 let ensureFilmsPromise: Promise<void> | null = null;
 
+/**
+ * Re-tag clips recorded under the ephemeral device id to the durable account id.
+ * Runs once when a durable account id first becomes available so clips recorded
+ * before sign-in (or after a storage clear) are not orphaned behind the reveal
+ * gate / dropped from streaks. Only `device_*`-owned clips are migrated — never
+ * the partner's clips, which always carry their own account id.
+ */
+const migrateDeviceClips = (clips: DailyVideoClip[]): { clips: DailyVideoClip[]; changed: boolean } => {
+  const durableId = getDeviceId();
+  if (durableId.startsWith('device_')) return { clips, changed: false };
+  let changed = false;
+  const migrated = clips.map((c) => {
+    if (typeof c.odUserId === 'string' && c.odUserId.startsWith('device_')) {
+      changed = true;
+      return { ...c, odUserId: durableId };
+    }
+    return c;
+  });
+  return { clips: changed ? migrated : clips, changed };
+};
+
 const loadClips = async (): Promise<DailyVideoClip[]> => {
   if (clipCache) return clipCache;
   const data = await readRaw<DailyVideoClip[]>(STORES.DATA, CACHE_KEYS.VIDEO_CLIPS);
-  clipCache = data ?? [];
+  const { clips: migrated, changed } = migrateDeviceClips(data ?? []);
+  clipCache = migrated;
+  if (changed) await writeRaw(STORES.DATA, CACHE_KEYS.VIDEO_CLIPS, migrated);
   return clipCache;
 };
 
@@ -172,6 +218,27 @@ const saveClips = async (clips: DailyVideoClip[]): Promise<void> => {
   clipCache = clips;
   await writeRaw(STORES.DATA, CACHE_KEYS.VIDEO_CLIPS, clips);
   emitUpdate();
+};
+
+/**
+ * Atomically read-modify-write the clips array.
+ *
+ * Reads the *current* persisted array directly from IDB (not the possibly-stale
+ * in-memory `clipCache`) immediately before persisting, then applies `mutate`
+ * and writes back with no intervening await. This collapses the read→write
+ * window so a concurrent writer (partner-sync import, markWatched, a second
+ * recordClip) that landed after an earlier `loadClips()` snapshot is merged in
+ * rather than clobbered. `mutate` must be a pure, synchronous transform that
+ * returns the next array; do NOT perform blob writes or other awaits inside it.
+ */
+const mutateClips = async (
+  mutate: (current: DailyVideoClip[]) => DailyVideoClip[],
+): Promise<DailyVideoClip[]> => {
+  const fresh = (await readRaw<DailyVideoClip[]>(STORES.DATA, CACHE_KEYS.VIDEO_CLIPS)) ?? [];
+  const { clips: migrated } = migrateDeviceClips(fresh);
+  const next = mutate(migrated);
+  await saveClips(next);
+  return next;
 };
 
 const loadFilms = async (): Promise<BiweeklyFilm[]> => {
@@ -250,7 +317,13 @@ const extractThumbnail = async (videoBlob: Blob): Promise<Blob> => {
 
     const seekTo = Math.max(0, Math.min(video.duration * 0.25, 1));
     await new Promise<void>((resolve) => {
-      video.onseeked = () => resolve();
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; resolve(); } };
+      video.onseeked = done;
+      video.onerror = done; // a failed seek must not hang recordClip forever
+      // Watchdog: some short-WebM/Android seeks never fire onseeked. Resolve
+      // anyway (we just skip a perfect thumbnail frame) so recordClip never hangs.
+      setTimeout(done, 4000);
       video.currentTime = seekTo;
     });
 
@@ -303,8 +376,7 @@ export const VideoMomentsService = {
     const coupleId = getCoupleId();
 
     // One clip per user per day — replace existing
-    const existingIdx = clips.findIndex(c => c.clipDate === today && c.odUserId === userId);
-    const prev = existingIdx >= 0 ? clips[existingIdx] : null;
+    const prev = clips.find(c => c.clipDate === today && c.odUserId === userId) ?? null;
 
     // If replacing, clean up old blobs first
     if (prev?.videoId) { try { await deleteRaw(STORES.IMAGES, prev.videoId); } catch {} }
@@ -338,10 +410,19 @@ export const VideoMomentsService = {
       syncPending: true,
     };
 
-    if (existingIdx >= 0) clips[existingIdx] = clip;
-    else clips.push(clip);
-
-    await saveClips(clips);
+    // Atomically merge into the freshly-read array so a concurrent write
+    // (partner sync, markWatched, a second recordClip) is not clobbered.
+    await mutateClips((current) => {
+      const idx = current.findIndex(
+        c => c.id === id || (c.clipDate === today && c.odUserId === userId),
+      );
+      if (idx >= 0) {
+        const next = current.slice();
+        next[idx] = clip;
+        return next;
+      }
+      return [...current, clip];
+    });
     await this.updateStreak();
 
     // Opportunistic storage persistence request on first record
@@ -358,7 +439,8 @@ export const VideoMomentsService = {
     if (!target) return;
     if (target.videoId) { try { await deleteRaw(STORES.IMAGES, target.videoId); } catch {} }
     if (target.thumbnailId) { try { await deleteRaw(STORES.IMAGES, target.thumbnailId); } catch {} }
-    await saveClips(clips.filter(c => c.id !== id));
+    // Atomically remove from the freshly-read array so concurrent writes survive.
+    await mutateClips((current) => current.filter(c => c.id !== id));
     await this.updateStreak();
   },
 
@@ -468,28 +550,28 @@ export const VideoMomentsService = {
 
   /** Reveal all partner clips in a cycle once its film is ready. */
   async revealCycle(cycleStart: string): Promise<void> {
-    const clips = await loadClips();
     const end = addDays(cycleStart, CYCLE_DAYS - 1);
     const now = new Date().toISOString();
-    let changed = false;
-    for (let i = 0; i < clips.length; i++) {
-      const c = clips[i];
-      if (c.clipDate >= cycleStart && c.clipDate <= end && !c.partnerVisibleAt) {
-        clips[i] = { ...c, partnerVisibleAt: now };
-        changed = true;
-      }
-    }
-    if (changed) await saveClips(clips);
+    // Atomic merge so a concurrent partner-clip write isn't clobbered.
+    await mutateClips((current) =>
+      current.map(c =>
+        c.clipDate >= cycleStart && c.clipDate <= end && !c.partnerVisibleAt
+          ? { ...c, partnerVisibleAt: now }
+          : c,
+      ),
+    );
   },
 
   /** Mark clip as watched by partner. */
   async markWatched(clipId: string): Promise<void> {
-    const clips = await loadClips();
-    const idx = clips.findIndex(c => c.id === clipId);
-    if (idx >= 0) {
-      clips[idx] = { ...clips[idx], watchedByPartner: true, watchedAt: new Date().toISOString() };
-      await saveClips(clips);
-    }
+    // Atomic merge so a concurrent partner-clip write isn't clobbered.
+    await mutateClips((current) =>
+      current.map(c =>
+        c.id === clipId
+          ? { ...c, watchedByPartner: true, watchedAt: new Date().toISOString() }
+          : c,
+      ),
+    );
   },
 
   // ── Bi-weekly films ─────────────────────────────────────────────────
@@ -574,13 +656,15 @@ export const VideoMomentsService = {
         try { await deleteRaw(STORES.IMAGES, c.videoId); } catch {}
       }
     }
-    // Null out videoId but keep metadata + thumbnail
-    const updated = clips.map(c =>
-      c.clipDate >= cycleStart && c.clipDate <= end
-        ? { ...c, videoId: undefined }
-        : c
+    // Null out videoId but keep metadata + thumbnail. Atomic merge against a
+    // fresh read so a concurrent clip write isn't clobbered.
+    await mutateClips((current) =>
+      current.map(c =>
+        c.clipDate >= cycleStart && c.clipDate <= end
+          ? { ...c, videoId: undefined }
+          : c,
+      ),
     );
-    await saveClips(updated);
   },
 
   async saveFilmBlob(

@@ -83,8 +83,16 @@ export const TouchTrailCanvas: React.FC = () => {
 
     let W = 0, H = 0;
     const resize = () => {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      // Backing store in device pixels (capped at 2x for memory/perf on a
+      // full-viewport canvas); W/H stay in CSS px so draw coords from
+      // e.clientX/Y and clearRect(0,0,W,H) need no scaling. setTransform is
+      // re-applied here because assigning canvas.width/height resets it.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width  = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
     const ro = new ResizeObserver(resize);

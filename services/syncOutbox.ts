@@ -69,6 +69,18 @@ export const removeOutboxEntry = (table: string, id: string): void => {
   writeList(readList().filter((e) => !(e.table === table && e.id === id)));
 };
 
+/**
+ * Remove a pending entry only if it is still the exact one that was flushed
+ * (same `ts`). If the user edits the same logical row again while its push is
+ * in flight, enqueueOutbox supersedes the entry with a fresher `ts`; a blind
+ * removeOutboxEntry(table, id) after the original push resolves would delete
+ * that newer edit too, silently losing a partner-visible change. Guarding on
+ * `ts` preserves the newer edit for the next flush.
+ */
+export const removeOutboxEntryIfUnchanged = (table: string, id: string, ts: number): void => {
+  writeList(readList().filter((e) => !(e.table === table && e.id === id && e.ts === ts)));
+};
+
 export const clearOutbox = (): void => {
   try {
     localStorage.removeItem(OUTBOX_KEY);

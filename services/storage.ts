@@ -1019,6 +1019,109 @@ const normalizeDailyDropList = (items: unknown[]): DailyDrop[] => {
         .slice(0, 14);
 };
 
+// ── couple_profile nested-structure merges (singleton lost-update guards) ─────
+// couple_profile is a single shared row mirrored between partners. A field-level
+// overlay still lets an incoming snapshot REPLACE a whole nested structure, so a
+// partner's stale snapshot can wipe a check-in / watering / answer the snapshot
+// predates. These pure helpers union the nested structures instead (mirroring
+// the daily_drops response-union approach), so neither side's progress is lost.
+const laterStr = (a?: string, b?: string): string => {
+    const x = a || '';
+    const y = b || '';
+    return x >= y ? x : y;
+};
+
+function mergeStreakData(a?: StreakData, b?: StreakData): StreakData | undefined {
+    if (!a) return b;
+    if (!b) return a;
+    // Union per-name check-ins, keeping the latest date for each partner. This is
+    // the load-bearing fix: checkInStreak detects "both today" from this map, so a
+    // clobber that drops one partner's entry would silently break the streak.
+    const checkIns: Record<string, string> = { ...a.checkIns };
+    for (const [name, date] of Object.entries(b.checkIns || {})) {
+        const d = String(date);
+        if (!checkIns[name] || d > checkIns[name]) checkIns[name] = d;
+    }
+    const aDate = a.lastMutualDate || '';
+    const bDate = b.lastMutualDate || '';
+    // All streak scalars come from ONE coherent record (`winner`) so the count and
+    // the break-record can never describe two different snapshots. winner = the
+    // more recent mutual check-in (ties → higher count); bestStreak stays a
+    // high-water max. The per-name checkIns above are still unioned regardless.
+    const winner = bDate > aDate ? b : aDate > bDate ? a : ((b.count ?? 0) >= (a.count ?? 0) ? b : a);
+    return {
+        checkIns,
+        count: winner.count ?? 0,
+        lastMutualDate: laterStr(aDate, bDate),
+        bestStreak: Math.max(a.bestStreak || 0, b.bestStreak || 0),
+        lastBrokenCount: winner.lastBrokenCount,
+        lastBrokenDate: winner.lastBrokenDate,
+    };
+}
+
+function mergeBonsaiState(a: any, b: any): any {
+    if (!a) return b;
+    if (!b) return a;
+    // Keep the highest growth and the most recent watering per slot, so a stale
+    // snapshot can neither reset the tree nor erase a recent watering.
+    return {
+        ...a,
+        ...b,
+        level: Math.max(Number(a.level) || 0, Number(b.level) || 0),
+        xp: Math.max(Number(a.xp) || 0, Number(b.xp) || 0),
+        myLastWatered: laterStr(a.myLastWatered, b.myLastWatered),
+        partnerLastWatered: laterStr(a.partnerLastWatered, b.partnerLastWatered),
+    };
+}
+
+function mergeQuestionEntries(a?: QuestionEntry[], b?: QuestionEntry[]): QuestionEntry[] {
+    const al = Array.isArray(a) ? a : [];
+    const bl = Array.isArray(b) ? b : [];
+    const byDate = new Map<string, QuestionEntry>();
+    for (const q of al) {
+        if (q && q.date) byDate.set(q.date, { ...q, answers: { ...(q.answers || {}) } });
+    }
+    for (const q of bl) {
+        if (!q || !q.date) continue;
+        const existing = byDate.get(q.date);
+        if (!existing) { byDate.set(q.date, { ...q, answers: { ...(q.answers || {}) } }); continue; }
+        // Union answers by name so neither partner's answer is dropped; a real
+        // non-empty value wins over a missing/empty one.
+        const answers: Record<string, string> = { ...existing.answers };
+        for (const [name, ans] of Object.entries(q.answers || {})) {
+            if (ans != null && String(ans).trim() !== '') answers[name] = ans as string;
+            else if (!(name in answers)) answers[name] = ans as string;
+        }
+        // Recompute the reveal: once BOTH partners have a non-empty answer the seal
+        // must open — even when each answered before the other's answer had synced,
+        // so neither source carried revealedAt. Mirrors mergeDropResponses.
+        const bothAnswered = Object.values(answers).filter((x) => x != null && String(x).trim() !== '').length >= 2;
+        const revealedAt = existing.revealedAt || q.revealedAt || (bothAnswered ? new Date().toISOString() : undefined);
+        byDate.set(q.date, { ...existing, ...q, answers, revealedAt });
+    }
+    return Array.from(byDate.values()).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+}
+
+// Duet Journal entries are APPEND-ONLY keepsakes (DuetJournal has no delete path),
+// so a union by id is safe — and necessary, because they live on the shared
+// couple_profile singleton with no per-item deletion ledger. Union the answer maps
+// for an entry both partners sealed and recompute the reveal, mirroring questions.
+function mergeDuetEntries(a?: any[], b?: any[]): any[] {
+    const al = Array.isArray(a) ? a : [];
+    const bl = Array.isArray(b) ? b : [];
+    const byId = new Map<string, any>();
+    for (const e of [...al, ...bl]) {
+        if (!e || e.id == null) continue;
+        const id = String(e.id);
+        const prev = byId.get(id);
+        if (!prev) { byId.set(id, { ...e, answers: { ...(e.answers || {}) } }); continue; }
+        const answers = { ...prev.answers, ...(e.answers || {}) };
+        const complete = Object.keys(answers).length >= 2;
+        byId.set(id, { ...prev, ...e, answers, revealedAt: prev.revealedAt || e.revealedAt || (complete ? new Date().toISOString() : undefined) });
+    }
+    return [...byId.values()];
+}
+
 const localDateKey = (d: Date = new Date()): string => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -2128,7 +2231,51 @@ export const StorageService = {
                     meaningfulFromCloud[key] = value;
                 }
                 if (Object.keys(meaningfulFromCloud).length === 0) return;
-                this.saveCoupleProfile({ ...local, ...meaningfulFromCloud } as CoupleProfile, 'sync');
+                const mergedProfile = { ...local, ...meaningfulFromCloud } as CoupleProfile;
+                // Deep-merge the shared nested structures so an incoming snapshot
+                // can't blind-overwrite (and thereby reset) the other partner's
+                // streak check-ins, bonsai progress, or daily-question answers.
+                const cloudNested = sharedFromCloud as any;
+                if (cloudNested.streakData || local.streakData) {
+                    mergedProfile.streakData = mergeStreakData(local.streakData, cloudNested.streakData);
+                }
+                if (cloudNested.bonsaiState || local.bonsaiState) {
+                    mergedProfile.bonsaiState = mergeBonsaiState(local.bonsaiState, cloudNested.bonsaiState);
+                }
+                if (cloudNested.questions || local.questions) {
+                    mergedProfile.questions = mergeQuestionEntries(local.questions, cloudNested.questions);
+                }
+                if ((cloudNested as any).duetEntries || (local as any).duetEntries) {
+                    (mergedProfile as any).duetEntries = mergeDuetEntries((local as any).duetEntries, (cloudNested as any).duetEntries);
+                }
+                // KNOWN LIMITATION — the other shared premium collections
+                // (missionState, datePlans, depthsState, heirloomState, missedAuras)
+                // are still last-writer-wins via the {...local, ...meaningfulFromCloud}
+                // overlay above. They can't be safely unioned at this singleton layer
+                // because several support REMOVAL (datePlans delete, depths
+                // un-favourite, missedAura dismiss) or carry non-monotonic counters
+                // (weekStreak resets) — a blind union would RESURRECT removed items or
+                // un-break a streak, i.e. trade one data bug for another. A correct
+                // fix needs per-item tombstones / CRDT semantics for nested
+                // couple_profile collections. The view layers (LoveMissions, Depths,
+                // DateStudio, DuetJournal) already re-base their own writes off the
+                // store to avoid in-session loss; the residual risk is a cross-partner
+                // snapshot race, which needs that larger change to fully close.
+                //
+                // If our local merge produced shared data the incoming snapshot
+                // lacked (an offline cross-update), converge the cloud with a
+                // user-sourced save so the partner — and any fresh device that
+                // bootstraps from the cloud — don't keep the stale subset. A 'sync'
+                // save persists locally but is never pushed (sync.ts only pushes
+                // source:'user'). Ping-pong-safe: the partner's re-merge of our
+                // superset adds nothing, so it won't push back.
+                const diff = (x: unknown, y: unknown) => JSON.stringify(x ?? null) !== JSON.stringify(y ?? null);
+                const localContributed =
+                    diff(mergedProfile.streakData, cloudNested.streakData)
+                    || diff(mergedProfile.bonsaiState, cloudNested.bonsaiState)
+                    || diff(mergedProfile.questions, cloudNested.questions)
+                    || diff((mergedProfile as any).duetEntries, (cloudNested as any).duetEntries);
+                this.saveCoupleProfile(mergedProfile, localContributed ? 'user' : 'sync');
             }
         } else if (table === 'pet_stats') {
             this.savePetStats(item, 'sync');
@@ -2323,7 +2470,8 @@ export const StorageService = {
     },
     getTogetherMusicMetadata: (): TogetherMusicMetadata | null => {
         const str = localStorage.getItem(CACHE_KEYS.TOGETHER_MUSIC_META);
-        return str ? JSON.parse(str) : null;
+        if (!str) return null;
+        try { return JSON.parse(str); } catch { return null; }
     },
 
     deleteTogetherMusic: async () => {
@@ -2352,9 +2500,13 @@ export const StorageService = {
             return { ..._profileCacheVal };
         }
 
-        const id = idStr ? JSON.parse(idStr) : { myName: '', partnerName: '' };
+        // Corrupted identity/shared blobs must degrade to defaults, never throw —
+        // getCoupleProfile is on the hottest render path in the app.
+        let id: any = { myName: '', partnerName: '' };
+        try { if (idStr) id = JSON.parse(idStr); } catch { /* corrupted identity — use defaults */ }
 
-        const shared = sharedStr ? JSON.parse(sharedStr) : { anniversaryDate: '', theme: 'rose' };
+        let shared: any = { anniversaryDate: '', theme: 'rose' };
+        try { if (sharedStr) shared = JSON.parse(sharedStr); } catch { /* corrupted shared profile — use defaults */ }
 
         const result = applyLockedPairLink({ ...id, ...shared });
         _profileCacheVal = result;
@@ -2788,7 +2940,13 @@ export const StorageService = {
         notifyUpdate({ source, action: 'save', table: 'pet_stats', id: 'singleton', item: sanitizedStats });
     },
 
-    getStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.USER_STATUS) || '{"state":"awake","timestamp":"' + new Date().toISOString() + '"}'),
+    getStatus: (): UserStatus => {
+        try {
+            const raw = localStorage.getItem(CACHE_KEYS.USER_STATUS);
+            if (raw) return JSON.parse(raw);
+        } catch { /* corrupted status — fall through to a fresh awake default */ }
+        return { state: 'awake', timestamp: new Date().toISOString() } as UserStatus;
+    },
     // The Supabase user id is the only stable identity for a person. Display
     // names change; keying status by name made a rename silently break partner
     // status. Falls back to null when not yet signed in.
@@ -2803,7 +2961,13 @@ export const StorageService = {
         const myId = StorageService.getMyUserId() || profile.myName;
         notifyUpdate({ source: 'user', action: 'save', table: 'user_status', id: myId, item: { id: myId, ...s } });
     },
-    getPartnerStatus: (): UserStatus => JSON.parse(localStorage.getItem(CACHE_KEYS.PARTNER_STATUS) || '{"state":"awake","timestamp":""}'),
+    getPartnerStatus: (): UserStatus => {
+        try {
+            const raw = localStorage.getItem(CACHE_KEYS.PARTNER_STATUS);
+            if (raw) return JSON.parse(raw);
+        } catch { /* corrupted partner status — fall through to default */ }
+        return { state: 'awake', timestamp: '' } as UserStatus;
+    },
 
     getBonsaiState: (): any => {
         const profile = StorageService.getCoupleProfile();
@@ -3149,9 +3313,14 @@ export const StorageService = {
                         if (!updated.storagePath && imagePath) {
                             updated.storagePath = imagePath;
                             metaChanged = true;
-                            // Warm the RAM cache with the R2 URL immediately
+                            // Warm the RAM cache ONLY with a stable data: payload.
+                            // getAccessibleUrl returns a signed worker URL with a
+                            // ~15-min exp; caching that here forever poisoned the
+                            // cache so getImage kept returning a URL that 403s after
+                            // expiry. The decoded data: URI is cached by _cacheR2Image
+                            // on the normal resolve path instead.
                             const r2Url = await MediaStorageService.getAccessibleUrl(imagePath).catch(() => null);
-                            if (r2Url) {
+                            if (r2Url && r2Url.startsWith('data:')) {
                                 MEDIA_MEMORY_CACHE.set(imageId, r2Url);
                             }
                         }

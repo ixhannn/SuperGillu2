@@ -812,7 +812,7 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           whileTap={{ scale: 0.9 }}
-          onClick={() => setActiveModal(unopenedGifts.length > 0 ? 'gift' : 'note')}
+          onClick={() => setActiveModal('gift')}
           className="absolute right-3 z-10 flex items-center gap-1.5 rounded-full px-2.5 py-1.5"
           style={{ top: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', background: 'rgba(244,63,94,0.85)', backdropFilter: 'blur(12px)' }}
         >

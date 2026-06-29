@@ -139,6 +139,21 @@ html[data-transitioning="1"] .liquid-glass {
   -webkit-backdrop-filter: none !important;
 }
 
+/* SINGLE-OWNER FADE during route transitions (push/pop/expand via _run).
+   _run animates the whole shell container's opacity 0→1, but the freshly-active
+   keep-alive shell ALSO runs its own `keep-alive-tab-enter` opacity fade — so
+   the destination fades TWICE and the two curves multiply into a soft, muddy
+   "never quite settling" reveal. It's most obvious on every BACK (the returned
+   tab swims in instead of snapping clean), and is page-weight-independent, which
+   is why back from *any* page felt off. During a _run transition the container
+   owns the fade, so suppress the shell's intrinsic one — leaving one crisp fade.
+   Tab switches take the data-tab-transitioning fast path (no container anim) and
+   keep their keep-alive-tab-enter; this rule only matches data-transitioning, so
+   tab switches are untouched. Inert at rest. */
+html[data-transitioning="1"] .keep-alive-shell.is-active {
+  animation: none !important;
+}
+
 [data-lior-motion-veil="true"] {
   opacity: 0;
   transform: translate3d(-24%, 0, 0) scaleX(0.72);
@@ -241,17 +256,13 @@ html[data-nav-depth="1"] .lior-ambient-world {
   overflow: hidden;
 }
 
-/* A cached tab is invisible (visibility:hidden) but its subtree's infinite CSS
-   animations keep ticking + compositing forever off-screen — a sustained GPU /
-   battery drain that compounds with every tab visited. Freeze them while the
-   tab is cached; they resume imperceptibly on return (continuous loops have no
-   tracked phase). Scoped to the cached subtree, so the recalc is bounded and
-   fires only on a tab switch, never per frame. Pixel-identical at rest. */
-.keep-alive-shell.is-cached *,
-.keep-alive-shell.is-cached *::before,
-.keep-alive-shell.is-cached *::after {
-  animation-play-state: paused !important;
-}
+/* NOTE: a universal `.keep-alive-shell.is-cached *` animation-pause rule used to
+   live here (freeze off-screen tab animations). It was removed: that universal
+   descendant selector forces a full-subtree STYLE RECALC every time a shell
+   toggles is-cached ⇄ is-active — i.e. on every navigation, on the heavy detail
+   overlay and the destination tab — which is exactly the back-transition hot
+   path. The off-screen-animation battery saving was not worth a per-navigation
+   recalc; keeping the class-flip cheap matters more for smooth back. */
 
 .keep-alive-shell.is-active {
   position: relative;

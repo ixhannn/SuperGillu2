@@ -6,6 +6,7 @@
 
 import { CoupleProfile, CoupleRoomState, RoomGift, RoomNote, RoomPlacedItem } from '../../types';
 import { daysTogetherFrom } from '../../shared/dateOnly.js';
+import { generateId } from '../../utils/ids';
 import { ROOM_SHOP, percentToGrid, gridToPercent, RoomCatalogItem } from './roomCatalog3D';
 
 export const DEFAULT_COUPLE_ROOM: CoupleRoomState = {
@@ -82,7 +83,7 @@ export const placeItem = (
   const [gx, gy] = getNextFreeSlot(room);
   const pos = gridToPercent(gx, gy);
   const newItem: RoomPlacedItem = {
-    uid: crypto.randomUUID(),
+    uid: generateId(),
     itemId: item.id,
     x: pos.x,
     y: pos.y,
@@ -131,7 +132,7 @@ const NOTE_COLORS = [
 
 export const addNote = (room: CoupleRoomState, text: string, author: string): CoupleRoomState => {
   const note: RoomNote = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     text: text.trim().slice(0, 200),
     author,
     createdAt: new Date().toISOString(),
@@ -156,7 +157,7 @@ export const addGift = (
   message: string,
 ): CoupleRoomState => {
   const gift: RoomGift = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     from,
     emoji,
     message: message.trim().slice(0, 200),

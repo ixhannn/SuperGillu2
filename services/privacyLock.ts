@@ -10,6 +10,11 @@ const SESSION_UNLOCK_KEY = 'lior_private_space_unlocked_v1';
 export const PIN_LENGTH = 4;
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 30_000;
+// Each repeated lockout multiplies the cooldown by this factor, capped at
+// LOCKOUT_MAX_TIER. 30s, 2m, 8m, 32m, ~2h, ~8.5h — slow brute force becomes
+// infeasible while a correct PIN fully clears the escalation.
+const LOCKOUT_BACKOFF = 4;
+const LOCKOUT_MAX_TIER = 5;
 // How long the vault stays open after a successful unlock.
 const SESSION_UNLOCK_TTL_MS = 5 * 60_000;
 
@@ -22,6 +27,9 @@ interface StoredPin {
 interface AttemptState {
   count: number;
   lockUntil: number;
+  // Number of times the lockout has been triggered. Scales the cooldown so
+  // repeated failures back off exponentially. Cleared on a correct PIN.
+  lockoutCount?: number;
 }
 
 export interface VerifyResult {
@@ -137,26 +145,31 @@ export const PrivacyLock = {
       return { ok: false, remainingAttempts: MAX_ATTEMPTS };
     }
 
-    // Read the attempt state before the async hash so a concurrent call
-    // can't interleave and under-count failures.
-    const previous = getAttempts();
-    // A finished cooldown starts a fresh attempt window.
-    const baseCount = previous.lockUntil > 0 && previous.lockUntil <= Date.now() ? 0 : previous.count;
-
     const hash = await hashPin(pin, stored.salt);
     if (hash === stored.hash) {
-      setAttempts({ count: 0, lockUntil: 0 });
+      // A correct PIN fully clears the escalation, including the backoff tier.
+      setAttempts({ count: 0, lockUntil: 0, lockoutCount: 0 });
       this.markUnlocked();
       return { ok: true };
     }
 
+    // Re-read attempt state AFTER the async hash so an interleaved verify
+    // call's increment is not lost (the read-modify-write must not straddle
+    // the await, or two failures would be recorded as one).
+    const previous = getAttempts();
+    // A finished cooldown starts a fresh attempt window (but keeps the
+    // escalating backoff tier so repeated lockouts compound).
+    const baseCount = previous.lockUntil > 0 && previous.lockUntil <= Date.now() ? 0 : previous.count;
     const count = baseCount + 1;
     if (count >= MAX_ATTEMPTS) {
-      const lockUntil = Date.now() + LOCKOUT_MS;
-      setAttempts({ count: 0, lockUntil });
-      return { ok: false, remainingAttempts: 0, lockedForMs: LOCKOUT_MS };
+      const prevLockouts = previous.lockoutCount ?? 0;
+      const tier = Math.min(prevLockouts, LOCKOUT_MAX_TIER);
+      const lockMs = LOCKOUT_MS * Math.pow(LOCKOUT_BACKOFF, tier);
+      const lockUntil = Date.now() + lockMs;
+      setAttempts({ count: 0, lockUntil, lockoutCount: prevLockouts + 1 });
+      return { ok: false, remainingAttempts: 0, lockedForMs: lockMs };
     }
-    setAttempts({ count, lockUntil: 0 });
+    setAttempts({ count, lockUntil: 0, lockoutCount: previous.lockoutCount ?? 0 });
     return { ok: false, remainingAttempts: MAX_ATTEMPTS - count };
   },
 

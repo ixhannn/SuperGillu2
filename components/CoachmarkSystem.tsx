@@ -492,32 +492,6 @@ const getPreviewTheme = (accent: string): PreviewTheme => ({
   floatingAccent: readThemeVar('--theme-floating-accent', accent),
 });
 
-const usePreviewTheme = (accent: string) => {
-  const [theme, setTheme] = useState<PreviewTheme>(() => getPreviewTheme(accent));
-
-  useEffect(() => {
-    const sync = () => setTheme((prev) => {
-      const next = getPreviewTheme(accent);
-      // Shallow compare to avoid React commits on identical themes (the
-      // global observer fires on every <html> style mutation).
-      const prevAny = prev as unknown as Record<string, unknown>;
-      const nextAny = next as unknown as Record<string, unknown>;
-      let same = true;
-      for (const k in nextAny) {
-        if (prevAny[k] !== nextAny[k]) {
-          same = false;
-          break;
-        }
-      }
-      return same ? prev : next;
-    });
-    sync();
-    return observeDocumentAttributes(['style', 'data-theme', 'class'], sync);
-  }, [accent]);
-
-  return theme;
-};
-
 // Refined feature emblem — a frosted tile wrapped in a colored gradient ring,
 // with the glyph crisp on near-white, a glossy sheen, an accent wash and a soft
 // glow. Floats calmly (no wobble). GPU-only motion, flicker-free.
@@ -580,319 +554,8 @@ const HeroPreview: React.FC<{ accent: string; gradient?: string; emoji?: string;
   );
 };
 
-const FeaturePreview: React.FC<{ kind: PreviewKind; accent: string; large?: boolean; emoji?: string; gradient?: string }> = ({ kind, accent, large = false, emoji, gradient }) => {
+const FeaturePreview: React.FC<{ kind: PreviewKind; accent: string; large?: boolean; emoji?: string; gradient?: string }> = ({ accent, large = false, emoji, gradient }) => {
   return <HeroPreview accent={accent} gradient={gradient} emoji={emoji} large={large} />;
-
-  // ── Legacy per-kind previews (superseded by HeroPreview above) ──────────
-  const theme = usePreviewTheme(accent);
-  const frameHeight = large ? 172 : 118;
-  const shellRadius = large ? 24 : 18;
-  const titleSize = large ? 12 : 10;
-  const labelSize = large ? 9 : 8;
-  const bodySize = large ? 10 : 9;
-  const lineColor = `rgba(${theme.particleRgb},0.16)`;
-  const accentGlow = `rgba(${theme.accentRgb},0.24)`;
-
-  const shellStyle: React.CSSProperties = {
-    position: 'relative',
-    height: frameHeight,
-    width: '100%',
-    overflow: 'hidden',
-    borderRadius: shellRadius,
-    background: `${theme.bgMain}, linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))`,
-    border: `1px solid ${theme.border}`,
-    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 30px rgba(0,0,0,0.18), 0 0 0 1px ${lineColor}`,
-  };
-
-  const chromeStyle: React.CSSProperties = {
-    position: 'absolute',
-    inset: large ? 10 : 8,
-    borderRadius: large ? 18 : 14,
-    background: 'rgba(9,10,15,0.32)',
-    border: `1px solid ${lineColor}`,
-    overflow: 'hidden',
-  };
-
-  const eyebrowStyle: React.CSSProperties = {
-    fontSize: labelSize,
-    letterSpacing: '0.18em',
-    textTransform: 'uppercase',
-    fontWeight: 800,
-    color: theme.textSecondary,
-    lineHeight: 1,
-  };
-
-  const titleStyle: React.CSSProperties = {
-    fontSize: titleSize,
-    fontWeight: 800,
-    color: theme.textPrimary,
-    letterSpacing: '-0.02em',
-    lineHeight: 1.15,
-  };
-
-  const bodyStyle: React.CSSProperties = {
-    fontSize: bodySize,
-    color: theme.textSecondary,
-    lineHeight: 1.35,
-  };
-
-  if (kind === 'capture') {
-    return (
-      <div style={shellStyle}>
-        <div style={chromeStyle}>
-          <div style={{ position: 'absolute', left: 12, right: 12, top: 12, display: 'flex', gap: 6 }}>
-            {['memory', 'note', 'photo'].map((label, index) => (
-              <div
-                key={label}
-                style={{
-                  padding: '5px 8px',
-                  borderRadius: 999,
-                  background: index === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)',
-                  color: theme.textPrimary,
-                  fontSize: labelSize,
-                  fontWeight: 700,
-                }}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-          <div style={{ position: 'absolute', left: 14, right: 14, bottom: 16, height: large ? 56 : 42, borderRadius: 18, background: 'rgba(255,255,255,0.08)', border: `1px solid ${lineColor}` }} />
-          <motion.div
-            animate={{ scale: [1, 1.08, 1], boxShadow: [`0 10px 22px ${accentGlow}`, `0 16px 32px ${accentGlow}`, `0 10px 22px ${accentGlow}`] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              bottom: large ? 22 : 18,
-              width: large ? 54 : 42,
-              height: large ? 54 : 42,
-              transform: 'translateX(-50%)',
-              borderRadius: 999,
-              background: theme.centerBg,
-              display: 'grid',
-              placeItems: 'center',
-            }}
-          >
-            <div style={{ width: large ? 22 : 18, height: 4, borderRadius: 999, background: '#fff', position: 'absolute' }} />
-            <div style={{ width: 4, height: large ? 22 : 18, borderRadius: 999, background: '#fff', position: 'absolute' }} />
-          </motion.div>
-        </div>
-      </div>
-    );
-  }
-
-  if (kind === 'moments') {
-    return (
-      <div style={shellStyle}>
-        <div style={chromeStyle}>
-          <div style={{ position: 'absolute', left: 12, right: 12, top: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={eyebrowStyle}>daily moments</div>
-              <div style={titleStyle}>today, together</div>
-            </div>
-            <div style={{ width: large ? 28 : 22, height: large ? 28 : 22, borderRadius: 999, background: 'rgba(255,255,255,0.18)' }} />
-          </div>
-          <motion.div
-            animate={{ scale: [1, 1.03, 1], y: [0, -2, 0] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            style={{
-              position: 'absolute',
-              left: 12,
-              top: large ? 46 : 40,
-              width: large ? '58%' : '56%',
-              height: large ? 94 : 62,
-              borderRadius: 20,
-              background: `linear-gradient(150deg, rgba(${theme.accentRgb},0.96), rgba(${theme.particleRgb},0.7))`,
-            }}
-          />
-          <div style={{ position: 'absolute', right: 12, top: large ? 48 : 42, width: large ? 62 : 48, height: large ? 80 : 54, borderRadius: 18, background: 'rgba(255,255,255,0.08)', border: `1px solid ${lineColor}`, padding: 8 }}>
-            <div style={{ ...eyebrowStyle, marginBottom: 6 }}>comments</div>
-            <div style={{ ...bodyStyle, marginBottom: 4 }}>you two felt this</div>
-            <div style={{ height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.16)', marginBottom: 4 }} />
-            <div style={{ height: 4, width: '72%', borderRadius: 999, background: 'rgba(255,255,255,0.12)' }} />
-          </div>
-          <motion.div
-            animate={{ x: [0, 18, 0] }}
-            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', left: 12, bottom: 12, width: large ? 52 : 42, height: 3, borderRadius: 999, background: '#fff' }}
-          />
-          <div style={{ position: 'absolute', left: 70, right: 12, bottom: 12, height: 3, borderRadius: 999, background: 'rgba(255,255,255,0.14)' }} />
-        </div>
-      </div>
-    );
-  }
-
-  if (kind === 'countdowns') {
-    return (
-      <div style={shellStyle}>
-        <div style={{ ...chromeStyle, padding: large ? 14 : 12 }}>
-          <div style={eyebrowStyle}>next date</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 6 }}>
-            <div style={{ fontSize: large ? 38 : 28, fontWeight: 900, lineHeight: 0.95, color: theme.textPrimary, letterSpacing: '-0.05em' }}>
-              12
-            </div>
-            <div style={{ ...bodyStyle, textAlign: 'right' }}>
-              days until
-              <br />
-              beach trip
-            </div>
-          </div>
-          <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ ...titleStyle, fontSize: bodySize + 1 }}>Saturday sunset</div>
-              <div style={{ padding: '4px 8px', borderRadius: 999, background: `rgba(${theme.accentRgb},0.16)`, color: accent, fontSize: labelSize, fontWeight: 800 }}>soon</div>
-            </div>
-            <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-              <motion.div
-                animate={{ width: ['54%', '68%', '54%'] }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ height: '100%', borderRadius: 999, background: theme.centerBg }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (kind === 'letters') {
-    return (
-      <div style={shellStyle}>
-        <div style={chromeStyle}>
-          <motion.div
-            animate={{ y: [0, -6, 0] }}
-            transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', inset: large ? '22px 18px 18px' : '18px 14px 14px', borderRadius: 20, background: 'rgba(255,255,255,0.12)', border: `1px solid ${lineColor}`, padding: large ? 16 : 12 }}
-          >
-            <div style={{ ...eyebrowStyle, color: accent, marginBottom: 8 }}>open when</div>
-            <div style={{ fontSize: large ? 15 : 12, fontWeight: 700, color: theme.textPrimary, fontFamily: 'Georgia, Times, serif', marginBottom: 8 }}>
-              you need a softer day
-            </div>
-            <div style={{ ...bodyStyle, fontFamily: 'Georgia, Times, serif' }}>
-              read this when you want my voice to arrive before I do.
-            </div>
-          </motion.div>
-          <div style={{ position: 'absolute', left: '18%', right: '18%', top: large ? 22 : 18, height: large ? 40 : 30, clipPath: 'polygon(0 0, 50% 72%, 100% 0)', background: `linear-gradient(180deg, ${accent}, rgba(${theme.accentRgb},0.58))` }} />
-        </div>
-      </div>
-    );
-  }
-
-  if (kind === 'bonsai') {
-    return (
-      <div style={shellStyle}>
-        <div style={chromeStyle}>
-          <div style={{ position: 'absolute', left: 12, top: 12, padding: '4px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.1)', color: theme.textPrimary, fontSize: labelSize, fontWeight: 800 }}>
-            in bloom
-          </div>
-          <motion.div
-            animate={{ scaleY: [1, 1.08, 1] }}
-            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', left: '50%', bottom: 34, width: 8, height: large ? 56 : 42, transform: 'translateX(-50%)', transformOrigin: 'bottom center', borderRadius: 999, background: '#8b5a2b' }}
-          />
-          <motion.div
-            animate={{ rotate: [-4, 6, -4] }}
-            transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', left: '49%', bottom: large ? 68 : 56, width: large ? 34 : 24, height: large ? 28 : 20, transformOrigin: 'bottom left', background: 'linear-gradient(145deg, #86efac, #22c55e)', borderRadius: '70% 30% 70% 30%' }}
-          />
-          <motion.div
-            animate={{ rotate: [4, -6, 4] }}
-            transition={{ duration: 3.1, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', left: '39%', bottom: large ? 76 : 60, width: large ? 34 : 24, height: large ? 28 : 20, transformOrigin: 'bottom right', background: 'linear-gradient(145deg, #bbf7d0, #16a34a)', borderRadius: '30% 70% 30% 70%' }}
-          />
-          <div style={{ position: 'absolute', left: '34%', right: '34%', bottom: 14, height: large ? 26 : 20, borderRadius: '18px 18px 24px 24px', background: 'linear-gradient(180deg, #6b4f3b, #433126)' }} />
-          <div style={{ position: 'absolute', right: 12, bottom: 16, textAlign: 'right' }}>
-            <div style={eyebrowStyle}>together</div>
-            <div style={titleStyle}>438 days</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (kind === 'aura') {
-    return (
-      <div style={shellStyle}>
-        <div style={chromeStyle}>
-          <div style={{ position: 'absolute', left: 12, right: 12, top: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={eyebrowStyle}>aura signal</div>
-            <div style={{ ...bodyStyle, fontSize: labelSize }}>hold + send</div>
-          </div>
-          {[0, 1, 2].map((ring) => (
-            <motion.div
-              key={ring}
-              animate={{ scale: [0.74, 1.22, 1.22], opacity: [0.42, 0, 0] }}
-              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut', delay: ring * 0.5 }}
-              style={{ position: 'absolute', left: '50%', top: '54%', width: large ? 92 : 72, height: large ? 92 : 72, transform: 'translate(-50%, -50%)', borderRadius: '50%', border: `1.5px solid ${accent}` }}
-            />
-          ))}
-          <motion.div
-            animate={{ scale: [1, 1.08, 1] }}
-            transition={{ duration: 1.9, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', left: '50%', top: '54%', width: large ? 40 : 34, height: large ? 40 : 34, transform: 'translate(-50%, -50%)', borderRadius: '50%', background: theme.floatingAccent, boxShadow: `0 10px 28px ${accentGlow}` }}
-          />
-          <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, textAlign: 'center', ...bodyStyle }}>
-            a soft ping lands instantly
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (kind === 'themes') {
-    return (
-      <div style={shellStyle}>
-        <div style={{ ...chromeStyle, padding: large ? 14 : 12 }}>
-          <div style={eyebrowStyle}>aesthetic studio</div>
-          <div style={{ ...titleStyle, marginTop: 4 }}>tone sets the room</div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            {[
-              [readThemeVar('--color-lior-200', '#fecdd3'), readThemeVar('--color-lior-400', '#fb7185'), readThemeVar('--color-lior-600', '#e11d48')],
-              [readThemeVar('--theme-floating-rim', '#fbcfe8'), readThemeVar('--theme-floating-accent', '#fda4af'), accent],
-              [readThemeVar('--theme-nav-icon-active', '#475569'), readThemeVar('--theme-nav-center-bg-active', accent), readThemeVar('--theme-bg-overlay', '#ffffff')],
-            ].map((colors, index) => (
-              <motion.div
-                key={`${colors[0]}-${index}`}
-                animate={{ y: [0, index === 1 ? -8 : -4, 0] }}
-                transition={{ duration: 2.8 + index * 0.2, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ flex: 1, height: large ? 92 : 62, borderRadius: 18, background: `linear-gradient(180deg, ${colors[0]}, ${colors[1]} 58%, ${colors[2]})`, boxShadow: '0 10px 24px rgba(0,0,0,0.18)' }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={shellStyle}>
-      <div style={{ ...chromeStyle, padding: large ? 14 : 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: large ? 34 : 28, height: large ? 34 : 28, borderRadius: 14, background: `rgba(${theme.accentRgb},0.14)`, display: 'grid', placeItems: 'center' }}>
-            <div style={{ width: large ? 14 : 12, height: large ? 14 : 12, borderRadius: 999, background: accent }} />
-          </div>
-          <div>
-            <div style={eyebrowStyle}>together music</div>
-            <div style={titleStyle}>your song stays close</div>
-          </div>
-        </div>
-        <div style={{ marginTop: 14, borderRadius: 18, background: 'rgba(255,255,255,0.08)', border: `1px solid ${lineColor}`, padding: large ? 12 : 10 }}>
-          <div style={{ ...bodyStyle, marginBottom: 8 }}>midnight train home</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: large ? 38 : 28 }}>
-            {[14, 32, 18, 26, 38, 20, 30].map((height, index) => (
-              <motion.div
-                key={height}
-                animate={{ height: [height * 0.5, height, height * 0.65] }}
-                transition={{ duration: 1.1 + index * 0.08, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ width: 6, borderRadius: 999, background: index % 2 === 0 ? accent : 'rgba(255,255,255,0.7)' }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 };
 
 const CopyBlock: React.FC<{ label: string; text: string; accent: string }> = ({ label, text, accent }) => (
@@ -1038,7 +701,7 @@ const SpotlightStep: React.FC<{
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <ProgressBar step={stepIndex} total={total} accent={accent} />
-          <button onClick={onSkip} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', opacity: 0.7, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <button disabled={controlsDisabled} onClick={onSkip} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', opacity: controlsDisabled ? 0.4 : 0.7, background: 'none', border: 'none', cursor: controlsDisabled ? 'progress' : 'pointer', padding: 0 }}>
             Skip
           </button>
         </div>
@@ -1158,7 +821,7 @@ const CardStep: React.FC<{
           {/* top: playful dots + skip */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <ProgressBar step={stepIndex} total={total} accent={accent} />
-            <button onClick={onSkip} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', opacity: 0.7, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <button disabled={controlsDisabled} onClick={onSkip} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', opacity: controlsDisabled ? 0.4 : 0.7, background: 'none', border: 'none', cursor: controlsDisabled ? 'progress' : 'pointer', padding: 0 }}>
               Skip
             </button>
           </div>
@@ -1385,32 +1048,6 @@ export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, 
     return { def, queue, stepIndex, total, renderMode: 'card', spotlight: null, shownAt, enterMode };
   }, []);
 
-  const enhanceStep = useCallback((step: ActiveStep) => {
-    if ((step.def.mode ?? 'spotlight') === 'card' || step.renderMode === 'spotlight') return;
-
-    void (async () => {
-      await settleUi(2);
-      const routeReady = await ensureRoute(step.def.route, step.def.key);
-      if (!routeReady) return;
-
-      const spotlightResult = await ensureSpotlightReady(step.def);
-      if (spotlightResult.spotlight) {
-        setActive((prev) => {
-          if (!prev || prev.def.key !== step.def.key || prev.shownAt !== step.shownAt) return prev;
-          return { ...prev, renderMode: 'spotlight', spotlight: spotlightResult.spotlight, enterMode: 'upgrade' };
-        });
-        return;
-      }
-
-      if (step.def.fallbackToCard) {
-        CoachmarkInsights.record({ type: 'fallback_card', key: step.def.key, reason: spotlightResult.reason });
-      }
-      if (spotlightResult.reason === 'occluded') {
-        CoachmarkInsights.record({ type: 'occlusion_failure', key: step.def.key });
-      }
-    })();
-  }, [ensureRoute]);
-
   const showStepImmediately = useCallback((
     def: CoachmarkDef,
     queue: CoachmarkDef[],
@@ -1482,29 +1119,40 @@ export const CoachmarkProvider: React.FC<CoachmarkProviderProps> = ({ children, 
 
         CoachmarkInsights.record({ type: 'step_action_clicked', key: def.key, route: currentViewRef.current, targetRoute: def.actionView ?? def.route });
         const remaining = current.queue.slice(1);
-        const waitForExitFrom = (def.actionView ?? currentViewRef.current) as ViewState;
-        deferredResumeRef.current = {
-          queue: remaining,
-          stepIndex: current.stepIndex + 1,
-          total: current.total,
-          waitForExitFrom,
-          celebrateOnExit: remaining.length === 0,
-        };
+        // Only watch for a route exit when the action actually navigates away.
+        // When actionView matches the current view (e.g. theme-picker/together-
+        // music open a sub-panel of Profile while already on Profile), no exit
+        // ever fires, so we must advance the tour synchronously here instead of
+        // arming a deferred resume that would never resolve.
+        const willNavigate = !!def.actionView && def.actionView !== currentViewRef.current;
+        const nextStepIndex = current.stepIndex + 1;
+        const nextTotal = current.total;
         closeCurrentStep(def);
 
-        if (def.actionView && def.actionView !== currentViewRef.current) {
+        if (willNavigate) {
+          deferredResumeRef.current = {
+            queue: remaining,
+            stepIndex: nextStepIndex,
+            total: nextTotal,
+            waitForExitFrom: def.actionView as ViewState,
+            celebrateOnExit: remaining.length === 0,
+          };
           await settleUi(2);
-          navigateTo(def.actionView, { instant: true });
+          navigateTo(def.actionView!, { instant: true });
           await settleUi();
           if (def.actionAdvanceDelay) {
             await sleep(Math.min(def.actionAdvanceDelay, 120));
           }
+        } else if (remaining.length === 0) {
+          setCelebrating(true);
+        } else {
+          showStepImmediately(remaining[0], remaining, nextStepIndex, nextTotal, 'next');
         }
       } finally {
         setPending(null);
       }
     })();
-  }, [closeCurrentStep, navigateTo, setPending]);
+  }, [closeCurrentStep, navigateTo, setPending, showStepImmediately]);
 
   useEffect(() => {
     const deferred = deferredResumeRef.current;

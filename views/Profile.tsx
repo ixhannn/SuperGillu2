@@ -12,6 +12,7 @@ import { ThemeService, THEMES, ThemeId } from '../services/theme';
 import { SupabaseService } from '../services/supabase';
 import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
+import { AmbientPrefs } from '../services/ambientPrefs';
 import { formatBytes } from '../shared/mediaPolicy.js';
 import { InternalAdminService } from '../services/internalAdmin';
 import { dateInputValueToStoredDate, formatStoredDate, storedDateToInputValue } from '../shared/dateOnly.js';
@@ -194,6 +195,7 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [hapticsOn, setHapticsOn] = useState(Haptics.isEnabled());
     const [audioOn, setAudioOn] = useState(Audio.isEnabled());
+    const [ambient3dOn, setAmbient3dOn] = useState(AmbientPrefs.is3DEnabled());
     const [storageInfo, setStorageInfo] = useState<{ used: string, type: string }>({ used: '0 KB', type: 'Checking...' });
     const [managedStats, setManagedStats] = useState(() => StorageService.getManagedStorageStats());
     const [isInternalAdmin, setIsInternalAdmin] = useState(false);
@@ -214,6 +216,7 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const backupInputRef = useRef<HTMLInputElement>(null);
     const musicInputRef = useRef<HTMLInputElement>(null);
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         const refreshStorageStats = () => {
@@ -259,6 +262,12 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
         };
     }, []);
 
+    // Cancel the post-save navigation timer if the screen unmounts first, so a
+    // fast back press within the 600ms window isn't yanked back to Home.
+    useEffect(() => () => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    }, []);
+
     const handleChange = (field: keyof CoupleProfile, value: string) => {
         setProfile(prev => ({ ...prev, [field]: value }));
     };
@@ -290,6 +299,14 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
         const next = !audioOn;
         Audio.setEnabled(next);
         setAudioOn(next);
+        if (next) { Haptics.toggleOn(); Audio.play('toggleOn'); }
+        else { Haptics.toggleOff(); Audio.play('toggleOff'); }
+    };
+
+    const handleToggleAmbient3d = () => {
+        const next = !ambient3dOn;
+        AmbientPrefs.set3DEnabled(next);
+        setAmbient3dOn(next);
         if (next) { Haptics.toggleOn(); Audio.play('toggleOn'); }
         else { Haptics.toggleOff(); Audio.play('toggleOff'); }
     };
@@ -389,8 +406,19 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
         setIsSaving(true);
         Haptics.success();
         Audio.play('confirm');
-        StorageService.saveCoupleProfile(profile);
-        setTimeout(() => {
+        // Merge only the fields this screen edits onto a FRESH read so we don't
+        // clobber sync-mutated fields (streakData, questions, bonsaiState, etc.)
+        // that a partner sync may have written while the screen was open.
+        const fresh = StorageService.getCoupleProfile();
+        StorageService.saveCoupleProfile({
+            ...fresh,
+            myName: profile.myName,
+            partnerName: profile.partnerName,
+            anniversaryDate: profile.anniversaryDate,
+            theme: profile.theme,
+            photo: profile.photo,
+        });
+        saveTimerRef.current = setTimeout(() => {
             setIsSaving(false);
             setView('home');
         }, 600);
@@ -948,6 +976,18 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                                 description="Soft taps and chimes"
                                 on={audioOn}
                                 onToggle={handleToggleAudio}
+                            />
+                        </div>
+
+                        {/* 3D background blob — always stays on for Home; this
+                            governs every other page. */}
+                        <div className="px-4">
+                            <ToggleRow
+                                icon={<Sparkles size={15} />}
+                                label="3D Background"
+                                description="Animated blob (always on for Home)"
+                                on={ambient3dOn}
+                                onToggle={handleToggleAmbient3d}
                                 noBorder
                             />
                         </div>

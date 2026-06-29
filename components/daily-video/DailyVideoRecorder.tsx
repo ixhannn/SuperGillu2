@@ -82,7 +82,10 @@ export function DailyVideoRecorder({ onSaved, onClose }: DailyVideoRecorderProps
         setSaving(true);
         try {
             await onSaved({ blob: take.blob, durationMs: take.durationMs });
-            URL.revokeObjectURL(take.previewUrl);
+            // Do not revoke here: on success the parent unmounts this recorder
+            // (setSheet('none')), and the cleanup effect owns revocation. Revoking
+            // here would break the preview if onSaved resolved after a failed save
+            // that left the sheet open, and would also double-revoke on success.
         } finally {
             setSaving(false);
         }

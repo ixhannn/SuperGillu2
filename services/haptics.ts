@@ -140,6 +140,17 @@ const vibrate = (pattern: VibratePattern) => {
 const wait = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
+/**
+ * Swallow a fire-and-forget native bridge promise. A rejected haptic (plugin
+ * missing, permission, OEM quirk) must never surface as an unhandled rejection /
+ * noisy global error — it's purely cosmetic feedback. Mirrors warmUp()'s .catch().
+ */
+const safe = (p: unknown): void => {
+  if (p && typeof (p as Promise<unknown>).then === 'function') {
+    (p as Promise<unknown>).catch(() => { /* ignore — haptics are best-effort */ });
+  }
+};
+
 // ─── Haptics Service ─────────────────────────────────────────────────────────
 
 class HapticsService {
@@ -323,8 +334,8 @@ class HapticsService {
    * fall back to a short createOneShot via the stock plugin's vibrate({duration}).
    */
   private _androidPulse(level: 'tick' | 'light' | 'medium' | 'heavy', fallbackMs: number): void {
-    if (hasNativeHaptics()) void NativeHaptics.impact({ level });
-    else void CapHaptics.vibrate({ duration: fallbackMs });
+    if (hasNativeHaptics()) safe(NativeHaptics.impact({ level }));
+    else safe(CapHaptics.vibrate({ duration: fallbackMs }));
   }
 
   /**
@@ -336,7 +347,7 @@ class HapticsService {
    */
   private _impactNative(style: ImpactStyle): void {
     if (isAndroid()) this._androidPulse(this._androidLevel(style), this._androidMs(style));
-    else CapHaptics.impact({ style });
+    else safe(CapHaptics.impact({ style }));
   }
 
   // ─── L2 · Tap (Light impact) ──────────────────────────────────────────────
@@ -489,7 +500,7 @@ class HapticsService {
    */
   async success() {
     if (!this._canRunSequence({ cooldownMs: 180 })) return;
-    if (isNative()) CapHaptics.notification({ type: NotificationType.Success });
+    if (isNative()) safe(CapHaptics.notification({ type: NotificationType.Success }));
     else vibrate(W.success);
   }
 
@@ -498,7 +509,7 @@ class HapticsService {
    */
   async warning() {
     if (!this._canRunSequence({ cooldownMs: 180 })) return;
-    if (isNative()) CapHaptics.notification({ type: NotificationType.Warning });
+    if (isNative()) safe(CapHaptics.notification({ type: NotificationType.Warning }));
     else vibrate(W.warning);
   }
 
@@ -508,7 +519,7 @@ class HapticsService {
    */
   async error() {
     if (!this._canRunSequence({ cooldownMs: 220 })) return;
-    if (isNative()) CapHaptics.notification({ type: NotificationType.Error });
+    if (isNative()) safe(CapHaptics.notification({ type: NotificationType.Error }));
     else vibrate(W.error);
   }
 
@@ -523,7 +534,7 @@ class HapticsService {
       if (isAndroid()) { this._androidPulse('light', 12); return; }
       await this._selectionTick();
       await wait(32);
-      CapHaptics.impact({ style: ImpactStyle.Light });
+      safe(CapHaptics.impact({ style: ImpactStyle.Light }));
     } else {
       vibrate([10, 32, 14]);
     }
@@ -536,7 +547,7 @@ class HapticsService {
     if (!this._canRunSequence({ cooldownMs: 160 })) return;
     if (isNative()) {
       if (isAndroid()) { this._androidPulse('light', 12); return; }
-      CapHaptics.impact({ style: ImpactStyle.Light });
+      safe(CapHaptics.impact({ style: ImpactStyle.Light }));
       await wait(32);
       await this._selectionTick();
     } else {
@@ -638,7 +649,7 @@ class HapticsService {
   async longPressProgress(progress: number) {
     if (!this._canRunSequence({ allowDuringScroll: true, cooldownMs: 120, key: 'longpress' })) return;
     if (isNative()) {
-      if (progress >= 1.0)      CapHaptics.notification({ type: NotificationType.Success });
+      if (progress >= 1.0)      safe(CapHaptics.notification({ type: NotificationType.Success }));
       else if (progress >= 0.5) this._impactNative(ImpactStyle.Medium);
       else                      this._impactNative(ImpactStyle.Light);
     } else {

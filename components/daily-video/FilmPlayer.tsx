@@ -37,7 +37,7 @@ export function FilmPlayer({ film, onClose }: FilmPlayerProps) {
             }
             createdUrl = url;
             setVideoUrl(url);
-        });
+        }).catch(() => { /* video fetch failed: leave stage empty rather than throw */ if (!cancelled) setVideoUrl(null); });
         // A poster covers the gap between the URL resolving and the first frame
         // decoding, so the cinema stage shows the film's own thumbnail instead of
         // an empty dark gradient. Optional — a missing thumbnail is a no-op.

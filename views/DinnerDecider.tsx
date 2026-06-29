@@ -111,6 +111,10 @@ export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
   // so it never displays a stale set. Skipped mid-spin to avoid reshuffling.
   useEffect(() => {
     if (isSpinningRef.current) return;
+    // Keep an on-screen result if the winning dish still exists in the live
+    // menu; a partner adding/removing an UNRELATED dish should not wipe your
+    // reveal mid-celebration. Only re-sync when the winner is actually gone.
+    if (winnerId !== null && options.some(o => o.id === winnerId)) return;
     setActiveSpinOptions(null);
     setWinner(null);
     setWinnerId(null);

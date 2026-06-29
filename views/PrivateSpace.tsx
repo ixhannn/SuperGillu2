@@ -207,7 +207,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     const [items, setItems] = useState<PrivateSpaceItem[]>(() => StorageService.getPrivateSpaceItems());
     const [filter, setFilter] = useState<Filter>('all');
     const [showComposer, setShowComposer] = useState(false);
-    const [selected, setSelected] = useState<PrivateSpaceItem | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
     const [deleteCandidate, setDeleteCandidate] = useState<PrivateSpaceItem | null>(null);
     const [pendingDelete, setPendingDelete] = useState<PrivateSpaceItem | null>(null);
     const [kind, setKind] = useState<PrivateSpaceItemKind>('photo');
@@ -218,6 +218,30 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     const [error, setError] = useState('');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const deleteTimerRef = useRef<number | null>(null);
+    const pendingDeleteRef = useRef<PrivateSpaceItem | null>(null);
+
+    // Re-lock the vault whenever the app is backgrounded, so returning to it always
+    // requires the PIN. sessionStorage (the unlock token) survives a Capacitor
+    // WebView background, so without this an open vault stays visible to whoever
+    // reopens the phone. The 5-minute unlock TTL remains a secondary fallback.
+    useEffect(() => {
+        if (!PrivacyLock.hasPin()) return;
+        const onVisibility = () => {
+            if (document.hidden) {
+                PrivacyLock.relock();
+                setLocked(true);
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, []);
+    // Derive the open detail item from the live list so cache/storage refreshes
+    // keep the modal in sync (and auto-close it if the item is removed) rather
+    // than rendering a stale snapshot captured at tap time.
+    const selected = useMemo(
+        () => (selectedId ? items.find((i) => i.id === selectedId) ?? null : null),
+        [items, selectedId],
+    );
     // Grow the media-preview detail modal OUT OF the tapped grid card instead of
     // from screen centre — matches the route-open bloom feel.
     const { ref: detailRef, origin: detailOrigin } = useTapOrigin<HTMLDivElement>(!!selected);
@@ -340,7 +364,17 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     }, []);
 
     useEffect(() => () => {
-        if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+        if (deleteTimerRef.current !== null) {
+            window.clearTimeout(deleteTimerRef.current);
+            deleteTimerRef.current = null;
+            // Flush a confirmed-but-not-yet-persisted delete so navigating away
+            // within the 6s undo window does not silently revert it.
+            const pending = pendingDeleteRef.current;
+            if (pending) {
+                void StorageService.deletePrivateSpaceItem(pending.id);
+                pendingDeleteRef.current = null;
+            }
+        }
     }, []);
 
     // Tick down the failed-attempt cooldown while the pad is locked out.
@@ -352,7 +386,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
             if (remaining <= 0) setPinError('');
         }, 1000);
         return () => window.clearInterval(interval);
-    }, [locked, lockoutMs]);
+    }, [locked, lockoutMs > 0]);
 
     const failPinEntry = (message: string) => {
         feedback.error();
@@ -436,10 +470,12 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
         if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
 
         setDeleteCandidate(null);
-        setSelected(null);
+        setSelectedId(null);
         setPendingDelete(item);
+        pendingDeleteRef.current = item;
         deleteTimerRef.current = window.setTimeout(() => {
             deleteTimerRef.current = null;
+            pendingDeleteRef.current = null;
             StorageService.deletePrivateSpaceItem(item.id).then(() => {
                 setItems(StorageService.getPrivateSpaceItems());
                 setPendingDelete((current) => current?.id === item.id ? null : current);
@@ -455,6 +491,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
             window.clearTimeout(deleteTimerRef.current);
             deleteTimerRef.current = null;
         }
+        pendingDeleteRef.current = null;
         setPendingDelete(null);
     };
 
@@ -688,13 +725,12 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                             return (
                                 <motion.button
                                     key={item.id}
-                                    layout
                                     initial={{ opacity: 0, y: 14 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={listRemoveExit}
                                     transition={{ type: 'spring', stiffness: 300, damping: 26, delay: Math.min(index * 0.025, 0.18) }}
                                     whileTap={{ scale: 0.965 }}
-                                    onClick={() => setSelected(item)}
+                                    onClick={() => setSelectedId(item.id)}
                                     className={cx(
                                         'perf-card-shell',
                                         'group relative overflow-hidden rounded-[1.6rem] text-left',
@@ -911,7 +947,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[75] flex items-center justify-center bg-[rgba(60,48,76,0.32)] p-4 backdrop-blur-xl"
-                        onClick={() => setSelected(null)}
+                        onClick={() => setSelectedId(null)}
                     >
                         <motion.div
                             ref={detailRef}
@@ -925,7 +961,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                             <div className="relative aspect-square max-h-[52vh]" style={{ background: '#ece6f0' }}>
                                 <PrivateMediaPreview item={selected} mode="detail" />
                                 <button
-                                    onClick={() => setSelected(null)}
+                                    onClick={() => setSelectedId(null)}
                                     className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-md"
                                     style={{
                                         background: 'rgba(255,255,255,0.72)',

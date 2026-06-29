@@ -399,13 +399,16 @@ export function attachSwipe(el: HTMLElement, opts: SwipeOptions = {}): () => voi
   let startX = 0, startY = 0;
   let prevPrimary = 0, velocity = 0, lastTs = 0;
   let locked = false; // true when perpendicular axis is dominant → treat as scroll
+  let commitTid: ReturnType<typeof setTimeout> | null = null;
 
   const onDown = (e: PointerEvent): void => {
     if (pid !== null || e.pointerType === 'mouse') return;
     pid = e.pointerId;
     startX = e.clientX;
     startY = e.clientY;
-    prevPrimary = axis === 'horizontal' ? e.clientX : e.clientY;
+    // Seed with the gesture-start delta (0), not the absolute coordinate, so
+    // the first velocity sample is (primary - 0)/dt instead of (delta - coord)/dt.
+    prevPrimary = 0;
     velocity = 0;
     lastTs = performance.now();
     locked = false;
@@ -424,6 +427,7 @@ export function attachSwipe(el: HTMLElement, opts: SwipeOptions = {}): () => voi
     if (!locked && Math.abs(primary) < 10 && Math.abs(perp) > Math.abs(primary) * 1.5) {
       locked = true;
       pid = null;
+      opts.onProgress?.(0); // reset any live hint left from an earlier swipe-axis move
       spring.to(0);
       return;
     }
@@ -458,7 +462,8 @@ export function attachSwipe(el: HTMLElement, opts: SwipeOptions = {}): () => voi
       const dir = offset > 0 ? 'positive' : 'negative';
       const exit = dir === 'positive' ? window.innerWidth * 1.1 : -window.innerWidth * 1.1;
       spring.to(exit);
-      setTimeout(() => {
+      commitTid = setTimeout(() => {
+        commitTid = null;
         spring.snap(0);
         if (axis === 'horizontal') {
           if (dir === 'positive') opts.onSwipeRight?.();
@@ -485,6 +490,7 @@ export function attachSwipe(el: HTMLElement, opts: SwipeOptions = {}): () => voi
     el.removeEventListener('pointermove',   onMove);
     el.removeEventListener('pointerup',     onUp);
     el.removeEventListener('pointercancel', onUp);
+    if (commitTid !== null) clearTimeout(commitTid);
     spring.destroy();
   };
 }
@@ -520,6 +526,7 @@ export function attachModalDismiss(el: HTMLElement, opts: ModalDismissOptions): 
 
   let pid: number | null = null;
   let startY = 0, prevY = 0, velocity = 0, lastTs = 0, dismissed = false;
+  let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
   const onDown = (e: PointerEvent): void => {
     if (pid !== null) return;
@@ -555,7 +562,10 @@ export function attachModalDismiss(el: HTMLElement, opts: ModalDismissOptions): 
     if (spring.value > yThresh || velocity > vThresh) {
       dismissed = true;
       spring.to(window.innerHeight * 1.1);
-      setTimeout(() => opts.onDismiss(), 300);
+      dismissTimer = setTimeout(() => {
+        dismissTimer = null;
+        opts.onDismiss();
+      }, 300);
     } else {
       spring.to(0);
     }
@@ -571,6 +581,7 @@ export function attachModalDismiss(el: HTMLElement, opts: ModalDismissOptions): 
     el.removeEventListener('pointermove',   onMove);
     el.removeEventListener('pointerup',     onUp);
     el.removeEventListener('pointercancel', onUp);
+    if (dismissTimer !== null) clearTimeout(dismissTimer);
     spring.destroy();
   };
 }
@@ -602,7 +613,8 @@ export function attachPinch(el: HTMLElement, opts: PinchOptions = {}): () => voi
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (ptrs.size === 2) {
       const pts  = [...ptrs.values()];
-      baseDistance = dist(pts[0], pts[1]);
+      // Floor at 1px so coincident pointers don't make d/baseDistance Infinity/NaN.
+      baseDistance = Math.max(1, dist(pts[0], pts[1]));
       baseScale    = liveScale;
     }
   };

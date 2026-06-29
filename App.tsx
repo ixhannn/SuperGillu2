@@ -304,6 +304,47 @@ const App = () => {
     });
   }, []);
 
+  // ── Deferred overlay unmount (smooth back) ──────────────────────────────
+  // Non-tab detail views live in the __overlay__ slot. Unmounting a heavy detail
+  // view (its effect teardown + DOM removal) INSIDE the synchronous flushSync
+  // commit blocked the back animation: the main thread froze for the whole
+  // transition (no frames painted), then the destination "snapped" in — the same
+  // on the back button and the edge-swipe because both commit the same way.
+  // So the overlay slot is decoupled from currentView. Opening a detail mounts it
+  // at once (it must paint in step with the transition); returning to a tab keeps
+  // the outgoing detail mounted-but-hidden (is-cached) through the animation and
+  // drops it a beat later, off the hot path. currentView / the lock / history are
+  // never touched here, so navigation correctness is unaffected — this only moves
+  // the overlay's UNMOUNT off the synchronous commit.
+  const [overlaySlotView, setOverlaySlotView] = useState<ViewState | null>(
+    () => (ROOT_TABS.includes(initialView) ? null : initialView),
+  );
+  const overlayPruneTimerRef = useRef<number | null>(null);
+  const commitView = useCallback((destination: ViewState) => {
+    markTabMounted(destination);
+    setCurrentView(destination);
+    if (overlayPruneTimerRef.current !== null) {
+      window.clearTimeout(overlayPruneTimerRef.current);
+      overlayPruneTimerRef.current = null;
+    }
+    if (!ROOT_TABS.includes(destination)) {
+      // Opening / moving to a detail view — mount it now so it paints in step.
+      setOverlaySlotView(destination);
+    } else {
+      // Returning to a tab — keep the outgoing detail mounted (hidden via the
+      // is-cached class) through the animation, then unmount once it settles, so
+      // its teardown never blocks the transition frames.
+      overlayPruneTimerRef.current = window.setTimeout(() => {
+        overlayPruneTimerRef.current = null;
+        // Skip if a newer nav has since re-opened a detail.
+        if (ROOT_TABS.includes(currentViewRef.current)) setOverlaySlotView(null);
+      }, T_KEEP_ALIVE_TAB + 160);
+    }
+  }, [markTabMounted]);
+  useEffect(() => () => {
+    if (overlayPruneTimerRef.current !== null) window.clearTimeout(overlayPruneTimerRef.current);
+  }, []);
+
   // Register main scroll container from Layout
   const registerScrollRef = useCallback((el: HTMLElement | null) => {
     mainScrollRef.current = el;
@@ -345,13 +386,12 @@ const App = () => {
         y: scrollPositions.current[destination] ?? 0,
       };
       flushSync(() => {
-        markTabMounted(destination);
-        setCurrentView(destination);
+        commitView(destination);
       });
     };
     window.addEventListener('te:gesture-back', handler);
     return () => window.removeEventListener('te:gesture-back', handler);
-  }, [getCurrentScroll, markTabMounted]);
+  }, [getCurrentScroll, commitView]);
 
   // ── Module preload on prefetch ──────────────────────────────────────────
   // Keep-alive tab cache obviates the need to pre-mount React trees, but we
@@ -442,6 +482,15 @@ const App = () => {
     markTabMounted(currentView);
   }, [currentView, markTabMounted]);
 
+  // Expose the active route on <html data-route> so the persistent ambient layer
+  // can keep the 3D blob always-on for Home (and follow the user's toggle
+  // elsewhere) without prop-drilling through Layout's memo.
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.route = currentView;
+    }
+  }, [currentView]);
+
   // ── Fast tab transition (CSS-only crossfade) ────────────────────────────
   // For tab-to-tab switches, we don't need View Transitions API or DOM
   // cloning — both views are already mounted side-by-side. We just toggle
@@ -500,8 +549,7 @@ const App = () => {
       dir as EngineDirection,
       () => {
         flushSync(() => {
-          markTabMounted(destination);
-          setCurrentView(destination);
+          commitView(destination);
         });
       },
       () => {
@@ -513,12 +561,11 @@ const App = () => {
       // rather than leaving the lock held forever waiting for a completion
       // callback that will never fire.
       flushSync(() => {
-        markTabMounted(destination);
-        setCurrentView(destination);
+        commitView(destination);
       });
       finalizeNavigation(navToken);
     }
-  }, [finalizeNavigation, markTabMounted, runTabTransition]);
+  }, [finalizeNavigation, commitView, runTabTransition]);
 
   const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
@@ -582,8 +629,7 @@ const App = () => {
         y: scrollPositions.current[view] ?? 0,
       };
       flushSync(() => {
-        markTabMounted(view);
-        setCurrentView(view);
+        commitView(view);
       });
       transitionLockRef.current = false;
       return;
@@ -627,7 +673,7 @@ const App = () => {
     }
 
     commitNavigation();
-  }, [drainPendingBack, drainPendingNavigation, getCurrentScroll, runNavigation]);
+  }, [drainPendingBack, drainPendingNavigation, getCurrentScroll, runNavigation, commitView]);
 
   useEffect(() => {
     navigateToRef.current = navigateTo;
@@ -1185,10 +1231,14 @@ const App = () => {
   // Non-tab view (push/pop destinations like sync, settings, etc.)
   // Mounts/unmounts normally — these are not on the hot path.
   const overlayView = useMemo(() => {
-    if (ROOT_TABS.includes(currentView)) return null;
-    const ActiveView = getViewComponent(currentView);
+    if (overlaySlotView === null) return null;
+    const ActiveView = getViewComponent(overlaySlotView);
     return <ActiveView setView={navigateTo} />;
-  }, [currentView, navigateTo]);
+  }, [overlaySlotView, navigateTo]);
+  // The overlay is visible (is-active) only while its view IS the current view.
+  // After a back to a tab it lingers one beat as is-cached (hidden, off-flow) so
+  // its unmount can happen off the transition's critical path — see commitView.
+  const overlayLingering = overlayView !== null && ROOT_TABS.includes(currentView);
 
   // Dev-only standalone preview of the onboarding flow. Open the app with
   // ?onboarding=1 to view it in isolation — bypasses init + the cloud-auth gate,
@@ -1264,7 +1314,12 @@ const App = () => {
                     {/* Non-tab views (push/pop destinations) render on top.
                         They mount/unmount normally since they're not hot-path. */}
                     {overlayView && (
-                      <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
+                      <div
+                        className={`keep-alive-shell ${overlayLingering ? 'is-cached' : 'is-active'}`}
+                        data-keep-alive-tab="__overlay__"
+                        aria-hidden={overlayLingering ? true : undefined}
+                        inert={overlayLingering ? true : undefined}
+                      >
                         {overlayView}
                       </div>
                     )}
@@ -1374,16 +1429,24 @@ const App = () => {
 
 const AuraSignalReceiver = () => {
   const [incoming, setIncoming] = useState<{ id?: string, color: string, title: string, subtitle?: string, message: string, afterglow?: string } | null>(null);
+  // Auras already shown (or dismissed) this session, keyed by their inbox id.
+  // Without this guard, an aura also persisted to the offline inbox re-pops on
+  // every storage-update — the realtime overlay carries no id, so dismissing it
+  // never removes the persisted missedAuras entry, and checkInbox re-shows it.
+  const shownIds = useRef<Set<string>>(new Set());
 
   // Check Offine Inbox on mount and storage updates
   useEffect(() => {
     const checkInbox = () => {
       const profile = StorageService.getCoupleProfile();
       if (profile?.missedAuras && profile.missedAuras.length > 0) {
-        // Find signals targeted at ME
-        const myMissed = profile.missedAuras.filter((a: any) => a.target === profile.myName);
+        // Find signals targeted at ME that haven't already been shown/dismissed.
+        const myMissed = profile.missedAuras.filter(
+          (a: any) => a.target === profile.myName && !shownIds.current.has(a.id),
+        );
         if (myMissed.length > 0) {
           const latest = myMissed[myMissed.length - 1]; // Show most recent
+          shownIds.current.add(latest.id);
           setIncoming({ ...latest.payload, id: latest.id });
         }
       }
@@ -1392,6 +1455,23 @@ const AuraSignalReceiver = () => {
     storageEventTarget.addEventListener('storage-update', checkInbox);
     return () => storageEventTarget.removeEventListener('storage-update', checkInbox);
   }, []);
+
+  // Clearing the overlay also removes any matching persisted inbox entry so it
+  // can't re-surface. Uses the functional setState form to read the current
+  // overlay without capturing a stale `incoming` — keeps the callback stable so
+  // the realtime auto-dismiss timeout can route through it safely.
+  const dismiss = useCallback(() => {
+    setIncoming((current) => {
+      if (current?.id) {
+        StorageService.removeMissedAura(current.id);
+      }
+      return null;
+    });
+  }, []);
+
+  // Auto-dismiss timer for an incoming aura — tracked so a second aura within 6s
+  // can't dismiss the newer one early, and so it's cleared on unmount.
+  const dismissTimerRef = useRef<number | null>(null);
 
   // Handle Realtime incoming signals
   useEffect(() => {
@@ -1404,25 +1484,25 @@ const AuraSignalReceiver = () => {
 
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
            new Notification('Lior - New Pulse', {
-               body: detail.payload.title, 
+               body: detail.payload.title,
                icon: '/notification-icon.png',
                silent: false
            });
         }
-        
-        setTimeout(() => setIncoming(null), 6000); // Auto-dismiss
+
+        // Route auto-dismiss through dismiss() so a persisted inbox entry is
+        // cleared too (when the realtime payload carries an id); the shownIds
+        // guard covers the no-id realtime race where only the synced entry has one.
+        if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = window.setTimeout(() => dismiss(), 6000); // Auto-dismiss
       }
     };
     syncEventTarget.addEventListener('signal-received', handleSignal);
-    return () => syncEventTarget.removeEventListener('signal-received', handleSignal);
-  }, []);
-
-  const dismiss = () => {
-    if (incoming?.id) {
-       StorageService.removeMissedAura(incoming.id);
-    }
-    setIncoming(null);
-  };
+    return () => {
+      syncEventTarget.removeEventListener('signal-received', handleSignal);
+      if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+    };
+  }, [dismiss]);
 
   return (
     <AnimatePresence>

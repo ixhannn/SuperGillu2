@@ -23,6 +23,15 @@ export const IMAGE_QUALITY = 0.82;
 /** Maximum video file size in bytes (25 MB) */
 export const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
+/**
+ * Max time to wait for a video thumbnail before giving up (8 s).
+ * Some Android WebViews / partially-decodable files fire `onloadedmetadata`
+ * but never complete the seek (so neither `onseeked` nor `onerror` fires).
+ * Without this bound the returned Promise would never settle and callers
+ * awaiting it would hang indefinitely.
+ */
+export const THUMB_TIMEOUT_MS = 8000;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -82,17 +91,29 @@ export const compressImage = async (file: File): Promise<string> => {
  * - Calculates target dimensions *before* setting canvas size (avoids a resize
  *   bug present in earlier inline implementations).
  * - Revokes the object URL after capture to prevent memory leaks.
- * - Returns an empty string on failure so callers can gracefully degrade.
+ * - Returns an empty string on failure (or if the seek never completes within
+ *   `THUMB_TIMEOUT_MS`) so callers can gracefully degrade instead of hanging.
  */
 export const generateVideoThumbnail = (file: File): Promise<string> =>
     new Promise((resolve) => {
         const video = document.createElement('video');
         video.preload = 'metadata';
 
-        video.onerror = () => {
+        // Single-settle guard: ensures we resolve exactly once and revoke the
+        // object URL exactly once, even if multiple events (or the timeout)
+        // race to settle the Promise.
+        let settled = false;
+        const finish = (result: string) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
             URL.revokeObjectURL(video.src);
-            resolve('');
+            resolve(result);
         };
+
+        const timer = setTimeout(() => finish(''), THUMB_TIMEOUT_MS);
+
+        video.onerror = () => finish('');
 
         video.onloadedmetadata = () => {
             video.currentTime = 0.5;
@@ -109,8 +130,7 @@ export const generateVideoThumbnail = (file: File): Promise<string> =>
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx?.drawImage(video, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', IMAGE_QUALITY));
-            URL.revokeObjectURL(video.src);
+            finish(canvas.toDataURL('image/jpeg', IMAGE_QUALITY));
         };
 
         video.src = URL.createObjectURL(file);

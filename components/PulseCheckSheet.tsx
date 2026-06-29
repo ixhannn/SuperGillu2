@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronRight } from 'lucide-react';
 import { RelationshipSignals } from '../services/relationshipSignals';
@@ -25,6 +25,9 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
   const [note, setNote] = useState('');
   const [gratitude, setGratitude] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Guards the pulse write so a retry after a gratitude failure never records a
+  // second PulseCheck (which would double-increment the signal counters).
+  const pulseRecordedRef = useRef(false);
   const question = RelationshipSignals.getNextPulseQuestion();
   const { sheetDragProps, handleProps } = useSheetDismiss(() => onClose?.());
   // Overlay keyboard mode does not resize the WebView; lift the bottom-anchored
@@ -49,10 +52,18 @@ export const PulseCheckSheet: React.FC<PulseCheckSheetProps> = ({ onComplete, on
     feedback.tap();
 
     try {
-      await RelationshipSignals.recordPulseCheck(selectedScore, note || undefined);
+      if (!pulseRecordedRef.current) {
+        await RelationshipSignals.recordPulseCheck(selectedScore, note || undefined);
+        pulseRecordedRef.current = true;
+      }
 
       if (gratitude.trim()) {
-        const profile = JSON.parse(localStorage.getItem('lior_shared_profile') || '{}');
+        let profile: { partnerUserId?: string } = {};
+        try {
+          profile = JSON.parse(localStorage.getItem('lior_shared_profile') || '{}');
+        } catch {
+          profile = {};
+        }
         const partnerUserId = profile.partnerUserId || 'partner';
         await RelationshipSignals.recordGratitude(gratitude.trim(), partnerUserId);
       }

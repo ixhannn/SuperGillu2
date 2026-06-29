@@ -213,6 +213,21 @@ export function GuessMyMood({
     }
   }, [readPerfectly]);
 
+  // ── Graceful fallback for a malformed/empty prompt (never a dead end) ───────
+  // Placed after all hooks so hook order stays stable across every phase. A
+  // mood check-in needs at least two moods to be meaningful; fewer than that
+  // and the input step would render an empty grid with a permanently disabled
+  // 'Next' button, trapping the user. Mirrors ThisOrThat's fallback.
+  if (options.length < 2) {
+    return (
+      <div className="w-full px-5 py-8 text-center">
+        <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
+          This little check-in slipped away. A fresh one arrives tomorrow.
+        </p>
+      </div>
+    );
+  }
+
   // ── INPUT: two-step pick (my mood → guess partner's) ───────────────────────
   if (phase === 'input') {
     const onMine = (id: string) => {

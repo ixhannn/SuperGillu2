@@ -12,7 +12,7 @@
  * only — never touches storage, never leaks the partner's answer while sealed.
  * Motion is transform + opacity only and honours prefers-reduced-motion.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Lock, ArrowRight } from 'lucide-react';
 
@@ -151,6 +151,19 @@ export function DidTheyKnow({
   const [step, setStep] = useState<Step>('mine');
   const [mine, setMine] = useState<string | null>(null);
   const [guess, setGuess] = useState<string | null>(null);
+
+  // Fire the reveal celebration once, when the verdict becomes visible — a match
+  // feels different from a miss. Kept at the top level (never after an early
+  // return) so hook order stays stable across phases.
+  useEffect(() => {
+    if (phase !== 'revealed') return;
+    const knewThem =
+      !!myResponse?.guess &&
+      !!partnerResponse?.value &&
+      myResponse.guess === partnerResponse.value;
+    if (knewThem) feedback.milestone();
+    else feedback.confirm();
+  }, [phase, myResponse?.guess, partnerResponse?.value]);
 
   // ── INPUT ─────────────────────────────────────────────────────────────────
   if (phase === 'input') {
@@ -413,14 +426,6 @@ export function DidTheyKnow({
     !!partnerResponse?.guess &&
     !!myResponse?.value &&
     partnerResponse.guess === myResponse.value;
-
-  // Fire the celebration once, on mount of the revealed verdict, only on a match.
-  const [celebrated] = useState(() => {
-    if (iKnewThem) feedback.milestone();
-    else feedback.confirm();
-    return true;
-  });
-  void celebrated;
 
   const verdictTitle = iKnewThem ? 'You knew them ✅' : 'Not quite 😅';
   const verdictSub = iKnewThem

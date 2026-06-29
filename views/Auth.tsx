@@ -115,6 +115,18 @@ async function directAuthFallback(type: 'login' | 'signup' | 'reset' | 'resend',
     return error ? { error: error.message } : { data: {} };
 }
 
+// Map a direct-Supabase fallback result to a proxy-shaped HTTP status so the
+// 429 cooldown branch still fires when the auth proxy is unavailable. The
+// direct path has no status of its own; Supabase surfaces rate limits in the
+// error message ("...you can only request this after N seconds"), so we detect
+// that and report 429. retry_after_seconds is absent on the fallback, but the
+// existing `?? 600` default at each call site covers the cooldown duration.
+function statusFromFallback(r: { error?: string; data?: unknown }): number {
+    const msg = (r.error ?? '').toLowerCase();
+    if (/only request this after|rate limit|too many|after \d+\s*seconds?/.test(msg)) return 429;
+    return r.error ? 400 : 200;
+}
+
 interface AuthProps {
     onLogin: () => void;
     onPrivacyPolicy?: () => void;
@@ -1026,7 +1038,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         if (!sb) return;
         const onFocus = () => {
             sb.auth.getSession().then(({ data }) => {
-                if (data.session) onLogin();
+                // Hold the user on the "Set a new password" form during a
+                // recovery session — same gate every other onLogin path uses.
+                if (data.session && !recoveryModeRef.current) onLogin();
             }).catch(() => { /* ignore */ });
         };
         window.addEventListener('focus', onFocus);
@@ -1331,7 +1345,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         clearFeedback();
         try {
             let result = await authProxy('reset', trimmedEmail);
-            if (result.proxyUnavailable) result = { ...(await directAuthFallback('reset', trimmedEmail)), status: 200 };
+            if (result.proxyUnavailable) { const fb = await directAuthFallback('reset', trimmedEmail); result = { ...fb, status: statusFromFallback(fb) }; }
             if (result.status === 429) setRateLimitSecs(result.retry_after_seconds ?? 600);
             else if (result.error) setError(result.error);
             else setSuccessMsg('Password reset email sent. Check your inbox.');
@@ -1396,7 +1410,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         clearFeedback();
         try {
             let result = await authProxy(isSignUp ? 'signup' : 'login', trimmedEmail, password);
-            if (result.proxyUnavailable) result = { ...(await directAuthFallback(isSignUp ? 'signup' : 'login', trimmedEmail, password)), status: 200 };
+            if (result.proxyUnavailable) { const fb = await directAuthFallback(isSignUp ? 'signup' : 'login', trimmedEmail, password); result = { ...fb, status: statusFromFallback(fb) }; }
             if (result.status === 429) setRateLimitSecs(result.retry_after_seconds ?? 600);
             else if (result.error) { setError(result.error); feedback.error(); }
             else if (isSignUp && !result.data?.session) {
@@ -1424,7 +1438,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         clearFeedback();
         try {
             let result = await authProxy('resend', pendingConfirmEmail);
-            if (result.proxyUnavailable) result = { ...(await directAuthFallback('resend', pendingConfirmEmail)), status: 200 };
+            if (result.proxyUnavailable) { const fb = await directAuthFallback('resend', pendingConfirmEmail); result = { ...fb, status: statusFromFallback(fb) }; }
             if (result.status === 429) setRateLimitSecs(result.retry_after_seconds ?? 600);
             else if (result.error) { setError(result.error); feedback.error(); }
             else { setSuccessMsg('Confirmation email re-sent. Check your inbox and spam folder.'); setResendCooldownSecs(30); }

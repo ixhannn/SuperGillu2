@@ -68,7 +68,7 @@ const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note
             const mem = item as Memory;
             if (mem.image) setImageUrl(mem.image);
             else if (mem.imageId || mem.storagePath) {
-                StorageService.getImage(mem.imageId || '', undefined, mem.storagePath).then(data => setImageUrl(data || null));
+                StorageService.getImage(mem.imageId || '', undefined, mem.storagePath).then(data => setImageUrl(data || null)).catch(() => setImageUrl(null));
             }
         }
     }, [content]);
@@ -442,6 +442,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         syncEventTarget.addEventListener('sync-update', handleSyncUpdate);
         const handleSignal = (e: Event) => {
             const detail = (e as CustomEvent).detail;
+            if (!detail) return;
             if (detail.signalType === 'HEARTBEAT') {
                 triggerReceivedHeartbeat();
                 if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
@@ -478,9 +479,19 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     useEffect(() => {
         if (onThisDayMemory) {
             if (onThisDayMemory.image) setOtdImage(onThisDayMemory.image);
-            else if (onThisDayMemory.imageId || onThisDayMemory.storagePath) StorageService.getImage(onThisDayMemory.imageId || '', undefined, onThisDayMemory.storagePath).then(img => setOtdImage(img || null));
+            else if (onThisDayMemory.imageId || onThisDayMemory.storagePath) StorageService.getImage(onThisDayMemory.imageId || '', undefined, onThisDayMemory.storagePath).then(img => setOtdImage(img || null)).catch(() => setOtdImage(null));
         } else setOtdImage(null);
     }, [onThisDayMemory]);
+
+    // Drive the frequency-reactive ripple + heart wiggle off ambient playback —
+    // the sole intended trigger. AmbientService has no event surface, so poll it
+    // cheaply (4×/s). Without this, showHeartbeat could never become true and the
+    // whole HeartbeatRipple/wiggle micro-interaction stayed inert.
+    useEffect(() => {
+        setShowHeartbeat(AmbientService.isPlaying);
+        const id = window.setInterval(() => setShowHeartbeat(AmbientService.isPlaying), 250);
+        return () => window.clearInterval(id);
+    }, []);
 
     // Scroll-linked header opacity — write directly to the DOM (no React state)
     // so scrolling the page does NOT re-render the entire Home tree. The

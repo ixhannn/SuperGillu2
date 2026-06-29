@@ -51,10 +51,18 @@ export const ClosenessTrajectoryViz: React.FC<ClosenessTrajectoryVizProps> = ({ 
   // Generate sparkline data points (simulated daily scores between windows)
   const sparklineData = useMemo(() => {
     const points: number[] = [];
+    // Deterministic index-seeded jitter (range [-amp/2, amp/2]) so the same
+    // scores always produce the same shape. Using Math.random() here caused
+    // every bar — including historical windows — to re-randomize and visibly
+    // jump whenever any score changed, and made the output untestable.
+    const noise = (i: number, amp: number) => {
+      const h = Math.sin(i * 12.9898) * 43758.5453;
+      return (h - Math.floor(h)) * amp - amp / 2;
+    };
     // Interpolate between d90 → d30 → d7 → current
-    for (let i = 0; i < 6; i++) points.push(d90 + (d30 - d90) * (i / 6) + (Math.random() * 6 - 3));
-    for (let i = 0; i < 4; i++) points.push(d30 + (d7 - d30) * (i / 4) + (Math.random() * 4 - 2));
-    for (let i = 0; i < 3; i++) points.push(d7 + (current - d7) * (i / 3) + (Math.random() * 3 - 1.5));
+    for (let i = 0; i < 6; i++) points.push(d90 + (d30 - d90) * (i / 6) + noise(i, 6));
+    for (let i = 0; i < 4; i++) points.push(d30 + (d7 - d30) * (i / 4) + noise(i + 6, 4));
+    for (let i = 0; i < 3; i++) points.push(d7 + (current - d7) * (i / 3) + noise(i + 10, 3));
     points.push(current);
     return points.map(p => Math.max(0, Math.min(100, Math.round(p))));
   }, [current, d7, d30, d90]);

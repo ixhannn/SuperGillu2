@@ -10,7 +10,14 @@ interface ViewTransitionProps {
 
 export const ViewTransition: React.FC<ViewTransitionProps> = ({ children }) => {
   const containerRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) TransitionEngine.init(node);
+    if (node) {
+      // init() wires the global listeners once and ignores the node thereafter;
+      // setContainer keeps the engine's container reference fresh if this shell
+      // ever remounts (ErrorBoundary reset / Suspense swap). Without it the engine
+      // would keep animating a detached node and transitions silently no-op.
+      TransitionEngine.init(node);
+      TransitionEngine.setContainer(node);
+    }
   }, []);
 
   return (

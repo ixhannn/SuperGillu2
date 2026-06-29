@@ -226,16 +226,20 @@ interface MissionCardProps {
     record: MissionRecord;
     index: number;
     bursting: boolean;
+    myId: string;
     myName: string;
     partnerName: string;
     onComplete: (record: MissionRecord) => void;
     onFelt: (record: MissionRecord) => void;
 }
 
-const MissionCard: React.FC<MissionCardProps> = ({ record, index, bursting, myName, partnerName, onComplete, onFelt }) => {
+const MissionCard: React.FC<MissionCardProps> = ({ record, index, bursting, myId, myName, partnerName, onComplete, onFelt }) => {
     const meta = LANGUAGE_META[record.language] ?? LANGUAGE_META.any;
     const done = !!record.completedAt;
-    const witnessName = record.completedBy === myName ? partnerName : myName;
+    // Key witness attribution on the stable id, not the display name: both
+    // partners' name falls back to 'You', so a name compare always credited the
+    // partner even when the partner completed it.
+    const witnessName = record.completedBy === myId ? partnerName : myName;
     const doneDay = record.completedAt
         ? new Date(record.completedAt).toLocaleDateString(undefined, { weekday: 'long' })
         : '';
@@ -380,6 +384,9 @@ export const LoveMissionsView: React.FC<LoveMissionsProps> = ({ setView }) => {
     const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const myName = profile.myName?.trim() || 'You';
+    // Stable per-user identity for mission attribution (display name collides
+    // because both partners' fallback is 'You'). Paired partners get distinct ids.
+    const myId = StorageService.getMyUserId() || myName;
     const partnerName = profile.partnerName?.trim() || 'Your love';
     const isPremium = !!profile.isPremium;
 
@@ -440,19 +447,25 @@ export const LoveMissionsView: React.FC<LoveMissionsProps> = ({ setView }) => {
 
     const handleComplete = useCallback((record: MissionRecord) => {
         if (record.completedAt) return;
+        // Re-base off the latest persisted state so a partner's just-synced
+        // completion (written to the profile before React re-renders) is not
+        // clobbered by this whole-state save.
+        const base = PremiumFeaturesStore.getMissionState() ?? missionState;
+        const target = base.missions.find((m) => m.weekStart === record.weekStart && m.id === record.id);
+        if (target?.completedAt) return; // partner already completed it via sync
         const now = new Date().toISOString();
-        const firstOfWeek = missionState.lastCompletedWeek !== missionState.weekStart;
-        const nextStreak = firstOfWeek ? missionState.weekStreak + 1 : missionState.weekStreak;
+        const firstOfWeek = base.lastCompletedWeek !== record.weekStart;
+        const nextStreak = firstOfWeek ? base.weekStreak + 1 : base.weekStreak;
         const next: MissionState = {
-            ...missionState,
-            missions: missionState.missions.map((m) =>
-                m.weekStart === missionState.weekStart && m.id === record.id
-                    ? { ...m, completedBy: myName, completedAt: now }
+            ...base,
+            missions: base.missions.map((m) =>
+                m.weekStart === record.weekStart && m.id === record.id
+                    ? { ...m, completedBy: myId, completedAt: now }
                     : m,
             ),
-            completedTotal: missionState.completedTotal + 1,
+            completedTotal: base.completedTotal + 1,
             weekStreak: nextStreak,
-            lastCompletedWeek: missionState.weekStart,
+            lastCompletedWeek: record.weekStart,
         };
         PremiumFeaturesStore.saveMissionState(next);
         setMissionState(next);
@@ -464,15 +477,20 @@ export const LoveMissionsView: React.FC<LoveMissionsProps> = ({ setView }) => {
             firstOfWeek && nextStreak > 1 ? `That makes ${nextStreak} weeks in a row 🔥` : 'Mission complete ♥',
             'success',
         );
-    }, [missionState, myName]);
+    }, [missionState, myId]);
 
     const handleFelt = useCallback((record: MissionRecord) => {
         if (!record.completedAt || record.feltAt) return;
-        const feltBy = record.completedBy === myName ? partnerName : myName;
+        // Re-base off the latest persisted state so a partner's just-synced
+        // change is not clobbered by this whole-state save.
+        const base = PremiumFeaturesStore.getMissionState() ?? missionState;
+        const target = base.missions.find((m) => m.weekStart === record.weekStart && m.id === record.id);
+        if (!target?.completedAt || target.feltAt) return; // partner already acknowledged via sync
+        const feltBy = target.completedBy === myId ? partnerName : myName;
         const next: MissionState = {
-            ...missionState,
-            missions: missionState.missions.map((m) =>
-                m.weekStart === missionState.weekStart && m.id === record.id
+            ...base,
+            missions: base.missions.map((m) =>
+                m.weekStart === record.weekStart && m.id === record.id
                     ? { ...m, feltBy, feltAt: new Date().toISOString() }
                     : m,
             ),
@@ -481,7 +499,7 @@ export const LoveMissionsView: React.FC<LoveMissionsProps> = ({ setView }) => {
         setMissionState(next);
         feedback.tap();
         toast.show(`${feltBy} felt it — that's the whole point`, 'success');
-    }, [missionState, myName, partnerName]);
+    }, [missionState, myId, myName, partnerName]);
 
     return (
         <GoldShell eyebrow="Love Missions" accent={ACCENT}>
@@ -551,6 +569,7 @@ export const LoveMissionsView: React.FC<LoveMissionsProps> = ({ setView }) => {
                             record={weekMissions[0]}
                             index={0}
                             bursting={burstId === weekMissions[0].id}
+                            myId={myId}
                             myName={myName}
                             partnerName={partnerName}
                             onComplete={handleComplete}
@@ -573,6 +592,7 @@ export const LoveMissionsView: React.FC<LoveMissionsProps> = ({ setView }) => {
                                     record={record}
                                     index={i + 1}
                                     bursting={burstId === record.id}
+                                    myId={myId}
                                     myName={myName}
                                     partnerName={partnerName}
                                     onComplete={handleComplete}

@@ -58,7 +58,11 @@ const readEvents = (): DiagnosticEvent[] => {
 const writeEvents = (events: DiagnosticEvent[]) => {
   const storage = getStorage();
   if (!storage) return;
-  storage.setItem(DIAGNOSTICS_KEY, JSON.stringify(events.slice(0, MAX_EVENTS)));
+  try {
+    storage.setItem(DIAGNOSTICS_KEY, JSON.stringify(events.slice(0, MAX_EVENTS)));
+  } catch {
+    // Storage full (QuotaExceededError) or write-blocked — diagnostics are best-effort.
+  }
 };
 
 const nextId = () => {

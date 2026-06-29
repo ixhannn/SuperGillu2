@@ -67,6 +67,14 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
 
   useEffect(() => {
     setNotes(StorageService.getNotes());
+    // Seed reacted from persisted reactions so the heart stays filled and the
+    // de-dupe guard survives remounts (otherwise the same note re-hearts on
+    // every revisit, dispatching duplicate recordReaction calls).
+    setReacted(new Set(
+      RelationshipSignals.getReactions()
+        .filter(r => r.targetType === 'note' && r.reactionType === 'heart')
+        .map(r => r.targetId)
+    ));
   }, []);
 
   // Leaving the view commits any pending deferred delete right away.

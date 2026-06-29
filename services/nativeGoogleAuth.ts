@@ -257,16 +257,29 @@ export const signInWithNativeGoogle = async (): Promise<void> => {
     }
 
     // 4. Exchange the ID token for a Supabase session (bounded — see withTimeout).
-    const { error } = await withTimeout(
-        sb.auth.signInWithIdToken({ provider: 'google', token: idToken, nonce: rawNonce }),
-        EXCHANGE_TIMEOUT_MS,
-        () => new NativeGoogleSignInError('timeout', 'Timed out finishing sign-in.'),
-    );
-    if (error) {
-        throw new NativeGoogleSignInError(
-            'supabase_error',
-            error.message || 'Could not complete Google sign-in.',
+    // signInWithIdToken exposes no per-call abort signal, so on timeout the
+    // background exchange keeps racing. If it later succeeds it sets a session and
+    // fires onAuthStateChange('SIGNED_IN'), which would silently enter the app
+    // after we already told the user sign-in failed. Make the timeout authoritative
+    // by tearing down any late session so that confusing entry can't happen.
+    let timedOut = false;
+    try {
+        const { error } = await withTimeout(
+            sb.auth.signInWithIdToken({ provider: 'google', token: idToken, nonce: rawNonce }),
+            EXCHANGE_TIMEOUT_MS,
+            () => { timedOut = true; return new NativeGoogleSignInError('timeout', 'Timed out finishing sign-in.'); },
         );
+        if (error) {
+            throw new NativeGoogleSignInError(
+                'supabase_error',
+                error.message || 'Could not complete Google sign-in.',
+            );
+        }
+    } catch (e) {
+        if (timedOut) {
+            sb.auth.signOut().catch(() => { /* ignore — best-effort teardown */ });
+        }
+        throw e;
     }
     // Success — the Auth view's onAuthStateChange('SIGNED_IN') handler enters the app.
 };
