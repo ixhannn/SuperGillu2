@@ -214,6 +214,7 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const backupInputRef = useRef<HTMLInputElement>(null);
     const musicInputRef = useRef<HTMLInputElement>(null);
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         const refreshStorageStats = () => {
@@ -257,6 +258,12 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
             storageEventTarget.removeEventListener('storage-update', handleStorageUpdate);
             ThemeService.cleanup();
         };
+    }, []);
+
+    // Cancel the post-save navigation timer if the screen unmounts first, so a
+    // fast back press within the 600ms window isn't yanked back to Home.
+    useEffect(() => () => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     }, []);
 
     const handleChange = (field: keyof CoupleProfile, value: string) => {
@@ -389,8 +396,19 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
         setIsSaving(true);
         Haptics.success();
         Audio.play('confirm');
-        StorageService.saveCoupleProfile(profile);
-        setTimeout(() => {
+        // Merge only the fields this screen edits onto a FRESH read so we don't
+        // clobber sync-mutated fields (streakData, questions, bonsaiState, etc.)
+        // that a partner sync may have written while the screen was open.
+        const fresh = StorageService.getCoupleProfile();
+        StorageService.saveCoupleProfile({
+            ...fresh,
+            myName: profile.myName,
+            partnerName: profile.partnerName,
+            anniversaryDate: profile.anniversaryDate,
+            theme: profile.theme,
+            photo: profile.photo,
+        });
+        saveTimerRef.current = setTimeout(() => {
             setIsSaving(false);
             setView('home');
         }, 600);

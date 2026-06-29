@@ -191,14 +191,21 @@ function computeEmotionalRhythm(userId: string): EmotionalRhythm {
     sad: 1, anxious: 1, frustrated: 1, lonely: 1, angry: 1,
   };
 
+  // Accumulate mood scores per weekday and blend ONCE with the pulse-based
+  // average. The previous per-entry running blend `(avg + score) / 2` biased the
+  // result toward whichever mood happened to be processed last (earlier entries
+  // decayed exponentially), and `score / 5 * 5` was an accidental no-op.
+  const moodByDay: Record<number, number[]> = {};
   for (const m of moodEntries) {
     const day = new Date(m.timestamp).getDay();
     const score = moodScoreMap[m.mood.toLowerCase()] ?? 3;
-    if (avgByDay[day] > 0) {
-      avgByDay[day] = (avgByDay[day] + score / 5 * 5) / 2; // blend
-    } else {
-      avgByDay[day] = score;
-    }
+    (moodByDay[day] = moodByDay[day] || []).push(score);
+  }
+  for (let d = 0; d < 7; d++) {
+    const scores = moodByDay[d];
+    if (!scores || scores.length === 0) continue;
+    const moodAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    avgByDay[d] = avgByDay[d] > 0 ? (avgByDay[d] + moodAvg) / 2 : moodAvg;
   }
 
   const activeDays = Object.entries(avgByDay).filter(([, v]) => v > 0);
@@ -446,22 +453,33 @@ function computeReciprocity(): { score: number; trend: 'improving' | 'stable' | 
   const pulses = RelationshipSignals.getPulseChecks();
   const reactions = RelationshipSignals.getReactions();
 
-  // When partner has low pulse, does user show up with reactions/gratitudes/thinking-of-you?
-  const partnerLowDays = pulses
-    .filter(p => p.userId === partnerUserId && p.score <= 2)
-    .map(p => p.createdAt.slice(0, 10));
+  // Unique days the partner logged a low pulse (pulse_check DOES sync). Require a
+  // few before judging reciprocity — a single bad day with no exact same-day
+  // support must not read as a total failure to "show up" (that shipped a false,
+  // guilt-tripping "you weren't there" flag even for active, caring users).
+  const partnerLowDays = [...new Set(
+    pulses.filter(p => p.userId === partnerUserId && p.score <= 2).map(p => p.createdAt.slice(0, 10)),
+  )];
+  if (partnerLowDays.length < 3) return { score: 0.5, trend: 'stable' };
 
-  if (partnerLowDays.length === 0) return { score: 0.5, trend: 'stable' };
+  // Days the user offered support (reactions / thinking-of-you / gratitude — all
+  // local-self signals, so always available on this device).
+  const supportDays = new Set<string>([
+    ...reactions.filter(r => r.userId === userId).map(r => r.createdAt),
+    ...RelationshipSignals.getThinkingOfYouEvents(userId).map(e => e.createdAt),
+    ...RelationshipSignals.getGratitudes().filter(g => g.userId === userId).map(g => g.createdAt),
+  ].map(iso => iso.slice(0, 10)));
 
-  const userActionsOnLowDays = [
-    ...reactions.filter(r => r.userId === userId),
-    ...RelationshipSignals.getThinkingOfYouEvents(userId),
-    ...RelationshipSignals.getGratitudes().filter(g => g.userId === userId),
-  ].filter(a => partnerLowDays.includes(a.createdAt.slice(0, 10)));
+  // A low day is "shown up for" if support landed on it OR an adjacent day —
+  // exact same-day matching was far too strict and pinned the rate near 0.
+  const covered = partnerLowDays.filter(day => {
+    const t = new Date(day).getTime();
+    return supportDays.has(day)
+      || supportDays.has(new Date(t - 86400000).toISOString().slice(0, 10))
+      || supportDays.has(new Date(t + 86400000).toISOString().slice(0, 10));
+  }).length;
 
-  const showUpRate = Math.min(1, userActionsOnLowDays.length / partnerLowDays.length);
-
-  return { score: showUpRate, trend: 'stable' };
+  return { score: covered / partnerLowDays.length, trend: 'stable' };
 }
 
 // ── Phase Detection ─────────────────────────────────────────────────
@@ -543,12 +561,22 @@ function computeAsymmetry(): { score: number; direction: string } {
   const userId = getDeviceId();
   const partnerUserId = getPartnerUserId();
 
-  const initRatio = RelationshipSignals.getInitiationRatio(userId, partnerUserId, 30);
-  const userReactions = RelationshipSignals.getReactions()
-    .filter(r => r.userId === userId && r.createdAt >= new Date(Date.now() - 30 * 86400000).toISOString()).length;
-  const partnerReactions = RelationshipSignals.getReactions()
-    .filter(r => r.userId === partnerUserId && r.createdAt >= new Date(Date.now() - 30 * 86400000).toISOString()).length;
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const reactions = RelationshipSignals.getReactions();
+  const userReactions = reactions.filter(r => r.userId === userId && r.createdAt >= cutoff).length;
+  const partnerReactions = reactions.filter(r => r.userId === partnerUserId && r.createdAt >= cutoff).length;
 
+  // Asymmetry compares the two partners' reaction/initiation behaviour, but a
+  // partner's reactions AND initiations are recorded LOCAL-ONLY on their own
+  // device — they never sync to us. With no partner-side data, both ratios are
+  // pinned (partner count is always 0 → user looks like ~100% of all activity),
+  // which shipped a false, blaming "you initiate far more than them" insight.
+  // Report balanced until those signals sync cross-device.
+  if (partnerReactions === 0) {
+    return { score: 0, direction: '' };
+  }
+
+  const initRatio = RelationshipSignals.getInitiationRatio(userId, partnerUserId, 30);
   const reactionRatio = (userReactions + partnerReactions) > 0
     ? userReactions / (userReactions + partnerReactions)
     : 0.5;
@@ -563,7 +591,10 @@ function computeAsymmetry(): { score: number; direction: string } {
 // ── Partner Snapshot ────────────────────────────────────────────────
 
 function buildPartnerSnapshot(userId: string, partnerUserId: string): PartnerModelSnapshot {
-  const gratitudes = RelationshipSignals.getGratitudes(userId);
+  // Gratitudes AUTHORED by this person. getGratitudes(x) filters by aboutUserId
+  // (the recipient), not the author, which left the snapshot's gratitude themes
+  // (esp. the partner's) reliably empty.
+  const gratitudes = RelationshipSignals.getGratitudes().filter(g => g.userId === userId);
   const topGratitudes = extractTopThemes(gratitudes.map(g => g.text));
   const revisited = RelationshipSignals.getMostRevisited(5)
     .filter(r => {
@@ -776,7 +807,11 @@ let computeTimeout: ReturnType<typeof setTimeout> | null = null;
 const scheduleRecompute = () => {
   if (computeTimeout) clearTimeout(computeTimeout);
   computeTimeout = setTimeout(async () => {
-    await RelationshipModelService.compute();
+    try {
+      await RelationshipModelService.compute();
+    } catch (err) {
+      console.error('[relationshipModel] recompute failed', err);
+    }
   }, 5000); // debounce: recompute 5s after last signal
 };
 

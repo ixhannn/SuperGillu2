@@ -29,6 +29,14 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     private handleReset = () => {
+        // A deterministic crash (a bad lazy chunk, corrupt persisted state read on
+        // mount, a null-deref in a view's render) re-throws the instant the same
+        // subtree re-renders, leaving "Restart" a dead button. Hard-reload to truly
+        // escape the bad state; fall back to a state reset only off-DOM (tests/SSR).
+        if (typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
+            window.location.reload();
+            return;
+        }
         this.setState({ hasError: false, error: null });
     };
 

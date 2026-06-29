@@ -278,8 +278,11 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
     };
 
     const fireSignal = () => {
-        if (!activeSignal || sentRef.current) return;
-        SyncService.sendSignal('AURA_SIGNAL', {
+        // NOTE: tick() already sets sentRef.current = true before calling this,
+        // so the guard must NOT re-check sentRef (that made every send a no-op).
+        // Single-fire is enforced by tick()/startCharge()/cancelCharge().
+        if (!activeSignal) return;
+        const delivered = SyncService.sendSignal('AURA_SIGNAL', {
             color: activeSignal.color,
             title: activeSignal.title,
             subtitle: activeSignal.subtitle,
@@ -295,7 +298,14 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
             setSelected(null);
             setView('home');
             // Carry a warm confirmation onto home so the return isn't hollow.
-            toast.show(`“${title}” is on its way 💫`, 'heart', 4200);
+            // Be honest when offline: it's saved and will send on reconnect.
+            toast.show(
+                delivered
+                    ? `“${title}” is on its way 💫`
+                    : `“${title}” will send when you’re back online 💫`,
+                'heart',
+                4200,
+            );
         }, 3300);
     };
 

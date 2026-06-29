@@ -14,6 +14,7 @@ import {
 import { generateId } from '../utils/ids';
 import { DB_NAME, DB_VERSION, STORES } from './storage/dbConfig';
 import { SupabaseService } from './supabase';
+import { DiagnosticsService } from './diagnostics';
 
 // ── Storage ─────────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ async function fetchPartnerSignals(): Promise<void> {
     const since = new Date(Date.now() - SIGNALS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const { data } = await SupabaseService.client
       .from(SIGNALS_TABLE)
-      .select('signal_type, data')
+      .select('signal_type, data, user_id')
       .eq('couple_id', coupleId)
       .neq('user_id', userId)
       .gte('created_at', since);
@@ -125,18 +126,24 @@ async function fetchPartnerSignals(): Promise<void> {
       const entry = row.data as { id: string };
       if (!entry?.id) continue;
 
+      // Stamp merged partner rows with the partner's real Supabase user id so
+      // the model can filter them by getPartnerUserId() (profile.partnerUserId).
+      // Cloud rows carry the author's device id in entry.userId, which the model
+      // never queries by, so partner analytics would otherwise see nothing.
+      const partnerUserId = row.user_id as string;
+
       switch (row.signal_type) {
         case 'pulse_check':
           if (!pulseChecks.find(p => p.id === entry.id))
-            pulseChecks.push(entry as PulseCheck);
+            pulseChecks.push({ ...(entry as PulseCheck), userId: partnerUserId });
           break;
         case 'micro_gratitude':
           if (!microGratitudes.find(g => g.id === entry.id))
-            microGratitudes.push(entry as MicroGratitude);
+            microGratitudes.push({ ...(entry as MicroGratitude), userId: partnerUserId });
           break;
         case 'weekly_reflection':
           if (!weeklyReflections.find(r => r.id === entry.id))
-            weeklyReflections.push(entry as WeeklyReflection);
+            weeklyReflections.push({ ...(entry as WeeklyReflection), userId: partnerUserId });
           break;
       }
     }
@@ -235,7 +242,9 @@ export const RelationshipSignals = {
     if (!meta.firstSignalDate) meta.firstSignalDate = entry.createdAt;
 
     await Promise.all([
-      write(KEYS.PULSE_CHECKS, pulseChecks),
+      // Persist only locally-authored rows; merged partner rows live in memory
+      // for this session only and must not be reloaded as the user's own.
+      write(KEYS.PULSE_CHECKS, pulseChecks.filter(p => p.userId === getDeviceId())),
       write(KEYS.SIGNAL_META, meta),
     ]);
 
@@ -277,7 +286,8 @@ export const RelationshipSignals = {
     microGratitudes.push(entry);
     meta.totalSignalCount++;
     await Promise.all([
-      write(KEYS.MICRO_GRATITUDES, microGratitudes),
+      // Persist only locally-authored rows; see recordPulseCheck.
+      write(KEYS.MICRO_GRATITUDES, microGratitudes.filter(g => g.userId === getDeviceId())),
       write(KEYS.SIGNAL_META, meta),
     ]);
     void pushSignalToCloud('micro_gratitude', entry);
@@ -311,7 +321,8 @@ export const RelationshipSignals = {
     weeklyReflections.push(entry);
     meta.totalSignalCount++;
     await Promise.all([
-      write(KEYS.WEEKLY_REFLECTIONS, weeklyReflections),
+      // Persist only locally-authored rows; see recordPulseCheck.
+      write(KEYS.WEEKLY_REFLECTIONS, weeklyReflections.filter(r => r.userId === getDeviceId())),
       write(KEYS.SIGNAL_META, meta),
     ]);
     void pushSignalToCloud('weekly_reflection', entry);
@@ -610,4 +621,4 @@ export const RelationshipSignals = {
 };
 
 // Initialize on import
-RelationshipSignals.init();
+void RelationshipSignals.init().catch((e) => DiagnosticsService.recordError('signals.init', e));

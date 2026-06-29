@@ -118,11 +118,13 @@ const OrbInput: React.FC<OrbInputProps> = ({ title, submitting, reduce, onCommit
   const [released, setReleased] = useState(false); // outward pulse on send
   const [sent, setSent] = useState(false);
   const holdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const commitTimerRef = useRef<number | null>(null);
   const firedRef = useRef(false);
   const pressedAtRef = useRef(0);
 
   useEffect(() => () => {
     if (holdRef.current) clearInterval(holdRef.current);
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
   }, []);
 
   const commit = () => {
@@ -135,11 +137,15 @@ const OrbInput: React.FC<OrbInputProps> = ({ title, submitting, reduce, onCommit
     setSent(true);
     feedback.milestone();
     // Let the outward pulse breathe before the phase swaps to 'waiting'.
-    window.setTimeout(onCommit, reduce ? 0 : 520);
+    commitTimerRef.current = window.setTimeout(onCommit, reduce ? 0 : 520);
   };
 
-  const startCharge = () => {
+  const startCharge = (e: React.PointerEvent) => {
     if (sent || submitting || firedRef.current) return;
+    // Keep every subsequent move/up event targeted to the orb even when the
+    // finger drifts off it during a deliberate hold — without this, a small
+    // drift fires onPointerLeave and commits the pulse early.
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* capture unsupported */ }
     feedback.tap();
     pressedAtRef.current = Date.now();
     if (reduce) return; // reduced-motion: a single firm tap commits on release
@@ -249,7 +255,6 @@ const OrbInput: React.FC<OrbInputProps> = ({ title, submitting, reduce, onCommit
           type="button"
           onPointerDown={startCharge}
           onPointerUp={endCharge}
-          onPointerLeave={endCharge}
           onPointerCancel={endCharge}
           onContextMenu={(e) => e.preventDefault()}
           disabled={submitting || sent}

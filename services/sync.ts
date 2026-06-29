@@ -7,7 +7,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { isDailyMomentExpired } from '../shared/mediaRetention.js';
 import { createDeletionLookup, filterUploadableItems, getRemoteDeletedIdsToPurge, hasRecordedDeletion } from './syncDeletionLedger.js';
 import { runFrameBudgeted, scheduleIdleTask } from '../utils/scheduler';
-import { enqueueOutbox, getOutbox, outboxSize, removeOutboxEntry } from './syncOutbox';
+import { enqueueOutbox, getOutbox, outboxSize, removeOutboxEntryIfUnchanged } from './syncOutbox';
 
 // Tables backed by a single shared row per couple. Their outbox dedup key is the
 // table name (not a row id), since there is only ever one logical row.
@@ -121,9 +121,14 @@ class SyncServiceClass {
 
         this.realtimeChannels.forEach((channel) => {
             try {
-                channel.unsubscribe();
+                // removeChannel() unsubscribes AND de-registers from the realtime
+                // client. Plain unsubscribe() leaves the channel in client.channels
+                // (supabase-js v2), so repeated reconnect/resume cycles on mobile
+                // (background→foreground) leaked ~26 channels each time until the
+                // per-connection channel cap was hit and live sync silently stopped.
+                SupabaseService.client?.removeChannel(channel);
             } catch (e) {
-                console.warn('Channel unsubscribe failed', e);
+                console.warn('Channel remove failed', e);
             }
         });
         this.realtimeChannels = [];
@@ -476,10 +481,16 @@ class SyncServiceClass {
                             const local = StorageService.getCoupleRoomState();
                             await SupabaseService.saveSingle(table, local);
                         } else if (table === 'user_status') {
-                            const local = StorageService.getStatus();
-                            const profile = StorageService.getCoupleProfile();
-                            const myId = StorageService.getMyUserId() || profile.myName;
-                            await SupabaseService.upsertItem(table, { id: myId, ...local });
+                            // Only push once the STABLE user id is known. The old
+                            // fallback to the mutable display name created a second
+                            // user_status row on every rename — and a name-keyed row
+                            // the partner (who reads status by partnerUserId) can't
+                            // even match. No id yet ⇒ unpaired ⇒ nothing to show.
+                            const myId = StorageService.getMyUserId();
+                            if (myId) {
+                                const local = StorageService.getStatus();
+                                await SupabaseService.upsertItem(table, { id: myId, ...local });
+                            }
                         } else {
                             const uploadableItems = filterUploadableItems(localItems, table, deletionLookup, isDeletedLocally);
                             for (const it of uploadableItems) {
@@ -619,7 +630,10 @@ class SyncServiceClass {
                         item: entry.item,
                         source: 'user',
                     } as StorageUpdateDetail);
-                    removeOutboxEntry(entry.table, entry.id);
+                    // Guard on ts: if the same row was re-edited during the await,
+                    // enqueueOutbox replaced this entry with a fresher one — keep it
+                    // for the next flush instead of deleting the newer write.
+                    removeOutboxEntryIfUnchanged(entry.table, entry.id, entry.ts);
                 } catch (e) {
                     console.warn('Outbox flush stalled; will retry', e);
                     break; // keep this and following entries for the next attempt
@@ -735,9 +749,11 @@ class SyncServiceClass {
         if (!profile.coupleId) return;
 
         // Tear down the dead channels (this bumps the epoch, invalidating their
-        // stale status callbacks) and build a fresh subscription.
+        // stale status callbacks) and build a fresh subscription. removeChannel()
+        // de-registers them from the realtime client — unsubscribe() alone leaks
+        // channels across reconnect cycles (supabase-js v2).
         this.realtimeChannels.forEach((channel) => {
-            try { channel.unsubscribe(); } catch { /* already gone */ }
+            try { SupabaseService.client?.removeChannel(channel); } catch { /* already gone */ }
         });
         this.realtimeChannels = [];
         this.channel = null;
@@ -996,19 +1012,22 @@ class SyncServiceClass {
         syncEventTarget.dispatchEvent(new Event('together-session-end'));
     }
 
-    public sendSignal(type: string, payload?: any) {
-        if (!this.isConnected || !this.channel) return;
+    public sendSignal(type: string, payload?: any): boolean {
+        // Persist to the offline inbox FIRST so an aura survives even when the
+        // realtime channel is down — it then reaches the partner via DB sync.
+        // (Previously this sat after the connectivity gate and was silently
+        // skipped while offline, so the feeling was lost despite a "sent" UI.)
+        if (type === 'AURA_SIGNAL') {
+            StorageService.addMissedAura(payload);
+        }
+        if (!this.isConnected || !this.channel) return false;
         const msg = { signalType: type, payload, timestamp: new Date().toISOString() };
         this.channel.send({
             type: 'broadcast',
             event: 'signal',
             payload: msg
         });
-
-        // Offline Inbox
-        if (type === 'AURA_SIGNAL') {
-            StorageService.addMissedAura(payload);
-        }
+        return true;
     }
 
     private updateStatus(msg: string) {

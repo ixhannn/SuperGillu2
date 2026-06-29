@@ -29,7 +29,7 @@ export interface UseHoldToRecordReturn {
  * - Press and hold -> progress animates from 0 to 1 over durationMs.
  * - Auto-resolves onRelease(duration, true) when user holds the full durationMs.
  * - Releasing early calls onRelease(heldMs, false).
- * - Leaving the element or pointer cancel calls onCancel.
+ * - Releasing outside the button bounds (slide-to-cancel) or pointer cancel calls onCancel.
  */
 export function useHoldToRecord(options: UseHoldToRecordOptions = {}): UseHoldToRecordReturn {
   const {
@@ -48,6 +48,7 @@ export function useHoldToRecord(options: UseHoldToRecordOptions = {}): UseHoldTo
   const rafRef = useRef<number | null>(null);
   const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolvedRef = useRef(false);
+  const elementRef = useRef<Element | null>(null);
 
   const clearLoops = useCallback(() => {
     if (rafRef.current !== null) {
@@ -80,7 +81,13 @@ export function useHoldToRecord(options: UseHoldToRecordOptions = {}): UseHoldTo
   const handleStart = useCallback((event: React.PointerEvent) => {
     if (isHolding) return;
     resolvedRef.current = false;
-    (event.target as Element).setPointerCapture?.(event.pointerId);
+    // Capture the bound element so we can hit-test the release point against it.
+    // setPointerCapture keeps pointerup firing on this element, but it also
+    // suppresses pointerleave for the captured pointer, so slide-to-cancel is
+    // resolved by hit-testing in the pointerup handler instead.
+    const el = event.currentTarget as Element;
+    elementRef.current = el;
+    el.setPointerCapture?.(event.pointerId);
     startTimeRef.current = performance.now();
     setIsHolding(true);
     setProgress(0);
@@ -117,8 +124,22 @@ export function useHoldToRecord(options: UseHoldToRecordOptions = {}): UseHoldTo
 
   const bind = {
     onPointerDown: (event: React.PointerEvent) => handleStart(event),
-    onPointerUp: (event: React.PointerEvent) => handleEnd(event, 'release'),
-    onPointerLeave: (event: React.PointerEvent) => handleEnd(event, 'cancel'),
+    onPointerUp: (event: React.PointerEvent) => {
+      // With pointer capture active, pointerup fires here even when the finger
+      // has slid off the button. Hit-test the release point so dragging away
+      // still cancels the take (slide-to-cancel).
+      const rect = elementRef.current?.getBoundingClientRect();
+      const inside =
+        !!rect &&
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      handleEnd(event, inside ? 'release' : 'cancel');
+    },
+    // pointerleave does not fire while the pointer is captured, so this is a
+    // no-op kept only to preserve the bind shape; cancel is handled above.
+    onPointerLeave: (_event: React.PointerEvent) => {},
     onPointerCancel: (event: React.PointerEvent) => handleEnd(event, 'cancel'),
   };
 

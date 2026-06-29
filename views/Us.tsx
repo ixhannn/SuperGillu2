@@ -32,6 +32,7 @@ type Tab = 'bucket' | 'wishlist' | 'milestones';
 const relativeTime = (dateStr: string) => {
     const diff = Date.now() - new Date(dateStr).getTime();
     const days = Math.floor(diff / 86400000);
+    if (days < 0) return 'upcoming';
     if (days < 30) return `${days}d ago`;
     const months = Math.floor(days / 30);
     if (months < 12) return `${months}mo ago`;
@@ -126,23 +127,24 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
     const toggleBucket = (id: string) => saveBucket(bucketItems.map(i => i.id === id ? { ...i, completedAt: i.completedAt ? undefined : new Date().toISOString() } : i));
     const deleteBucket = (id: string) => {
         const item = bucketItems.find(i => i.id === id);
-        if (!item || pendingDeleteIds.has(id)) return;
-        markPendingDelete(id);
+        const key = `bucket:${id}`;
+        if (!item || pendingDeleteIds.has(key)) return;
+        markPendingDelete(key);
         toast.showUndo(`Deleted "${item.text}"`, {
-            onUndo: () => clearPendingDelete(id),
+            onUndo: () => clearPendingDelete(key),
             onExpire: () => {
                 try {
                     StorageService.deleteUsBucketItem(id);
-                    clearPendingDelete(id);
+                    clearPendingDelete(key);
                     setBucketItems(StorageService.getUsBucketItems());
                 } catch {
-                    clearPendingDelete(id);
+                    clearPendingDelete(key);
                     toast.show("Couldn't delete — it's back", 'error');
                 }
             },
         });
     };
-    const visibleBucket = bucketItems.filter(i => !pendingDeleteIds.has(i.id));
+    const visibleBucket = bucketItems.filter(i => !pendingDeleteIds.has(`bucket:${i.id}`));
     const pending = visibleBucket.filter(i => !i.completedAt);
     const completed = visibleBucket.filter(i => i.completedAt);
     const pct = visibleBucket.length > 0 ? Math.round((completed.length / visibleBucket.length) * 100) : 0;
@@ -167,25 +169,29 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
     const toggleGifted = (id: string) => saveWish(wishItems.map(i => i.id === id ? { ...i, gifted: !i.gifted } : i));
     const deleteWish = (id: string) => {
         const item = wishItems.find(i => i.id === id);
-        if (!item || pendingDeleteIds.has(id)) return;
-        markPendingDelete(id);
+        const key = `wish:${id}`;
+        if (!item || pendingDeleteIds.has(key)) return;
+        markPendingDelete(key);
         toast.showUndo(`Deleted "${item.text}"`, {
-            onUndo: () => clearPendingDelete(id),
+            onUndo: () => clearPendingDelete(key),
             onExpire: () => {
                 try {
                     StorageService.deleteUsWishlistItem(id);
-                    clearPendingDelete(id);
+                    clearPendingDelete(key);
                     setWishItems(StorageService.getUsWishlistItems());
                 } catch {
-                    clearPendingDelete(id);
+                    clearPendingDelete(key);
                     toast.show("Couldn't delete — it's back", 'error');
                 }
             },
         });
     };
-    const visibleWishes = wishItems.filter(i => !pendingDeleteIds.has(i.id));
+    const visibleWishes = wishItems.filter(i => !pendingDeleteIds.has(`wish:${i.id}`));
+    // 'me' is authoritative; 'partner' is the complement so the two buckets can
+    // never overlap even when myName === partnerName or both names are empty
+    // (avoids double-counting / a wish appearing as a ghost in both tabs).
     const myWishes = visibleWishes.filter(i => i.ownerName === profile.myName);
-    const partnerWishes = visibleWishes.filter(i => i.ownerName === profile.partnerName);
+    const partnerWishes = visibleWishes.filter(i => i.ownerName !== profile.myName);
 
     // ── Milestones ───────────────────────────────────────────────────────
     const [milestones, setMilestones] = useState<UsMilestone[]>(() => {
@@ -213,24 +219,25 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
     };
     const deleteMilestone = (id: string) => {
         const item = milestones.find(m => m.id === id);
-        if (!item || pendingDeleteIds.has(id)) return;
-        markPendingDelete(id);
+        const key = `ms:${id}`;
+        if (!item || pendingDeleteIds.has(key)) return;
+        markPendingDelete(key);
         toast.showUndo(`Deleted "${item.title}"`, {
-            onUndo: () => clearPendingDelete(id),
+            onUndo: () => clearPendingDelete(key),
             onExpire: () => {
                 try {
                     StorageService.deleteUsMilestone(id);
-                    clearPendingDelete(id);
+                    clearPendingDelete(key);
                     const synced = StorageService.getUsMilestones();
                     setMilestones(synced.length ? synced : DEFAULT_MILESTONES);
                 } catch {
-                    clearPendingDelete(id);
+                    clearPendingDelete(key);
                     toast.show("Couldn't delete — it's back", 'error');
                 }
             },
         });
     };
-    const datedMilestones = milestones.filter(m => m.date && !pendingDeleteIds.has(m.id));
+    const datedMilestones = milestones.filter(m => m.date && !pendingDeleteIds.has(`ms:${m.id}`));
 
     const reduce = useReducedMotion();
 
@@ -632,7 +639,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                         ))}
                                     </div>
                                     <input value={msTitle} onChange={e => setMsTitle(e.target.value)} placeholder="What happened?" className={inputCls} />
-                                    <input value={msDate} onChange={e => setMsDate(e.target.value)} type="date" className={inputCls} />
+                                    <input value={msDate} onChange={e => setMsDate(e.target.value)} type="date" max={new Date().toISOString().slice(0, 10)} className={inputCls} />
                                     <input value={msDesc} onChange={e => setMsDesc(e.target.value)} placeholder="A little note… (optional)" className={inputCls} />
                                     <div className="flex gap-2">
                                         <button onClick={() => setShowMsForm(false)} className="flex-1 py-3 spring-press" style={{ borderRadius: RADIUS.chip, fontSize: '0.82rem', color: WARM.inkSoft, background: 'rgba(196,104,126,0.08)' }}>Cancel</button>
@@ -685,7 +692,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                     {datedMilestones.map((ms, i) => {
                                         const isNewest = i === datedMilestones.length - 1;
                                         return (
-                                            <motion.div key={ms.id} layout
+                                            <motion.div key={ms.id}
                                                 initial={{ opacity: 0, y: 22, scale: 0.985 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} viewport={{ once: true, margin: '0px 0px -48px 0px' }}
                                                 exit={listRemoveExit}
                                                 transition={{ ...SOFT_SPRING, delay: i * 0.045 }}

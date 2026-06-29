@@ -153,8 +153,13 @@ const buildRitualChapters = (
     rawPartnerName: string | undefined,
 ): DailyRitualChapter[] => {
     if (!Array.isArray(questions) || questions.length === 0) return [];
-    const myKey = rawMyName?.trim() ?? '';
-    const partnerKey = rawPartnerName?.trim() ?? '';
+    // Look up answers by the EXACT (untrimmed) display name the answer was
+    // stored under (submitQuestionAnswer keys by raw profile.myName; every
+    // other reader — dailyRitual.ts, DuetJournal, Premium — uses raw names).
+    // Trimming here would miss keys with leading/trailing whitespace and render
+    // the ritual scene with blank answers.
+    const myKey = rawMyName ?? '';
+    const partnerKey = rawPartnerName ?? '';
 
     return questions
         .filter((q): q is QuestionEntry & { revealedAt: string } =>

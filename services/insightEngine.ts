@@ -452,6 +452,7 @@ const templates: InsightTemplate[] = [
         date.setDate(today.getDate() - i);
         const dateStr = date.toISOString().slice(0, 10);
         if (pulses.some(p => p.createdAt.slice(0, 10) === dateStr)) streak++;
+        else if (i === 0) continue; // today's check-in may still be pending — don't break a real streak
         else break;
       }
       return streak >= 7;
@@ -465,6 +466,7 @@ const templates: InsightTemplate[] = [
         date.setDate(today.getDate() - i);
         const dateStr = date.toISOString().slice(0, 10);
         if (pulses.some(p => p.createdAt.slice(0, 10) === dateStr)) streak++;
+        else if (i === 0) continue; // today's check-in may still be pending — don't break a real streak
         else break;
       }
       return {
@@ -495,7 +497,7 @@ const templates: InsightTemplate[] = [
         .slice(-5)
         .map(g => g.text);
       return {
-        text: `You've shared ${count} gratitudes about each other. The most recent ones mention: "${themes[0] || '...'}" — this is your love language in action.`,
+        text: `You've shared ${count} gratitudes about each other. The most recent ones mention: "${themes[themes.length - 1] || '...'}" — this is your love language in action.`,
         confidence: 0.9,
         dataPointCount: count,
       };
@@ -559,10 +561,14 @@ const templates: InsightTemplate[] = [
 // ── Insight Generation Engine ───────────────────────────────────────
 
 function enforceRatio(candidates: Array<{ template: InsightTemplate; result: ReturnType<InsightTemplate['generate']> }>): typeof candidates {
-  // 70/20/10 ratio: affirmative/growth/flag
-  const affirmative = candidates.filter(c => c.template.sentiment === 'affirmative');
-  const growth = candidates.filter(c => c.template.sentiment === 'growth');
-  const flags = candidates.filter(c => c.template.sentiment === 'flag');
+  // 70/20/10 ratio: affirmative/growth/flag. Sort each bucket by confidence so the
+  // per-category slice keeps the STRONGEST candidate, not whichever was declared
+  // first (a 0.95 flag must not be dropped for a 0.3 affirmative).
+  const byConfidence = (a: typeof candidates[number], b: typeof candidates[number]) =>
+    (b.result.confidence || 0) - (a.result.confidence || 0);
+  const affirmative = candidates.filter(c => c.template.sentiment === 'affirmative').sort(byConfidence);
+  const growth = candidates.filter(c => c.template.sentiment === 'growth').sort(byConfidence);
+  const flags = candidates.filter(c => c.template.sentiment === 'flag').sort(byConfidence);
 
   const result: typeof candidates = [];
 
@@ -657,29 +663,28 @@ export const InsightEngine = {
 
       // Cooldown: skip this template if a same-category insight was created
       // within its cooldown window — but only when the template currently
-      // qualifies. condition()/generate() are pure functions of the model, so
-      // the gate is evaluated ONCE here instead of re-running both for every
-      // existing insight inside a find() (an O(templates × insights) scan).
+      // qualifies. condition() may read external signal state (not just the
+      // model), but it is a pure read, so we evaluate the gate ONCE here and
+      // reuse it below instead of re-running it for every existing insight
+      // inside a find() (an O(templates × insights) scan).
       // generate() always returns an object, so the old `generated` truthiness
       // gate is exactly `condition(model)`. The previous `lastOfType` find was
       // dead (computed, never read) and ran its own nested O(n²) scan — removed.
       let qualifies = false;
       try { qualifies = tmpl.condition(model); } catch { qualifies = false; }
-      const lastByTemplate = qualifies
-        ? deepInsights.find(i =>
-            i.targetUserId === userId &&
-            i.category === tmpl.category &&
-            differenceInDays(new Date(), new Date(i.createdAt)) < tmpl.cooldownDays)
-        : undefined;
+      if (!qualifies) continue;
+
+      const lastByTemplate = deepInsights.find(i =>
+        i.targetUserId === userId &&
+        i.category === tmpl.category &&
+        differenceInDays(new Date(), new Date(i.createdAt)) < tmpl.cooldownDays);
       if (lastByTemplate) continue;
 
-      // Check condition
+      // Reuse the gate computed above (condition() is a pure read).
       try {
-        if (tmpl.condition(model)) {
-          const result = tmpl.generate(model);
-          if (result.confidence >= 0.3) {
-            candidates.push({ template: tmpl, result });
-          }
+        const result = tmpl.generate(model);
+        if (result.confidence >= 0.3) {
+          candidates.push({ template: tmpl, result });
         }
       } catch {
         // Template evaluation failed — skip silently
@@ -827,4 +832,4 @@ export const checkAndGenerateDeepInsights = async () => {
 };
 
 // Initialize on import
-InsightEngine.init();
+InsightEngine.init().catch(() => { /* IndexedDB unavailable (private mode/quota) — start empty */ });

@@ -202,25 +202,29 @@ export const DateStudioView: React.FC<Props> = ({ setView }) => {
             category: drawn.category,
             createdAt: new Date().toISOString(),
         };
-        savePlans([...plans, plan]);
+        // Re-base on the fresh store so a plan the partner added/edited after this
+        // view mounted isn't dropped by writing back a stale local array.
+        savePlans([...PremiumFeaturesStore.getDatePlans(), plan]);
         toast.show('Kept — it’s a date 🌙', 'success');
         flipBackThen(() => setDrawn(null));
     }, [drawn, plans, savePlans, flipBackThen]);
 
     const handleUpdate = useCallback((id: string, patch: Partial<DatePlan>) => {
-        savePlans(plans.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-    }, [plans, savePlans]);
+        savePlans(PremiumFeaturesStore.getDatePlans().map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    }, [savePlans]);
 
     const handleComplete = useCallback((id: string) => {
         feedback.celebrate();
-        savePlans(plans.map((p) => (p.id === id ? { ...p, completedAt: new Date().toISOString() } : p)));
+        savePlans(PremiumFeaturesStore.getDatePlans().map((p) => (p.id === id ? { ...p, completedAt: new Date().toISOString() } : p)));
         setJustCompletedId(id);
         toast.show('One for the books 💫', 'success');
     }, [plans, savePlans]);
 
     const handleRemove = useCallback((id: string) => {
         feedback.tap();
-        savePlans(plans.filter((p) => p.id !== id));
+        // Delete from the FRESH store so the removal applies to current state
+        // (and a partner's just-synced plan isn't dropped as a side effect).
+        savePlans(PremiumFeaturesStore.getDatePlans().filter((p) => p.id !== id));
         toast.show('Returned to the deck', 'info');
     }, [plans, savePlans]);
 

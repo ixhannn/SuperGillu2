@@ -949,6 +949,22 @@ interface RoomScene3DProps {
     onSelect(id);
   }, [onSelect]);
 
+  // The floor plane's onPointerUp only fires when the pointer is released over
+  // the plane itself. If the user lifts off another prop, the wall, or outside
+  // the canvas, that handler never runs and the item stays stuck following the
+  // cursor. A window-level pointerup/pointercancel fallback guarantees the drag
+  // always commits, regardless of where the pointer is released.
+  useEffect(() => {
+    if (!draggingId) return;
+    const end = () => stopDrag();
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    return () => {
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+  }, [draggingId, stopDrag]);
+
   if (!webglReady) {
     return <RoomSceneFallback room={room} catalogById={catalogById} />;
   }

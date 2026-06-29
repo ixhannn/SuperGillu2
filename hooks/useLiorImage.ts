@@ -60,6 +60,11 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
     const srcRef = useRef<string | null>(null);
     srcRef.current = src;
 
+    // Throttles error-recovery so a genuinely-missing object can't drive a tight
+    // error→re-resolve→error loop, while a normal signature expiry (minutes apart)
+    // still recovers.
+    const lastRecoveryRef = useRef(0);
+
     useEffect(() => {
         let isMounted = true;
 
@@ -110,6 +115,7 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
         if (!mediaId && !fallbackData && !storagePath) return;
         if (src !== null) return;
 
+        let active = true;
         let timer: ReturnType<typeof setTimeout> | null = null;
         const retry = () => {
             if (timer) clearTimeout(timer);
@@ -117,7 +123,7 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
                 if (srcRef.current !== null) return;
                 try {
                     const data = await resolveCachedMedia(mediaId, fallbackData, storagePath);
-                    if (data) setSrc(data);
+                    if (active && data) setSrc(data);
                 } catch {
                     // Best-effort retry only.
                 }
@@ -126,6 +132,7 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
 
         storageEventTarget.addEventListener('storage-update', retry);
         return () => {
+            active = false;
             if (timer) clearTimeout(timer);
             storageEventTarget.removeEventListener('storage-update', retry);
         };
@@ -138,6 +145,13 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
      */
     const handleError = useCallback(async () => {
         if (!src || !src.startsWith('http')) return;
+        const failed = src;
+        // A signed cloud URL most likely expired (~15-min TTL) or the object was
+        // removed. Recover at most once every few seconds so a truly-gone object
+        // can't spin a tight loop, but an expiry (minutes apart) still recovers.
+        const now = Date.now();
+        if (now - lastRecoveryRef.current < 4000) { setSrc(null); return; }
+        lastRecoveryRef.current = now;
         try {
             mediaValueCache.delete(buildMediaKey(mediaId, fallbackData, storagePath));
             const localSrc = await StorageService.getImageLocalOnly(mediaId || '', fallbackData, storagePath);
@@ -145,7 +159,10 @@ export const useLiorMedia = (mediaId?: string, fallbackData?: string, storagePat
                 setSrc(localSrc);
                 return;
             }
-            setSrc(null);
+            // No local copy (partner's cloud-only media): re-resolve to mint a FRESH
+            // signed URL instead of going blank and waiting for a storage event.
+            const fresh = await StorageService.getImage(mediaId || '', fallbackData, storagePath);
+            setSrc(fresh && fresh !== failed ? fresh : null);
         } catch {
             setSrc(null);
         }

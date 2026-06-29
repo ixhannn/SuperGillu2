@@ -15,6 +15,7 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
   const [bestMoment, setBestMoment] = useState('');
   const [hardThing, setHardThing] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const bestRef = useRef<HTMLTextAreaElement>(null);
   const hardRef = useRef<HTMLTextAreaElement>(null);
   // Overlay keyboard mode does not resize the WebView; lift the bottom-anchored
@@ -36,16 +37,20 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
     }
   }, [step]);
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (skipHard = false) => {
     if (!bestMoment.trim() || isSubmitting) return;
     setIsSubmitting(true);
+    setError(null);
     feedback.tap();
 
     try {
-      await RelationshipSignals.recordReflection(bestMoment.trim(), hardThing.trim() || undefined);
+      await RelationshipSignals.recordReflection(bestMoment.trim(), skipHard ? undefined : (hardThing.trim() || undefined));
       setStep('done');
       setTimeout(() => onComplete?.(), 1200);
-    } catch {
+    } catch (err) {
+      console.error('recordReflection failed', err);
+      setError('Could not save your reflection. Please try again.');
+      feedback.error();
       setIsSubmitting(false);
     }
   }, [bestMoment, hardThing, isSubmitting, onComplete]);
@@ -182,7 +187,8 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
                 <div className="flex gap-3 mt-4">
                   <motion.button
                     whileTap={{ scale: 0.97 }}
-                    onClick={handleSubmit}
+                    onClick={() => handleSubmit(true)}
+                    disabled={isSubmitting}
                     className="flex-1 py-3 rounded-2xl text-sm font-medium"
                     style={{
                       background: 'rgba(var(--theme-particle-2-rgb), 0.06)',
@@ -193,7 +199,7 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
                   </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.97 }}
-                    onClick={handleSubmit}
+                    onClick={() => handleSubmit(false)}
                     disabled={isSubmitting}
                     className="flex-1 py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2"
                     style={{
@@ -206,6 +212,11 @@ export const WeeklyReflectionSheet: React.FC<WeeklyReflectionProps> = ({ onCompl
                     Done
                   </motion.button>
                 </div>
+                {error && (
+                  <p className="text-xs text-center mt-3" style={{ color: 'var(--color-error, #c0392b)' }}>
+                    {error}
+                  </p>
+                )}
               </motion.div>
             )}
 

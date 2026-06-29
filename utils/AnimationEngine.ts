@@ -228,7 +228,7 @@ class AnimationEngineClass {
     this.frameIdx++;
 
     // Evaluate tier every N frames
-    if ((this.frameIdx & (SAMPLE_EVERY - 1)) === 0) {
+    if (this.frameIdx % SAMPLE_EVERY === 0) {
       this._adaptTier(this.fps, ts);
     }
 

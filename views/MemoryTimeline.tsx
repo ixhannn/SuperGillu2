@@ -191,7 +191,6 @@ const MemoryCardBase: React.FC<{
     const animateEntrance = index < 9;
     return (
         <motion.div
-            layout
             initial={animateEntrance ? { opacity: 0, y: 10 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={listRemoveExit}
@@ -432,7 +431,16 @@ const InlineVideoPlayer = ({ src, onError }: { src: string; onError?: () => void
         e.stopPropagation();
         const v = videoRef.current;
         if (!v) return;
-        if (v.paused) { v.play(); setPlaying(true); } else { v.pause(); setPlaying(false); }
+        if (v.paused) {
+            // Handle the play() promise so the button state reflects reality and
+            // a rejection (autoplay/gesture policy, decode failure) doesn't leave
+            // the UI stuck on "pause" or surface an unhandled rejection. Mirrors
+            // the onLoadedMetadata path's .then().catch().
+            v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+        } else {
+            v.pause();
+            setPlaying(false);
+        }
         resetHide();
     };
 
@@ -647,7 +655,11 @@ const timeAgo = (iso: string): string => {
 };
 
 const AVATAR_PALETTE = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
-const avatarColor = (name: string) => AVATAR_PALETTE[(name.charCodeAt(0) + (name.charCodeAt(1) || 0)) % AVATAR_PALETTE.length];
+// `charCodeAt(0)` is NaN for an empty name (reachable before the couple
+// profile is set — getCoupleProfile defaults myName to ''), which would index
+// AVATAR_PALETTE[NaN] = undefined and render a transparent/broken avatar.
+// `|| 0` coerces NaN to 0 so an empty name yields a real colour.
+const avatarColor = (name: string) => AVATAR_PALETTE[((name.charCodeAt(0) || 0) + (name.charCodeAt(1) || 0)) % AVATAR_PALETTE.length];
 
 const Avatar: React.FC<{ name: string; size?: number }> = ({ name, size = 28 }) => (
     <div
@@ -746,6 +758,10 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
     const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
+    // Post-send scroll-to-bottom timer. Tracked in a ref so navigating to
+    // another memory (or unmount) can cancel a still-pending scroll before it
+    // fights the top-reset on the new memory's comment list.
+    const scrollTimerRef = useRef<number | null>(null);
 
     // ── Native viewer gestures: pull-down dismiss, swipe prev/next, pinch ──
     const gestures = useViewerGestures({
@@ -758,13 +774,31 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
     // Swiping to another memory keeps the sheet mounted — reset transient
     // state so the new memory starts clean and scrolled to the top.
     useEffect(() => {
+        // Cancel any pending post-send scroll from the previous memory so a late
+        // scroll-to-bottom can't fight this memory's top-reset.
+        if (scrollTimerRef.current !== null) {
+            clearTimeout(scrollTimerRef.current);
+            scrollTimerRef.current = null;
+        }
         gestures.resetAfterNavigate();
         scrollRef.current?.scrollTo({ top: 0 });
         setInputText('');
         setReplyingTo(null);
+        return () => {
+            if (scrollTimerRef.current !== null) {
+                clearTimeout(scrollTimerRef.current);
+                scrollTimerRef.current = null;
+            }
+        };
     }, [memory.id, gestures]);
     const profile = useMemo(() => StorageService.getCoupleProfile(), []);
     const myName = profile.myName;
+    // Stable owner identity for comments: real Supabase user id when signed in,
+    // display name only as a fallback. Keying ownership (Delete control + bubble
+    // styling) on the display name let two same-named partners delete each
+    // other's notes; the user id distinguishes them. Mirrors saveStatus /
+    // resolveMyDropKey in services/storage.ts.
+    const myId = useMemo(() => StorageService.getMyUserId() || myName, [myName]);
 
     // Load comments + live updates
     const loadComments = useCallback(() => {
@@ -798,7 +832,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
         const comment: Comment = {
             id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
             postId: memory.id,
-            senderId: myName,
+            senderId: myId,
             senderName: myName,
             text,
             createdAt: new Date().toISOString(),
@@ -807,8 +841,14 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
         setInputText('');
         setReplyingTo(null);
         await StorageService.saveComment(comment);
-        // Scroll to bottom after sending
-        setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 100);
+        // Scroll to bottom after sending. Tracked in scrollTimerRef so a swipe to
+        // another memory (or unmount) cancels it before it can fight the
+        // top-reset on the new memory's comment list.
+        if (scrollTimerRef.current !== null) clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = window.setTimeout(() => {
+            scrollTimerRef.current = null;
+            scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+        }, 100);
     };
 
     const startReply = useCallback((comment: Comment) => {
@@ -1198,7 +1238,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
                             <div key={comment.id}>
                                 <CommentBubble
                                     comment={comment}
-                                    isOwn={comment.senderName === myName}
+                                    isOwn={comment.senderId === myId}
                                     onReply={startReply}
                                     onDelete={deleteComment}
                                 />
@@ -1209,7 +1249,7 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
                                         <div className="flex-1">
                                             <CommentBubble
                                                 comment={reply}
-                                                isOwn={reply.senderName === myName}
+                                                isOwn={reply.senderId === myId}
                                                 isReply
                                                 replyTarget={comment}
                                                 onReply={startReply}

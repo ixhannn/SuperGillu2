@@ -180,8 +180,12 @@ export const createPersonalCollectionsStorageDomain = (ctx: PersonalCollectionsC
       if (cached) return cached;
     }
     if (note.audioStoragePath) {
-      return await MediaStorageService.getAccessibleUrl(note.audioStoragePath)
-        || await MediaStorageService.downloadMedia(note.audioStoragePath)
+      // Prefer a stable downloaded payload over the signed streaming URL: an
+      // <audio> element is often paused then resumed/seeked much later in the same
+      // session, by which point a ~15-min signed URL would 403. downloadMedia
+      // returns a data:/blob payload that stays valid; fall back to the signed URL.
+      return await MediaStorageService.downloadMedia(note.audioStoragePath)
+        || await MediaStorageService.getAccessibleUrl(note.audioStoragePath)
         || note.audioStoragePath;
     }
     return null;
@@ -251,12 +255,19 @@ export const createPersonalCollectionsStorageDomain = (ctx: PersonalCollectionsC
 
     delete toSaveMetadata.audio;
 
-    if (idx >= 0) list[idx] = toSaveMetadata;
-    else list.unshift(toSaveMetadata);
+    // Re-base on the CURRENT cache, not the pre-await snapshot taken at the top:
+    // the R2 upload above can take seconds, during which a delete or a partner sync
+    // may have mutated privateSpaceItems. Writing the stale snapshot back would
+    // resurrect a just-deleted item or drop the concurrent change. Splice this item
+    // into the live list by id (the same pattern as videoMoments.mutateClips).
+    const fresh = [...ctx.cache.privateSpaceItems];
+    const freshIdx = fresh.findIndex((entry) => entry.id === toSaveMetadata.id);
+    if (freshIdx >= 0) fresh[freshIdx] = toSaveMetadata;
+    else fresh.unshift(toSaveMetadata);
 
-    ctx.cache.privateSpaceItems = list;
-    localStorage.setItem(ctx.cacheKeys.PRIVATE_SPACE_ITEMS, JSON.stringify(list));
-    await ctx.persistData(ctx.cacheKeys.PRIVATE_SPACE_ITEMS, list);
+    ctx.cache.privateSpaceItems = fresh;
+    localStorage.setItem(ctx.cacheKeys.PRIVATE_SPACE_ITEMS, JSON.stringify(fresh));
+    await ctx.persistData(ctx.cacheKeys.PRIVATE_SPACE_ITEMS, fresh);
     ctx.notifyUpdate({
       source,
       action: 'save',
@@ -290,8 +301,11 @@ export const createPersonalCollectionsStorageDomain = (ctx: PersonalCollectionsC
       if (cached) return cached;
     }
     if (item.audioStoragePath) {
-      return await MediaStorageService.getAccessibleUrl(item.audioStoragePath)
-        || await MediaStorageService.downloadMedia(item.audioStoragePath)
+      // Prefer a stable downloaded payload over the signed streaming URL (see
+      // getVoiceNoteAudio): avoids a 403 when the <audio> is resumed/seeked after
+      // the ~15-min signature expires mid-session.
+      return await MediaStorageService.downloadMedia(item.audioStoragePath)
+        || await MediaStorageService.getAccessibleUrl(item.audioStoragePath)
         || item.audioStoragePath;
     }
     return null;

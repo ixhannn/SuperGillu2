@@ -133,55 +133,63 @@ export async function compileCycle(options: CompileOptions): Promise<CompileResu
 
   recorder.start(250);
 
-  // ── Pre-fetch video blob URLs for each clip ──
-  onProgress?.(0.02, 'Preparing clips…');
-  const blobUrls: (string | null)[] = await Promise.all(
-    orderedClips.map(async (c) => {
-      const blob = await VideoMomentsService.getVideoBlob(c);
-      return blob ? URL.createObjectURL(blob) : null;
-    }),
-  );
+  // Blob URLs are declared here so cleanup in `finally` can always revoke them,
+  // even if a clip fails to load mid-render.
+  let blobUrls: (string | null)[] = [];
+  try {
+    // ── Pre-fetch video blob URLs for each clip ──
+    onProgress?.(0.02, 'Preparing clips…');
+    blobUrls = await Promise.all(
+      orderedClips.map(async (c) => {
+        const blob = await VideoMomentsService.getVideoBlob(c);
+        return blob ? URL.createObjectURL(blob) : null;
+      }),
+    );
 
-  // ── Title card ──
-  await renderTitleCard(ctx, {
-    cycleStart: options.cycleStart,
-    cycleEnd: options.cycleEnd,
-    coupleNames: coupleNames ?? ['You', 'Them'],
-  });
-  onProgress?.(0.05, 'Opening…');
+    // ── Title card ──
+    await renderTitleCard(ctx, {
+      cycleStart: options.cycleStart,
+      cycleEnd: options.cycleEnd,
+      coupleNames: coupleNames ?? ['You', 'Them'],
+    });
+    onProgress?.(0.05, 'Opening…');
 
-  // ── Play each clip with soft dissolves ──
-  for (let i = 0; i < orderedClips.length; i += 1) {
-    const url = blobUrls[i];
-    if (!url) continue;
-    await renderClipWithDissolve(ctx, url);
-    onProgress?.(0.05 + (0.85 * (i + 1)) / orderedClips.length, `Clip ${i + 1} of ${orderedClips.length}`);
+    // ── Play each clip with soft dissolves ──
+    for (let i = 0; i < orderedClips.length; i += 1) {
+      const url = blobUrls[i];
+      if (!url) continue;
+      await renderClipWithDissolve(ctx, url);
+      onProgress?.(0.05 + (0.85 * (i + 1)) / orderedClips.length, `Clip ${i + 1} of ${orderedClips.length}`);
+    }
+
+    // ── Closing collage ──
+    await renderCollage(ctx, orderedClips);
+    onProgress?.(0.95, 'Finishing…');
+
+    // Small tail to let recorder flush
+    await wait(250);
+    recorder.stop();
+    const videoBlob = await finished;
+
+    // Thumbnail = first real clip frame (or title card)
+    const thumbnailBlob = await extractFirstFrameThumbnail(videoBlob).catch(() => null);
+
+    onProgress?.(1, 'Done');
+    return {
+      videoBlob,
+      thumbnailBlob,
+      durationMs: totalMs,
+      clipCount: orderedClips.length,
+      musicTrackId: track.id,
+    };
+  } finally {
+    // Always release recorder, object URLs, and audio context — even when a
+    // clip fails to load — so repeated failed compiles don't leak AudioContexts
+    // (browsers cap these and then refuse new ones) or live MediaRecorders.
+    try { if (recorder.state !== 'inactive') recorder.stop(); } catch {}
+    blobUrls.forEach((u) => { if (u) URL.revokeObjectURL(u); });
+    if (audioCtx) { try { await audioCtx.close(); } catch {} }
   }
-
-  // ── Closing collage ──
-  await renderCollage(ctx, orderedClips);
-  onProgress?.(0.95, 'Finishing…');
-
-  // Small tail to let recorder flush
-  await wait(250);
-  recorder.stop();
-  const videoBlob = await finished;
-
-  // Cleanup blob URLs
-  blobUrls.forEach((u) => { if (u) URL.revokeObjectURL(u); });
-  if (audioCtx) { try { await audioCtx.close(); } catch {} }
-
-  // Thumbnail = first real clip frame (or title card)
-  const thumbnailBlob = await extractFirstFrameThumbnail(videoBlob).catch(() => null);
-
-  onProgress?.(1, 'Done');
-  return {
-    videoBlob,
-    thumbnailBlob,
-    durationMs: totalMs,
-    clipCount: orderedClips.length,
-    musicTrackId: track.id,
-  };
 }
 
 // ── Rendering helpers ──────────────────────────────────────────────────
@@ -246,43 +254,48 @@ async function renderClipWithDissolve(
   video.crossOrigin = 'anonymous';
   video.playsInline = true;
   video.muted = true;
-  await new Promise<void>((resolve, reject) => {
-    video.onloadeddata = () => resolve();
-    video.onerror = () => reject(new Error('Clip load failed'));
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error('Clip load failed'));
+    });
 
-  video.currentTime = 0;
-  await video.play().catch(() => {});
+    video.currentTime = 0;
+    await video.play().catch(() => {});
 
-  const start = performance.now();
-  while (performance.now() - start < CLIP_DURATION_MS) {
-    const elapsed = performance.now() - start;
-    const alpha =
-      elapsed < DISSOLVE_MS
-        ? elapsed / DISSOLVE_MS
-        : elapsed > CLIP_DURATION_MS - DISSOLVE_MS
-          ? (CLIP_DURATION_MS - elapsed) / DISSOLVE_MS
-          : 1;
+    const start = performance.now();
+    while (performance.now() - start < CLIP_DURATION_MS) {
+      const elapsed = performance.now() - start;
+      const alpha =
+        elapsed < DISSOLVE_MS
+          ? elapsed / DISSOLVE_MS
+          : elapsed > CLIP_DURATION_MS - DISSOLVE_MS
+            ? (CLIP_DURATION_MS - elapsed) / DISSOLVE_MS
+            : 1;
 
-    // Black backdrop
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
-
-    // Letterboxed aspect-fit draw
-    drawVideoCover(ctx, video);
-
-    // Fade overlay (multiply against current frame by fading black layer)
-    if (alpha < 1) {
-      ctx.fillStyle = `rgba(0,0,0,${1 - alpha})`;
+      // Black backdrop
+      ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
+
+      // Letterboxed aspect-fit draw
+      drawVideoCover(ctx, video);
+
+      // Fade overlay (multiply against current frame by fading black layer)
+      if (alpha < 1) {
+        ctx.fillStyle = `rgba(0,0,0,${1 - alpha})`;
+        ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
+      }
+
+      await waitFrame();
     }
-
-    await waitFrame();
+  } finally {
+    // Always release the hidden <video> + its hardware decoder, even if load/play
+    // threw. Mobile WebViews cap concurrent decoders, so a leaked element per
+    // failed clip would start failing play()/load and abort the whole compile.
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
   }
-
-  video.pause();
-  video.src = '';
-  video.load();
 }
 
 async function renderCollage(ctx: CanvasRenderingContext2D, clips: DailyVideoClip[]): Promise<void> {
@@ -411,6 +424,19 @@ async function extractFirstFrameThumbnail(videoBlob: Blob): Promise<Blob | null>
   return new Promise((resolve) => {
     const url = URL.createObjectURL(videoBlob);
     const video = document.createElement('video');
+    // Guard against a seek that never completes (a known quirk with some short
+    // WebM MediaRecorder outputs on Android): without this watchdog the promise
+    // would never settle and the whole compile would hang at ~95%.
+    let settled = false;
+    const done = (b: Blob | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      URL.revokeObjectURL(url);
+      resolve(b);
+    };
+    const to = setTimeout(() => done(null), 4000);
+
     video.src = url;
     video.muted = true;
     video.playsInline = true;
@@ -423,17 +449,15 @@ async function extractFirstFrameThumbnail(videoBlob: Blob): Promise<Blob | null>
       c.height = 640;
       const cx = c.getContext('2d');
       if (!cx) {
-        URL.revokeObjectURL(url);
-        resolve(null);
+        done(null);
         return;
       }
       drawSourceCover(cx, video, video.videoWidth, video.videoHeight, 0, 0, 360, 640);
       c.toBlob((blob) => {
-        URL.revokeObjectURL(url);
-        resolve(blob);
+        done(blob);
       }, 'image/jpeg', 0.82);
     };
-    video.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    video.onerror = () => { done(null); };
   });
 }
 

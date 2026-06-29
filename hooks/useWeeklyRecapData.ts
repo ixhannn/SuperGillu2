@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WeeklyRecap } from '../types';
 import { WeeklyRecapService } from '../services/weeklyRecap';
 import { StorageService } from '../services/storage';
@@ -40,22 +40,32 @@ export function useWeeklyRecapData(
   const [loading, setLoading] = useState(auto);
   const [error, setError] = useState<string | null>(null);
 
+  // Tracks the most recently requested week so stale, out-of-order async
+  // builds can be discarded instead of clobbering the current selection.
+  const latestWeekRef = useRef(weekStart);
+  useEffect(() => {
+    latestWeekRef.current = weekStart;
+  }, [weekStart]);
+
   const build = useCallback(async (force = false) => {
+    const requestedWeek = weekStart;
     setLoading(true);
     setError(null);
     try {
       const coupleNames = resolveCoupleNames();
       const next = await WeeklyRecapService.build({
-        weekStart,
+        weekStart: requestedWeek,
         coupleNames,
         meUserId: StorageService.getDeviceId?.(),
         force,
       });
+      if (latestWeekRef.current !== requestedWeek) return; // stale result, discard
       setRecap(next);
     } catch (e) {
+      if (latestWeekRef.current !== requestedWeek) return;
       setError(e instanceof Error ? e.message : 'Failed to build recap');
     } finally {
-      setLoading(false);
+      if (latestWeekRef.current === requestedWeek) setLoading(false);
     }
   }, [weekStart]);
 

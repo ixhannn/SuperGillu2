@@ -105,6 +105,20 @@ const getLocalCollection = <T>(key: string): T[] => {
   }
 };
 
+// Map a stored mood label (rich, case-insensitive vocabulary) to a 1-5 score.
+// Unknown moods default to 3 (neutral). Shared by every mood-scoring path so
+// real stored moods (loved/happy/calm/...) are scored consistently.
+const moodScore = (mood: string): number => {
+  const map: Record<string, number> = {
+    loved: 5, romantic: 5, grateful: 5, joyful: 5,
+    happy: 4, excited: 4, playful: 4, peaceful: 4,
+    calm: 3, content: 3, thoughtful: 3, reflective: 3, tender: 3,
+    tired: 2, quiet: 2, meh: 2, stressed: 2,
+    sad: 1, anxious: 1, frustrated: 1, lonely: 1, angry: 1,
+  };
+  return map[mood.toLowerCase()] ?? 3;
+};
+
 const getDaysSinceLatest = (timestamps: Array<string | undefined>, now: Date): number => {
   const latest = timestamps
     .map((timestamp) => (typeof timestamp === 'string' ? new Date(timestamp) : null))
@@ -270,10 +284,14 @@ const insightRules: InsightRule[] = [
 
 // Check for upcoming milestones
 const checkUpcomingMilestones = (daysTogether: number): number | undefined => {
-  const milestones = [100, 200, 365, 500, 730, 1000, 1095, 1461, 1826, 2000];
+  // Only include milestones that have a matching insight rule below.
+  const milestones = [100, 365, 500, 1000];
   for (const m of milestones) {
     const daysUntil = m - daysTogether;
-    if (daysUntil === 1) return m;
+    // Small window (not exactly 1) so a missed run — app closed that day, or the
+    // 6-hour insight throttle straddling midnight — doesn't permanently skip the
+    // milestone. The 30-day insight cooldown prevents duplicate firing.
+    if (daysUntil >= 1 && daysUntil <= 2) return m;
   }
   return undefined;
 };
@@ -388,17 +406,6 @@ export const PartnerIntelligenceService = {
       const t = new Date(m.timestamp);
       return t > subDays(now, 14) && t <= subDays(now, 7);
     });
-
-    const moodScore = (mood: string): number => {
-      const map: Record<string, number> = {
-        loved: 5, romantic: 5, grateful: 5, joyful: 5,
-        happy: 4, excited: 4, playful: 4, peaceful: 4,
-        calm: 3, content: 3, thoughtful: 3, reflective: 3, tender: 3,
-        tired: 2, quiet: 2, meh: 2, stressed: 2,
-        sad: 1, anxious: 1, frustrated: 1, lonely: 1, angry: 1,
-      };
-      return map[mood.toLowerCase()] ?? 3;
-    };
 
     const avg7d = last7d.length > 0 ? last7d.map(m => moodScore(m.mood)).reduce((a,b) => a+b, 0) / last7d.length : 3;
     const avgPrev = prev7d.length > 0 ? prev7d.map(m => moodScore(m.mood)).reduce((a,b) => a+b, 0) / prev7d.length : 3;
@@ -527,17 +534,6 @@ export const PartnerIntelligenceService = {
     const now = new Date();
     const recent = partnerMoods.filter(m => new Date(m.timestamp) > subDays(now, 14));
 
-    const moodScore = (mood: string): number => {
-      const map: Record<string, number> = {
-        loved: 5, romantic: 5, grateful: 5, joyful: 5,
-        happy: 4, excited: 4, playful: 4, peaceful: 4,
-        calm: 3, content: 3, thoughtful: 3, reflective: 3, tender: 3,
-        tired: 2, quiet: 2, meh: 2, stressed: 2,
-        sad: 1, anxious: 1, frustrated: 1, lonely: 1, angry: 1,
-      };
-      return map[mood.toLowerCase()] ?? 3;
-    };
-
     const avgRecent = recent.length > 0 ? recent.map(m => moodScore(m.mood)).reduce((a,b) => a+b, 0) / recent.length : 3;
 
     const gifts: Array<{ text: string; emoji: string; reason: string }> = [];
@@ -646,21 +642,11 @@ export const PartnerIntelligenceService = {
     const deviceMoods = moodEntries.filter(m => m.userId !== deviceId); // Partner's moods
     const last7dMoods = deviceMoods
       .filter(m => new Date(m.timestamp) > subDays(now, 7))
-      .map(m => {
-        const moodMap: Record<string, number> = {
-          'great': 5, 'good': 4, 'okay': 3, 'meh': 2, 'bad': 1
-        };
-        return moodMap[m.mood] || 3;
-      });
+      .map(m => moodScore(m.mood));
 
     const last30dMoods = deviceMoods
       .filter(m => new Date(m.timestamp) > subDays(now, 30))
-      .map(m => {
-        const moodMap: Record<string, number> = {
-          'great': 5, 'good': 4, 'okay': 3, 'meh': 2, 'bad': 1
-        };
-        return moodMap[m.mood] || 3;
-      });
+      .map(m => moodScore(m.mood));
 
     const moodAvg7d = last7dMoods.length > 0
       ? last7dMoods.reduce((a, b) => a + b, 0) / last7dMoods.length

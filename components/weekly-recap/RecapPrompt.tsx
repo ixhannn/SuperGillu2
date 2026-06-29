@@ -118,7 +118,7 @@ export function RecapPrompt({ text, promptType }: RecapPromptProps) {
                                 transition={GOLD_SOFT_SPRING}
                             >
                                 <Sparkles size={14} />
-                                <span>Sealed for next week</span>
+                                <span>Noted for next week</span>
                             </motion.div>
                         )}
                     </AnimatePresence>

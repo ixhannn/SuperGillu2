@@ -28,6 +28,7 @@ import {
 } from '../components/premium/GoldKit';
 import { feedback } from '../utils/feedback';
 import { shouldGateHeavyView } from '../utils/runtimeProfile';
+import { StorageService } from '../services/storage';
 import '../styles/gold-partner-intelligence.css';
 
 interface PartnerIntelligenceViewProps {
@@ -38,10 +39,13 @@ const ACCENT = '#8b5cf6';
 
 const getProfileNames = () => {
     try {
-        const profile = JSON.parse(localStorage.getItem('lior_shared_profile') || '{}');
+        // Names live in 'lior_identity', not 'lior_shared_profile' — saveCoupleProfile()
+        // strips myName/partnerName out of the shared blob. Read through the service so
+        // identity + shared are re-merged (getCoupleProfile defaults names to '').
+        const profile = StorageService.getCoupleProfile();
         return {
-            myName: profile.myName || 'You',
-            partnerName: profile.partnerName || 'Partner',
+            myName: profile.myName?.trim() || 'You',
+            partnerName: profile.partnerName?.trim() || 'Partner',
         };
     } catch { return { myName: 'You', partnerName: 'Partner' }; }
 };
@@ -376,6 +380,12 @@ function ReciprocityGauge({ model }: { model: RelationshipModel }) {
     const score = model.reciprocityScore;
     const names = getProfileNames();
     const direction = model.asymmetryDirection;
+    // asymmetryDirection is a device/partner userId (relationshipModel computeAsymmetry),
+    // never the literal 'me'. Compare against this device's id so the tug bar leans toward
+    // my side only when I'm the higher investor.
+    const deviceId = (() => {
+        try { return localStorage.getItem('lior_device_id') || 'unknown'; } catch { return 'unknown'; }
+    })();
 
     const percent = Math.round(score * 100);
     const label = percent >= 80 ? 'Balanced' : percent >= 60 ? 'Slightly asymmetric' : 'Unbalanced';
@@ -460,7 +470,7 @@ function ReciprocityGauge({ model }: { model: RelationshipModel }) {
                 <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
                     <motion.div
                         initial={{ width: '50%' }}
-                        animate={{ width: `${50 + (direction === 'me' ? (1 - score) * 25 : -(1 - score) * 25)}%` }}
+                        animate={{ width: `${50 + (direction === deviceId ? (1 - score) * 25 : -(1 - score) * 25)}%` }}
                         transition={{ duration: 0.8 }}
                         className="h-full rounded-full"
                         style={{ background: 'linear-gradient(90deg, rgba(246,199,104,0.85), rgba(217,156,62,0.55))' }}

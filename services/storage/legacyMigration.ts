@@ -120,9 +120,11 @@ const remapInPlaceLiorMetadata = async (): Promise<number> => {
               remapped++;
             }
             cursor.delete();
+            cursor.continue();
           };
+        } else {
+          cursor.continue();
         }
-        cursor.continue();
       };
 
       cursorReq.onerror = () => resolve(remapped);

@@ -10,6 +10,7 @@ import { feedback } from '../utils/feedback';
 import { generateId } from '../utils/ids';
 import { listRemoveExit } from '../utils/motion';
 import { useDraft } from '../hooks/useDraft';
+import { toast } from '../utils/toast';
 
 const staggerContainer: Variants = {
   hidden: {},
@@ -224,7 +225,7 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
     setIsCreating(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const body = content.trim();
     if (!prompt || !body) return;
 
@@ -237,14 +238,20 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
       isLocked: true,
     };
 
-    StorageService.saveEnvelope(newEnvelope);
-    feedback.celebrate();
     setEnvelopes((previous) => [newEnvelope, ...previous]);
     setIsCreating(false);
     setLabel('');
     setContent('');
     clearLabelDraft();
     clearContentDraft();
+
+    try {
+      await StorageService.saveEnvelope(newEnvelope);
+      feedback.celebrate();
+    } catch {
+      setEnvelopes(StorageService.getEnvelopes());
+      toast.show('Could not seal letter', 'error');
+    }
   };
 
   const handleDelete = (id: string, event: React.MouseEvent<HTMLButtonElement>) => {
@@ -252,21 +259,34 @@ export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
     setDeleteTarget(id);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
-    StorageService.deleteEnvelope(deleteTarget);
-    setEnvelopes((previous) => previous.filter((envelope) => envelope.id !== deleteTarget));
-    if (readingId === deleteTarget) setReadingId(null);
+    const id = deleteTarget;
     setDeleteTarget(null);
+    setEnvelopes((previous) => previous.filter((envelope) => envelope.id !== id));
+    if (readingId === id) setReadingId(null);
+
+    try {
+      await StorageService.deleteEnvelope(id);
+    } catch {
+      setEnvelopes(StorageService.getEnvelopes());
+      toast.show('Could not delete letter', 'error');
+    }
   };
 
-  const openEnvelope = (envelope: Envelope) => {
+  const openEnvelope = async (envelope: Envelope) => {
     setReadingId(envelope.id);
     if (!envelope.isLocked) return;
 
     const updated = { ...envelope, isLocked: false, openedAt: new Date().toISOString() };
-    StorageService.saveEnvelope(updated);
     setEnvelopes((previous) => previous.map((candidate) => (candidate.id === envelope.id ? updated : candidate)));
+
+    try {
+      await StorageService.saveEnvelope(updated);
+    } catch {
+      setEnvelopes(StorageService.getEnvelopes());
+      toast.show("Couldn't open the letter", 'error');
+    }
   };
 
   return (

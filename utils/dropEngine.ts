@@ -92,7 +92,20 @@ function eligiblePool(ctx: DropBuildContext) {
   return ROTATION_WEIGHTS.filter((w) => w.type !== 'on_this_day' || ctx.hasThrowback);
 }
 
-/** Deterministic drop type for the day, avoiding an immediate repeat of yesterday. */
+/** Deterministic drop type for the day, avoiding an immediate repeat of yesterday.
+ *
+ * KNOWN LIMITATION (needs a product/infra decision, not safe to "fix" here):
+ * `on_this_day` is filtered out of the pool when this device has no throwback
+ * memory (`ctx.hasThrowback`), which the product requires so we never show an
+ * empty memory drop (see dropEngine.test.ts). But `hasThrowback` is PER-DEVICE,
+ * so if the two partners disagree (memory sync lag, or a memory exists on only
+ * one device) the pool — and thus the weighted pick for EVERY type that day —
+ * differs, and they can land on different drops for the same shared row id.
+ * Making this fully deterministic requires a SHARED signal (ideally a
+ * server-issued daily seed, or syncing throwback-eligibility), which is out of
+ * scope for a local fix. Left as-is to preserve the intentional no-empty-
+ * on_this_day requirement.
+ */
 export function pickDropType(coupleId: string, date: string, ctx: DropBuildContext): DropType {
   const pool = eligiblePool(ctx);
   const seed = hashString(`${coupleId}|${date}`);
