@@ -482,6 +482,15 @@ const App = () => {
     markTabMounted(currentView);
   }, [currentView, markTabMounted]);
 
+  // Expose the active route on <html data-route> so the persistent ambient layer
+  // can keep the 3D blob always-on for Home (and follow the user's toggle
+  // elsewhere) without prop-drilling through Layout's memo.
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.route = currentView;
+    }
+  }, [currentView]);
+
   // ── Fast tab transition (CSS-only crossfade) ────────────────────────────
   // For tab-to-tab switches, we don't need View Transitions API or DOM
   // cloning — both views are already mounted side-by-side. We just toggle

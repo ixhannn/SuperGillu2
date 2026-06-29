@@ -50,6 +50,6 @@ assert.match(
 
 assert.match(
   ambientSource,
-  /<AmbientMotionFallback paused=\{effectivePaused\} \/>[\s\S]*<LazyLiveBackground3D paused=\{effectivePaused\}/,
-  'The CSS and WebGL ambient layers should share the same effective pause state',
+  /<AmbientMotionFallback paused=\{effectivePaused\} \/>[\s\S]*<LazyLiveBackground3D paused=\{effectivePaused[^}]*\}/,
+  'The CSS and WebGL ambient layers should share the same effective pause state (the WebGL layer additionally pauses when the 3D blob is toggled off).',
 );

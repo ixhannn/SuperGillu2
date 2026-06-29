@@ -64,19 +64,12 @@ const TIER_RANK: Record<QualityTier, number> = {
 const TIER_SORTED: QualityTier[] = (Object.keys(TIER_RANK) as QualityTier[])
   .sort((a, b) => TIER_RANK[a] - TIER_RANK[b]);
 
-// Adaptive thresholds are RELATIVE to the device's own measured refresh ceiling
-// (peakFps), NOT an absolute fps. A 60Hz panel delivering a smooth 60fps must
-// never read as "struggling" — keying off an absolute 100fps did exactly that
-// and is why this system was previously disabled. We downgrade only when fps
-// drops well below the device's OWN established peak.
-const DOWNGRADE_RATIO = 0.70;    // below 70% of peak (sustained) → shed a tier
-const UPGRADE_RATIO   = 0.92;    // above 92% of peak (sustained) → recover a tier
-const SAMPLE_EVERY  = 30;        // frames between tier evaluations
-const DOWNGRADE_HOLD = 1_500;    // ms of sustained low fps before shedding a tier
-const UPGRADE_HOLD   = 1_500;    // ms of sustained high fps before recovering a tier
-const DOWNGRADE_LOCK = 5_000;    // ms settle-lock after a downgrade (fast to shed)
-const UPGRADE_LOCK   = 8_000;    // ms settle-lock after an upgrade (slow to restore)
-const ADAPT_WARMUP_FRAMES = 256; // ~2s before adapting, so peakFps is established
+// Visuals are LOCKED to the 'ultra' tier — never auto-downgraded by device or
+// fps. The signature animated background is meant to run at full quality on
+// every device; the user controls the heavy 3D blob with an explicit Settings
+// toggle (services/ambientPrefs.ts) instead. Adaptive downgrade is intentionally
+// disabled (see _adaptTier below).
+const SAMPLE_EVERY  = 30;        // frames between (no-op) tier evaluations
 
 class AnimationEngineClass {
   private readonly subs = new Map<string, AnimationSubscriber>();
@@ -85,9 +78,6 @@ class AnimationEngineClass {
   private running = false;
   private visListenerBound = false;
   private adaptLockUntil = 0;
-  private peakFps = 0;       // running max rolling-fps ≈ the device refresh ceiling
-  private belowSince = 0;    // ts since fps first dropped below the downgrade line
-  private aboveSince = 0;    // ts since fps first rose above the upgrade line
   /** Cost tracking is opt-in. The dev overlay flips this on so production
    *  builds don't pay the `performance.now()` cost twice per subscriber per
    *  frame just to populate a map nobody reads. */
@@ -150,63 +140,16 @@ class AnimationEngineClass {
     this._publishTier(tier);
   }
 
-  private _publishTier(tier: QualityTier): void {
+  private _publishTier(_tier: QualityTier): void {
     if (typeof document !== 'undefined') {
-      document.documentElement.dataset.tier = tier;
+      document.documentElement.dataset.tier = 'ultra';
     }
   }
 
-  /**
-   * Adaptive quality — refresh-relative, fail-safe.
-   *
-   * Drives data-tier (CSS rules in index.css §ADAPTIVE QUALITY TIERS) + the
-   * per-subscriber minTier gate in the loop, so a struggling device sheds the
-   * heaviest work (backdrop-filter, particle density, WebGL stage) to hold its
-   * framerate. On a device that comfortably hits its own refresh ceiling this
-   * NEVER fires — it stays at 'ultra' and nothing changes.
-   *
-   * Safety: thresholds are a fraction of the device's OWN measured peak fps, so
-   * a healthy 60Hz panel (peak ≈ 60) is judged against ~42fps, not an absolute
-   * 100. peakFps is a running max of the ~1s rolling average, so it cannot
-   * exceed the true refresh and the system fails safe (under-measuring peak only
-   * makes it LESS likely to downgrade). Two-step + hysteresis + settle-locks
-   * mean the first (near-invisible) ultra→high step absorbs transient dips;
-   * backdrop-filter is only dropped at 'medium', which needs sustained struggle.
-   */
-  private _adaptTier(fps: number, ts: number): void {
-    if (fps > this.peakFps) this.peakFps = fps;
-    // Warm up until the refresh ceiling is established, and respect settle-locks.
-    if (this.peakFps < 30 || this.frameIdx < ADAPT_WARMUP_FRAMES) return;
-    if (ts < this.adaptLockUntil) return;
-
-    const idx = TIER_RANK[this.tier];
-    const downgradeBelow = this.peakFps * DOWNGRADE_RATIO;
-    const upgradeAbove   = this.peakFps * UPGRADE_RATIO;
-
-    // Downgrade: shed one tier after fps stays below the line for the hold window.
-    if (fps < downgradeBelow && idx > 0) {
-      this.aboveSince = 0;
-      if (this.belowSince === 0) { this.belowSince = ts; return; }
-      if (ts - this.belowSince >= DOWNGRADE_HOLD) {
-        this.belowSince = 0;
-        this.adaptLockUntil = ts + DOWNGRADE_LOCK;
-        this.setTier(TIER_SORTED[idx - 1]);
-      }
-      return;
-    }
-    this.belowSince = 0;
-
-    // Upgrade: recover one tier after fps stays high for the hold window.
-    if (fps >= upgradeAbove && idx < TIER_RANK.ultra) {
-      if (this.aboveSince === 0) { this.aboveSince = ts; return; }
-      if (ts - this.aboveSince >= UPGRADE_HOLD) {
-        this.aboveSince = 0;
-        this.adaptLockUntil = ts + UPGRADE_LOCK;
-        this.setTier(TIER_SORTED[idx + 1]);
-      }
-    } else {
-      this.aboveSince = 0;
-    }
+  private _adaptTier(_fps: number, _ts: number): void {
+    // no-op: visuals are locked to 'ultra'. Quality never auto-downgrades by
+    // device or fps — the heavy 3D blob is governed by the user's Settings
+    // toggle instead (services/ambientPrefs.ts).
   }
 
   private readonly loop = (ts: number): void => {
