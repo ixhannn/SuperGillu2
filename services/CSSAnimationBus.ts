@@ -51,11 +51,6 @@ export function startCSSAnimationBus(): void {
     priority: 10, // highest — always runs, CSS bus must never shed
     budgetMs: 0.3,
     minTier: 'css-only', // runs in ALL tiers — CSS fallback depends on these vars
-    // The fastest wave here is the 1Hz pulse — ~30 samples/sec is already
-    // smoother than the eye resolves for a glow. Capping at 30fps quarters the
-    // style-recalc + repaint bursts this bus triggers (it was firing at the
-    // panel's native 120Hz on Home, the single biggest ambient paint cost).
-    fps: 30,
 
     tick(delta) {
       t += delta * 0.001; // convert ms → seconds

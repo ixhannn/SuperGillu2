@@ -165,12 +165,6 @@ export const ConstellationCanvas: React.FC = () => {
       priority: 4,
       budgetMs: 2,
       minTier: 'medium',
-      // Full-canvas clear+redraw every tick. The star drift is slow enough that
-      // 30fps is visually identical, and this caps what was a 120Hz full-screen
-      // canvas repaint (plus the backdrop-filter re-blur it triggers above) on
-      // Home down to 30 — a 4× cut in its GPU cost. tick gets the accumulated
-      // delta, so the spring/orbit integration stays time-correct.
-      fps: 30,
 
       tick(delta, timestamp, tier) {
         ctx.clearRect(0, 0, W, H);
