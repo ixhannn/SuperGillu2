@@ -672,6 +672,12 @@ const RoomSceneInvalidator: React.FC = () => {
       priority: 4,
       budgetMs: 0.25,
       minTier: 'medium',
+      // Match the other WebGL scenes (live-bg-3d / floating-hearts-r3f) at 30fps.
+      // This invalidate() drives a FULL lit re-render (lights + ContactShadows
+      // shadow-map + every prop's useFrame) on the room screen; nothing moves
+      // while idle except a slow bob, so 30fps is invisible and halves the GPU
+      // cost. R3F's clock advances by real elapsed time, so motion stays smooth.
+      fps: 30,
       tick() {
         if (typeof document !== 'undefined' && document.documentElement.dataset.transitioning) return;
         invalidate();

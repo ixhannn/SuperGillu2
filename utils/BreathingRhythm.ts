@@ -33,6 +33,10 @@ export function startBreathingRhythm(): void {
     priority: 1,
     budgetMs: 0.15,
     minTier: 'css-only', // always runs — pure CSS, costs nothing
+    // A 4s breath cycle needs only ~30 samples/sec to look smooth (the cssProps
+    // quantizer already targets that). Capping the tick at 30fps stops it from
+    // waking 120×/sec on a high-refresh panel for values that barely move.
+    fps: 30,
 
     tick(_delta, timestamp) {
       lastTs = timestamp;

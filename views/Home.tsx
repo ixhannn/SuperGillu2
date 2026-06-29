@@ -489,7 +489,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // whole HeartbeatRipple/wiggle micro-interaction stayed inert.
     useEffect(() => {
         setShowHeartbeat(AmbientService.isPlaying);
-        const id = window.setInterval(() => setShowHeartbeat(AmbientService.isPlaying), 250);
+        const id = window.setInterval(() => {
+            // Skip the wake while the app is backgrounded (screen off / hidden) —
+            // the ripple only matters when Home is actually on screen.
+            if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+            setShowHeartbeat(AmbientService.isPlaying);
+        }, 250);
         return () => window.clearInterval(id);
     }, []);
 
@@ -867,8 +872,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     style={{
                         borderRadius: '100px',
                         background: 'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.35) 100%)',
-                        backdropFilter: 'blur(20px) saturate(140%)',
-                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        // 15px (was 20px): near-identical frosted look over this
+                        // translucent pill, ~45% less re-blur fill-rate per frame.
+                        backdropFilter: 'blur(15px) saturate(140%)',
+                        WebkitBackdropFilter: 'blur(15px) saturate(140%)',
                         border: '1.5px dashed rgba(225,29,72,0.28)',
                         boxShadow: '0 2px 10px rgba(232,160,176,0.06)',
                     }}

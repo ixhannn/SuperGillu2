@@ -120,7 +120,19 @@ export function initPremiumSky(cv: HTMLCanvasElement | null, state: SkyState): (
     ctx.globalCompositeOperation = 'source-over';
   };
 
-  const loop = (): void => { t += 0.016; draw(); raf = requestAnimationFrame(loop); };
+  // Throttle to ~30fps. This canvas runs its OWN rAF (outside AnimationEngine),
+  // so without a gate it redraws 9 additive cloud sprites + 96 stars at the
+  // panel's native rate (120Hz) — a continuous battery/heat cost while the user
+  // sits on this screen. The nebula drift is slow enough to be visually
+  // identical at 30fps. Advance `t` by REAL elapsed seconds (not a fixed
+  // per-frame step) so drift speed is frame-rate independent.
+  const FRAME_MS = 1000 / 30;
+  let lastDraw = -Infinity;
+  const loop = (now: number): void => {
+    const dt = now - lastDraw;
+    if (dt >= FRAME_MS) { t += Math.min(dt, 100) / 1000; lastDraw = now; draw(); }
+    raf = requestAnimationFrame(loop);
+  };
 
   let running = false;
   const start = (): void => {

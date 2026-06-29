@@ -14,6 +14,12 @@ export class AmbientServiceClass {
   private isFading = false;
   private fadeInterval: ReturnType<typeof setInterval> | null = null;
   public isPlaying = false;
+  // Background-suspend state. A looping <audio> + live AudioContext keep the
+  // Android media/codec pipeline and audio DSP warm with the screen off — a
+  // continuous battery drain for sound nobody can hear. We pause + suspend on
+  // hide and resume on show (see handleVisibility, bound once in init()).
+  private visibilityBound = false;
+  private wasPlayingBeforeHide = false;
 
   // ── Web Audio graph ───────────────────────────────────────────
 
@@ -27,7 +33,32 @@ export class AmbientServiceClass {
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
     this.masterGain.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
+
+    // Bind once — init() always runs before any playback starts.
+    if (!this.visibilityBound && typeof document !== 'undefined') {
+      this.visibilityBound = true;
+      document.addEventListener('visibilitychange', this.handleVisibility);
+    }
   }
+
+  /**
+   * Pause the looping track + suspend the AudioContext when the app is hidden
+   * (screen off / backgrounded), and resume seamlessly on return. The looping
+   * <audio> element preserves currentTime across pause/resume, so playback is
+   * continuous. Inaudible to the user (only stops sound they can't hear) and
+   * stops the codec/DSP from draining battery in the background.
+   */
+  private handleVisibility = (): void => {
+    if (typeof document === 'undefined' || !this.musicTrack) return;
+    if (document.hidden) {
+      this.wasPlayingBeforeHide = this.isPlaying && !this.musicTrack.paused;
+      this.musicTrack.pause();
+      this.ctx?.suspend().catch(() => {});
+    } else if (this.wasPlayingBeforeHide && this.isPlaying && this.musicTrack) {
+      this.ctx?.resume().catch(() => {});
+      this.musicTrack.play().catch(() => {});
+    }
+  };
 
   getFrequencyData(): Uint8Array {
     if (this.analyser && this.isPlaying) {

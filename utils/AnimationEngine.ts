@@ -36,6 +36,17 @@ export interface AnimationSubscriber {
   /** Priority 1–10: higher survives tier downgrade longer */
   priority: number;
   /**
+   * Optional per-subscriber frame-rate cap (fps). When set, this subscriber is
+   * ticked at most this many times per second, regardless of the engine's
+   * (already capped) frame rate. Use for purely decorative, slow ambient motion
+   * that is visually identical at a low cadence — constellation drift, the CSS
+   * breathing bus, the bokeh blob — so a 120Hz panel doesn't redraw/recalc them
+   * 4× more often than the eye can tell. `tick` receives the accumulated delta
+   * since this subscriber last ran, so physics and wave timing stay correct.
+   * Omit for anything that must stay crisp (touch trail, confetti).
+   */
+  fps?: number;
+  /**
    * Optional CSS Animation Bus contribution.
    * Return a map of CSS custom property → value this frame.
    * All contributors are batched into ONE setProperty burst at frame end.
@@ -71,6 +82,24 @@ const TIER_SORTED: QualityTier[] = (Object.keys(TIER_RANK) as QualityTier[])
 // disabled (see _adaptTier below).
 const SAMPLE_EVERY  = 30;        // frames between (no-op) tier evaluations
 
+// ── Frame-rate ceiling ────────────────────────────────────────────────
+// QUALITY (what renders) is locked to ultra; CADENCE (how often) is capped
+// here. Every subscriber is slow, decorative ambient motion — none of it is
+// perceptibly better above 60fps. But a 120Hz phone with no ceiling runs the
+// WHOLE engine (every tick, canvas redraw, CSS-var recalc, GL render, and the
+// backdrop-filter re-blur each one triggers) at 120Hz, continuously, forever.
+// That doubled-for-nothing spin is the dominant battery/heat cost — it makes a
+// calm couples app draw power like a 3D game. 60fps halves it with zero visible
+// change; reduced-motion / battery-saver drops to 30. Navigation smoothness is
+// unaffected — route transitions are compositor/TransitionEngine-driven, not
+// ticked here.
+const FPS_NORMAL    = 60;
+const FPS_REDUCED   = 30;        // prefers-reduced-motion / battery saver
+// Process a frame once ~90% of the target interval has elapsed. The slack
+// absorbs vsync jitter so a 120Hz panel cleanly lands on every-other-frame
+// (true 60) instead of occasionally slipping to every-third (40).
+const CAP_SLACK     = 0.9;
+
 class AnimationEngineClass {
   private readonly subs = new Map<string, AnimationSubscriber>();
   private rafId = 0;
@@ -78,6 +107,11 @@ class AnimationEngineClass {
   private running = false;
   private visListenerBound = false;
   private adaptLockUntil = 0;
+  /** Global frame interval (ms). 1000/60 normally, 1000/30 under reduced-motion. */
+  private targetInterval = 1000 / FPS_NORMAL;
+  private rmListenerBound = false;
+  /** Per-subscriber last-ticked timestamp — backs the optional `fps` cap. */
+  private readonly subLastTs = new Map<string, number>();
   /** Cost tracking is opt-in. The dev overlay flips this on so production
    *  builds don't pay the `performance.now()` cost twice per subscriber per
    *  frame just to populate a map nobody reads. */
@@ -90,6 +124,25 @@ class AnimationEngineClass {
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.tier = 'ultra';
     }
+    this._bindReducedMotion();
+  }
+
+  /**
+   * Drop the frame ceiling to 30fps when the OS asks for reduced motion — which
+   * Android/Chromium also reports when the system battery saver is on. This is
+   * the user's own "calm it down / save power" signal, so we honour it for free.
+   */
+  private _bindReducedMotion(): void {
+    if (this.rmListenerBound || typeof window === 'undefined' || !window.matchMedia) return;
+    this.rmListenerBound = true;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => {
+      this.targetInterval = 1000 / (mq.matches ? FPS_REDUCED : FPS_NORMAL);
+    };
+    apply();
+    // Safari <14 only supports the deprecated addListener signature.
+    if (mq.addEventListener) mq.addEventListener('change', apply);
+    else if (mq.addListener) mq.addListener(apply);
   }
 
   /**
@@ -126,6 +179,7 @@ class AnimationEngineClass {
   unregister(id: string): void {
     this.subs.delete(id);
     this.costs.delete(id);
+    this.subLastTs.delete(id);
     if (this.subs.size === 0) {
       this.stop();
     }
@@ -162,7 +216,16 @@ class AnimationEngineClass {
 
     this.rafId = requestAnimationFrame(this.loop);
 
-    const delta = Math.min(ts - this.lastTs, 50);
+    // Global frame ceiling. rAF still fires at the panel's native rate, but we
+    // only DO work once the target interval (60fps, or 30 under reduced-motion)
+    // has elapsed. Skipped frames return here for the cost of two comparisons —
+    // the expensive part (sub ticks, redraws, CSS recalcs, GL renders) is what
+    // gets halved on a 120Hz device. lastTs is NOT advanced on a skip, so the
+    // elapsed time accumulates until it crosses the threshold.
+    const elapsed = ts - this.lastTs;
+    if (elapsed < this.targetInterval * CAP_SLACK) return;
+
+    const delta = Math.min(elapsed, 50);
     if (delta < 3) return; // skip duplicate callbacks from power-saving display
     this.lastTs = ts;
 
@@ -189,12 +252,24 @@ class AnimationEngineClass {
     for (const sub of this.subs.values()) {
       if (tierRank < TIER_RANK[sub.minTier]) continue;
 
+      // Per-subscriber cadence cap (decorative ambient motion runs at fps ≤
+      // the engine ceiling). tickDelta is the accumulated time since THIS
+      // subscriber last ran, so its physics / wave phase advance correctly even
+      // though it's ticked less often than the engine frame.
+      let tickDelta = delta;
+      if (sub.fps) {
+        const last = this.subLastTs.get(sub.id);
+        if (last !== undefined && (ts - last) < (1000 / sub.fps) * CAP_SLACK) continue;
+        tickDelta = last === undefined ? delta : Math.min(ts - last, 50);
+        this.subLastTs.set(sub.id, ts);
+      }
+
       if (trackCost) {
         const t0 = performance.now();
-        sub.tick(delta, ts, this.tier);
+        sub.tick(tickDelta, ts, this.tier);
         this.costs.set(sub.id, performance.now() - t0);
       } else {
-        sub.tick(delta, ts, this.tier);
+        sub.tick(tickDelta, ts, this.tier);
       }
 
       // Collect CSS contributions
