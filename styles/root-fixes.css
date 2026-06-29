@@ -139,6 +139,21 @@ html[data-transitioning="1"] .liquid-glass {
   -webkit-backdrop-filter: none !important;
 }
 
+/* SINGLE-OWNER FADE during route transitions (push/pop/expand via _run).
+   _run animates the whole shell container's opacity 0→1, but the freshly-active
+   keep-alive shell ALSO runs its own `keep-alive-tab-enter` opacity fade — so
+   the destination fades TWICE and the two curves multiply into a soft, muddy
+   "never quite settling" reveal. It's most obvious on every BACK (the returned
+   tab swims in instead of snapping clean), and is page-weight-independent, which
+   is why back from *any* page felt off. During a _run transition the container
+   owns the fade, so suppress the shell's intrinsic one — leaving one crisp fade.
+   Tab switches take the data-tab-transitioning fast path (no container anim) and
+   keep their keep-alive-tab-enter; this rule only matches data-transitioning, so
+   tab switches are untouched. Inert at rest. */
+html[data-transitioning="1"] .keep-alive-shell.is-active {
+  animation: none !important;
+}
+
 [data-lior-motion-veil="true"] {
   opacity: 0;
   transform: translate3d(-24%, 0, 0) scaleX(0.72);
