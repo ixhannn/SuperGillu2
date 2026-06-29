@@ -10,7 +10,6 @@ import { getYear, intervalToDuration } from 'date-fns';
 import { TiltCard } from '../components/TiltCard';
 import { HeartbeatParticles, HeartbeatParticlesHandle } from '../components/HeartbeatParticlesLazy';
 import { Haptics } from '../services/haptics';
-import { DailyDropCard } from '../components/daily-drop/DailyDropCard';
 import { DailyQuestion } from '../components/DailyQuestion';
 import { getHomeHeaderOverlayState } from '../utils/homeHeaderOverlay';
 import { getHomeContainerStyle, getHomeHeaderOverlayHeight } from '../utils/homeLayoutMetrics';
@@ -1000,11 +999,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
             {/* ── TODAY'S QUESTION — the daily two-person ritual ───────── */}
             <div className="mb-5 relative z-10">
                 <DailyQuestion profile={profile} onUpdate={() => {}} />
-            </div>
-
-            {/* ── TODAY'S DROP ─────────────────────────────────────────── */}
-            <div className="mb-5 relative z-10">
-                <DailyDropCard setView={setView} />
             </div>
 
             {/* ── ON THIS DAY ──────────────────────────────────────────── */}
