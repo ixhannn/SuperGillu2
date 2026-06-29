@@ -509,6 +509,14 @@ const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused
       minTier: 'medium',
       tick() {
         if (pausedRef.current) return;
+        // Hard-pause the instant a route transition starts. The `paused` prop
+        // arrives via an observer -> setState -> prop hop that lags the attribute
+        // mutation by a frame or two, so the blob would otherwise keep
+        // invalidating 1-2 frames into the transition (GPU contention exactly
+        // when the slide needs the budget). A direct dataset read is 0-latency,
+        // matching LiveBackground3D's tick.
+        if (typeof document !== 'undefined'
+            && document.documentElement.dataset.transitioning === '1') return;
         invalidate();
       },
     });

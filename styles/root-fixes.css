@@ -119,9 +119,22 @@ html[data-transitioning="1"] *::after {
 }
 
 /* Skip backdrop-filter compositing during the transition window — it's the
-   single most expensive per-frame GPU op on mobile. */
+   single most expensive per-frame GPU op on mobile. The content glass cards are
+   the bulk of it: they tile across every view, and during a push/pop each one
+   re-rasterizes a full-screen Gaussian blur every frame while the clone fades
+   and the destination blooms (~10-15fps lost on 120Hz). Their backgrounds are
+   already 80-90% opaque (color-mix …82-90%), so dropping the blur for the
+   ~360ms transition only changes the thin see-through edge — imperceptible at
+   the animation's speed, and it returns the instant the flag clears.
+   `!important` here also overrides the inline `backdrop-filter` some cards set. */
 html[data-transitioning="1"] .skip-blur-on-transition,
-html[data-transitioning="1"] [data-skip-blur-on-transition] {
+html[data-transitioning="1"] [data-skip-blur-on-transition],
+html[data-transitioning="1"] .glass-card,
+html[data-transitioning="1"] .glass-card-hero,
+html[data-transitioning="1"] .bento-card,
+html[data-transitioning="1"] .accent-card,
+html[data-transitioning="1"] .glass-3d,
+html[data-transitioning="1"] .liquid-glass {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
