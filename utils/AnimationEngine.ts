@@ -82,22 +82,22 @@ const TIER_SORTED: QualityTier[] = (Object.keys(TIER_RANK) as QualityTier[])
 // disabled (see _adaptTier below).
 const SAMPLE_EVERY  = 30;        // frames between (no-op) tier evaluations
 
-// ── Frame-rate ceiling ────────────────────────────────────────────────
-// QUALITY (what renders) is locked to ultra; CADENCE (how often) is capped
-// here. Every subscriber is slow, decorative ambient motion — none of it is
-// perceptibly better above 60fps. But a 120Hz phone with no ceiling runs the
-// WHOLE engine (every tick, canvas redraw, CSS-var recalc, GL render, and the
-// backdrop-filter re-blur each one triggers) at 120Hz, continuously, forever.
-// That doubled-for-nothing spin is the dominant battery/heat cost — it makes a
-// calm couples app draw power like a 3D game. 60fps halves it with zero visible
-// change; reduced-motion / battery-saver drops to 30. Navigation smoothness is
-// unaffected — route transitions are compositor/TransitionEngine-driven, not
-// ticked here.
-const FPS_NORMAL    = 60;
-const FPS_REDUCED   = 30;        // prefers-reduced-motion / battery saver
-// Process a frame once ~90% of the target interval has elapsed. The slack
-// absorbs vsync jitter so a 120Hz panel cleanly lands on every-other-frame
-// (true 60) instead of occasionally slipping to every-third (40).
+// ── Per-subscriber cadence caps (NO global ceiling) ───────────────────
+// The engine ticks at the panel's FULL native refresh (120Hz on a 120Hz
+// phone) so everything the user can FEEL — touch trail, confetti, any
+// interactive motion — stays perfectly smooth. There is deliberately NO global
+// fps cap: navigation and scroll are already compositor/TransitionEngine-driven
+// (never ticked here), and we never want to throttle interactive feedback.
+//
+// The battery/heat win comes ONLY from the optional per-subscriber `fps` cap:
+// the slow, heavily-blurred BACKGROUND ambient (3D blob, constellation,
+// breathing/glow CSS bus) is visually identical at 30fps but, uncapped, redraws
+// the full screen + re-blurs the glass above it 120×/sec forever — the dominant
+// idle drain. Those subscribers opt into fps:30; nothing the user perceives as
+// "smoothness" is reduced.
+//
+// `CAP_SLACK` (0.9) gives the per-sub gate vsync-jitter tolerance so a 120Hz
+// panel lands a 30fps subscriber on a clean every-4th-frame instead of slipping.
 const CAP_SLACK     = 0.9;
 
 class AnimationEngineClass {
@@ -107,9 +107,6 @@ class AnimationEngineClass {
   private running = false;
   private visListenerBound = false;
   private adaptLockUntil = 0;
-  /** Global frame interval (ms). 1000/60 normally, 1000/30 under reduced-motion. */
-  private targetInterval = 1000 / FPS_NORMAL;
-  private rmListenerBound = false;
   /** Per-subscriber last-ticked timestamp — backs the optional `fps` cap. */
   private readonly subLastTs = new Map<string, number>();
   /** Cost tracking is opt-in. The dev overlay flips this on so production
@@ -124,25 +121,6 @@ class AnimationEngineClass {
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.tier = 'ultra';
     }
-    this._bindReducedMotion();
-  }
-
-  /**
-   * Drop the frame ceiling to 30fps when the OS asks for reduced motion — which
-   * Android/Chromium also reports when the system battery saver is on. This is
-   * the user's own "calm it down / save power" signal, so we honour it for free.
-   */
-  private _bindReducedMotion(): void {
-    if (this.rmListenerBound || typeof window === 'undefined' || !window.matchMedia) return;
-    this.rmListenerBound = true;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => {
-      this.targetInterval = 1000 / (mq.matches ? FPS_REDUCED : FPS_NORMAL);
-    };
-    apply();
-    // Safari <14 only supports the deprecated addListener signature.
-    if (mq.addEventListener) mq.addEventListener('change', apply);
-    else if (mq.addListener) mq.addListener(apply);
   }
 
   /**
@@ -216,16 +194,11 @@ class AnimationEngineClass {
 
     this.rafId = requestAnimationFrame(this.loop);
 
-    // Global frame ceiling. rAF still fires at the panel's native rate, but we
-    // only DO work once the target interval (60fps, or 30 under reduced-motion)
-    // has elapsed. Skipped frames return here for the cost of two comparisons —
-    // the expensive part (sub ticks, redraws, CSS recalcs, GL renders) is what
-    // gets halved on a 120Hz device. lastTs is NOT advanced on a skip, so the
-    // elapsed time accumulates until it crosses the threshold.
-    const elapsed = ts - this.lastTs;
-    if (elapsed < this.targetInterval * CAP_SLACK) return;
-
-    const delta = Math.min(elapsed, 50);
+    // Tick at the panel's FULL native refresh — no global cap. Interactive
+    // subscribers (touch trail, confetti) get every frame so they stay buttery
+    // on a 120Hz display. Only the decorative background subscribers throttle
+    // themselves, via the optional per-subscriber `fps` field handled below.
+    const delta = Math.min(ts - this.lastTs, 50);
     if (delta < 3) return; // skip duplicate callbacks from power-saving display
     this.lastTs = ts;
 
@@ -252,10 +225,11 @@ class AnimationEngineClass {
     for (const sub of this.subs.values()) {
       if (tierRank < TIER_RANK[sub.minTier]) continue;
 
-      // Per-subscriber cadence cap (decorative ambient motion runs at fps ≤
-      // the engine ceiling). tickDelta is the accumulated time since THIS
-      // subscriber last ran, so its physics / wave phase advance correctly even
-      // though it's ticked less often than the engine frame.
+      // Per-subscriber cadence cap. Subscribers WITHOUT `fps` run every native
+      // frame (full 120Hz — interactive motion stays smooth). Only decorative
+      // background subscribers set `fps` (e.g. 30). tickDelta is the accumulated
+      // time since THIS subscriber last ran, so its physics / wave phase advance
+      // correctly even though it's ticked less often than the native frame.
       let tickDelta = delta;
       if (sub.fps) {
         const last = this.subLastTs.get(sub.id);
