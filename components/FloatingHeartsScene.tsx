@@ -502,12 +502,18 @@ const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused
   pausedRef.current = paused;
 
   useEffect(() => {
+    // ~30fps cap, matching LiveBackground3D. The drifting glass blob moves slowly
+    // enough that 30fps is visually identical, and throttling its R3F invalidate
+    // throttles the backdrop-filter re-blur it triggers above this full-screen
+    // canvas on Home — the other half of the Home ambient compositing cost.
+    const RENDER_MIN_INTERVAL_MS = 1000 / 30;
+    let lastInvalidateTs = -Infinity;
     AnimationEngine.register({
       id: 'floating-hearts-r3f',
       priority: 3,
       budgetMs: 0.2,
       minTier: 'medium',
-      tick() {
+      tick(_delta, timestamp) {
         if (pausedRef.current) return;
         // Hard-pause the instant a route transition starts. The `paused` prop
         // arrives via an observer -> setState -> prop hop that lags the attribute
@@ -517,6 +523,8 @@ const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused
         // matching LiveBackground3D's tick.
         if (typeof document !== 'undefined'
             && document.documentElement.dataset.transitioning === '1') return;
+        if (timestamp - lastInvalidateTs < RENDER_MIN_INTERVAL_MS) return;
+        lastInvalidateTs = timestamp;
         invalidate();
       },
     });
