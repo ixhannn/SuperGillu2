@@ -305,7 +305,7 @@ const generateDecorations = (count: number): DecorationItem[] => {
 
 const decorations: DecorationItem[] = generateDecorations(12);
 
-const DecorationLayer: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotion }) => (
+const DecorationLayer = React.memo<{ reducedMotion: boolean | null }>(({ reducedMotion }) => (
     <div aria-hidden className="absolute inset-0 pointer-events-none overflow-hidden">
         {decorations.map((d, i) => {
             const Icon = d.Icon;
@@ -337,7 +337,8 @@ const DecorationLayer: React.FC<{ reducedMotion: boolean | null }> = ({ reducedM
             );
         })}
     </div>
-);
+));
+DecorationLayer.displayName = 'DecorationLayer';
 
 // ══════════════════════════════════════════════════════════════════════
 // Drifting ambient layer — soft hearts and sparkles that slowly float
@@ -372,7 +373,7 @@ const generateDrifters = (count: number): DriftItem[] => {
 
 const DRIFTERS = generateDrifters(5);
 
-const DriftLayer: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotion }) => {
+const DriftLayer = React.memo<{ reducedMotion: boolean | null }>(({ reducedMotion }) => {
     if (reducedMotion) return null;
     return (
         <div aria-hidden className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -409,7 +410,8 @@ const DriftLayer: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotion
             ))}
         </div>
     );
-};
+});
+DriftLayer.displayName = 'DriftLayer';
 
 // ══════════════════════════════════════════════════════════════════════
 // Star field — pseudo-random twinkling dots scattered across the dark
@@ -451,7 +453,7 @@ const generateStars = (count: number): StarItem[] => {
 
 const STARS = generateStars(46);
 
-const StarField: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotion }) => (
+const StarField = React.memo<{ reducedMotion: boolean | null }>(({ reducedMotion }) => (
     <div aria-hidden className="absolute inset-0 pointer-events-none overflow-hidden">
         {STARS.map((s, i) => (
             <motion.span
@@ -482,7 +484,48 @@ const StarField: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotion 
             />
         ))}
     </div>
-);
+));
+StarField.displayName = 'StarField';
+
+// ══════════════════════════════════════════════════════════════════════
+// Aurora pools — two large soft radial glows (pink top-left, violet
+// bottom-right) that drift on a long loop. Extracted into a memoized
+// component so they don't re-reconcile on every keystroke in the form
+// sheet; their only input is the stable reducedMotion flag.
+// ══════════════════════════════════════════════════════════════════════
+const AuroraPools = React.memo<{ reducedMotion: boolean | null }>(({ reducedMotion }) => (
+    <>
+        <motion.div
+            aria-hidden
+            className="absolute pointer-events-none rounded-full"
+            style={{
+                top: '-20%',
+                left: '-25%',
+                width: '90vw',
+                height: '90vw',
+                background: 'radial-gradient(circle, rgba(244,114,182,0.22), transparent 60%)',
+                filter: 'blur(70px)',
+            }}
+            animate={reducedMotion ? undefined : { scale: [1, 1.10, 1], x: [0, 14, 0], y: [0, -8, 0] }}
+            transition={reducedMotion ? undefined : { duration: 16, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <motion.div
+            aria-hidden
+            className="absolute pointer-events-none rounded-full"
+            style={{
+                bottom: '-30%',
+                right: '-30%',
+                width: '95vw',
+                height: '95vw',
+                background: 'radial-gradient(circle, rgba(168,85,247,0.20), transparent 60%)',
+                filter: 'blur(70px)',
+            }}
+            animate={reducedMotion ? undefined : { scale: [1, 1.12, 1], x: [0, -10, 0], y: [0, 8, 0] }}
+            transition={reducedMotion ? undefined : { duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+        />
+    </>
+));
+AuroraPools.displayName = 'AuroraPools';
 
 // ══════════════════════════════════════════════════════════════════════
 // Mock-screen helpers — tiny inline status bar + dock icons. Kept as
@@ -492,7 +535,7 @@ const StarField: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotion 
 // Phone mockup — deliberately symbolic, not a tiny dashboard. It conveys:
 // two people, one private shared memory space, and time kept together.
 // ══════════════════════════════════════════════════════════════════════
-const PhoneMockup: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotion }) => (
+const PhoneMockup = React.memo<{ reducedMotion: boolean | null }>(({ reducedMotion }) => (
     <motion.div
         initial={reducedMotion ? undefined : { opacity: 0, y: 20, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -806,19 +849,20 @@ const PhoneMockup: React.FC<{ reducedMotion: boolean | null }> = ({ reducedMotio
         </div>
 
     </motion.div>
-);
+));
+PhoneMockup.displayName = 'PhoneMockup';
 
 // ══════════════════════════════════════════════════════════════════════
 // Form sheet primitives — soft private-card fields tuned for mobile.
 // ══════════════════════════════════════════════════════════════════════
 const DarkBanner: React.FC<{ tone: 'error' | 'success' | 'warning'; message: React.ReactNode }> = ({ tone, message }) => {
-    // Tones tuned for the dark wine-glass sheet — soft pastel text on a
-    // translucent tinted background so banners feel like temperature shifts
-    // in the same room, not popups from a different design language.
+    // Tones tuned for the warm ivory card — saturated readable text on a
+    // soft same-family tint so banners feel like temperature shifts in the
+    // same room, not popups from a different design language.
     const tones = {
-        error:   { color: '#ffc4d7', border: 'rgba(255,120,180,0.32)', bg: 'rgba(255,120,180,0.10)', icon: <AlertCircle size={14} className="mt-0.5 shrink-0" /> },
-        success: { color: '#a7f3d0', border: 'rgba(120,220,180,0.32)', bg: 'rgba(80,200,150,0.10)', icon: <Sparkles size={14} className="mt-0.5 shrink-0" /> },
-        warning: { color: '#ffd9a3', border: 'rgba(245,180,80,0.32)', bg: 'rgba(245,180,80,0.10)', icon: <Lock size={14} className="mt-0.5 shrink-0" /> },
+        error:   { color: '#9E2B49', border: 'rgba(194,69,110,0.30)',  bg: 'rgba(214,84,127,0.10)',  icon: <AlertCircle size={14} className="mt-0.5 shrink-0" /> },
+        success: { color: '#1F7A55', border: 'rgba(45,150,105,0.32)',  bg: 'rgba(45,150,105,0.10)',  icon: <Sparkles size={14} className="mt-0.5 shrink-0" /> },
+        warning: { color: '#9A6212', border: 'rgba(190,130,40,0.34)',  bg: 'rgba(214,150,60,0.12)',  icon: <Lock size={14} className="mt-0.5 shrink-0" /> },
     } as const;
     const t = tones[tone];
     return (
@@ -856,9 +900,9 @@ type DarkFieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
     leadingIcon?: React.ReactNode;
 };
 
-// Floating-label glass field — calm and minimal. No leading icon needed:
-// the label itself communicates intent, and removing icons gives the field
-// more breathing room. Focus state is a hairline shift, not a glow.
+// Floating-label field on the warm ivory card — calm and minimal. White
+// fill, soft warm border, mauve resting label, dusty-rose focus. No leading
+// icon: the label communicates intent and leaves the field more breathing room.
 const DarkField: React.FC<DarkFieldProps> = ({ label, invalid, hint, leadingIcon: _ignored, type, value, onFocus, onBlur, id, ...props }) => {
     const generatedId = useId();
     const inputId = id ?? generatedId;
@@ -873,11 +917,11 @@ const DarkField: React.FC<DarkFieldProps> = ({ label, invalid, hint, leadingIcon
             <div
                 className="relative rounded-2xl transition-all duration-200"
                 style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${invalid ? 'rgba(255,160,195,0.40)' : focused ? 'rgba(255,210,230,0.22)' : 'rgba(255,255,255,0.07)'}`,
-                    boxShadow: invalid
-                        ? '0 0 0 2px rgba(255,140,180,0.08)'
-                        : 'inset 0 1px 0 rgba(255,255,255,0.03)',
+                    background: '#ffffff',
+                    border: `1.5px solid ${invalid ? 'rgba(194,69,110,0.55)' : focused ? '#C2456E' : '#EBD7DC'}`,
+                    boxShadow: invalid || focused
+                        ? '0 0 0 3px rgba(194,69,110,0.10)'
+                        : '0 1px 2px rgba(74,18,40,0.04)',
                 }}
             >
                 <input
@@ -890,7 +934,7 @@ const DarkField: React.FC<DarkFieldProps> = ({ label, invalid, hint, leadingIcon
                     onBlur={(e) => { setFocused(false); onBlur?.(e); }}
                     placeholder=""
                     className={`peer w-full bg-transparent pl-4 ${isPassword ? 'pr-11' : 'pr-4'} pt-[20px] pb-[8px] text-[15px] font-medium outline-none`}
-                    style={{ color: '#f4e0e8', caretColor: 'rgba(244,114,182,0.85)' }}
+                    style={{ color: '#3A2530', caretColor: '#C2456E' }}
                 />
                 <motion.label
                     htmlFor={inputId}
@@ -903,10 +947,10 @@ const DarkField: React.FC<DarkFieldProps> = ({ label, invalid, hint, leadingIcon
                     className="absolute left-4 pointer-events-none origin-left"
                     style={{
                         color: invalid
-                            ? 'rgba(255,170,200,0.78)'
-                            : lifted
-                                ? 'rgba(255,210,230,0.62)'
-                                : 'rgba(255,232,242,0.40)',
+                            ? '#C2456E'
+                            : focused
+                                ? '#C2456E'
+                                : '#B58C99',
                         fontSize: 14,
                         fontWeight: 400,
                         letterSpacing: '0.005em',
@@ -920,7 +964,7 @@ const DarkField: React.FC<DarkFieldProps> = ({ label, invalid, hint, leadingIcon
                         onClick={() => { feedback.tap(); setRevealed((v) => !v); }}
                         aria-label={revealed ? 'Hide password' : 'Show password'}
                         className="absolute right-1 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full"
-                        style={{ color: 'rgba(255,210,230,0.45)' }}
+                        style={{ color: '#C79AA6' }}
                     >
                         {revealed ? <EyeOff size={15} strokeWidth={1.8} /> : <Eye size={15} strokeWidth={1.8} />}
                     </button>
@@ -929,7 +973,7 @@ const DarkField: React.FC<DarkFieldProps> = ({ label, invalid, hint, leadingIcon
             {hint && (
                 <span
                     className="mt-1.5 block pl-1 text-[10.5px]"
-                    style={{ color: invalid ? 'rgba(255,170,200,0.78)' : 'rgba(255,232,242,0.42)' }}
+                    style={{ color: invalid ? '#C2456E' : '#A77E8B' }}
                 >
                     {hint}
                 </span>
@@ -1454,35 +1498,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
             {/* Soft aurora pools — pink top-left, violet bottom-right.
                 Restored the warmer pink-violet pairing to go with the wine
                 palette: the pink halo on top complements the cream bezel,
-                while the violet bottom-right keeps Lior's signature pair. */}
-            <motion.div
-                aria-hidden
-                className="absolute pointer-events-none rounded-full"
-                style={{
-                    top: '-20%',
-                    left: '-25%',
-                    width: '90vw',
-                    height: '90vw',
-                    background: 'radial-gradient(circle, rgba(244,114,182,0.22), transparent 60%)',
-                    filter: 'blur(70px)',
-                }}
-                animate={reducedMotion ? undefined : { scale: [1, 1.10, 1], x: [0, 14, 0], y: [0, -8, 0] }}
-                transition={reducedMotion ? undefined : { duration: 16, repeat: Infinity, ease: 'easeInOut' }}
-            />
-            <motion.div
-                aria-hidden
-                className="absolute pointer-events-none rounded-full"
-                style={{
-                    bottom: '-30%',
-                    right: '-30%',
-                    width: '95vw',
-                    height: '95vw',
-                    background: 'radial-gradient(circle, rgba(168,85,247,0.20), transparent 60%)',
-                    filter: 'blur(70px)',
-                }}
-                animate={reducedMotion ? undefined : { scale: [1, 1.12, 1], x: [0, -10, 0], y: [0, 8, 0] }}
-                transition={reducedMotion ? undefined : { duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-            />
+                while the violet bottom-right keeps Lior's signature pair.
+                Memoized so typing in the form sheet doesn't re-reconcile
+                these large blurred surfaces. */}
+            <AuroraPools reducedMotion={reducedMotion} />
 
             {/* Twinkling star field — sits between aurora pools and vignettes */}
             <StarField reducedMotion={reducedMotion} />
@@ -1715,16 +1734,15 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
                             className="relative w-full max-w-[380px] overflow-hidden rounded-[1.75rem]"
                             style={{
-                                // Quieter wine-glass. Less contrast top→bottom,
-                                // softer border, gentler shadow. The card now
-                                // reads as a calm surface, not a spotlit stage.
+                                // Warm ivory keepsake card — a solid light
+                                // surface that floats over the dark scene.
+                                // Replaces the old translucent wine-glass; opaque
+                                // means no backdrop-filter (cheaper, crisper).
                                 background:
-                                    'linear-gradient(180deg, rgba(48,16,36,0.92) 0%, rgba(28,8,22,0.95) 100%)',
-                                border: '1px solid rgba(255,255,255,0.07)',
+                                    'linear-gradient(180deg, #FFF8F3 0%, #FDEDED 100%)',
+                                border: '1px solid rgba(255,255,255,0.7)',
                                 boxShadow:
-                                    '0 22px 60px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.06)',
-                                backdropFilter: 'blur(28px) saturate(135%)',
-                                WebkitBackdropFilter: 'blur(28px) saturate(135%)',
+                                    '0 26px 64px rgba(18,4,12,0.55), 0 6px 16px rgba(18,4,12,0.40), inset 0 1px 0 rgba(255,255,255,0.85)',
                             }}
                             onClick={(e) => e.stopPropagation()}
                         >
@@ -1733,10 +1751,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                 the top edge of a glass surface. */}
                             <div
                                 aria-hidden
-                                className="h-px w-full"
+                                className="w-full"
                                 style={{
+                                    height: 2,
                                     background:
-                                        'linear-gradient(90deg, transparent 0%, rgba(244,114,182,0.55) 50%, transparent 100%)',
+                                        'linear-gradient(90deg, transparent 0%, rgba(216,138,166,0.85) 50%, transparent 100%)',
                                 }}
                             />
 
@@ -1748,8 +1767,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                     type="button"
                                     onClick={closeForm}
                                     aria-label="Close"
-                                    className="absolute top-3.5 right-3.5 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/8"
-                                    style={{ color: 'rgba(255,232,242,0.55)' }}
+                                    className="absolute top-3.5 right-3.5 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[rgba(122,74,98,0.08)]"
+                                    style={{ color: '#B58C99' }}
                                 >
                                     <X size={15} strokeWidth={2} />
                                 </button>
@@ -1761,7 +1780,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                 <h2
                                     className="font-serif"
                                     style={{
-                                        color: '#f7e3eb',
+                                        color: '#4A1228',
                                         fontSize: 'clamp(23px, 5.6vw, 26px)',
                                         fontWeight: 500,
                                         lineHeight: 1.10,
@@ -1772,7 +1791,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                 </h2>
                                 <p
                                     className="mt-1.5 text-[12.5px] leading-relaxed"
-                                    style={{ color: 'rgba(255,232,242,0.50)' }}
+                                    style={{ color: '#9C7079' }}
                                 >
                                     {sheetSubtitle}
                                 </p>
@@ -1823,12 +1842,12 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                             className="relative mt-5 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl py-[15px] text-[14px] font-semibold disabled:cursor-not-allowed"
                                             style={{
                                                 background: loading
-                                                    ? 'rgba(255,255,255,0.05)'
-                                                    : 'linear-gradient(180deg, #d8527f 0%, #b73a68 100%)',
-                                                color: loading ? 'rgba(255,232,242,0.40)' : '#fff5f8',
+                                                    ? '#F0E0E4'
+                                                    : 'linear-gradient(135deg, #C24E72 0%, #9E3358 100%)',
+                                                color: loading ? '#B89AA3' : '#FFF4F7',
                                                 boxShadow: loading
                                                     ? 'none'
-                                                    : '0 8px 20px rgba(183,58,104,0.28), inset 0 1px 0 rgba(255,255,255,0.16)',
+                                                    : '0 10px 22px rgba(158,51,88,0.34), inset 0 1px 0 rgba(255,255,255,0.22)',
                                                 opacity: loading ? 0.70 : 1,
                                                 letterSpacing: '0.01em',
                                             }}
@@ -1854,16 +1873,16 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                         <div
                                             className="rounded-2xl px-3.5 py-3 text-[12.5px]"
                                             style={{
-                                                color: 'rgba(255,232,242,0.78)',
-                                                background: 'rgba(255,255,255,0.04)',
-                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                color: '#6E4A57',
+                                                background: '#FCF4F4',
+                                                border: '1px solid #EFDCE0',
                                             }}
                                         >
                                             <div className="flex items-start gap-2.5">
-                                                <Mail size={15} className="mt-0.5 shrink-0" style={{ color: 'rgba(255,210,230,0.72)' }} />
+                                                <Mail size={15} className="mt-0.5 shrink-0" style={{ color: '#B06A82' }} />
                                                 <div className="leading-[1.55]">
                                                     We sent a confirmation link to{' '}
-                                                    <strong style={{ color: '#f7e3eb', wordBreak: 'break-word' }}>{pendingConfirmEmail}</strong>.
+                                                    <strong style={{ color: '#4A1228', wordBreak: 'break-word' }}>{pendingConfirmEmail}</strong>.
                                                     Tap it to finish — you'll be brought in here automatically.
                                                 </div>
                                             </div>
@@ -1891,13 +1910,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                             className="relative mt-4 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl py-[15px] text-[14px] font-semibold disabled:cursor-not-allowed"
                                             style={{
                                                 background: loading || rateLimitSecs > 0 || resendCooldownSecs > 0
-                                                    ? 'rgba(255,255,255,0.05)'
-                                                    : 'linear-gradient(180deg, #d8527f 0%, #b73a68 100%)',
-                                                color: loading || rateLimitSecs > 0 || resendCooldownSecs > 0 ? 'rgba(255,232,242,0.40)' : '#fff5f8',
+                                                    ? '#F0E0E4'
+                                                    : 'linear-gradient(135deg, #C24E72 0%, #9E3358 100%)',
+                                                color: loading || rateLimitSecs > 0 || resendCooldownSecs > 0 ? '#B89AA3' : '#FFF4F7',
                                                 boxShadow:
                                                     loading || rateLimitSecs > 0 || resendCooldownSecs > 0
                                                         ? 'none'
-                                                        : '0 8px 20px rgba(183,58,104,0.28), inset 0 1px 0 rgba(255,255,255,0.16)',
+                                                        : '0 10px 22px rgba(158,51,88,0.34), inset 0 1px 0 rgba(255,255,255,0.22)',
                                                 opacity: loading || rateLimitSecs > 0 || resendCooldownSecs > 0 ? 0.70 : 1,
                                                 letterSpacing: '0.01em',
                                             }}
@@ -1915,11 +1934,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                         <button
                                             type="button"
                                             onClick={handleOpenMail}
-                                            className="relative mt-2.5 flex w-full items-center justify-center gap-2 rounded-2xl py-[13px] text-[13px] font-medium transition-colors hover:bg-white/5"
+                                            className="relative mt-2.5 flex w-full items-center justify-center gap-2 rounded-2xl py-[13px] text-[13px] font-medium transition-colors hover:bg-[rgba(122,74,98,0.05)]"
                                             style={{
-                                                color: 'rgba(255,232,242,0.78)',
-                                                background: 'rgba(255,255,255,0.04)',
-                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                color: '#6E4A57',
+                                                background: '#FCF4F4',
+                                                border: '1px solid #EFDCE0',
                                             }}
                                         >
                                             <Mail size={15} strokeWidth={1.9} />
@@ -1928,13 +1947,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
 
                                         <div
                                             className="relative mt-5 flex items-center justify-center text-[11.5px]"
-                                            style={{ color: 'rgba(255,232,242,0.42)' }}
+                                            style={{ color: '#A77E8B' }}
                                         >
                                             Wrong address?
                                             <button
                                                 onClick={handleUseDifferentEmail}
                                                 className="ml-1.5 font-medium hover:opacity-80"
-                                                style={{ color: 'rgba(255,210,230,0.85)' }}
+                                                style={{ color: '#B84A6A' }}
                                             >
                                                 Use a different email
                                             </button>
@@ -1943,10 +1962,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                 )}
 
                                 {!recoveryMode && !pendingConfirmEmail && (<>
-                                {/* Google sign-in — calm white-glass button.
-                                    Sits above email so social auth is the
-                                    fastest path for anyone who has a Google
-                                    account, with email/password underneath
+                                {/* Google sign-in — clean white button with a
+                                    soft warm border. Sits above email so social
+                                    auth is the fastest path for anyone who has a
+                                    Google account, with email/password underneath
                                     as the explicit alternative. */}
                                 <motion.button
                                     whileTap={{ scale: 0.985 }}
@@ -1954,9 +1973,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                     disabled={loading || rateLimitSecs > 0}
                                     className="relative mt-5 flex w-full items-center justify-center gap-2.5 rounded-2xl py-[13px] text-[13.5px] font-medium disabled:cursor-not-allowed"
                                     style={{
-                                        background: 'rgba(255,255,255,0.92)',
-                                        color: '#1c0e16',
-                                        boxShadow: '0 6px 16px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.85)',
+                                        background: '#ffffff',
+                                        color: '#3A2730',
+                                        border: '1px solid #EFDCE0',
+                                        boxShadow: '0 4px 12px rgba(74,18,40,0.06)',
                                         opacity: loading || rateLimitSecs > 0 ? 0.55 : 1,
                                         letterSpacing: '0.005em',
                                     }}
@@ -1969,14 +1989,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                     tiny lowercase "or" pill. Calm visual
                                     separator between social and email auth. */}
                                 <div className="relative mt-4 flex items-center gap-3">
-                                    <span className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.10)' }} />
+                                    <span className="h-px flex-1" style={{ background: '#EEDDE0' }} />
                                     <span
                                         className="text-[10.5px] font-medium uppercase"
-                                        style={{ color: 'rgba(255,232,242,0.35)', letterSpacing: '0.18em' }}
+                                        style={{ color: '#BC9CA4', letterSpacing: '0.18em' }}
                                     >
                                         or
                                     </span>
-                                    <span className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.10)' }} />
+                                    <span className="h-px flex-1" style={{ background: '#EEDDE0' }} />
                                 </div>
 
                                 <div className="relative mt-4 space-y-2">
@@ -2031,7 +2051,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                             <button
                                                 onClick={() => { feedback.tap(); setIsForgotPassword(true); setSubmitAttempted(false); clearFeedback(); }}
                                                 className="text-[11.5px] font-medium hover:opacity-80"
-                                                style={{ color: 'rgba(255,210,230,0.72)' }}
+                                                style={{ color: '#B84A6A' }}
                                             >
                                                 Forgot password?
                                             </button>
@@ -2040,16 +2060,16 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                         <button
                                             onClick={() => { feedback.tap(); setIsForgotPassword(false); setSubmitAttempted(false); clearFeedback(); }}
                                             className="text-[11.5px] font-medium hover:opacity-80"
-                                            style={{ color: 'rgba(255,210,230,0.72)' }}
+                                            style={{ color: '#B84A6A' }}
                                         >
                                             Back to sign in
                                         </button>
                                     )}
                                 </div>
 
-                                {/* CTA — calmer rose tone, no neon glow.
-                                    Single warm wash instead of a hot pink
-                                    gradient, soft shadow rather than a halo. */}
+                                {/* CTA — deep dusty-rose → wine wash, soft shadow
+                                    (no neon glow). Disabled state is a soft warm
+                                    grey that still reads on the ivory card. */}
                                 <motion.button
                                     whileTap={{ scale: 0.985 }}
                                     onClick={isForgotPassword ? handleForgotPassword : handleAuth}
@@ -2057,13 +2077,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                     className="relative mt-5 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl py-[15px] text-[14px] font-semibold disabled:cursor-not-allowed"
                                     style={{
                                         background: loading || rateLimitSecs > 0
-                                            ? 'rgba(255,255,255,0.05)'
-                                            : 'linear-gradient(180deg, #d8527f 0%, #b73a68 100%)',
-                                        color: loading || rateLimitSecs > 0 ? 'rgba(255,232,242,0.40)' : '#fff5f8',
+                                            ? '#F0E0E4'
+                                            : 'linear-gradient(135deg, #C24E72 0%, #9E3358 100%)',
+                                        color: loading || rateLimitSecs > 0 ? '#B89AA3' : '#FFF4F7',
                                         boxShadow:
                                             loading || rateLimitSecs > 0
                                                 ? 'none'
-                                                : '0 8px 20px rgba(183,58,104,0.28), inset 0 1px 0 rgba(255,255,255,0.16)',
+                                                : '0 10px 22px rgba(158,51,88,0.34), inset 0 1px 0 rgba(255,255,255,0.22)',
                                         opacity: loading || rateLimitSecs > 0 ? 0.70 : 1,
                                         letterSpacing: '0.01em',
                                     }}
@@ -2082,13 +2102,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                 {!isForgotPassword && (
                                     <div
                                         className="relative mt-5 flex items-center justify-center text-[11.5px]"
-                                        style={{ color: 'rgba(255,232,242,0.42)' }}
+                                        style={{ color: '#A77E8B' }}
                                     >
                                         {isSignUp ? 'Already have an account?' : 'New to Lior?'}
                                         <button
                                             onClick={() => { feedback.tap(); setIsSignUp(!isSignUp); setSubmitAttempted(false); clearFeedback(); }}
                                             className="ml-1.5 font-medium hover:opacity-80"
-                                            style={{ color: 'rgba(255,210,230,0.85)' }}
+                                            style={{ color: '#B84A6A' }}
                                         >
                                             {isSignUp ? 'Sign in' : 'Create one'}
                                         </button>
