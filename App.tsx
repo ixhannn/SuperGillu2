@@ -304,6 +304,47 @@ const App = () => {
     });
   }, []);
 
+  // ── Deferred overlay unmount (smooth back) ──────────────────────────────
+  // Non-tab detail views live in the __overlay__ slot. Unmounting a heavy detail
+  // view (its effect teardown + DOM removal) INSIDE the synchronous flushSync
+  // commit blocked the back animation: the main thread froze for the whole
+  // transition (no frames painted), then the destination "snapped" in — the same
+  // on the back button and the edge-swipe because both commit the same way.
+  // So the overlay slot is decoupled from currentView. Opening a detail mounts it
+  // at once (it must paint in step with the transition); returning to a tab keeps
+  // the outgoing detail mounted-but-hidden (is-cached) through the animation and
+  // drops it a beat later, off the hot path. currentView / the lock / history are
+  // never touched here, so navigation correctness is unaffected — this only moves
+  // the overlay's UNMOUNT off the synchronous commit.
+  const [overlaySlotView, setOverlaySlotView] = useState<ViewState | null>(
+    () => (ROOT_TABS.includes(initialView) ? null : initialView),
+  );
+  const overlayPruneTimerRef = useRef<number | null>(null);
+  const commitView = useCallback((destination: ViewState) => {
+    markTabMounted(destination);
+    setCurrentView(destination);
+    if (overlayPruneTimerRef.current !== null) {
+      window.clearTimeout(overlayPruneTimerRef.current);
+      overlayPruneTimerRef.current = null;
+    }
+    if (!ROOT_TABS.includes(destination)) {
+      // Opening / moving to a detail view — mount it now so it paints in step.
+      setOverlaySlotView(destination);
+    } else {
+      // Returning to a tab — keep the outgoing detail mounted (hidden via the
+      // is-cached class) through the animation, then unmount once it settles, so
+      // its teardown never blocks the transition frames.
+      overlayPruneTimerRef.current = window.setTimeout(() => {
+        overlayPruneTimerRef.current = null;
+        // Skip if a newer nav has since re-opened a detail.
+        if (ROOT_TABS.includes(currentViewRef.current)) setOverlaySlotView(null);
+      }, T_KEEP_ALIVE_TAB + 160);
+    }
+  }, [markTabMounted]);
+  useEffect(() => () => {
+    if (overlayPruneTimerRef.current !== null) window.clearTimeout(overlayPruneTimerRef.current);
+  }, []);
+
   // Register main scroll container from Layout
   const registerScrollRef = useCallback((el: HTMLElement | null) => {
     mainScrollRef.current = el;
@@ -345,13 +386,12 @@ const App = () => {
         y: scrollPositions.current[destination] ?? 0,
       };
       flushSync(() => {
-        markTabMounted(destination);
-        setCurrentView(destination);
+        commitView(destination);
       });
     };
     window.addEventListener('te:gesture-back', handler);
     return () => window.removeEventListener('te:gesture-back', handler);
-  }, [getCurrentScroll, markTabMounted]);
+  }, [getCurrentScroll, commitView]);
 
   // ── Module preload on prefetch ──────────────────────────────────────────
   // Keep-alive tab cache obviates the need to pre-mount React trees, but we
@@ -500,8 +540,7 @@ const App = () => {
       dir as EngineDirection,
       () => {
         flushSync(() => {
-          markTabMounted(destination);
-          setCurrentView(destination);
+          commitView(destination);
         });
       },
       () => {
@@ -513,12 +552,11 @@ const App = () => {
       // rather than leaving the lock held forever waiting for a completion
       // callback that will never fire.
       flushSync(() => {
-        markTabMounted(destination);
-        setCurrentView(destination);
+        commitView(destination);
       });
       finalizeNavigation(navToken);
     }
-  }, [finalizeNavigation, markTabMounted, runTabTransition]);
+  }, [finalizeNavigation, commitView, runTabTransition]);
 
   const navigateTo = useCallback((view: ViewState, options: NavigationOptions = {}) => {
     const prev = currentViewRef.current;
@@ -582,8 +620,7 @@ const App = () => {
         y: scrollPositions.current[view] ?? 0,
       };
       flushSync(() => {
-        markTabMounted(view);
-        setCurrentView(view);
+        commitView(view);
       });
       transitionLockRef.current = false;
       return;
@@ -627,7 +664,7 @@ const App = () => {
     }
 
     commitNavigation();
-  }, [drainPendingBack, drainPendingNavigation, getCurrentScroll, runNavigation]);
+  }, [drainPendingBack, drainPendingNavigation, getCurrentScroll, runNavigation, commitView]);
 
   useEffect(() => {
     navigateToRef.current = navigateTo;
@@ -1185,10 +1222,14 @@ const App = () => {
   // Non-tab view (push/pop destinations like sync, settings, etc.)
   // Mounts/unmounts normally — these are not on the hot path.
   const overlayView = useMemo(() => {
-    if (ROOT_TABS.includes(currentView)) return null;
-    const ActiveView = getViewComponent(currentView);
+    if (overlaySlotView === null) return null;
+    const ActiveView = getViewComponent(overlaySlotView);
     return <ActiveView setView={navigateTo} />;
-  }, [currentView, navigateTo]);
+  }, [overlaySlotView, navigateTo]);
+  // The overlay is visible (is-active) only while its view IS the current view.
+  // After a back to a tab it lingers one beat as is-cached (hidden, off-flow) so
+  // its unmount can happen off the transition's critical path — see commitView.
+  const overlayLingering = overlayView !== null && ROOT_TABS.includes(currentView);
 
   // Dev-only standalone preview of the onboarding flow. Open the app with
   // ?onboarding=1 to view it in isolation — bypasses init + the cloud-auth gate,
@@ -1264,7 +1305,12 @@ const App = () => {
                     {/* Non-tab views (push/pop destinations) render on top.
                         They mount/unmount normally since they're not hot-path. */}
                     {overlayView && (
-                      <div className="keep-alive-shell is-active" data-keep-alive-tab="__overlay__">
+                      <div
+                        className={`keep-alive-shell ${overlayLingering ? 'is-cached' : 'is-active'}`}
+                        data-keep-alive-tab="__overlay__"
+                        aria-hidden={overlayLingering ? true : undefined}
+                        inert={overlayLingering ? true : undefined}
+                      >
                         {overlayView}
                       </div>
                     )}
