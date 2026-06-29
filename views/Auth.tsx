@@ -950,6 +950,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     const [isSignUp, setIsSignUp] = useState(true);
     const [isForgotPassword, setIsForgotPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    // Dedicated flag for the Google button so it shows its "Signing in…" state
+    // only during a Google attempt — not when an email action sets `loading`.
+    const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [rateLimitSecs, setRateLimitSecs] = useState(0);
@@ -974,6 +977,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
     const recoveryModeRef = React.useRef(false);
     const reducedMotion = useReducedMotion();
     const { isConfigured } = getSupabaseAuthConfig();
+
+    // Pre-warm native Google sign-in while the user sits on the auth screen, so
+    // the OS account picker opens INSTANTLY on the first tap (loads the plugin
+    // chunk + runs the one-time initialize ahead of time). Native only; the
+    // helper no-ops on web and never throws.
+    useEffect(() => {
+        const isNative = typeof window !== 'undefined'
+            && Boolean((window as any).Capacitor?.isNativePlatform?.());
+        if (!isNative) return;
+        let cancelled = false;
+        void import('../services/nativeGoogleAuth')
+            .then((m) => { if (!cancelled) m.prewarmNativeGoogle(); })
+            .catch(() => { /* ignore — the first tap will initialize normally */ });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         if (rateLimitSecs <= 0) return;
@@ -1178,6 +1196,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
         }
 
         setLoading(true);
+        setGoogleLoading(true);
         try {
             const isNative = typeof window !== 'undefined'
                 && Boolean((window as any).Capacitor?.isNativePlatform?.());
@@ -1194,6 +1213,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                 if (nativeGoogle.isNativeGoogleSignInAvailable()) {
                     try {
                         await nativeGoogle.signInWithNativeGoogle();
+                        feedback.success();   // "you're in" moment before entry
                         // Success → enter the app. onLogin is idempotent (the
                         // onAuthStateChange 'SIGNED_IN' listener would also fire
                         // it), so calling it here removes any single dependence
@@ -1291,6 +1311,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
             setError('Could not start Google sign-in. Please check your connection.');
             feedback.error();
             setLoading(false);
+        } finally {
+            // Clear the Google-button spinner on every exit. On the success
+            // paths the screen unmounts in the same render (onLogin flips
+            // isAuthenticated), so this never flashes the idle button.
+            setGoogleLoading(false);
         }
     };
 
@@ -1998,17 +2023,29 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, onPrivacyPolicy, onTerms })
                                     whileTap={{ scale: 0.985 }}
                                     onClick={handleGoogle}
                                     disabled={loading || rateLimitSecs > 0}
+                                    aria-busy={googleLoading}
                                     className="relative mt-5 flex w-full items-center justify-center gap-2.5 rounded-2xl py-[13px] text-[13.5px] font-medium disabled:cursor-not-allowed"
                                     style={{
                                         background: 'rgba(255,255,255,0.92)',
                                         color: '#1c0e16',
                                         boxShadow: '0 6px 16px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.85)',
-                                        opacity: loading || rateLimitSecs > 0 ? 0.55 : 1,
+                                        // Stay full-strength while actively signing in (spinner is
+                                        // the signal); only dim when disabled by an email action.
+                                        opacity: googleLoading ? 1 : (loading || rateLimitSecs > 0) ? 0.55 : 1,
                                         letterSpacing: '0.005em',
                                     }}
                                 >
-                                    <GoogleLogo size={16} />
-                                    Continue with Google
+                                    {googleLoading ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            Signing in…
+                                        </>
+                                    ) : (
+                                        <>
+                                            <GoogleLogo size={16} />
+                                            Continue with Google
+                                        </>
+                                    )}
                                 </motion.button>
 
                                 {/* "or" divider — two hairlines flanking a

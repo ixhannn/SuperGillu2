@@ -144,6 +144,24 @@ const ensureInitialized = async (plugin: SocialLoginPlugin): Promise<void> => {
     return initPromise;
 };
 
+/**
+ * Warm the native path ahead of the first tap: load the plugin chunk and run
+ * its one-time initialize() in the background, so the OS account picker opens
+ * INSTANTLY on tap instead of paying the dynamic-import + init latency inline.
+ * Idempotent (ensureInitialized latches), native-only, and never throws — a
+ * failed pre-warm just means the first real tap initializes normally. Call it
+ * when the auth screen mounts.
+ */
+export const prewarmNativeGoogle = (): void => {
+    if (!isNativeGoogleSignInAvailable()) return;
+    void (async () => {
+        try {
+            const plugin = await loadPlugin();
+            await ensureInitialized(plugin);
+        } catch { /* harmless — the first tap will initialize */ }
+    })();
+};
+
 const errorMessage = (err: unknown): string =>
     (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
 
