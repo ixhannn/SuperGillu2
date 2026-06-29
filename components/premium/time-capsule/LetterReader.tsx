@@ -4,6 +4,7 @@ import { GOLD, GOLD_PRESS_SPRING, GOLD_SOFT_SPRING } from '../GoldKit';
 import { CountdownRing, UnlockBurst, WaxSeal, formatDate } from './SealKit';
 import { feedback } from '../../../utils/feedback';
 import { useLiorMedia } from '../../../hooks/useLiorImage';
+import { useTapOrigin } from '../../../hooks/useTapOrigin';
 import type { TimeCapsule } from '../../../types';
 
 /**
@@ -28,6 +29,10 @@ export const LetterReader: React.FC<LetterReaderProps> = ({ capsule, mode, sealI
     const [phase, setPhase] = useState<ReaderPhase>(mode === 'read' ? 'letter' : 'sealed');
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { src: imageUrl, handleError } = useLiorMedia(capsule.imageId, capsule.image, capsule.storagePath);
+    // Re-reading an already-opened letter: grow the reading card OUT OF the
+    // tapped letter card. The unlock ceremony (sealed→cracking→letter) is left
+    // centred — only the straight-to-read panel blooms from the tap.
+    const { ref: cardRef, origin: cardOrigin } = useTapOrigin<HTMLDivElement>(mode === 'read');
 
     useEffect(() => () => {
         if (timerRef.current) clearTimeout(timerRef.current);
@@ -72,12 +77,13 @@ export const LetterReader: React.FC<LetterReaderProps> = ({ capsule, mode, sealI
                 {phase === 'letter' ? (
                     <motion.div
                         key="letter"
-                        initial={{ opacity: 0, y: 64, rotateX: reducedMotion ? 0 : 18, scale: 0.96 }}
+                        ref={cardRef}
+                        initial={{ opacity: 0, y: 64, rotateX: reducedMotion ? 0 : 18, scale: 0.88 }}
                         animate={{ opacity: 1, y: 0, rotateX: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 24, transition: { duration: 0.2 } }}
                         transition={GOLD_SOFT_SPRING}
                         className="w-full max-w-[360px]"
-                        style={{ transformPerspective: 900 }}
+                        style={{ transformPerspective: 900, transformOrigin: cardOrigin }}
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div

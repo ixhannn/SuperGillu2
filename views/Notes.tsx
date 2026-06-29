@@ -21,6 +21,7 @@ const staggerItem = {
 };
 import { ConfirmModal } from '../components/ConfirmModal';
 import { generateId } from '../utils/ids';
+import { listRemoveExit } from '../utils/motion';
 
 interface NotesProps {
   setView: (view: ViewState) => void;
@@ -207,12 +208,13 @@ export const Notes: React.FC<NotesProps> = ({ setView }) => {
             gap, instead of the card vanishing in one frame and the grid snapping.
             Parent stagger variants still propagate, so first-paint entrance is
             unchanged; the undo-restore re-enters via the same hidden→show variant. */}
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence mode="popLayout" initial={false}>
         {visibleNotes.map((note) => (
           <motion.div
             key={note.id}
+            layout
             variants={staggerItem}
-            exit={{ opacity: 0, scale: 0.96 }}
+            exit={listRemoveExit}
             className={`${note.color} p-4 rounded-[2rem] min-h-[160px] flex flex-col justify-between relative group transform rotate-1 spring-press glass-card border border-white/30 ${longPressId === note.id ? 'scale-[1.02] ring-2 ring-red-400/40' : ''} transition-all`}
             onPointerDown={() => handlePointerDown(note.id)}
             onPointerUp={handlePointerUp}

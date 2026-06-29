@@ -14,7 +14,7 @@ import { SkeletonReveal } from '../components/SkeletonReveal';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
 import { feedback } from '../utils/feedback';
-import { springSmooth } from '../utils/motion';
+import { springSmooth, listRemoveExit } from '../utils/motion';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PremiumModal, type PremiumFeatureContext } from '../components/PremiumModal';
 import { compressImage, generateVideoThumbnail, isVideoTooLarge } from '../utils/media';
@@ -22,6 +22,7 @@ import { getDailyMomentCountdown, isDailyMomentExpired } from '../shared/mediaRe
 import { selectImageStoragePath, selectVideoStoragePath } from '../utils/mediaRefs';
 import { useSheetDismiss } from '../hooks/useSheetDismiss';
 import { useDraft } from '../hooks/useDraft';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 interface DailyMomentsProps {
     setView: (view: ViewState) => void;
@@ -204,7 +205,7 @@ const PhotoGridItem = React.memo(({
     photo: DailyPhoto;
     onOpen: (photo: DailyPhoto) => void;
 }) => (
-    <motion.div variants={PHOTO_GRID_ITEM_VARIANTS}>
+    <motion.div layout variants={PHOTO_GRID_ITEM_VARIANTS} exit={listRemoveExit}>
         <PhotoCard photo={photo} onOpen={onOpen} />
     </motion.div>
 ));
@@ -291,6 +292,10 @@ const PostViewer: React.FC<{
     // resizes the WebView, so this fixed full-screen portal is otherwise covered.
     const { keyboardOpen, keyboardHeight } = useNativeShell();
     const profile = StorageService.getCoupleProfile();
+    // Grow the viewer OUT OF the tapped photo grid cell instead of from screen
+    // centre — matches the route-open bloom. Falls back to centre under reduced
+    // motion / no fresh tap (handled inside the hook).
+    const { ref: viewerRef, origin: viewerOrigin } = useTapOrigin<HTMLDivElement>(true);
 
     // Load comments
     useEffect(() => {
@@ -373,13 +378,15 @@ const PostViewer: React.FC<{
 
     return ReactDOM.createPortal(
         <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            ref={viewerRef}
+            initial={{ opacity: 0, scale: 0.88 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.94 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
             className="fixed inset-0 z-[100] flex flex-col backdrop-blur-3xl animate-fade-in"
             style={{
                 background: 'color-mix(in srgb, var(--color-surface) 95%, transparent)',
+                transformOrigin: viewerOrigin,
                 // Shrink the frame above the keyboard so the comment input bar
                 // stays visible (overlay mode does not resize the WebView).
                 paddingBottom: keyboardOpen ? keyboardHeight : 0,
@@ -571,7 +578,9 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     // Keyboard lift for the caption/upload sheet (a fixed items-end portal the
     // IME would otherwise cover in overlay keyboard mode).
     const { keyboardOpen, keyboardHeight } = useNativeShell();
-    const [photos, setPhotos] = useState<DailyPhoto[]>([]);
+    // Seed first paint from the warm cache so moments render in the first frame
+    // instead of flashing empty; the effect below re-reads + subscribes.
+    const [photos, setPhotos] = useState<DailyPhoto[]>(() => StorageService.getDailyPhotos());
     const [isUploading, setIsUploading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [newImage, setNewImage] = useState<string | null>(null);
@@ -824,9 +833,11 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
                         animate="show"
                         variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
                     >
-                        {photos.map(p => (
-                            <PhotoGridItem key={p.id} photo={p} onOpen={openPhoto} />
-                        ))}
+                        <AnimatePresence mode="popLayout" initial={false}>
+                            {photos.map(p => (
+                                <PhotoGridItem key={p.id} photo={p} onOpen={openPhoto} />
+                            ))}
+                        </AnimatePresence>
                     </motion.div>
                 ) : (
                     <div className="flex flex-col items-center justify-center py-24">

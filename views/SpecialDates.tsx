@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Heart, Calendar } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
-import { motion, type Variants } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { feedback } from '../utils/feedback';
@@ -18,7 +18,9 @@ const staggerItem: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const } }
 };
 import { ConfirmModal } from '../components/ConfirmModal';
+import { listRemoveExit } from '../utils/motion';
 import { generateId } from '../utils/ids';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 interface SpecialDatesProps {
   setView: (view: ViewState) => void;
@@ -33,6 +35,9 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   // Dates hidden optimistically while their undo toast is open. The real
   // delete only happens in the toast's onExpire (deferred commit).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
+  // Grow the add-date panel OUT OF the header "+" button that opened it instead
+  // of popping from its own centre — matches the route/dialog open feel.
+  const { ref: addPanelRef, origin: addPanelOrigin } = useTapOrigin<HTMLDivElement>(showAdd);
 
   useEffect(() => {
     const load = () => setDates(StorageService.getSpecialDates());
@@ -132,7 +137,14 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
       />
 
       {showAdd && (
-        <div className="p-4 rounded-[2rem] shadow-sm mb-6 animate-pop-in glass-card">
+        <motion.div
+          ref={addPanelRef}
+          initial={{ scale: 0.88, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+          style={{ transformOrigin: addPanelOrigin }}
+          className="p-4 rounded-[2rem] shadow-sm mb-6 glass-card"
+        >
           <input
             type="text"
             placeholder="Title (e.g. Anniversary)"
@@ -155,7 +167,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
           >
             Save Date
           </button>
-        </div>
+        </motion.div>
       )}
 
       <motion.div className="space-y-4" variants={staggerContainer} initial="hidden" animate="show">
@@ -177,12 +189,15 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
                 </button>
              </div>
         )}
+        <AnimatePresence mode="popLayout" initial={false}>
         {visibleDates.map((item, index) => {
             const { count, label } = getDaysText(item.date);
             return (
               <motion.div
                 key={item.id}
+                layout
                 variants={staggerItem}
+                exit={listRemoveExit}
                 className="relative overflow-hidden rounded-3xl"
               >
                 {/* Delete zone behind card */}
@@ -219,6 +234,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
               </motion.div>
             );
         })}
+        </AnimatePresence>
       </motion.div>
 
       <ConfirmModal

@@ -22,6 +22,7 @@ import { GOLD, GOLD_PRESS_SPRING, GOLD_SOFT_SPRING, goldRise, goldStagger, useCa
 import { PremiumModal } from '../components/PremiumModal';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
+import { useTapOrigin } from '../hooks/useTapOrigin';
 
 const ACCENT = '#e8c97d';
 
@@ -170,6 +171,11 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
     const [artReady, setArtReady] = useState(false);
     const [viewer, setViewer] = useState<HeirloomMilestone | null>(null);
     const [exporting, setExporting] = useState(false);
+
+    // Grow the opened heirloom VIEWER out of the card/marquee that was tapped,
+    // instead of scaling from screen centre. (The sealed-heirloom ceremony with
+    // its wax-seal split staging is intentionally left scaling from centre.)
+    const { ref: viewerRef, origin: viewerOrigin } = useTapOrigin<HTMLDivElement>(!!viewer);
 
     const reduceMotion = useMemo(
         () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
@@ -440,10 +446,12 @@ export const HeirloomsView: React.FC<HeirloomsViewProps> = (_props) => {
                         onClick={() => { feedback.tap(); setViewer(null); }}
                     >
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.92, y: 18 }}
+                            ref={viewerRef}
+                            initial={{ opacity: 0, scale: 0.88, y: 18 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             transition={GOLD_SOFT_SPRING}
                             className="my-auto w-full max-w-[330px]"
+                            style={{ transformOrigin: viewerOrigin }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="lp-foil">

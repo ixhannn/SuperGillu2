@@ -6,6 +6,7 @@ import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { toast } from '../utils/toast';
+import { listRemoveExit } from '../utils/motion';
 
 interface UsProps { setView: (view: ViewState) => void; }
 
@@ -680,11 +681,13 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                         {datedMilestones.length > 0 && (
                             <div data-lenis-prevent className="lenis-inner -mx-5 px-5 overflow-x-auto pb-3" style={{ scrollbarWidth: 'none' }}>
                                 <div className="flex gap-3" style={{ width: 'max-content' }}>
+                                    <AnimatePresence mode="popLayout" initial={false}>
                                     {datedMilestones.map((ms, i) => {
                                         const isNewest = i === datedMilestones.length - 1;
                                         return (
-                                            <motion.div key={ms.id}
+                                            <motion.div key={ms.id} layout
                                                 initial={{ opacity: 0, y: 22, scale: 0.985 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} viewport={{ once: true, margin: '0px 0px -48px 0px' }}
+                                                exit={listRemoveExit}
                                                 transition={{ ...SOFT_SPRING, delay: i * 0.045 }}
                                                 className="flex-shrink-0">
                                                 <Bezel radius={22} pad={4} shadow={WARM.sm} coreBg={MS_GRADIENTS[i % MS_GRADIENTS.length]} style={{ width: '11rem' }}>
@@ -715,6 +718,7 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
                                             </motion.div>
                                         );
                                     })}
+                                    </AnimatePresence>
                                 </div>
                             </div>
                         )}

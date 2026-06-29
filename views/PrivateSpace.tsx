@@ -20,6 +20,8 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { PrivacyLock, PIN_LENGTH } from '../services/privacyLock';
 import { feedback } from '../utils/feedback';
+import { useTapOrigin } from '../hooks/useTapOrigin';
+import { listRemoveExit } from '../utils/motion';
 import { PrivateSpaceItem, PrivateSpaceItemKind, ViewState } from '../types';
 
 interface PrivateSpaceProps {
@@ -216,6 +218,9 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     const [error, setError] = useState('');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const deleteTimerRef = useRef<number | null>(null);
+    // Grow the media-preview detail modal OUT OF the tapped grid card instead of
+    // from screen centre — matches the route-open bloom feel.
+    const { ref: detailRef, origin: detailOrigin } = useTapOrigin<HTMLDivElement>(!!selected);
 
     useEffect(() => {
         const onStorage = (event: Event) => {
@@ -672,6 +677,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                     </div>
                 ) : (
                     <motion.div className="grid grid-cols-2 gap-3">
+                        <AnimatePresence mode="popLayout" initial={false}>
                         {filteredItems.map((item, index) => {
                             const isPhoto = item.kind === 'photo';
                             const isVideo = item.kind === 'video';
@@ -682,8 +688,10 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                             return (
                                 <motion.button
                                     key={item.id}
+                                    layout
                                     initial={{ opacity: 0, y: 14 }}
                                     animate={{ opacity: 1, y: 0 }}
+                                    exit={listRemoveExit}
                                     transition={{ type: 'spring', stiffness: 300, damping: 26, delay: Math.min(index * 0.025, 0.18) }}
                                     whileTap={{ scale: 0.965 }}
                                     onClick={() => setSelected(item)}
@@ -755,6 +763,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                                 </motion.button>
                             );
                         })}
+                        </AnimatePresence>
                     </motion.div>
                 )}
             </main>
@@ -905,11 +914,12 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
                         onClick={() => setSelected(null)}
                     >
                         <motion.div
-                            initial={{ y: 20, opacity: 0, scale: 0.98 }}
+                            ref={detailRef}
+                            initial={{ y: 20, opacity: 0, scale: 0.88 }}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             exit={{ y: 16, opacity: 0, scale: 0.985 }}
                             className="w-full max-w-md overflow-hidden rounded-[2rem]"
-                            style={{ background: NEU_BG, boxShadow: '0 24px 60px rgba(174,154,194,0.30)' }}
+                            style={{ background: NEU_BG, boxShadow: '0 24px 60px rgba(174,154,194,0.30)', transformOrigin: detailOrigin }}
                             onClick={(event) => event.stopPropagation()}
                         >
                             <div className="relative aspect-square max-h-[52vh]" style={{ background: '#ece6f0' }}>

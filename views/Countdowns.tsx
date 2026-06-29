@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, Clock, Sparkles, Cake, Heart, ChevronRight, Trash2 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { countdownDateParts, formatStoredDate } from '../shared/dateOnly.js';
 import { buildCountdownEvents, getCountdownEventStatus } from '../shared/countdowns.js';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { listRemoveExit } from '../utils/motion';
 
 interface CountdownsProps {
     setView: (view: ViewState) => void;
@@ -137,9 +138,12 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
 
                 {/* Event List */}
                 <motion.div className="space-y-4" initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}>
+                    <AnimatePresence mode="popLayout" initial={false}>
                     {restEvents.map((event) => (
                         <motion.div
                             key={event.id}
+                            layout
+                            exit={listRemoveExit}
                             variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}
                             className="glass-card p-5 rounded-[2rem] flex items-center gap-4 spring-press shadow-sm"
                         >
@@ -174,6 +178,7 @@ export const Countdowns: React.FC<CountdownsProps> = ({ setView }) => {
                             </div>
                         </motion.div>
                     ))}
+                    </AnimatePresence>
 
                     {allEvents.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-24 animate-fade-in">

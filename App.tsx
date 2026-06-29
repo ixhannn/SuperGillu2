@@ -53,7 +53,7 @@ import { CoachmarkProvider, useCoachmark } from './components/CoachmarkSystem';
 import { FeatureDiscovery } from './services/featureDiscovery';
 import { scheduleIdleTask } from './utils/scheduler';
 import { toast } from './utils/toast';
-import { getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
+import { ALL_VIEW_IDS, getViewComponent, isViewModuleLoaded, preloadViewModule, preloadViewModulesSequential } from './views/viewRegistry';
 import { bootstrapE2ELocalState, getE2EInitialView, isE2EAppMode } from './services/e2eHarness';
 import { ShareTargetService } from './services/shareTarget';
 import { PairingService } from './services/pairing';
@@ -159,6 +159,14 @@ const SECONDARY_NAV_PRELOADS: ViewState[] = [
   'open-when',
   'dinner-decider',
 ];
+
+// Everything the user can reach — just the whole registry, warmed last at the
+// lowest priority. Re-listing the views already warmed by the core/secondary
+// batches is a no-op (preload() caches its promise), and preloadViewModulesSequential
+// dedupes, yields to main between each, and drops HEAVY_PREFETCH_VIEWS on low-end
+// devices — so this stays off the critical path while guaranteeing every tile's
+// chunk is parsed before it's tapped (no cold-fetch pause, no blank-3D flash).
+const TERTIARY_NAV_PRELOADS: ViewState[] = ALL_VIEW_IDS;
 
 const T_KEEP_ALIVE_TAB = 240;
 
@@ -706,6 +714,9 @@ const App = () => {
 
     scheduleIdlePreload(CORE_NAV_PRELOADS, 1600, 700);
     scheduleIdlePreload(SECONDARY_NAV_PRELOADS, 3200, 3600);
+    // Warm the long tail last + at the lowest priority so every tile a user can
+    // reach is parsed before they get to it — no cold-fetch pause, no blank gap.
+    scheduleIdlePreload(TERTIARY_NAV_PRELOADS, 6000, 6500);
 
     return () => {
       cancelers.forEach((cancel) => cancel());
