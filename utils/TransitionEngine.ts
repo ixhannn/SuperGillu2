@@ -659,6 +659,11 @@ class TransitionEngineImpl {
 
   /** Records the tapped interactive element's geometry for clip-reveal opens. */
   private _captureTap = (e: PointerEvent): void => {
+    // Don't force a layout/style read (getBoundingClientRect + getComputedStyle
+    // below) while a route transition is animating — it stalls the main thread
+    // mid clone-fade. A tap during a transition simply falls back to a
+    // centre-origin morph on the next open, imperceptible against the slide.
+    if (typeof document !== 'undefined' && document.documentElement.dataset.transitioning === '1') return;
     const el = (e.target as HTMLElement | null)?.closest?.(
       'button, [role="button"], a[href], .spring-press, [data-press], .bento-card, .aurora-card, [data-coachmark]',
     ) as HTMLElement | null;

@@ -241,6 +241,18 @@ html[data-nav-depth="1"] .lior-ambient-world {
   overflow: hidden;
 }
 
+/* A cached tab is invisible (visibility:hidden) but its subtree's infinite CSS
+   animations keep ticking + compositing forever off-screen — a sustained GPU /
+   battery drain that compounds with every tab visited. Freeze them while the
+   tab is cached; they resume imperceptibly on return (continuous loops have no
+   tracked phase). Scoped to the cached subtree, so the recalc is bounded and
+   fires only on a tab switch, never per frame. Pixel-identical at rest. */
+.keep-alive-shell.is-cached *,
+.keep-alive-shell.is-cached *::before,
+.keep-alive-shell.is-cached *::after {
+  animation-play-state: paused !important;
+}
+
 .keep-alive-shell.is-active {
   position: relative;
   z-index: 1;
