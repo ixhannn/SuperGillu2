@@ -9,7 +9,7 @@
  *
  * No-op on web — the native plugin only exists in the Android build.
  */
-import { registerPlugin, Capacitor } from '@capacitor/core';
+import { registerPlugin, Capacitor, CapacitorHttp } from '@capacitor/core';
 import { StorageService, storageEventTarget } from './storage';
 import { daysTogetherFrom, parseStoredDateOnly } from '../shared/dateOnly.js';
 import { selectImageStoragePath } from '../utils/mediaRefs';
@@ -70,13 +70,19 @@ async function toDataUri(resolved: string | null): Promise<string | null> {
   if (resolved.startsWith('data:')) return resolved;
   if (resolved.startsWith('http')) {
     try {
-      const blob = await (await fetch(resolved)).blob();
-      return await new Promise<string | null>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
-      });
+      // Use the NATIVE HTTP stack, not the WebView fetch(). The partner's R2/worker
+      // URL is cross-origin and, in the unsigned dual-accept rollout, carries no CORS
+      // headers — so a programmatic fetch().blob() is blocked and always returned null
+      // (<img> works in-app only because element loads are CORS-exempt). CapacitorHttp
+      // goes through OkHttp, isn't subject to CORS, and hands back base64.
+      const resp = await CapacitorHttp.get({ url: resolved, responseType: 'blob' });
+      const status = typeof resp.status === 'number' ? resp.status : 0;
+      const data = typeof resp.data === 'string' ? resp.data : '';
+      if (status < 200 || status >= 300 || !data) return null;
+      if (data.startsWith('data:')) return data;
+      const headers = (resp.headers || {}) as Record<string, string>;
+      const contentType = headers['Content-Type'] || headers['content-type'] || 'image/jpeg';
+      return `data:${contentType};base64,${data}`;
     } catch {
       return null;
     }
@@ -138,7 +144,9 @@ let listenerBound = false;
 
 export const WidgetService = {
   async refresh(): Promise<void> {
-    if (!isNative() || refreshing) return;
+    // Never push before StorageService has hydrated — the bootstrap cache is empty,
+    // which would persist a bogus 0-days / no-photo snapshot to the widget.
+    if (!isNative() || refreshing || !StorageService.isInitialized) return;
     refreshing = true;
     try {
       const profile = StorageService.getCoupleProfile();
@@ -178,7 +186,21 @@ export const WidgetService = {
     } catch {
       // NativeShell may be unavailable in some shells; the storage listener still covers updates.
     }
-    void WidgetService.refresh();
+    // The first push must wait for StorageService to hydrate, or it writes a bogus
+    // 0-days / no-photo snapshot from the empty bootstrap cache. The 'init' storage
+    // event normally drives this, but init() and StorageService.init() are unsequenced
+    // at bootstrap, so the event can fire before this listener binds (no replay). Poll
+    // until storage is ready, then refresh once; the storage-update listener keeps it
+    // fresh after (couple_profile / daily_photos / memories syncs).
+    const ensureFirstRefresh = (attempt: number): void => {
+      if (StorageService.isInitialized) {
+        void WidgetService.refresh();
+        return;
+      }
+      if (attempt >= 20) return;
+      setTimeout(() => ensureFirstRefresh(attempt + 1), 500);
+    };
+    ensureFirstRefresh(0);
   },
 
   /** Wipe the widget (photo + counts) — called on sign-out / account deletion so an

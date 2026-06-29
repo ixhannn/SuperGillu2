@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.util.Base64;
+import android.util.Log;
 
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -40,6 +41,7 @@ public class LiorWidgetPlugin extends Plugin {
             String partnerName = call.getString("partnerName", "");
             String image = call.getString("image", null); // data URI, or null to keep the current one
             boolean clearImage = Boolean.TRUE.equals(call.getBoolean("clearImage", false));
+            Log.i("LiorWidget", "update: days=" + days + " imgLen=" + (image != null ? image.length() : 0) + " clearImage=" + clearImage);
 
             SharedPreferences.Editor editor = ctx
                 .getSharedPreferences(PartnerWidgetProvider.PREFS, Context.MODE_PRIVATE)

@@ -19,6 +19,8 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.os.Build;
+import android.os.Bundle;
+import android.util.Log;
 import android.widget.RemoteViews;
 
 import java.io.File;
@@ -29,12 +31,14 @@ import java.io.File;
  *
  * Everything is composed into ONE bitmap in Java (center-cropped photo → vignette →
  * top + bottom gradient scrims → typeset count with a soft sheen → rounded corners +
- * hairline frame) rather than stacked as RemoteViews. That is the only way to get a
- * smooth multi-stop dithered scrim, letter-spaced light-weight type with a drop
- * shadow, and anti-aliased rounding that renders identically on every launcher. Data
- * is pushed from the web layer through {@link LiorWidgetPlugin}; tapping opens the app.
+ * hairline frame) rather than stacked as RemoteViews, then handed to a single
+ * ImageView. The bitmap is sized to the actual widget cell and capped well under the
+ * RemoteViews bitmap budget; if an update ever overruns it, we fall back to the
+ * lightweight placeholder so the widget is never blank.
  */
 public class PartnerWidgetProvider extends AppWidgetProvider {
+
+    private static final String TAG = "LiorWidget";
 
     static final String PREFS = "lior_widget";
     static final String KEY_DAYS = "days";
@@ -42,14 +46,23 @@ public class PartnerWidgetProvider extends AppWidgetProvider {
     static final String KEY_HAS_IMAGE = "hasImage";
     static final String IMAGE_FILE = "widget_partner.png";
 
-    /** Composition resolution. 480² ARGB ≈ 0.9MB — sharp type, under the RemoteViews Binder budget. */
-    private static final int TILE_PX = 480;
+    // RemoteViews bitmaps must stay well under the ~1MB Binder transaction budget, or
+    // updateAppWidget() throws "exceeds maximum bitmap memory usage" and the widget
+    // goes blank. 360² ARGB ≈ 0.5MB is sharp on a 2x2 cell and comfortably safe.
+    private static final int MIN_TILE_PX = 240;
+    private static final int MAX_TILE_PX = 360;
 
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
         for (int id : ids) {
             renderWidget(context, manager, id);
         }
+    }
+
+    @Override
+    public void onAppWidgetOptionsChanged(Context context, AppWidgetManager manager, int id, Bundle newOptions) {
+        // Re-render at the new cell size when the user resizes the widget.
+        renderWidget(context, manager, id);
     }
 
     /** Re-render every placed instance — called from the JS bridge after data changes. */
@@ -70,12 +83,13 @@ public class PartnerWidgetProvider extends AppWidgetProvider {
 
         int days = prefs.getInt(KEY_DAYS, 0);
         String partnerName = prefs.getString(KEY_PARTNER, "");
+        int sizePx = targetSize(context, manager, id);
 
         Bitmap shown = null;
         Bitmap photo = null;
         try {
             photo = prefs.getBoolean(KEY_HAS_IMAGE, false) ? decodeImage(context) : null;
-            Bitmap comp = buildComposition(context, photo, days);
+            Bitmap comp = buildComposition(context, photo, days, sizePx);
             Bitmap tile = roundAndFrame(comp);
             if (tile != null) {
                 if (comp != null) comp.recycle();
@@ -84,9 +98,10 @@ public class PartnerWidgetProvider extends AppWidgetProvider {
                 shown = comp; // rounding fell through — keep the square composition
             }
         } catch (Throwable t) {
-            // A render must never crash the home screen — fall back to the placeholder.
+            Log.w(TAG, "composition failed; using placeholder", t);
             shown = null;
         } finally {
+            // photo was consumed synchronously by buildComposition — safe to recycle.
             if (photo != null && !photo.isRecycled()) photo.recycle();
         }
 
@@ -113,18 +128,53 @@ public class PartnerWidgetProvider extends AppWidgetProvider {
             views.setOnClickPendingIntent(R.id.widget_root, pending);
         }
 
-        manager.updateAppWidget(id, views);
+        try {
+            manager.updateAppWidget(id, views);
+        } catch (Throwable t) {
+            // The composed bitmap overran the RemoteViews transaction budget — fall back
+            // to the lightweight placeholder drawable so the widget is never blank.
+            Log.w(TAG, "updateAppWidget failed; retrying with placeholder", t);
+            try {
+                RemoteViews fallback = new RemoteViews(context.getPackageName(), R.layout.partner_widget);
+                fallback.setImageViewResource(R.id.widget_image, R.drawable.widget_placeholder);
+                manager.updateAppWidget(id, fallback);
+            } catch (Throwable ignored) {
+                // Nothing more we can safely do.
+            }
+        }
 
-        // Safe now: updateAppWidget() marshalled the bitmap into the RemoteViews.
-        if (shown != null) shown.recycle();
+        // IMPORTANT: do NOT recycle `shown`. RemoteViews can apply the bitmap to the
+        // launcher process asynchronously; recycling it here races and blanks the widget.
+    }
+
+    /** Pixel size for the square composition — the widget's larger cell edge, clamped to a safe budget. */
+    private static int targetSize(Context ctx, AppWidgetManager manager, int id) {
+        int dp = 160;
+        try {
+            Bundle opts = manager.getAppWidgetOptions(id);
+            if (opts != null) {
+                int big = Math.max(
+                    Math.max(opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0),
+                             opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)),
+                    Math.max(opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0),
+                             opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)));
+                if (big > 0) dp = big;
+            }
+        } catch (Exception ignored) {
+            // Fall back to the default dp.
+        }
+        float density = ctx.getResources().getDisplayMetrics().density;
+        int px = Math.round(dp * density);
+        if (px < MIN_TILE_PX) px = MIN_TILE_PX;
+        if (px > MAX_TILE_PX) px = MAX_TILE_PX;
+        return px;
     }
 
     /**
      * Compose the full tile: photo (or warm placeholder) → vignette → top + bottom
      * gradient scrims → "N" + "DAYS TOGETHER" typeset bottom-left. Square, un-rounded.
      */
-    private static Bitmap buildComposition(Context ctx, Bitmap photo, int days) {
-        int size = TILE_PX;
+    private static Bitmap buildComposition(Context ctx, Bitmap photo, int days, int size) {
         Bitmap comp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(comp);
 
