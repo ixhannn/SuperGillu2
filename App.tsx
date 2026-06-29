@@ -328,6 +328,14 @@ const App = () => {
       const destination = historyStack.current.pop() ?? 'home';
       scrollPositions.current[prev] = getCurrentScroll();
       currentViewRef.current        = destination;
+      // Restore the destination's saved scroll on swipe-back too. The button /
+      // hardware-back path does this via runNavigation; the gesture path commits
+      // state directly, so without this the shared scroller stayed at the
+      // outgoing view's offset and swiping back landed at the wrong position.
+      pendingScrollRestore.current = {
+        view: destination,
+        y: scrollPositions.current[destination] ?? 0,
+      };
       flushSync(() => {
         markTabMounted(destination);
         setCurrentView(destination);
