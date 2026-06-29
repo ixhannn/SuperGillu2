@@ -1286,7 +1286,9 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
 // Memoized below as `MemoryTimeline` — setView is referentially stable, so
 // tab switches and other App-level renders bail out of this whole tree.
 const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
-    const [memories, setMemories] = useState<Memory[]>([]);
+    // Seed first paint from the warm cache so the timeline renders its memories
+    // in the first frame instead of flashing empty; the effect re-reads + subscribes.
+    const [memories, setMemories] = useState<Memory[]>(() => StorageService.getMemories());
     const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
     const [surpriseMemory, setSurpriseMemory] = useState<Memory | null>(null);
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);

@@ -285,10 +285,11 @@ const useCountUp = (target: number, inView: boolean, duration = 1800) => {
 // Memoized below as `Home` — setView is referentially stable, so tab
 // switches and other App-level renders bail out of this whole tree.
 const HomeView: React.FC<HomeProps> = ({ setView }) => {
-    // Neutral placeholder until the real profile loads in the effect below.
-    // (Was hardcoded to 'Ishan'/'Tulika', which could flash a phantom couple
-    // for a brand-new user before their stored profile hydrated.)
-    const [profile, setProfile] = useState<CoupleProfile>({ myName: '', partnerName: '', anniversaryDate: new Date().toISOString() });
+    // Seed first paint from the warm in-memory cache so names + anniversary are
+    // present in the FIRST rendered frame instead of flashing empty. The getter
+    // returns blank defaults for a brand-new user (no phantom couple), and the
+    // effect below still re-reads + subscribes for live updates.
+    const [profile, setProfile] = useState<CoupleProfile>(() => StorageService.getCoupleProfile());
     // Authoritative "do I actually have a partner?" signal. Drives solo-mode UI
     // so an unlinked user never sees a phantom partner or a heartbeat-to-nobody.
     const { isLinked } = useRelationship();

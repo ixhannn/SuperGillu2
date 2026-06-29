@@ -558,7 +558,9 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     // Keyboard lift for the caption/upload sheet (a fixed items-end portal the
     // IME would otherwise cover in overlay keyboard mode).
     const { keyboardOpen, keyboardHeight } = useNativeShell();
-    const [photos, setPhotos] = useState<DailyPhoto[]>([]);
+    // Seed first paint from the warm cache so moments render in the first frame
+    // instead of flashing empty; the effect below re-reads + subscribes.
+    const [photos, setPhotos] = useState<DailyPhoto[]>(() => StorageService.getDailyPhotos());
     const [isUploading, setIsUploading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [newImage, setNewImage] = useState<string | null>(null);
