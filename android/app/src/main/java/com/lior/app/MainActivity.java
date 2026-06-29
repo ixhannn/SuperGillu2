@@ -17,6 +17,7 @@ public class MainActivity extends BridgeActivity {
         // Must run before super.onCreate so the bridge knows the plugins.
         registerPlugin(ShareTargetPlugin.class);
         registerPlugin(LiorHapticsPlugin.class);
+        registerPlugin(LiorWidgetPlugin.class);
         super.onCreate(savedInstanceState);
 
         // System share sheet → Lior (cold start delivery).

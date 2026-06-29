@@ -767,7 +767,9 @@ const CreateSheet: React.FC<CreateSheetProps> = ({
 /* ── Main view ──────────────────────────────────────────────────────── */
 
 export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
-    const [surprises, setSurprises] = useState<Surprise[]>([]);
+    // Seed first paint from the warm cache — this overlay remounts on every open,
+    // so without it the user sees an empty list every time before the effect runs.
+    const [surprises, setSurprises] = useState<Surprise[]>(() => StorageService.getSurprises());
     const [showForm, setShowForm] = useState(false);
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [activeSurprise, setActiveSurprise] = useState<Surprise | null>(null);

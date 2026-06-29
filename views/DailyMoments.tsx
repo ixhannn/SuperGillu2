@@ -315,11 +315,12 @@ const PostViewer: React.FC<{
         commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [comments.length]);
 
-    const handleSubmitComment = async () => {
+    const handleSubmitComment = () => {
         const text = commentText.trim();
         if (!text || isSubmitting) return;
         setIsSubmitting(true);
 
+        const replySnapshot = replyTo;
         const newComment: Comment = {
             id: generateId(),
             postId: photo.id,
@@ -327,13 +328,25 @@ const PostViewer: React.FC<{
             senderName: profile.myName,
             text,
             createdAt: new Date().toISOString(),
-            parentId: replyTo?.id
+            parentId: replySnapshot?.id
         };
 
-        await StorageService.saveComment(newComment);
+        // Optimistic: instant tactile ack, the comment appears this frame, and the
+        // composer clears immediately. Persistence (IndexedDB + cloud sync) runs in
+        // the background; the storage-update reload reconciles by id (no duplicate).
+        // Roll back + restore the draft only if the write actually fails.
+        feedback.tap();
+        setComments(prev => [...prev, newComment]);
         setCommentText('');
         setReplyTo(null);
         setIsSubmitting(false);
+
+        void StorageService.saveComment(newComment).catch(() => {
+            setComments(prev => prev.filter(c => c.id !== newComment.id));
+            setCommentText(text);
+            setReplyTo(replySnapshot);
+            toast.show('Could not post your comment — try again', 'error');
+        });
     };
 
     const handleReply = useCallback((comment: Comment) => {
@@ -568,7 +581,9 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     // Keyboard lift for the caption/upload sheet (a fixed items-end portal the
     // IME would otherwise cover in overlay keyboard mode).
     const { keyboardOpen, keyboardHeight } = useNativeShell();
-    const [photos, setPhotos] = useState<DailyPhoto[]>([]);
+    // Seed first paint from the warm cache so moments render in the first frame
+    // instead of flashing empty; the effect below re-reads + subscribes.
+    const [photos, setPhotos] = useState<DailyPhoto[]>(() => StorageService.getDailyPhotos());
     const [isUploading, setIsUploading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [newImage, setNewImage] = useState<string | null>(null);
@@ -741,6 +756,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
     };
 
     const handleSave = async () => {
+        if (isSaving) return;
         if (!newImage && !newVideo) return;
 
         if (StorageService.hasReachedDailyLimit()) {
@@ -750,6 +766,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
         }
 
         setIsSaving(true);
+        feedback.tap();
         const now = new Date();
         const photo: DailyPhoto = {
             id: generateId(),
@@ -800,6 +817,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
                     <div className="flex gap-3">
                         <motion.button
                             whileTap={{ scale: 0.92 }}
+                            onPointerDown={() => feedback.tapSilent()}
                             onClick={() => fileInputRef.current?.click()}
                             aria-label="Share a photo moment"
                             className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center bg-lior-50 text-lior-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-lior-500 shadow-sm border border-lior-100/50"
@@ -808,6 +826,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
                         </motion.button>
                         <motion.button
                             whileTap={{ scale: 0.92 }}
+                            onPointerDown={() => feedback.tapSilent()}
                             onClick={() => videoInputRef.current?.click()}
                             aria-label="Share a video moment"
                             className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-full cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 shadow-sm border border-blue-100/50"

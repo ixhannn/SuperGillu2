@@ -34,6 +34,9 @@ const VIEW_SURFACES: Partial<Record<ViewState, string>> = {
   // pink app background showed through the content column's bottom padding,
   // so the page looked like it ended abruptly mid-screen.
   'aura-signal': '#050508',
+  // Premium Worlds is an immersive cosmic screen — match its deep base so the
+  // pink app background never bleeds behind the bottom nav / safe-area gutter.
+  premium: '#0a0712',
 };
 
 // Views that hide the bottom tab bar. (Pulse keeps the nav — its dock orb is

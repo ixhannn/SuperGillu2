@@ -181,12 +181,9 @@ const normalizeBackupPayload = async (value: Record<string, unknown>) => {
 // Memoized below as `Profile` — setView is referentially stable, so tab
 // switches and other App-level renders bail out of this whole tree.
 const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
-    const [profile, setProfile] = useState<CoupleProfile>({
-        myName: '',
-        partnerName: '',
-        anniversaryDate: new Date().toISOString(),
-        theme: 'rose'
-    });
+    // Seed first paint from the warm cache so the profile fields are populated in
+    // the first frame instead of flashing empty; the effect below re-reads.
+    const [profile, setProfile] = useState<CoupleProfile>(() => StorageService.getCoupleProfile());
     const [isSaving, setIsSaving] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
     // Account deletion (Apple 5.1.1(v) / GDPR). Two-step: a type-to-confirm

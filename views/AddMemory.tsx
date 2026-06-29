@@ -420,7 +420,8 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
     }
 
     setIsSaving(true);
-    
+    feedback.tap();
+
     const memId = generateId();
 
     let audioMeta: { audioId: string; audioBytes: number; audioMimeType: string; audioStoragePath: string | null; audioDuration: number } | undefined;

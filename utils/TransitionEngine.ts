@@ -32,7 +32,27 @@ const E_EXIT     = 'cubic-bezier(0.4, 0, 0.2, 1)';
 // spring instead of a tween. It stays purely on transform + opacity, so it is
 // compositor-only; and being a sampled linear() ramp (not an overshoot bezier),
 // it satisfies the refined-curve motion guard.
-const E_SPRING   = 'linear(0,0.018,0.072,0.158,0.273,0.412,0.557,0.692,0.802,0.886,0.945,0.984,1.011,1.028,1.037,1.036,1.029,1.019,1.01,1.004,1)';
+const E_SPRING_LINEAR = 'linear(0,0.018,0.072,0.158,0.273,0.412,0.557,0.692,0.802,0.886,0.945,0.984,1.011,1.028,1.037,1.036,1.029,1.019,1.01,1.004,1)';
+
+// CSS linear() easing only shipped in Chromium 126 (mid-2024). Navigation runs in
+// Android System WebView, which can lag well behind on un-updated devices; there,
+// an unsupported linear() value is silently ignored and the transition falls back
+// to the UA default 'ease' — the spring's settle is lost and route open/close
+// reads flat. Feature-detect once at module load (testing the exact multi-stop
+// value, so a partial impl that rejects it also degrades) and fall back to the
+// app's premium silk decelerate (E_SILK, already used for tab/modal) rather than
+// bare 'ease'. Modern WebViews — the vast majority — keep the full spring.
+const supportsLinearEasing = (): boolean => {
+  try {
+    return typeof CSS !== 'undefined'
+      && typeof CSS.supports === 'function'
+      && CSS.supports('transition-timing-function', E_SPRING_LINEAR);
+  } catch {
+    return false;
+  }
+};
+
+const E_SPRING = supportsLinearEasing() ? E_SPRING_LINEAR : E_SILK;
 
 // Close collapse — a gentle accelerate that lets the leaving page fall away
 // cleanly while the screen beneath settles in on the spring. No overshoot on the
@@ -395,6 +415,54 @@ class TransitionEngineImpl {
     });
   }
 
+  // ── Paint-ready gate ───────────────────────────────────────────────────────
+
+  /**
+   * Resolve once the freshly-committed destination has actually PAINTED real
+   * content — not merely the two frames the browser needs to paint the
+   * pre-positioned (scale + opacity:0) initial state.
+   *
+   * Why this exists: _run() used to start the outgoing clone's opacity fade-out
+   * after a bare double-rAF (~33ms). On a lazy/async/cache-cold page the incoming
+   * container was still empty at that point, and since every Lior page is a
+   * transparent surface over ONE shared ambient world, the clone disappearing
+   * over an empty page let the raw background bleed through for the whole
+   * animation — and the bloom "morphed" over nothing. We instead keep the opaque
+   * clone in place until the destination's active content layer has laid out,
+   * then cross-fade over real pixels.
+   *
+   * Hard frame cap so a genuinely slow/stuck page can NEVER wedge the navigation
+   * lock — we always proceed by MAX_PAINT_FRAMES regardless.
+   */
+  private _whenPainted(c: HTMLElement, run: () => void): void {
+    const MIN_FRAMES = 2;        // preserve the original paint-the-initial-state gap
+    const MAX_PAINT_FRAMES = 8;  // ~130ms ceiling — then reveal no matter what
+
+    // The committed destination is either the page overlay (non-tab views mount
+    // as a distinct __overlay__ layer) or the now-active keep-alive tab shell.
+    const contentLayer = (): HTMLElement | null =>
+      (c.querySelector('[data-keep-alive-tab="__overlay__"]') as HTMLElement | null)
+      ?? (c.querySelector('.keep-alive-shell.is-active') as HTMLElement | null);
+
+    const hasPaintedContent = (): boolean => {
+      const el = contentLayer();
+      // Real content has laid out (a non-trivial box with at least one child) vs.
+      // an empty shell that would reveal the bare background beneath the fade.
+      return !!el && el.childElementCount > 0 && el.getBoundingClientRect().height > 4;
+    };
+
+    let frame = 0;
+    const tick = (): void => {
+      frame += 1;
+      if (frame >= MIN_FRAMES && (hasPaintedContent() || frame >= MAX_PAINT_FRAMES)) {
+        run();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   // ── Core programmatic transition ──────────────────────────────────────────
 
   private _run(
@@ -462,33 +530,37 @@ class TransitionEngineImpl {
     // ③ Commit React synchronously
     commit();
 
-    // ④ Double-rAF: browser needs 2 frames to paint new content at initial state
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        // Animate clone out
-        const t = `${cfg.dur}ms`;
-        clone.style.transition = `transform ${t} ${cfg.outEase}, opacity ${t} ${cfg.outEase}`;
-        clone.style.transform  = cfg.outTo[0];
-        clone.style.opacity    = cfg.outTo[1];
+    // ④ Hold the opaque outgoing clone until the freshly-committed destination
+    //    has actually PAINTED real content (not just the 2 frames the browser
+    //    needs to paint the pre-positioned scale+opacity:0 state), then start the
+    //    cross-fade over real pixels. Without this gate the clone's opacity
+    //    fade-out began after a bare double-rAF while the incoming lazy/async page
+    //    was still empty, so the shared ambient background bled through for the
+    //    whole animation and the bloom played over nothing.
+    this._whenPainted(c, () => {
+      // Animate clone out
+      const t = `${cfg.dur}ms`;
+      clone.style.transition = `transform ${t} ${cfg.outEase}, opacity ${t} ${cfg.outEase}`;
+      clone.style.transform  = cfg.outTo[0];
+      clone.style.opacity    = cfg.outTo[1];
 
-        // Animate container to identity
-        c.style.transition = `transform ${t} ${cfg.inEase}, opacity ${t} ${cfg.inEase}`;
-        c.style.transform  = 'translateZ(0) scale(1)';
-        c.style.opacity    = '1';
+      // Animate container to identity
+      c.style.transition = `transform ${t} ${cfg.inEase}, opacity ${t} ${cfg.inEase}`;
+      c.style.transform  = 'translateZ(0) scale(1)';
+      c.style.opacity    = '1';
 
-        const cleanup = () => {
-          clone.remove();
-          c.style.transition = '';
-          c.style.willChange = '';
-          c.style.transformOrigin = '';
-          if (c.style.transform === 'translateZ(0) scale(1)') c.style.transform = '';
-          if (c.style.opacity   === '1')                       c.style.opacity   = '';
-          this._busy = false;
-          done?.();
-        };
-        const tid = window.setTimeout(cleanup, cfg.dur + 50);
-        clone.addEventListener('transitionend', () => { clearTimeout(tid); cleanup(); }, { once: true });
-      });
+      const cleanup = () => {
+        clone.remove();
+        c.style.transition = '';
+        c.style.willChange = '';
+        c.style.transformOrigin = '';
+        if (c.style.transform === 'translateZ(0) scale(1)') c.style.transform = '';
+        if (c.style.opacity   === '1')                       c.style.opacity   = '';
+        this._busy = false;
+        done?.();
+      };
+      const tid = window.setTimeout(cleanup, cfg.dur + 50);
+      clone.addEventListener('transitionend', () => { clearTimeout(tid); cleanup(); }, { once: true });
     });
   }
 

@@ -33,6 +33,13 @@ class SyncServiceClass {
     private activeSessionId: string | null = null;
     private reconcileInFlight: Promise<void> | null = null;
     private cancelInitialReconcile: (() => void) | null = null;
+    // Collapses concurrent daily-reveal notification checks. On reconnect the
+    // realtime daily_answers handler and reconcileDailyAnswers can both fire
+    // onDailyAnswerChange for the same row within milliseconds; without this both
+    // run the lazy-import + getTodayPair cloud read before the per-day de-dupe
+    // (getDailyRevealNotified) short-circuits, and could even race past it and
+    // double-fire the toast/notification.
+    private dailyNotifyInFlight = false;
 
     // ── Connection health / auto-reconnect ──────────────────────────────────
     // The realtime websocket dies silently when a mobile OS backgrounds the app
@@ -905,6 +912,12 @@ class SyncServiceClass {
     //     silent.
     // Best-effort and fully guarded — never throws, no-ops pre-migration.
     private async maybeNotifyDailyReveal() {
+        // Coalesce concurrent invocations (realtime + reconcile on reconnect): the
+        // first call owns the check; later overlapping calls no-op rather than
+        // re-running the lazy imports + cloud read or racing past the de-dupe. A
+        // genuinely later event after this resolves still runs normally.
+        if (this.dailyNotifyInFlight) return;
+        this.dailyNotifyInFlight = true;
         try {
             const profile = StorageService.getCoupleProfile();
             if (!profile?.myName || !profile?.partnerName) return;
@@ -941,6 +954,8 @@ class SyncServiceClass {
             }
         } catch {
             /* best-effort — never break sync over a notification */
+        } finally {
+            this.dailyNotifyInFlight = false;
         }
     }
 

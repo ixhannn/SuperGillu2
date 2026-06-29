@@ -1217,6 +1217,16 @@ const scrubPairFieldsFromStorageKey = (rawKey: string): void => {
     } catch { /* ignore */ }
 };
 
+// Stable reference for the empty-state dinner menu. Returning a fresh array
+// literal on every getDinnerOptions() call allocated a new reference each time,
+// so any cross-table storage-update made DinnerDecider's [options] effect see a
+// "changed" menu and wipe the spin winner (render-stability C2.1). Frozen so a
+// caller can never mutate the shared default.
+const DEFAULT_DINNER_OPTIONS: DinnerOption[] = Object.freeze([
+    Object.freeze({ id: '1', text: 'Pizza 🍕' }),
+    Object.freeze({ id: '2', text: 'Sushi 🍣' }),
+]) as DinnerOption[];
+
 export const StorageService = {
     isInitialized: false,
     isPersisted: false,
@@ -2065,7 +2075,7 @@ export const StorageService = {
         notifyUpdate({ source: 'user', action: 'delete', table: 'envelopes', id });
     },
 
-    getDinnerOptions: () => DATA_CACHE.dinnerOptions.length ? DATA_CACHE.dinnerOptions : [{ id: '1', text: 'Pizza 🍕' }, { id: '2', text: 'Sushi 🍣' }],
+    getDinnerOptions: () => DATA_CACHE.dinnerOptions.length ? DATA_CACHE.dinnerOptions : DEFAULT_DINNER_OPTIONS,
     saveDinnerOption: (o: DinnerOption) => StorageService._saveInternal('dinnerOptions', CACHE_KEYS.DINNER_OPTIONS, o, undefined, 'dinner_options'),
     deleteDinnerOption: async (id: string) => {
         DATA_CACHE.dinnerOptions = DATA_CACHE.dinnerOptions.filter(o => o.id !== id);
@@ -2556,6 +2566,10 @@ export const StorageService = {
         const activeUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID) || SupabaseService.getCachedUserId();
         backupCurrentProfileForAccount(activeUserId);
         backupCurrentContentForAccount(activeUserId);
+        // Wipe the native home-screen widget so an ex-partner's photo never lingers
+        // after sign-out. Dynamic import avoids a static cycle (widget.ts imports this
+        // module); the subsequent async signOut() gives it time to dispatch before reload.
+        void import('./widget').then((m) => m.WidgetService.clear()).catch(() => { /* best-effort */ });
     },
 
     /**
@@ -2569,6 +2583,14 @@ export const StorageService = {
      * the user on a deleted account.
      */
     purgeAllLocalData: async (): Promise<void> => {
+        // Clear the native home-screen widget BEFORE wiping storage so a deleted
+        // account leaves no ex-partner photo on the device. Awaited so it completes
+        // before the caller hard-reloads. Dynamic import avoids a static cycle.
+        try {
+            await import('./widget').then((m) => m.WidgetService.clear());
+        } catch {
+            // Best-effort — never block account deletion.
+        }
         try {
             localStorage.clear();
         } catch {

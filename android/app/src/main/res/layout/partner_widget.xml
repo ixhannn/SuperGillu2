@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Partner widget ("Editorial"). The whole tile — photo, gradient scrim, day count,
+     rounded corners — is composed into one bitmap in PartnerWidgetProvider and set on
+     this ImageView, so the premium look renders identically on every launcher. The
+     placeholder src only shows in the picker preview, before the first render. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/widget_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:src="@drawable/widget_placeholder"
+        android:contentDescription="Days together with your partner" />
+</FrameLayout>

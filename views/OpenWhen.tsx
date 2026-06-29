@@ -182,7 +182,9 @@ const EnvelopeCard: React.FC<{
 
 export const OpenWhen: React.FC<OpenWhenProps> = ({ setView }) => {
   const { keyboardOpen, keyboardHeight } = useNativeShell();
-  const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
+  // Seed first paint from the warm cache — this overlay remounts on every open,
+  // so without it the user sees an empty mailbox every time before the effect runs.
+  const [envelopes, setEnvelopes] = useState<Envelope[]>(() => StorageService.getEnvelopes());
   const [isCreating, setIsCreating] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);

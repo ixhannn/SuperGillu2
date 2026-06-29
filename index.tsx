@@ -61,6 +61,12 @@ if (typeof document !== 'undefined') {
   // below keeps this from flashing mid-scroll.
   const PRESSABLE = '.spring-press, [data-press], button, [role="button"], .cursor-pointer';
   document.addEventListener('pointerdown', (e) => {
+    // Skip press bookkeeping while a route transition is animating: the
+    // getBoundingClientRect below forces a synchronous layout, and a layout
+    // flush landing inside the clone-fade is a main-thread stall right when the
+    // frame budget is tightest. Press feedback during a ~360ms transition is
+    // imperceptible, and taps are queued/replayed by the navigator anyway.
+    if (document.documentElement.dataset.transitioning === '1') return;
     const target = e.target as HTMLElement;
     const interactive = target.closest(PRESSABLE) as HTMLElement | null;
     if (interactive && !interactive.closest('[data-no-press]')) {
@@ -135,6 +141,10 @@ if (typeof document !== 'undefined') {
   // Fail-safe: never let entrance-animated content stay stranded invisible if
   // its reveal animation is interrupted (background/resume, throttling, etc.).
   startRevealSafety();
+
+  // Feed the native partner home-screen widget from the bootstrap chunk (keeps
+  // the native-only service out of the budgeted App bundle). No-op on web.
+  void import('./services/widget').then((m) => m.WidgetService.init());
 
   // iOS Safari only applies :active styles when a touchstart listener exists.
   // This used to be an inline ontouchstart="" on <body>, which the strict

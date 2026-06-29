@@ -12,7 +12,7 @@ export class AmbientServiceClass {
   private musicTrack: HTMLAudioElement | null = null;
   private trackSource: MediaElementAudioSourceNode | null = null;
   private isFading = false;
-  private fadeTimer: ReturnType<typeof setInterval> | null = null;
+  private fadeInterval: ReturnType<typeof setInterval> | null = null;
   public isPlaying = false;
 
   // ── Web Audio graph ───────────────────────────────────────────
@@ -40,8 +40,10 @@ export class AmbientServiceClass {
 
   private fade(target: number, duration: number) {
     if (!this.musicTrack) return;
-    // Cancel any in-progress fade so only one fade owns the volume at a time
-    if (this.fadeTimer) { clearInterval(this.fadeTimer); this.fadeTimer = null; }
+    // Cancel any in-progress fade — clear the prior interval, not just the flag.
+    // Without this, an overlapping fade (e.g. solo → session) left the previous
+    // interval running, so two timers fought over musicTrack.volume each tick.
+    if (this.fadeInterval) clearInterval(this.fadeInterval);
     this.isFading = true;
 
     const startVol = this.musicTrack.volume;
@@ -50,10 +52,18 @@ export class AmbientServiceClass {
     const volStep = (target - startVol) / steps;
     let step = 0;
 
-    this.fadeTimer = setInterval(() => {
-      if (!this.musicTrack) { clearInterval(this.fadeTimer!); this.fadeTimer = null; this.isFading = false; return; }
+    this.fadeInterval = setInterval(() => {
+      if (!this.musicTrack) {
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        this.fadeInterval = null;
+        return;
+      }
       this.musicTrack.volume = Math.max(0, Math.min(1, this.musicTrack.volume + volStep));
-      if (++step >= steps) { clearInterval(this.fadeTimer!); this.fadeTimer = null; this.isFading = false; }
+      if (++step >= steps) {
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        this.fadeInterval = null;
+        this.isFading = false;
+      }
     }, stepTime);
   }
 
@@ -155,8 +165,6 @@ export class AmbientServiceClass {
     if (!this.isPlaying) return;
     this.fade(0, 900);
     setTimeout(() => {
-      if (this.fadeTimer) { clearInterval(this.fadeTimer); this.fadeTimer = null; }
-      this.isFading = false;
       this.musicTrack?.pause();
       this.musicTrack = null;
       if (this.trackSource) {
