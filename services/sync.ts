@@ -1017,11 +1017,21 @@ class SyncServiceClass {
         // realtime channel is down — it then reaches the partner via DB sync.
         // (Previously this sat after the connectivity gate and was silently
         // skipped while offline, so the feeling was lost despite a "sent" UI.)
+        //
+        // Thread ONE id end-to-end: the SAME id is stamped on the persisted inbox
+        // entry AND the realtime broadcast, so the receiver can tell the two
+        // delivery paths are the same logical aura (no double-display) and the
+        // realtime pop can purge its persisted twin on dismiss. Mint it BEFORE the
+        // connectivity gate so an offline send still persists with a stable id.
+        let outPayload = payload;
         if (type === 'AURA_SIGNAL') {
-            StorageService.addMissedAura(payload);
+            const id = StorageService.addMissedAura(payload);
+            // Immutable: never mutate the caller's object. `from` lets the receiver
+            // ignore its own echo if broadcast self-delivery is ever enabled.
+            outPayload = { ...payload, id, from: StorageService.getMyUserId() };
         }
         if (!this.isConnected || !this.channel) return false;
-        const msg = { signalType: type, payload, timestamp: new Date().toISOString() };
+        const msg = { signalType: type, payload: outPayload, timestamp: new Date().toISOString() };
         this.channel.send({
             type: 'broadcast',
             event: 'signal',

@@ -845,7 +845,7 @@ export interface AmbientTrack {
 
 export interface NotificationSchedule {
   id: string;
-  kind: 'daily-clip' | 'film-ready' | 'recap-sunday' | 'cycle-3-days' | 'daily-ritual' | 'daily-drop';
+  kind: 'daily-clip' | 'film-ready' | 'recap-sunday' | 'cycle-3-days' | 'daily-ritual' | 'daily-drop' | 'aura';
   fireAt: string; // ISO
   title: string;
   body: string;
