@@ -138,9 +138,19 @@ html[data-transitioning="1"] *::after {
    thin see-through edge — imperceptible at animation speed; it returns the instant
    the flag clears. (The universal animation-pause rule above already establishes
    that a `html[data-transitioning] *` selector is acceptable here.) */
-html[data-transitioning="1"] *,
-html[data-transitioning="1"] *::before,
-html[data-transitioning="1"] *::after {
+/* SCOPED with :not([data-nav-depth="1"]). This blur-suppression only needs to
+   run for TAB/MODAL transitions, where the incoming layer's opacity ramps 0→1
+   and live glass under that fractional-opacity group BOILS on WebView. But
+   PAGE OPENS (push/pop/expand) are the directions that set data-nav-depth, and
+   _run holds the incoming page at opacity:1 for them (only the opaque clone
+   fades — see dirConfig inFrom opacity '1'). At opacity:1 the glass can't boil,
+   so suppressing it there does nothing but make every glass surface — most
+   visibly the body-portaled .vh header — snap flat at nav-start then re-rasterize
+   its full blur buffer at nav-end = "the header and the page flash when you open
+   a page". Excluding nav-depth opens keeps the frost steady through the open. */
+html[data-transitioning="1"]:not([data-nav-depth="1"]) *,
+html[data-transitioning="1"]:not([data-nav-depth="1"]) *::before,
+html[data-transitioning="1"]:not([data-nav-depth="1"]) *::after {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
