@@ -17,6 +17,7 @@ import { NotificationPrefs, NotificationSchedule } from '../types';
 import { SupabaseService } from './supabase';
 import { DiagnosticsService } from './diagnostics';
 import { toast } from '../utils/toast';
+import { notificationCopyFor } from './notificationCopy';
 
 type PluginListenerHandle = { remove: () => Promise<void> };
 
@@ -48,6 +49,15 @@ type LocalNotifications = {
 // which can land silently in the shade and read as "notifications don't work").
 const ANDROID_CHANNEL_ID = 'lior-reminders';
 let channelEnsured = false;
+
+// Branding for every native notification: the Lior heart as the app icon, the
+// way every app does it. Android renders this as a flat alpha silhouette it
+// tints brand-pink (ICON_COLOR) — it cannot be the full-colour logo, so it's a
+// clean heart glyph (exactly like WhatsApp's white phone, Instagram's camera).
+// We deliberately set NO largeIcon: that's the big colour block on the right,
+// which doesn't belong on these notifications.
+const NOTIFICATION_SMALL_ICON = 'ic_notification';
+const NOTIFICATION_ICON_COLOR = '#E91E8C';
 
 // Web-fallback notification timers (no native scheduler available): tracked so a
 // re-arm — applySchedule runs on startup AND on every savePrefs / permission
@@ -117,6 +127,31 @@ function isNativeNotificationRuntime(): boolean {
   }
 }
 
+/**
+ * Capacitor plugin proxies are *thenable*: reading `.then` returns a callable
+ * native-method stub (the proxy turns any property into a native call). When a
+ * thenable is the resolution value of a Promise — e.g. returned from an async
+ * getter and then `await`ed — the Promise machinery "assimilates" it and invokes
+ * its `.then(resolve, reject)`. On Android that dispatches a bogus
+ * `LocalNotifications.then()` / `PushNotifications.then()` call, which the native
+ * layer rejects with `"…then()" is not implemented on android`. That rejection
+ * escapes the getter's try/catch (assimilation happens during the async return,
+ * outside the body) and silently kills the whole flow — no permission request,
+ * no schedule, not even the in-app toast that runs after the await.
+ *
+ * Wrapping the proxy so `then` reads back as `undefined` makes it non-thenable,
+ * so a Promise resolves with the plugin as-is. Every other property (the real
+ * plugin methods) forwards straight through to the underlying Capacitor proxy.
+ */
+function asNonThenable<T extends object>(plugin: T): T {
+  return new Proxy(plugin, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;
+      return Reflect.get(target, prop);
+    },
+  });
+}
+
 async function getCapacitorLocalNotifications(): Promise<LocalNotifications | null> {
   if (!isNativeNotificationRuntime()) return null;
   try {
@@ -124,7 +159,9 @@ async function getCapacitorLocalNotifications(): Promise<LocalNotifications | nu
     // left unbundled (e.g. via @vite-ignore) fails to resolve in the WebView
     // at runtime, silently disabling all native notifications.
     const mod = (await import('@capacitor/local-notifications')) as { LocalNotifications?: LocalNotifications };
-    return mod.LocalNotifications ?? null;
+    // asNonThenable: never let the (thenable) plugin proxy be the promise's
+    // resolution value — see the helper above.
+    return mod.LocalNotifications ? asNonThenable(mod.LocalNotifications) : null;
   } catch {
     return null;
   }
@@ -134,7 +171,8 @@ async function getCapacitorPushNotifications(): Promise<PushNotifications | null
   if (!isNativeNotificationRuntime()) return null;
   try {
     const mod = (await import('@capacitor/push-notifications')) as { PushNotifications?: PushNotifications };
-    return mod.PushNotifications ?? null;
+    // asNonThenable: see getCapacitorLocalNotifications above.
+    return mod.PushNotifications ? asNonThenable(mod.PushNotifications) : null;
   } catch {
     return null;
   }
@@ -315,8 +353,8 @@ export const NotificationsService = {
         id: 'daily-clip',
         kind: 'daily-clip',
         fireAt: when.toISOString(),
-        title: 'Five seconds of right now',
-        body: 'Capture today’s clip before bed.',
+        // Copy is personalised + rotates daily — see notificationCopy.ts.
+        ...notificationCopyFor('daily-clip'),
       });
     }
 
@@ -326,8 +364,7 @@ export const NotificationsService = {
         id: 'recap-sunday',
         kind: 'recap-sunday',
         fireAt: when.toISOString(),
-        title: 'Your week, in a page',
-        body: 'Open your weekly recap — it only takes a minute.',
+        ...notificationCopyFor('recap-sunday'),
       });
     }
 
@@ -340,8 +377,7 @@ export const NotificationsService = {
         id: 'daily-ritual',
         kind: 'daily-ritual',
         fireAt: when.toISOString(),
-        title: 'Today’s question is waiting',
-        body: 'Answer together — they won’t see yours until they answer too.',
+        ...notificationCopyFor('daily-ritual'),
       });
     }
 
@@ -353,8 +389,7 @@ export const NotificationsService = {
         id: 'daily-drop',
         kind: 'daily-drop',
         fireAt: when.toISOString(),
-        title: 'Today’s drop is waiting 🎁',
-        body: 'Open it before midnight — it disappears.',
+        ...notificationCopyFor('daily-drop'),
       });
     }
 
@@ -389,8 +424,11 @@ export const NotificationsService = {
           id: hashId(s.id),
           title: s.title,
           body: s.body,
+          // `largeBody` expands to a fuller second line via BigTextStyle.
+          ...(s.largeBody ? { largeBody: s.largeBody } : {}),
           channelId: ANDROID_CHANNEL_ID,
-          smallIcon: 'ic_notification',
+          smallIcon: NOTIFICATION_SMALL_ICON,
+          iconColor: NOTIFICATION_ICON_COLOR,
           schedule: { on, repeats: true, allowWhileIdle: true },
           // `view` routes the tap to the relevant screen (see bindTapRouting).
           extra: { kind: s.kind, view: KIND_VIEWS[s.kind], ...s.payload },
@@ -437,7 +475,8 @@ export const NotificationsService = {
           title,
           body,
           channelId: ANDROID_CHANNEL_ID,
-          smallIcon: 'ic_notification',
+          smallIcon: NOTIFICATION_SMALL_ICON,
+          iconColor: NOTIFICATION_ICON_COLOR,
           schedule: { at: new Date(Date.now() + 500) },
           extra: { kind, view: KIND_VIEWS[kind] },
         }],

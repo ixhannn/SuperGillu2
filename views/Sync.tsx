@@ -515,8 +515,8 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
     if (permission === 'granted') {
       toast.show("Notifications are enabled on this device.", 'success');
       void NotificationsService.fireImmediate(
-        'Notifications Enabled!',
-        "You'll now get alerts when your partner shares a moment.",
+        "You're all set 💌",
+        "We'll gently nudge you when there's a moment to share.",
         'film-ready',
       ).catch(() => {});
       return;

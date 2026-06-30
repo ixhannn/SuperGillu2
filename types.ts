@@ -849,6 +849,8 @@ export interface NotificationSchedule {
   fireAt: string; // ISO
   title: string;
   body: string;
+  /** Optional richer second line, expanded via Android BigTextStyle. */
+  largeBody?: string;
   payload?: Record<string, unknown>;
 }
 
