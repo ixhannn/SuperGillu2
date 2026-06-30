@@ -759,7 +759,7 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                 {/* ── THEME PICKER ──────────────────────────────────────── */}
                 <div className="px-5">
                     <p className="text-[11.5px] font-bold uppercase tracking-[0.16em] mb-3.5 ml-1" style={{ color: 'var(--color-text-primary)', opacity: 0.85 }}>Aesthetic Studio</p>
-                    <div className="rounded-[2.5rem] glass-card-premium overflow-hidden p-0 border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
+                    <div data-theme-panel="true" className="rounded-[2.5rem] glass-card-premium overflow-hidden p-0 border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
 
                         {/* Active theme hero */}
                         <div className="mx-4 mb-4 rounded-2xl overflow-hidden relative" style={{

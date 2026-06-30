@@ -145,6 +145,18 @@ html[data-transitioning="1"] *::after {
   -webkit-backdrop-filter: none !important;
 }
 
+/* Page-open stability for the Profile theme grid. While a route transition is
+   animating (the container scales 0.91→1 in _run), promote the theme panel to
+   its OWN compositor layer so its 9 rounded, soft-shadowed gradient tiles
+   reveal + scale as ONE cached bitmap — instead of each re-rasterizing its
+   rounded clip + box-shadow mid-scale, which read as "the theme tiles flicker
+   for a tiny bit when opening Profile". Transition-scoped ONLY: no standing
+   layer (the panel demotes the instant data-transitioning clears), so this
+   adds zero chronic GPU pressure and changes nothing visually at rest. */
+html[data-transitioning="1"] [data-theme-panel="true"] {
+  transform: translateZ(0);
+}
+
 /* NOTE: the keep-alive shells deliberately have NO intrinsic opacity fade.
    An earlier `keep-alive-tab-enter` (opacity 0→1) on `.is-active` caused two
    separate flicker bugs:
