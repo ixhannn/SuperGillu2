@@ -107,7 +107,11 @@ function dirConfig(dir: EngineDirection, _W: number): DirConfig {
       // recedes to 105% + fades out. No sideways slide, no clip window that would
       // expose the shared background; content morphs in place over the STILL bg.
       return { dur: 460, inEase: E_SPRING, outEase: E_SILK,
-        inFrom: ['scale(0.94)', '0'],
+        // Incoming opacity stays 1: only the opaque CLONE fades out on top. If the
+        // new page itself fades 0→1, its live backdrop-filter glass sits under a
+        // fractional-opacity ancestor for the whole animation and boils on WebView
+        // (the reported "whole opened page flickers"). The clone IS the crossfade.
+        inFrom: ['scale(0.94)', '1'],
         outTo:  ['scale(1.05)', '0'] };
     case 'pop':
       // CLOSE: the leaving page (cloned on top) collapses back + fades out on the
@@ -115,7 +119,9 @@ function dirConfig(dir: EngineDirection, _W: number): DirConfig {
       // screen beneath returns from 103% + fades in and SETTLES on the spring. The
       // settle-in is what makes the close feel finished instead of abrupt.
       return { dur: 340, inEase: E_SPRING, outEase: E_COLLAPSE,
-        inFrom: ['scale(1.03)', '0'],
+        // Reveal the destination at full opacity (only the leaving clone fades) so
+        // its backdrop-filter glass never sits under a fractional-opacity group.
+        inFrom: ['scale(1.03)', '1'],
         outTo:  ['scale(0.93)', '0'] };
     case 'modal':
       return { dur: T_MODAL_OPEN,  inEase: E_SILK, outEase: E_STANDARD,
@@ -135,7 +141,10 @@ function dirConfig(dir: EngineDirection, _W: number): DirConfig {
       // page lifting forward, not as a bare-background flash. Longer dur lets the
       // spring's settle play out.
       return { dur: 520, inEase: E_SPRING, outEase: E_SILK,
-        inFrom: ['scale(0.91)', '0'],
+        // Incoming opacity 1 (only the clone fades): the bloom is the scale-up +
+        // the clone dissolving over it. Fading the live-glass page 0→1 was the
+        // primary cause of the whole-page open flicker on WebView.
+        inFrom: ['scale(0.91)', '1'],
         outTo:  ['scale(1.06)', '0'] };
   }
 }

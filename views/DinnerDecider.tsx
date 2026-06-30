@@ -65,7 +65,10 @@ interface SpinSignalPayload {
 
 export const DinnerDecider: React.FC<DinnerDeciderProps> = ({ setView }) => {
   const SPIN_DURATION_MS = 3000;
-  const [options, setOptions] = useState<DinnerOption[]>([]);
+  // Warm-init from the synchronous cache (returns DEFAULT_DINNER_OPTIONS for a
+  // brand-new couple) so the spin wheel paints its full segments on the first
+  // frame instead of rendering an empty wheel that snaps to full one commit later.
+  const [options, setOptions] = useState<DinnerOption[]>(() => StorageService.getDinnerOptions());
   const [newOption, setNewOption] = useState('');
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);

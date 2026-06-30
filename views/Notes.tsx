@@ -31,7 +31,7 @@ const COLORS = ['bg-yellow-500/15', 'bg-pink-500/15', 'bg-blue-500/15', 'bg-gree
 
 export const Notes: React.FC<NotesProps> = ({ setView }) => {
   const { keyboardOpen, keyboardHeight } = useNativeShell();
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<Note[]>(() => StorageService.getNotes());
   const [isEditing, setIsEditing] = useState(false);
   const [currentNote, setCurrentNote, clearNoteDraft] = useDraft('notes.compose', '');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);

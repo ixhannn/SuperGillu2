@@ -1021,7 +1021,7 @@ const App = () => {
             setIsAuthenticated(Boolean(session));
 
             // Listen for realtime auth changes
-            const { data: { subscription } } = SupabaseService.client!.auth.onAuthStateChange((_event, session) => {
+            const { data: { subscription } } = SupabaseService.client!.auth.onAuthStateChange((event, session) => {
               void (async () => {
                 if (disposed) return;
                 SupabaseService.setCachedUserId(session?.user?.id || null);
@@ -1030,17 +1030,27 @@ const App = () => {
 
                 if (session) {
                   await initializeSync();
-                  const onboarded = await resolveOnboarded();
-                  if (!disposed) {
-                    // A pending invite (captured from a deep link before sign-in)
-                    // takes priority: route straight into the claim flow even if
-                    // the receiver hasn't "onboarded" yet, so a solo-but-unpaired
-                    // account can link immediately. Sync clears the code on success.
-                    if (StorageService.getPendingInviteCode() != null) {
-                      setShowOnboarding(false);
-                      navigateToRef.current('sync');
-                    } else {
-                      setShowOnboarding(!onboarded);
+                  // Only (re)evaluate the onboarding gate on a GENUINE sign-in.
+                  // onAuthStateChange also fires for TOKEN_REFRESHED / USER_UPDATED
+                  // (routinely, on resume and on the periodic token refresh) — and
+                  // resolveOnboarded() can transiently return false when the server
+                  // is briefly unreachable, which would flash the full-screen
+                  // Onboarding over a live, already-onboarded session. The cold-init
+                  // path below owns the first gate; the listener must not re-gate an
+                  // established session.
+                  if (event === 'SIGNED_IN') {
+                    const onboarded = await resolveOnboarded();
+                    if (!disposed) {
+                      // A pending invite (captured from a deep link before sign-in)
+                      // takes priority: route straight into the claim flow even if
+                      // the receiver hasn't "onboarded" yet, so a solo-but-unpaired
+                      // account can link immediately. Sync clears the code on success.
+                      if (StorageService.getPendingInviteCode() != null) {
+                        setShowOnboarding(false);
+                        navigateToRef.current('sync');
+                      } else {
+                        setShowOnboarding(!onboarded);
+                      }
                     }
                   }
                 } else {
@@ -1320,7 +1330,13 @@ const App = () => {
                         aria-hidden={overlayLingering ? true : undefined}
                         inert={overlayLingering ? true : undefined}
                       >
-                        {overlayView}
+                        {/* Own Suspense boundary. Without it, a pushed view that
+                            suspends during commit (the gesture-back / instant paths
+                            flushSync without the preload gate) bubbled to the
+                            app-level <Suspense fallback={RouteFallback}> above and
+                            blanked EVERY keep-alive tab for a frame — the "whole
+                            elements disappear and reappear" flash. */}
+                        <Suspense fallback={null}>{overlayView}</Suspense>
                       </div>
                     )}
                   </ViewTransition>

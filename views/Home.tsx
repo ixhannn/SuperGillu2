@@ -59,6 +59,64 @@ const getMemoryDateKey = (memory: Partial<Memory>): string | null => {
 
 const isMemoryDateKey = (value: string | null): value is string => Boolean(value);
 
+// ── Pure Home-data derivations (module scope) ───────────────────────────────
+// Hoisted out of the component so the state below can WARM-INIT from them in a
+// useState initializer (a component-scoped const would be in the temporal dead
+// zone at the useState call site). They read only their args + module imports,
+// so they're safe to call before first paint.
+const findOnThisDayMemory = (mems: Memory[], now: Date): Memory | null => {
+    const throwback = mems.find(m => {
+        const d = new Date(m.date);
+        return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() !== now.getFullYear();
+    });
+    return throwback || null;
+};
+
+const calculateStreak = (mems: Memory[]) => {
+    if (mems.length === 0) return 0;
+    const dates = [...new Set(mems.map(getMemoryDateKey).filter(isMemoryDateKey))].sort().reverse();
+    if (dates.length === 0) return 0;
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    if (dates[0] !== today && dates[0] !== yesterday) return 0;
+    let streakCount = 0;
+    let testDate = new Date();
+    if (!dates.includes(today)) testDate.setDate(testDate.getDate() - 1);
+    for (let i = 0; i < dates.length; i++) {
+        const dateStr = testDate.toISOString().split('T')[0];
+        if (dates.includes(dateStr)) {
+            streakCount++;
+            testDate.setDate(testDate.getDate() - 1);
+        } else break;
+    }
+    return streakCount;
+};
+
+const getNextEvent = (specialDates: SpecialDate[], anniversaryDate: string) => {
+    const now = new Date();
+    const events: { title: string, date: Date }[] = [];
+    specialDates.forEach(sd => {
+        let eventDate = parseStoredDateOnly(sd.date);
+        if (!eventDate) return;
+        if (sd.type === 'birthday' || sd.type === 'anniversary') {
+            eventDate = getNextAnnualOccurrence(sd.date, now);
+        }
+        if (eventDate && calendarDayDifference(eventDate, now) >= 0) events.push({ title: sd.title, date: eventDate });
+    });
+    const anniv = getNextAnnualOccurrence(anniversaryDate, now);
+    if (anniv) {
+        events.push({ title: 'Our Anniversary', date: anniv });
+    }
+    // Derived milestones (100/500/1000 days, next monthsary) give a brand-new
+    // couple something near and motivating to count down to before they've
+    // added any of their own special dates.
+    buildRelationshipMilestones(anniversaryDate, now).forEach((m) => {
+        events.push({ title: m.title, date: m.nextDate });
+    });
+    events.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
+};
+
 const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note', item: Memory | Note }, onClose: () => void }) => {
     const { type, item } = content;
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -295,25 +353,33 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // Tile-open lift — the tapped card "picks itself up" while the route push
     // slides the next view in, so navigation feels like opening, not jumping.
     const open = useTileOpen();
-    const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
-    const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
-    const [daysTogether, setDaysTogether] = useState(0);
+    // Warm-init every above-the-fold value from the synchronous in-memory cache so
+    // the FIRST painted frame already shows real data (day count, streak, status,
+    // memories, notes, the "On this day" card) instead of flashing 0/empty and then
+    // snapping in one commit later. loadData() below still re-reads + subscribes for
+    // live updates. (profile is already warm-init'd above; these mirror that.)
+    const [myStatus, setMyStatus] = useState<UserStatus>(() => StorageService.getStatus());
+    const [partnerStatus, setPartnerStatus] = useState<UserStatus>(() => StorageService.getPartnerStatus());
+    const [daysTogether, setDaysTogether] = useState(() => daysTogetherFrom(parseAnniversaryDate(StorageService.getCoupleProfile().anniversaryDate), new Date()));
     const [showDetailedDuration, setShowDetailedDuration] = useState(false);
     const [detailedDuration, setDetailedDuration] = useState('');
-    const [onThisDayMemory, setOnThisDayMemory] = useState<Memory | null>(null);
+    const [onThisDayMemory, setOnThisDayMemory] = useState<Memory | null>(() => findOnThisDayMemory(StorageService.getMemories(), new Date()));
     const [otdImage, setOtdImage] = useState<string | null>(null);
     const [showSurprise, setShowSurprise] = useState(false);
     const [surpriseContent, setSurpriseContent] = useState<{ type: 'memory' | 'note', item: Memory | Note } | null>(null);
-    const [nextEvent, setNextEvent] = useState<{ title: string, days: number } | null>(null);
-    const [streak, setStreak] = useState(0);
-    const [memories, setMemories] = useState<Memory[]>([]);
-    const [notes, setNotes] = useState<Note[]>([]);
-    const [privateItemCount, setPrivateItemCount] = useState(0);
+    const [nextEvent, setNextEvent] = useState<{ title: string, days: number } | null>(() => getNextEvent(StorageService.getSpecialDates(), StorageService.getCoupleProfile().anniversaryDate));
+    const [streak, setStreak] = useState(() => calculateStreak(StorageService.getMemories()));
+    const [memories, setMemories] = useState<Memory[]>(() => StorageService.getMemories());
+    const [notes, setNotes] = useState<Note[]>(() => StorageService.getNotes());
+    const [privateItemCount, setPrivateItemCount] = useState(() => StorageService.getPrivateSpaceItems().length);
     const [showHeartbeat, setShowHeartbeat] = useState(false);
     const [receivedHeartbeat, setReceivedHeartbeat] = useState(false);
     const [isDissolving, setIsDissolving] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
+    // Grace timer so a transient empty presence sync (the realtime channel rebuild
+    // on reconnect/resume) can't blink the "Together now" header off-then-on.
+    const presenceOfflineTimerRef = useRef<number | null>(null);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
@@ -342,51 +408,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         return () => wrapperEl.removeEventListener('animationend', onEnd);
     }, [heroSettled]);
     const displayCount = useCountUp(daysTogether, heroInView && heroSettled);
-
-    const calculateStreak = (mems: Memory[]) => {
-        if (mems.length === 0) return 0;
-        const dates = [...new Set(mems.map(getMemoryDateKey).filter(isMemoryDateKey))].sort().reverse();
-        if (dates.length === 0) return 0;
-        const today = new Date().toISOString().split('T')[0];
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        if (dates[0] !== today && dates[0] !== yesterday) return 0;
-        let streakCount = 0;
-        let testDate = new Date();
-        if (!dates.includes(today)) testDate.setDate(testDate.getDate() - 1);
-        for (let i = 0; i < dates.length; i++) {
-            const dateStr = testDate.toISOString().split('T')[0];
-            if (dates.includes(dateStr)) {
-                streakCount++;
-                testDate.setDate(testDate.getDate() - 1);
-            } else break;
-        }
-        return streakCount;
-    };
-
-    const getNextEvent = (specialDates: SpecialDate[], anniversaryDate: string) => {
-        const now = new Date();
-        const events: { title: string, date: Date }[] = [];
-        specialDates.forEach(sd => {
-            let eventDate = parseStoredDateOnly(sd.date);
-            if (!eventDate) return;
-            if (sd.type === 'birthday' || sd.type === 'anniversary') {
-                eventDate = getNextAnnualOccurrence(sd.date, now);
-            }
-            if (eventDate && calendarDayDifference(eventDate, now) >= 0) events.push({ title: sd.title, date: eventDate });
-        });
-        const anniv = getNextAnnualOccurrence(anniversaryDate, now);
-        if (anniv) {
-            events.push({ title: 'Our Anniversary', date: anniv });
-        }
-        // Derived milestones (100/500/1000 days, next monthsary) give a brand-new
-        // couple something near and motivating to count down to before they've
-        // added any of their own special dates.
-        buildRelationshipMilestones(anniversaryDate, now).forEach((m) => {
-            events.push({ title: m.title, date: m.nextDate });
-        });
-        events.sort((a, b) => a.date.getTime() - b.date.getTime());
-        return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
-    };
 
     const loadData = () => {
         const prof = StorageService.getCoupleProfile();
@@ -464,11 +485,29 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     presences.forEach((p: any) => { if (p.user === prof.partnerName) partnerOnline = true; });
                 });
             }
-            setIsTogether(partnerOnline);
+            if (partnerOnline) {
+                // Present → show immediately and cancel any pending "went offline".
+                if (presenceOfflineTimerRef.current !== null) {
+                    window.clearTimeout(presenceOfflineTimerRef.current);
+                    presenceOfflineTimerRef.current = null;
+                }
+                setIsTogether(true);
+            } else if (presenceOfflineTimerRef.current === null) {
+                // Absent → do NOT flip off immediately. On reconnect/resume the
+                // realtime channel rebuilds and emits one EMPTY presence sync before
+                // the partner's ~5s heartbeat re-tracks; flipping off-then-on made
+                // the "Together now" header (dot + subtitle) blink. Hold the present
+                // state for a grace window; only go offline if still absent after it.
+                presenceOfflineTimerRef.current = window.setTimeout(() => {
+                    presenceOfflineTimerRef.current = null;
+                    setIsTogether(false);
+                }, 6000);
+            }
         };
         syncEventTarget.addEventListener('presence-update', handlePresence);
 
         return () => {
+            if (presenceOfflineTimerRef.current !== null) window.clearTimeout(presenceOfflineTimerRef.current);
             storageEventTarget.removeEventListener('storage-update', reloadData);
             syncEventTarget.removeEventListener('sync-update', handleSyncUpdate);
             syncEventTarget.removeEventListener('signal-received', handleSignal);
@@ -678,11 +717,14 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                     : <div className="w-full h-full flex items-center justify-center text-lior-400"><Heart fill="currentColor" size={20} /></div>
                                 }
                             </div>
-                            {isTogether && (
-                                <span
-                                    className="absolute -right-0.5 bottom-0 h-3 w-3 rounded-full border-2 border-[#f7d6bf] bg-emerald-500 animate-presence-dot"
-                                />
-                            )}
+                            {/* Always mounted — fade, don't unmount. A presence blip
+                                used to unmount+remount this dot (a visible blink); now
+                                it just fades, and the grace timer above keeps it stable. */}
+                            <span
+                                aria-hidden={!isTogether}
+                                className="absolute -right-0.5 bottom-0 h-3 w-3 rounded-full border-2 border-[#f7d6bf] bg-emerald-500 animate-presence-dot"
+                                style={{ opacity: isTogether ? 1 : 0, transition: 'opacity 240ms ease' }}
+                            />
                         </div>
                         <div className="min-w-0 text-left">
                             <h1

@@ -4,6 +4,7 @@ import { AnimatePresence, animate, motion, useMotionValue, type PanInfo } from '
 import { Camera, Feather, Heart, Plus, X } from 'lucide-react';
 import type { TimeCapsule, ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { useThrottledReload } from '../hooks/useThrottledReload';
 import { GoldShell } from '../components/premium/GoldShell';
 import {
     GOLD,
@@ -47,7 +48,7 @@ interface ReaderState {
 }
 
 export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => {
-    const [capsules, setCapsules] = useState<TimeCapsule[]>([]);
+    const [capsules, setCapsules] = useState<TimeCapsule[]>(() => StorageService.getTimeCapsules());
     const [showForm, setShowForm] = useState(false);
     const [showPremiumModal, setShowPremiumModal] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -68,12 +69,16 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
         return () => clearInterval(id);
     }, []);
 
+    const reloadCapsules = useThrottledReload(() => setCapsules(StorageService.getTimeCapsules()));
     useEffect(() => {
-        const load = () => setCapsules(StorageService.getTimeCapsules());
-        load();
-        storageEventTarget.addEventListener('storage-update', load);
-        return () => storageEventTarget.removeEventListener('storage-update', load);
-    }, []);
+        const onStorage = (event: Event) => {
+            const table = (event as CustomEvent).detail?.table;
+            if (table && table !== 'time_capsules' && table !== 'init') return;
+            reloadCapsules();
+        };
+        storageEventTarget.addEventListener('storage-update', onStorage);
+        return () => storageEventTarget.removeEventListener('storage-update', onStorage);
+    }, [reloadCapsules]);
 
     // Hardware back closes the composer sheet while it is open.
     useEffect(() => {
