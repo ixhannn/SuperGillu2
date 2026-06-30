@@ -345,8 +345,12 @@ canvas.fixed,
 } /* ── BENTO CARD — solid card for grid items ────────────────────────────── */
 .bento-card {
   background: color-mix(in srgb, var(--color-surface) 80%, transparent);
-  backdrop-filter: blur(16px) saturate(130%);
-  -webkit-backdrop-filter: blur(16px) saturate(130%);
+  /* 12px (was 16px): the card is 80% opaque, so only a faint sliver of the
+     animated backdrop shows through — the smaller radius is imperceptible but
+     cuts the per-frame re-blur fill-rate ~45% (blur cost is ~quadratic in
+     radius). This is the biggest always-on GPU cost on idle Home. */
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-bottom-color: rgba(255, 255, 255, 0.38);
   border-radius: var(--radius-card);

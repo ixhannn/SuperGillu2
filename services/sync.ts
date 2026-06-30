@@ -263,7 +263,12 @@ class SyncServiceClass {
         // so renaming yourself never makes your partner look permanently offline.
         if (this.presenceInterval) clearInterval(this.presenceInterval);
         this.presenceInterval = setInterval(() => {
-            if (this.channel && this.isConnected) {
+            // Skip the presence write while backgrounded/hidden — mirrors the
+            // reconcile interval below. A websocket track() every 5s wakes the
+            // radio; there's no reason to do it when the app isn't on screen.
+            // Presence is sticky server-side and re-tracks on resume.
+            const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+            if (visible && this.channel && this.isConnected) {
                 const profile = StorageService.getCoupleProfile();
                 this.channel.track({
                     user: profile.myName,

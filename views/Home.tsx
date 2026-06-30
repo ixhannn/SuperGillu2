@@ -489,7 +489,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // whole HeartbeatRipple/wiggle micro-interaction stayed inert.
     useEffect(() => {
         setShowHeartbeat(AmbientService.isPlaying);
-        const id = window.setInterval(() => setShowHeartbeat(AmbientService.isPlaying), 250);
+        const id = window.setInterval(() => {
+            // Skip the wake while the app is backgrounded (screen off / hidden) —
+            // the ripple only matters when Home is actually on screen.
+            if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+            setShowHeartbeat(AmbientService.isPlaying);
+        }, 250);
         return () => window.clearInterval(id);
     }, []);
 
@@ -869,8 +874,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     style={{
                         borderRadius: '100px',
                         // Baked opaque (no backdrop-filter): over the animating Home blob a live
-                        // blur(20px) was the single most expensive surface on the page. The fill
-                        // is bumped opaque so the ghost pill stays legible without the frost.
+                        // blur(20px) was the single most expensive surface on the page. Reducing
+                        // its radius (as a concurrent change did) still re-resolves the blur every
+                        // frame on mobile — only removing backdrop-filter breaks the coupling. The
+                        // fill is bumped opaque so the ghost pill stays legible without the frost.
                         background: 'linear-gradient(180deg, rgba(255,250,251,0.92) 0%, rgba(255,247,249,0.86) 100%)',
                         border: '1.5px dashed rgba(225,29,72,0.28)',
                         boxShadow: '0 2px 10px rgba(232,160,176,0.06)',

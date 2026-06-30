@@ -36,6 +36,17 @@ export interface AnimationSubscriber {
   /** Priority 1–10: higher survives tier downgrade longer */
   priority: number;
   /**
+   * Optional per-subscriber frame-rate cap (fps). When set, this subscriber is
+   * ticked at most this many times per second, regardless of the engine's
+   * (already capped) frame rate. Use for purely decorative, slow ambient motion
+   * that is visually identical at a low cadence — constellation drift, the CSS
+   * breathing bus, the bokeh blob — so a 120Hz panel doesn't redraw/recalc them
+   * 4× more often than the eye can tell. `tick` receives the accumulated delta
+   * since this subscriber last ran, so physics and wave timing stay correct.
+   * Omit for anything that must stay crisp (touch trail, confetti).
+   */
+  fps?: number;
+  /**
    * Optional CSS Animation Bus contribution.
    * Return a map of CSS custom property → value this frame.
    * All contributors are batched into ONE setProperty burst at frame end.
@@ -71,6 +82,24 @@ const TIER_SORTED: QualityTier[] = (Object.keys(TIER_RANK) as QualityTier[])
 // disabled (see _adaptTier below).
 const SAMPLE_EVERY  = 30;        // frames between (no-op) tier evaluations
 
+// ── Per-subscriber cadence caps (NO global ceiling) ───────────────────
+// The engine ticks at the panel's FULL native refresh (120Hz on a 120Hz
+// phone) so everything the user can FEEL — touch trail, confetti, any
+// interactive motion — stays perfectly smooth. There is deliberately NO global
+// fps cap: navigation and scroll are already compositor/TransitionEngine-driven
+// (never ticked here), and we never want to throttle interactive feedback.
+//
+// The battery/heat win comes ONLY from the optional per-subscriber `fps` cap:
+// the slow, heavily-blurred BACKGROUND ambient (3D blob, constellation,
+// breathing/glow CSS bus) is visually identical at 30fps but, uncapped, redraws
+// the full screen + re-blurs the glass above it 120×/sec forever — the dominant
+// idle drain. Those subscribers opt into fps:30; nothing the user perceives as
+// "smoothness" is reduced.
+//
+// `CAP_SLACK` (0.9) gives the per-sub gate vsync-jitter tolerance so a 120Hz
+// panel lands a 30fps subscriber on a clean every-4th-frame instead of slipping.
+const CAP_SLACK     = 0.9;
+
 class AnimationEngineClass {
   private readonly subs = new Map<string, AnimationSubscriber>();
   private rafId = 0;
@@ -78,6 +107,8 @@ class AnimationEngineClass {
   private running = false;
   private visListenerBound = false;
   private adaptLockUntil = 0;
+  /** Per-subscriber last-ticked timestamp — backs the optional `fps` cap. */
+  private readonly subLastTs = new Map<string, number>();
   /** Cost tracking is opt-in. The dev overlay flips this on so production
    *  builds don't pay the `performance.now()` cost twice per subscriber per
    *  frame just to populate a map nobody reads. */
@@ -126,6 +157,7 @@ class AnimationEngineClass {
   unregister(id: string): void {
     this.subs.delete(id);
     this.costs.delete(id);
+    this.subLastTs.delete(id);
     if (this.subs.size === 0) {
       this.stop();
     }
@@ -162,6 +194,10 @@ class AnimationEngineClass {
 
     this.rafId = requestAnimationFrame(this.loop);
 
+    // Tick at the panel's FULL native refresh — no global cap. Interactive
+    // subscribers (touch trail, confetti) get every frame so they stay buttery
+    // on a 120Hz display. Only the decorative background subscribers throttle
+    // themselves, via the optional per-subscriber `fps` field handled below.
     const delta = Math.min(ts - this.lastTs, 50);
     if (delta < 3) return; // skip duplicate callbacks from power-saving display
     this.lastTs = ts;
@@ -189,12 +225,25 @@ class AnimationEngineClass {
     for (const sub of this.subs.values()) {
       if (tierRank < TIER_RANK[sub.minTier]) continue;
 
+      // Per-subscriber cadence cap. Subscribers WITHOUT `fps` run every native
+      // frame (full 120Hz — interactive motion stays smooth). Only decorative
+      // background subscribers set `fps` (e.g. 30). tickDelta is the accumulated
+      // time since THIS subscriber last ran, so its physics / wave phase advance
+      // correctly even though it's ticked less often than the native frame.
+      let tickDelta = delta;
+      if (sub.fps) {
+        const last = this.subLastTs.get(sub.id);
+        if (last !== undefined && (ts - last) < (1000 / sub.fps) * CAP_SLACK) continue;
+        tickDelta = last === undefined ? delta : Math.min(ts - last, 50);
+        this.subLastTs.set(sub.id, ts);
+      }
+
       if (trackCost) {
         const t0 = performance.now();
-        sub.tick(delta, ts, this.tier);
+        sub.tick(tickDelta, ts, this.tier);
         this.costs.set(sub.id, performance.now() - t0);
       } else {
-        sub.tick(delta, ts, this.tier);
+        sub.tick(tickDelta, ts, this.tier);
       }
 
       // Collect CSS contributions
