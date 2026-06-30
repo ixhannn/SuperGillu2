@@ -213,14 +213,20 @@ export const MediaForge: React.FC<MediaForgeProps> = ({
                     exit={{ opacity: 0, transition: { duration: 0.25 } }}
                     className="fixed inset-0 z-[70] flex flex-col"
                     style={{
+                        // No backdrop-filter: the mesh below is fully opaque
+                        // (#0a0510 has no alpha), so blurring what's behind it was a
+                        // wasted full-screen GPU blur layer that drew nothing visible.
                         background: '#0a0510',
-                        backdropFilter: 'blur(28px) saturate(1.2)',
-                        WebkitBackdropFilter: 'blur(28px) saturate(1.2)',
                     }}
                 >
                     {/* ── BACKDROP — bold conic mesh + grain ───────────────── */}
-                    {/* Conic gradient sweep */}
-                    <motion.div
+                    {/* Conic gradient sweep — STATIC. Animating a full-screen
+                        `filter: blur(80px)` forces the WebView to recompute an 80px
+                        Gaussian over the entire screen EVERY frame; three such animated
+                        blurs at once (this + the two aurora pools) was the "insane severe
+                        flashing" on this page. Static, each rasterizes once and caches —
+                        and the 60s rotation / slow drifts were imperceptible anyway. */}
+                    <div
                         aria-hidden
                         className="absolute inset-0 pointer-events-none"
                         style={{
@@ -228,12 +234,12 @@ export const MediaForge: React.FC<MediaForgeProps> = ({
                             opacity: 0.55,
                             filter: 'blur(80px) saturate(1.3)',
                         }}
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 60, repeat: Infinity, ease: 'linear' }}
                     />
 
-                    {/* Aurora pool top-left */}
-                    <motion.div
+                    {/* Aurora pool top-left — STATIC (was an infinite scale/drift on a
+                        85vw blur(60px) layer = another full-screen Gaussian recomputed
+                        every frame). */}
+                    <div
                         aria-hidden
                         className="absolute pointer-events-none"
                         style={{
@@ -245,12 +251,10 @@ export const MediaForge: React.FC<MediaForgeProps> = ({
                             filter: 'blur(60px)',
                             borderRadius: '50%',
                         }}
-                        animate={{ scale: [1, 1.14, 1], x: [0, 22, 0], y: [0, -10, 0] }}
-                        transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
                     />
 
-                    {/* Aurora pool bottom-right */}
-                    <motion.div
+                    {/* Aurora pool bottom-right — STATIC (same reason). */}
+                    <div
                         aria-hidden
                         className="absolute pointer-events-none"
                         style={{
@@ -262,8 +266,6 @@ export const MediaForge: React.FC<MediaForgeProps> = ({
                             filter: 'blur(60px)',
                             borderRadius: '50%',
                         }}
-                        animate={{ scale: [1, 1.16, 1], x: [0, -18, 0], y: [0, 12, 0] }}
-                        transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
                     />
 
                     {/* Grain overlay */}
