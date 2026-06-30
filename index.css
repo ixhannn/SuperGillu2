@@ -2608,8 +2608,14 @@ img {
  * ──────────────────────────────────────────────────────────────────────── */
 .perf-list-item,
 [data-perf-list-item="true"] {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 280px;
+  /* content-visibility:auto REMOVED. On these grid thumbnail cards it reserved a
+     placeholder (contain-intrinsic-size) that never matched the card's real
+     aspect-ratio height, and it RESETS to that wrong fallback on fast flings /
+     re-renders — so cards collapsed to the wrong size and blanked-then-filled
+     ("random components disappear for a quick second" while scrolling). The card
+     media is already lazy-loaded, so always-rendering the (cheap) card frames
+     costs little. `contain` still isolates layout/paint. */
+  contain: layout paint style;
 }
 
 /* ─── KEEP-ALIVE TAB SHELL ──────────────────────────────────────────────
@@ -2632,10 +2638,15 @@ img {
   content-visibility: visible;
 }
 .keep-alive-shell.is-cached {
-  display: none !important;
-  /* Belt-and-braces: even if a child somewhere forces display, this
-   * skips layout/paint while keeping the React state (effects, refs)
-   * fully alive. */
-  content-visibility: hidden;
-  contain: strict;
+  /* WARM cache. NO display:none / content-visibility:hidden / contain:strict —
+   * those forced a synchronous COLD re-layout (or re-render) the moment you
+   * returned to a tab, so the destination's elements AND the body-portaled
+   * header/nav visibly vanished and snapped back ("elements disappear and appear
+   * when leaving/returning to a page"). root-fixes.css keeps the cached shell
+   * off-flow + invisible (position:absolute; inset:0; opacity:0;
+   * visibility:hidden; pointer-events:none), so a return is a pure, instant
+   * visibility flip with zero cold render. Cached tabs stay laid-out + painted
+   * (only ~5 root tabs; off-flow so they don't repaint on the active tab's
+   * scroll). Do NOT re-add display:none here. */
+  visibility: hidden;
 }
