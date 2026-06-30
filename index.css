@@ -347,7 +347,9 @@ canvas.fixed,
     0 4px 16px rgba(232, 160, 176, 0.1);
 } /* ── BENTO CARD — solid card for grid items ────────────────────────────── */
 .bento-card {
-  /* Baked opaque (was blur(16px)) — Home grid tiles; see .glass-card. */
+  /* Baked opaque (was blur(16px)) — Home grid tiles; see .glass-card. Fully
+     removing backdrop-filter (vs a concurrent change that only cut the radius to
+     12px) is what stops the per-frame re-blur over the ambient on scroll. */
   background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-bottom-color: rgba(255, 255, 255, 0.38);

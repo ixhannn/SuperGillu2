@@ -364,6 +364,55 @@ html[data-nav-depth="1"] .lior-ambient-world {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+   HOME ROUTE — bake the glass chrome opaque to kill the mobile backdrop-filter
+   re-blur storm.
+
+   Home is the ONLY route where the ambient WebGL (FloatingHeartsScene blob +
+   LiveBackground3D bokeh) actively repaints (~24fps) UNDER the glass cards
+   (show3D = isHomeRoute). On a mobile tile-based GPU, every canvas frame dirties
+   the backdrop, forcing each backdrop-filter card to re-resolve a large-radius
+   Gaussian over the full native framebuffer — ~150 blur passes/sec — which a
+   weak Adreno/Mali cannot absorb. That is the Home-only lag. Off Home the blob
+   is paused + opacity:0, so the same cards blur a STATIC backdrop (cached once)
+   and stay cheap — which is precisely why ONLY Home stalls on the phone.
+
+   The cards are already ~80-90% opaque, so on Home we drop the live blur and
+   bake them to a flat translucent fill: the per-frame re-blur coupling
+   disappears and the blob keeps full quality. Frost stays intact on every OTHER
+   route. This is the shipped [data-tier="medium"] treatment, scoped to the one
+   route that needs it regardless of the (locked-ultra) device tier.
+   ────────────────────────────────────────────────────────────────────────── */
+html[data-route="home"] .glass-card,
+html[data-route="home"] .glass-card-hero,
+html[data-route="home"] .bento-card,
+html[data-route="home"] .liquid-glass,
+html[data-route="home"] .glass-3d,
+html[data-route="home"] .vh {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent) !important;
+}
+/* Colored / accent glass: drop only the blur — keep their tinted fills. */
+html[data-route="home"] .accent-card,
+html[data-route="home"] .premium-glass,
+html[data-route="home"] .liquid-glass-btn,
+html[data-route="home"] .sync-surface,
+html[data-route="home"] .sync-surface-glass-accent,
+html[data-route="home"] .sync-cloud-btn,
+html[data-route="home"] .btn-ghost {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Starry-night theme keeps its night surface instead of flashing white. */
+html[data-theme="starry-night"][data-route="home"] .glass-card,
+html[data-theme="starry-night"][data-route="home"] .glass-card-hero,
+html[data-theme="starry-night"][data-route="home"] .bento-card,
+html[data-theme="starry-night"][data-route="home"] .liquid-glass,
+html[data-theme="starry-night"][data-route="home"] .vh {
+  background: rgba(18, 20, 48, 0.94) !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    BottomNav — pure-CSS spring on icon active state.
    Replaces five framer-motion <motion.div animate={{scale}} spring> instances.
    The cubic-bezier curve mimics a stiffness=500 damping=26 spring, runs on

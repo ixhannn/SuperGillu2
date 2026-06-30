@@ -507,7 +507,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // whole HeartbeatRipple/wiggle micro-interaction stayed inert.
     useEffect(() => {
         setShowHeartbeat(AmbientService.isPlaying);
-        const id = window.setInterval(() => setShowHeartbeat(AmbientService.isPlaying), 250);
+        const id = window.setInterval(() => {
+            // Skip the wake while the app is backgrounded (screen off / hidden) —
+            // the ripple only matters when Home is actually on screen.
+            if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+            setShowHeartbeat(AmbientService.isPlaying);
+        }, 250);
         return () => window.clearInterval(id);
     }, []);
 
@@ -667,8 +672,11 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 : 'max-w-[calc(100vw-9rem)] gap-3.5 p-0'
                         }`}
                         style={isTogether ? {
-                            // Baked opaque (was blur(12px)) — scrolls over the ambient.
-                            background: 'linear-gradient(145deg, rgba(255,218,192,0.95), rgba(232,200,178,0.92) 54%, rgba(210,232,192,0.90))',
+                            // Baked opaque (no backdrop-filter): on Home this pill sits over the
+                            // animating ambient blob, where a live blur would re-resolve every
+                            // frame on mobile. The gradient is bumped near-opaque so it reads the
+                            // same without the frost. See the Home-route bake in root-fixes.css.
+                            background: 'linear-gradient(145deg, rgba(255,221,197,0.95), rgba(235,205,184,0.92) 54%, rgba(214,234,197,0.90))',
                             borderColor: 'rgba(176,111,88,0.22)',
                             boxShadow: '0 8px 18px rgba(139,86,74,0.10), inset 0 1px 0 rgba(255,242,226,0.66)',
                         } : undefined}
@@ -732,7 +740,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     className={`spring-press transition-all rounded-2xl px-3 py-2 min-w-[7.25rem] flex items-center justify-center gap-2 border ${
                         isConnected
                             ? 'bg-gradient-to-br from-sage-200/90 to-sage-100/85 text-sage-700 border-sage-300/70 shadow-[0_8px_20px_rgba(86,140,112,0.22)]'
-                            : 'bg-white/90 text-lior-700 border-white/80 shadow-[0_8px_20px_rgba(236,72,153,0.16)]'
+                            : 'bg-white/92 text-lior-700 border-white/80 shadow-[0_8px_20px_rgba(236,72,153,0.16)]'
                     }`}
                     aria-label="Open cloud sync"
                 >
@@ -883,8 +891,12 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     className="flex-1 flex items-center gap-2.5 px-4 py-4 text-left spring-press"
                     style={{
                         borderRadius: '100px',
-                        // Baked opaque (was blur(20px)) — scrolls over the ambient.
-                        background: 'linear-gradient(180deg, rgba(255,255,255,0.93) 0%, rgba(255,255,255,0.86) 100%)',
+                        // Baked opaque (no backdrop-filter): over the animating Home blob a live
+                        // blur(20px) was the single most expensive surface on the page. Reducing
+                        // its radius (as a concurrent change did) still re-resolves the blur every
+                        // frame on mobile — only removing backdrop-filter breaks the coupling. The
+                        // fill is bumped opaque so the ghost pill stays legible without the frost.
+                        background: 'linear-gradient(180deg, rgba(255,250,251,0.92) 0%, rgba(255,247,249,0.86) 100%)',
                         border: '1.5px dashed rgba(225,29,72,0.28)',
                         boxShadow: '0 2px 10px rgba(232,160,176,0.06)',
                     }}

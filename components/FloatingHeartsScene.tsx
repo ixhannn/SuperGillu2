@@ -184,10 +184,11 @@ const DarkGlassMaterial = shaderMaterial(
       float accentMask = smoothstep(0.2, 0.6, vNoise) * smoothstep(0.5, 0.0, abs(vWorldPosition.y - 0.3));
       vec3 accent = uAccentColor * accentMask * 0.3;
 
-      // Moving specular highlights — softer power so they read as wide
-      // glints (not pinpricks) which would also feel like noise at low DPR.
+      // One moving specular highlight — softer power so it reads as a wide
+      // glint (not a pinprick) which would feel like noise at low DPR. (A second
+      // glint was dropped: it cost an extra reflect()+pow() per fragment for a
+      // near-duplicate highlight; spec1 is weighted up slightly to compensate.)
       float spec1 = pow(max(dot(reflect(-viewDir, normal), normalize(vec3(sin(uTime * 0.5), cos(uTime * 0.3), 1.0))), 0.0), 18.0);
-      float spec2 = pow(max(dot(reflect(-viewDir, normal), normalize(vec3(-cos(uTime * 0.4), sin(uTime * 0.6), 0.5))), 0.0), 28.0);
 
       // ── REMOVED: per-pixel hash-based dust sparkle ──
       // Was: smoothstep(0.97..1.0) of fract(sin(world * 40)*43758) — at our
@@ -203,7 +204,7 @@ const DarkGlassMaterial = shaderMaterial(
 
       vec3 rimLight     = uRimColor * fresnel * 1.15;
       vec3 causticLight = uGlowColor * caustic * fresnel * 1.3;
-      vec3 specLight    = vec3(1.0, 0.92, 0.96) * (spec1 * 0.55 + spec2 * 0.4);
+      vec3 specLight    = vec3(1.0, 0.92, 0.96) * (spec1 * 0.7);
 
       // Soft inner aurora glow — second fresnel pass at a wider angle adds
       // depth without flattening the form.
@@ -375,7 +376,7 @@ const DarkGlassBlob: React.FC<{ rimColor: string; accentColor: string }> = ({ ri
         ref={materialRef}
         transparent
         depthWrite={false}
-        side={THREE.DoubleSide}
+        side={THREE.FrontSide}
       />
     </mesh>
   );
@@ -502,12 +503,18 @@ const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused
   pausedRef.current = paused;
 
   useEffect(() => {
+    // ~30fps cap, matching LiveBackground3D. The drifting glass blob moves slowly
+    // enough that 30fps is visually identical, and throttling its R3F invalidate
+    // throttles the backdrop-filter re-blur it triggers above this full-screen
+    // canvas on Home — the other half of the Home ambient compositing cost.
+    const RENDER_MIN_INTERVAL_MS = 1000 / 24;
+    let lastInvalidateTs = -Infinity;
     AnimationEngine.register({
       id: 'floating-hearts-r3f',
       priority: 3,
       budgetMs: 0.2,
       minTier: 'medium',
-      tick() {
+      tick(_delta, timestamp) {
         if (pausedRef.current) return;
         // Hard-pause the instant a route transition starts. The `paused` prop
         // arrives via an observer -> setState -> prop hop that lags the attribute
@@ -517,6 +524,8 @@ const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused
         // matching LiveBackground3D's tick.
         if (typeof document !== 'undefined'
             && document.documentElement.dataset.transitioning === '1') return;
+        if (timestamp - lastInvalidateTs < RENDER_MIN_INTERVAL_MS) return;
+        lastInvalidateTs = timestamp;
         invalidate();
       },
     });
@@ -594,13 +603,16 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
         width: '140vw',
         height: '140vw',
         maxHeight: '125vh',
-        opacity: 0.5,
+        // Presence of the glass blob over the warm page. Bumped 0.5 -> 0.64 so it
+        // reads as a deep, present orb rather than washed-out/transparent. Opacity
+        // is a free compositor property — no per-frame GPU cost.
+        opacity: 0.64,
         willChange: 'transform', // promote to GPU compositor layer
       }}
     >
       <Canvas
         camera={{ position: [0, 0, 6.4], fov: 52 }}
-        dpr={[0.55, 0.85]}
+        dpr={[0.5, 0.65]}
         frameloop="demand"
         flat
         performance={{ min: 0.5 }}
