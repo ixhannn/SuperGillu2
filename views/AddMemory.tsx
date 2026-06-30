@@ -538,10 +538,11 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
           aria-label="Back"
           className="w-10 h-10 rounded-full flex items-center justify-center"
           style={{
-            background: 'rgba(255,255,255,0.92)',
+            background: 'rgba(255,255,255,0.70)',
             border: '1px solid rgba(0,0,0,0.04)',
             color: 'var(--color-text-primary)',
-            // Baked opaque (was blur(10px)) — scrolls over the ambient.
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
           }}
         >
           <ArrowLeft size={17} strokeWidth={2.2} />

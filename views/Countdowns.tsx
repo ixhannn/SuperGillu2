@@ -34,7 +34,7 @@ const LiveCountdown = ({ targetDate }: { targetDate: Date }) => {
                 { label: 'Min', value: timeLeft.minutes || 0 },
                 { label: 'Sec', value: timeLeft.seconds || 0 },
             ].map(unit => (
-                <div key={unit.label} className="glass-card shadow-sm rounded-xl p-2 flex flex-col items-center" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
+                <div key={unit.label} className="glass-card shadow-sm backdrop-blur-md rounded-xl p-2 flex flex-col items-center" style={{ border: '1px solid rgba(var(--theme-particle-2-rgb),0.15)' }}>
                     <span className="text-xl font-bold font-mono" style={{ animation: 'numberRoll 0.5s cubic-bezier(0.23, 1, 0.32, 1) both', color: 'var(--color-text-primary)' }}>{String(unit.value).padStart(2, '0')}</span>
                     <span className="text-[10px] uppercase font-bold tracking-tighter" style={{ color: 'var(--color-text-secondary)' }}>{unit.label}</span>
                 </div>

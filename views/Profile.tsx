@@ -34,22 +34,17 @@ const THEME_DESCRIPTIONS: Record<ThemeId, string> = {
 };
 
 const FROSTED_PANEL_STYLE: React.CSSProperties = {
-    // Baked opaque (was a transparent bg relying entirely on blur(24px)). These
-    // settings panels scroll over the fixed animating ambient, so the live blur
-    // re-resolved every scroll frame = the scroll shimmer. --theme-surface-glass
-    // is unset, so the fallback now provides the actual (near-opaque) surface and
-    // there is no backdrop-filter to re-sample.
-    background: 'var(--theme-surface-glass, rgba(255, 255, 255, 0.92))',
+    background: 'var(--theme-surface-glass)',
+    backdropFilter: 'blur(24px)',
+    WebkitBackdropFilter: 'blur(24px)',
     border: '1.5px solid var(--theme-border-crisp)',
     boxShadow: 'var(--shadow-sm)',
 };
 
 const APPLE_GLASS_STYLE: React.CSSProperties = {
-    // Baked opaque (was blur backdrop-filter). These settings panels scroll over
-    // the fixed animating ambient, so the live blur re-sampled every scroll frame
-    // = the scroll shimmer. Removing backdrop-filter eliminates the re-sample
-    // entirely; 0.9 white keeps the panels reading as soft frosted glass.
-    background: 'rgba(255, 255, 255, 0.9)',
+    background: 'rgba(255, 255, 255, 0.45)',
+    backdropFilter: 'blur(40px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(40px) saturate(180%)',
     border: '1px solid rgba(255, 255, 255, 0.55)',
     boxShadow: '0 2px 20px rgba(0, 0, 0, 0.05), 0 0.5px 1px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.5)',
 };
