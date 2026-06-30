@@ -5,6 +5,7 @@ import { Trash2, Image as ImageIcon, PlayCircle, Plus, Calendar, Sparkles, Heart
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory, Note, Comment, VoiceNote } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { useThrottledReload } from '../hooks/useThrottledReload';
 import { SyncService } from '../services/sync';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
@@ -752,8 +753,9 @@ const MemoryDetailModal = ({ memory, onClose, onDelete, onNavigate, canNavigate,
     const fullDate = new Date(memory.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long' });
     const time = new Date(memory.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
-    // ── Comments state ──
-    const [comments, setComments] = useState<Comment[]>([]);
+    // ── Comments state ── (warm-init from the sync cache so the thread paints
+    // its existing comments on the first frame instead of flashing empty)
+    const [comments, setComments] = useState<Comment[]>(() => StorageService.getComments(memory.id));
     const [inputText, setInputText] = useState('');
     const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -1343,12 +1345,21 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
     const [isRecoveringCloud, setIsRecoveringCloud] = useState(false);
     const recoveryAttemptedRef = useRef(false);
 
+    // Coalesce sync-burst storage events into one rAF reload and ignore writes to
+    // unrelated tables. Previously every storage-update (any table, app-wide) ran
+    // a fresh-array setMemories — so a 40-row reconcile burst re-rendered the whole
+    // timeline 40 times. Now: at most one re-render per frame, and only for memory
+    // writes (the list never re-renders when an unrelated table changes).
+    const reloadMemories = useThrottledReload(() => setMemories(StorageService.getMemories()));
     useEffect(() => {
-        const load = () => setMemories(StorageService.getMemories());
-        load();
-        storageEventTarget.addEventListener('storage-update', load);
-        return () => storageEventTarget.removeEventListener('storage-update', load);
-    }, []);
+        const onStorage = (event: Event) => {
+            const table = (event as CustomEvent).detail?.table;
+            if (table && table !== 'memories' && table !== 'init') return;
+            reloadMemories();
+        };
+        storageEventTarget.addEventListener('storage-update', onStorage);
+        return () => storageEventTarget.removeEventListener('storage-update', onStorage);
+    }, [reloadMemories]);
 
     // Background image recovery: if any images are missing from local IDB,
     // pull them back from Supabase cloud. Fires once on mount, safe to re-run.
@@ -1724,20 +1735,23 @@ const MemoryTimelineView: React.FC<MemoryTimelineProps> = ({ setView }) => {
                                                 }}
                                             />
 
-                                            {/* Featured polaroid — chapter centerpiece */}
+                                            {/* Featured polaroid — chapter centerpiece.
+                                                No AnimatePresence: it wrapped a SINGLE card, so
+                                                whenever the month's newest memory changed the old
+                                                featured card played a popLayout scale-out while the
+                                                new one mounted = a blink on the hero. A plain swap
+                                                (keyed by id) updates it cleanly. */}
                                             <div className="mb-4 px-1">
-                                                <AnimatePresence mode="popLayout" initial={false}>
-                                                    <MemoryCard
-                                                        key={featured.id}
-                                                        memory={featured}
-                                                        index={groupIdx * 10}
-                                                        featured
-                                                        tilt={featuredTilt(groupIdx)}
-                                                        onOpen={handleOpenMemory}
-                                                        onDelete={requestDelete}
-                                                        onLongPress={handleCardLongPress}
-                                                    />
-                                                </AnimatePresence>
+                                                <MemoryCard
+                                                    key={featured.id}
+                                                    memory={featured}
+                                                    index={groupIdx * 10}
+                                                    featured
+                                                    tilt={featuredTilt(groupIdx)}
+                                                    onOpen={handleOpenMemory}
+                                                    onDelete={requestDelete}
+                                                    onLongPress={handleCardLongPress}
+                                                />
                                             </div>
 
                                             {/* Scrapbook grid — alternating tilts */}

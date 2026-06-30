@@ -18,6 +18,7 @@ import { ViewHeader } from '../components/ViewHeader';
 import { PinPad } from '../components/PinPad';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { useLiorMedia } from '../hooks/useLiorImage';
 import { PrivacyLock, PIN_LENGTH } from '../services/privacyLock';
 import { feedback } from '../utils/feedback';
 import { useTapOrigin } from '../hooks/useTapOrigin';
@@ -106,29 +107,29 @@ const bottomNavClearanceStyle: React.CSSProperties = {
 const shelfPanelStyle: React.CSSProperties = neuPanelStyle;
 
 const PrivateMediaPreview: React.FC<{ item: PrivateSpaceItem; mode?: 'card' | 'detail' }> = ({ item, mode = 'card' }) => {
-    const [src, setSrc] = useState<string | null>(null);
+    const isPhoto = item.kind === 'photo';
+    const isVideo = item.kind === 'video';
+    // Resolve photo/video through the shared warm-cache hook. The old manual
+    // effect ran `setSrc(null)` on every `item` identity change and re-fetched a
+    // fresh URL — so a private-space cache REBUILD (new item objects, same media:
+    // cold mount / account switch) blanked and reloaded every thumbnail in the
+    // vault at once. useLiorMedia seeds from its module cache, so unchanged media
+    // re-paints from the first frame with no blank → no flash.
+    const { src } = useLiorMedia(
+        isPhoto ? item.imageId : isVideo ? item.videoId : undefined,
+        isPhoto ? item.image : isVideo ? item.video : undefined,
+        isPhoto ? item.storagePath : isVideo ? item.videoStoragePath : undefined,
+    );
     const [audioSrc, setAudioSrc] = useState<string | null>(null);
     const isDetail = mode === 'detail';
 
     useEffect(() => {
+        if (item.kind !== 'audio') return;
         let cancelled = false;
-        setSrc(null);
         setAudioSrc(null);
-
-        if (item.kind === 'photo') {
-            StorageService.getImage(item.imageId || '', item.image, item.storagePath).then((value) => {
-                if (!cancelled) setSrc(value);
-            });
-        } else if (item.kind === 'video') {
-            StorageService.getImage(item.videoId || '', item.video, item.videoStoragePath).then((value) => {
-                if (!cancelled) setSrc(value);
-            });
-        } else if (item.kind === 'audio') {
-            StorageService.getPrivateSpaceAudio(item).then((value) => {
-                if (!cancelled) setAudioSrc(value);
-            });
-        }
-
+        StorageService.getPrivateSpaceAudio(item).then((value) => {
+            if (!cancelled) setAudioSrc(value);
+        });
         return () => { cancelled = true; };
     }, [item]);
 

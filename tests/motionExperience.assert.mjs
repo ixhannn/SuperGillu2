@@ -16,16 +16,22 @@ assert.match(
   'Global motion tokens should expose the premium deceleration curve used by app-wide transitions.',
 );
 
-assert.match(
+// Cached tab switches must NOT use an entrance opacity fade. The incoming and
+// outgoing tabs are both fully-painted keep-alive trees; the outgoing one is
+// hidden in the same commit, so fading the incoming up from opacity:0 left a
+// blank first frame that flashed the bare ambient background on every tab
+// return ("everything flickers when I switch screens"). Tabs now swap instantly;
+// route push/pop keep their single container fade in `_run`.
+assert.doesNotMatch(
   rootFixesSource,
-  /@keyframes keep-alive-tab-enter[\s\S]*from \{ opacity: 0; \}[\s\S]*to\s+\{ opacity: 1; \}/,
-  'Cached tab switches should use an opacity-only silk fade so heavy root tabs stay on the cheapest compositor path.',
+  /\.keep-alive-shell\.is-active[\s\S]{0,200}animation:\s*keep-alive-tab-enter/,
+  'Cached tab shells must not run a keep-alive-tab-enter opacity fade — it flashes the background on tab return. Tabs swap instantly.',
 );
 
-assert.match(
+assert.doesNotMatch(
   rootFixesSource,
-  /\.keep-alive-shell\.is-active[\s\S]*animation:\s*keep-alive-tab-enter var\(--lior-motion-tab\) var\(--lior-ease-silk\) both;[\s\S]*will-change:\s*opacity;/,
-  'Cached tab switches should use the global silk timing while only promoting opacity.',
+  /@keyframes\s+keep-alive-tab-enter/,
+  'The keep-alive-tab-enter keyframe should be removed — cached tab switches are an instant swap, not an opacity fade.',
 );
 
 assert.match(

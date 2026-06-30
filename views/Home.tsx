@@ -59,6 +59,64 @@ const getMemoryDateKey = (memory: Partial<Memory>): string | null => {
 
 const isMemoryDateKey = (value: string | null): value is string => Boolean(value);
 
+// ── Pure Home-data derivations (module scope) ───────────────────────────────
+// Hoisted out of the component so the state below can WARM-INIT from them in a
+// useState initializer (a component-scoped const would be in the temporal dead
+// zone at the useState call site). They read only their args + module imports,
+// so they're safe to call before first paint.
+const findOnThisDayMemory = (mems: Memory[], now: Date): Memory | null => {
+    const throwback = mems.find(m => {
+        const d = new Date(m.date);
+        return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() !== now.getFullYear();
+    });
+    return throwback || null;
+};
+
+const calculateStreak = (mems: Memory[]) => {
+    if (mems.length === 0) return 0;
+    const dates = [...new Set(mems.map(getMemoryDateKey).filter(isMemoryDateKey))].sort().reverse();
+    if (dates.length === 0) return 0;
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    if (dates[0] !== today && dates[0] !== yesterday) return 0;
+    let streakCount = 0;
+    let testDate = new Date();
+    if (!dates.includes(today)) testDate.setDate(testDate.getDate() - 1);
+    for (let i = 0; i < dates.length; i++) {
+        const dateStr = testDate.toISOString().split('T')[0];
+        if (dates.includes(dateStr)) {
+            streakCount++;
+            testDate.setDate(testDate.getDate() - 1);
+        } else break;
+    }
+    return streakCount;
+};
+
+const getNextEvent = (specialDates: SpecialDate[], anniversaryDate: string) => {
+    const now = new Date();
+    const events: { title: string, date: Date }[] = [];
+    specialDates.forEach(sd => {
+        let eventDate = parseStoredDateOnly(sd.date);
+        if (!eventDate) return;
+        if (sd.type === 'birthday' || sd.type === 'anniversary') {
+            eventDate = getNextAnnualOccurrence(sd.date, now);
+        }
+        if (eventDate && calendarDayDifference(eventDate, now) >= 0) events.push({ title: sd.title, date: eventDate });
+    });
+    const anniv = getNextAnnualOccurrence(anniversaryDate, now);
+    if (anniv) {
+        events.push({ title: 'Our Anniversary', date: anniv });
+    }
+    // Derived milestones (100/500/1000 days, next monthsary) give a brand-new
+    // couple something near and motivating to count down to before they've
+    // added any of their own special dates.
+    buildRelationshipMilestones(anniversaryDate, now).forEach((m) => {
+        events.push({ title: m.title, date: m.nextDate });
+    });
+    events.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
+};
+
 const SurpriseModal = ({ content, onClose }: { content: { type: 'memory' | 'note', item: Memory | Note }, onClose: () => void }) => {
     const { type, item } = content;
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -295,20 +353,25 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // Tile-open lift — the tapped card "picks itself up" while the route push
     // slides the next view in, so navigation feels like opening, not jumping.
     const open = useTileOpen();
-    const [myStatus, setMyStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
-    const [partnerStatus, setPartnerStatus] = useState<UserStatus>({ state: 'awake', timestamp: '' });
-    const [daysTogether, setDaysTogether] = useState(0);
+    // Warm-init every above-the-fold value from the synchronous in-memory cache so
+    // the FIRST painted frame already shows real data (day count, streak, status,
+    // memories, notes, the "On this day" card) instead of flashing 0/empty and then
+    // snapping in one commit later. loadData() below still re-reads + subscribes for
+    // live updates. (profile is already warm-init'd above; these mirror that.)
+    const [myStatus, setMyStatus] = useState<UserStatus>(() => StorageService.getStatus());
+    const [partnerStatus, setPartnerStatus] = useState<UserStatus>(() => StorageService.getPartnerStatus());
+    const [daysTogether, setDaysTogether] = useState(() => daysTogetherFrom(parseAnniversaryDate(StorageService.getCoupleProfile().anniversaryDate), new Date()));
     const [showDetailedDuration, setShowDetailedDuration] = useState(false);
     const [detailedDuration, setDetailedDuration] = useState('');
-    const [onThisDayMemory, setOnThisDayMemory] = useState<Memory | null>(null);
+    const [onThisDayMemory, setOnThisDayMemory] = useState<Memory | null>(() => findOnThisDayMemory(StorageService.getMemories(), new Date()));
     const [otdImage, setOtdImage] = useState<string | null>(null);
     const [showSurprise, setShowSurprise] = useState(false);
     const [surpriseContent, setSurpriseContent] = useState<{ type: 'memory' | 'note', item: Memory | Note } | null>(null);
-    const [nextEvent, setNextEvent] = useState<{ title: string, days: number } | null>(null);
-    const [streak, setStreak] = useState(0);
-    const [memories, setMemories] = useState<Memory[]>([]);
-    const [notes, setNotes] = useState<Note[]>([]);
-    const [privateItemCount, setPrivateItemCount] = useState(0);
+    const [nextEvent, setNextEvent] = useState<{ title: string, days: number } | null>(() => getNextEvent(StorageService.getSpecialDates(), StorageService.getCoupleProfile().anniversaryDate));
+    const [streak, setStreak] = useState(() => calculateStreak(StorageService.getMemories()));
+    const [memories, setMemories] = useState<Memory[]>(() => StorageService.getMemories());
+    const [notes, setNotes] = useState<Note[]>(() => StorageService.getNotes());
+    const [privateItemCount, setPrivateItemCount] = useState(() => StorageService.getPrivateSpaceItems().length);
     const [showHeartbeat, setShowHeartbeat] = useState(false);
     const [receivedHeartbeat, setReceivedHeartbeat] = useState(false);
     const [isDissolving, setIsDissolving] = useState(false);
@@ -342,51 +405,6 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         return () => wrapperEl.removeEventListener('animationend', onEnd);
     }, [heroSettled]);
     const displayCount = useCountUp(daysTogether, heroInView && heroSettled);
-
-    const calculateStreak = (mems: Memory[]) => {
-        if (mems.length === 0) return 0;
-        const dates = [...new Set(mems.map(getMemoryDateKey).filter(isMemoryDateKey))].sort().reverse();
-        if (dates.length === 0) return 0;
-        const today = new Date().toISOString().split('T')[0];
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        if (dates[0] !== today && dates[0] !== yesterday) return 0;
-        let streakCount = 0;
-        let testDate = new Date();
-        if (!dates.includes(today)) testDate.setDate(testDate.getDate() - 1);
-        for (let i = 0; i < dates.length; i++) {
-            const dateStr = testDate.toISOString().split('T')[0];
-            if (dates.includes(dateStr)) {
-                streakCount++;
-                testDate.setDate(testDate.getDate() - 1);
-            } else break;
-        }
-        return streakCount;
-    };
-
-    const getNextEvent = (specialDates: SpecialDate[], anniversaryDate: string) => {
-        const now = new Date();
-        const events: { title: string, date: Date }[] = [];
-        specialDates.forEach(sd => {
-            let eventDate = parseStoredDateOnly(sd.date);
-            if (!eventDate) return;
-            if (sd.type === 'birthday' || sd.type === 'anniversary') {
-                eventDate = getNextAnnualOccurrence(sd.date, now);
-            }
-            if (eventDate && calendarDayDifference(eventDate, now) >= 0) events.push({ title: sd.title, date: eventDate });
-        });
-        const anniv = getNextAnnualOccurrence(anniversaryDate, now);
-        if (anniv) {
-            events.push({ title: 'Our Anniversary', date: anniv });
-        }
-        // Derived milestones (100/500/1000 days, next monthsary) give a brand-new
-        // couple something near and motivating to count down to before they've
-        // added any of their own special dates.
-        buildRelationshipMilestones(anniversaryDate, now).forEach((m) => {
-            events.push({ title: m.title, date: m.nextDate });
-        });
-        events.sort((a, b) => a.date.getTime() - b.date.getTime());
-        return events.length > 0 ? { title: events[0].title, days: calendarDayDifference(events[0].date, now) } : null;
-    };
 
     const loadData = () => {
         const prof = StorageService.getCoupleProfile();
@@ -649,11 +667,10 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 : 'max-w-[calc(100vw-9rem)] gap-3.5 p-0'
                         }`}
                         style={isTogether ? {
-                            background: 'linear-gradient(145deg, rgba(255,218,192,0.82), rgba(232,200,178,0.70) 54%, rgba(210,232,192,0.62))',
+                            // Baked opaque (was blur(12px)) — scrolls over the ambient.
+                            background: 'linear-gradient(145deg, rgba(255,218,192,0.95), rgba(232,200,178,0.92) 54%, rgba(210,232,192,0.90))',
                             borderColor: 'rgba(176,111,88,0.22)',
                             boxShadow: '0 8px 18px rgba(139,86,74,0.10), inset 0 1px 0 rgba(255,242,226,0.66)',
-                            backdropFilter: 'blur(12px) saturate(118%)',
-                            WebkitBackdropFilter: 'blur(12px) saturate(118%)',
                         } : undefined}
                         aria-label={`${getDisplayName(profile.myName, 'You')} and ${getDisplayName(profile.partnerName, 'Partner')}${isTogether ? ', live together now' : ', open profile'}`}
                     >
@@ -715,7 +732,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     className={`spring-press transition-all rounded-2xl px-3 py-2 min-w-[7.25rem] flex items-center justify-center gap-2 border ${
                         isConnected
                             ? 'bg-gradient-to-br from-sage-200/90 to-sage-100/85 text-sage-700 border-sage-300/70 shadow-[0_8px_20px_rgba(86,140,112,0.22)]'
-                            : 'bg-white/72 text-lior-700 border-white/80 shadow-[0_8px_20px_rgba(236,72,153,0.16)] backdrop-blur-md'
+                            : 'bg-white/90 text-lior-700 border-white/80 shadow-[0_8px_20px_rgba(236,72,153,0.16)]'
                     }`}
                     aria-label="Open cloud sync"
                 >
@@ -866,9 +883,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     className="flex-1 flex items-center gap-2.5 px-4 py-4 text-left spring-press"
                     style={{
                         borderRadius: '100px',
-                        background: 'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.35) 100%)',
-                        backdropFilter: 'blur(20px) saturate(140%)',
-                        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+                        // Baked opaque (was blur(20px)) — scrolls over the ambient.
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0.93) 0%, rgba(255,255,255,0.86) 100%)',
                         border: '1.5px dashed rgba(225,29,72,0.28)',
                         boxShadow: '0 2px 10px rgba(232,160,176,0.06)',
                     }}

@@ -4,6 +4,7 @@ import { ViewHeader } from '../components/ViewHeader';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { useThrottledReload } from '../hooks/useThrottledReload';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { calendarDayDifference, dateInputValueToStoredDate, daysUntilDate, formatStoredDate, parseStoredDateOnly } from '../shared/dateOnly.js';
@@ -27,7 +28,7 @@ interface SpecialDatesProps {
 }
 
 export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
-  const [dates, setDates] = useState<SpecialDate[]>([]);
+  const [dates, setDates] = useState<SpecialDate[]>(() => StorageService.getSpecialDates());
   const [showAdd, setShowAdd] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDate, setNewDate] = useState('');
@@ -39,13 +40,16 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
   // of popping from its own centre — matches the route/dialog open feel.
   const { ref: addPanelRef, origin: addPanelOrigin } = useTapOrigin<HTMLDivElement>(showAdd);
 
+  const reloadDates = useThrottledReload(() => setDates(StorageService.getSpecialDates()));
   useEffect(() => {
-    const load = () => setDates(StorageService.getSpecialDates());
-    load();
-    const handleUpdate = () => load();
-    storageEventTarget.addEventListener('storage-update', handleUpdate);
-    return () => storageEventTarget.removeEventListener('storage-update', handleUpdate);
-  }, []);
+    const onStorage = (event: Event) => {
+      const table = (event as CustomEvent).detail?.table;
+      if (table && table !== 'dates' && table !== 'init') return;
+      reloadDates();
+    };
+    storageEventTarget.addEventListener('storage-update', onStorage);
+    return () => storageEventTarget.removeEventListener('storage-update', onStorage);
+  }, [reloadDates]);
 
   // Leaving the view commits any pending deferred delete right away.
   useEffect(() => () => toast.hide(), []);

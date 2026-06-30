@@ -264,9 +264,11 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
             onClick={handleCardClick}
             className="w-full rounded-[1.75rem] p-5 mb-5 relative overflow-hidden"
             style={{
-                background: 'rgba(255,255,255,0.88)',
-                backdropFilter: 'blur(24px) saturate(140%)',
-                WebkitBackdropFilter: 'blur(24px) saturate(140%)',
+                // Baked opaque (was blur(24px)): this card scrolls over the fixed
+                // animating ambient on Home, so a live backdrop-filter re-resolved
+                // its blur every scroll frame (the scroll shimmer). 0.96 opacity
+                // makes the dropped blur imperceptible.
+                background: 'rgba(255,255,255,0.96)',
                 border: '1px solid rgba(255,255,255,0.95)',
                 boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,1), 0 2px 16px rgba(232,160,176,0.10)',
                 cursor: !myAnswer ? 'pointer' : 'default',

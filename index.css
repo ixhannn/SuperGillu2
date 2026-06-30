@@ -301,9 +301,13 @@ canvas.fixed,
   }
 } /* Layer 2 — Primary cards: solid, comfortable, no heavy glass */
 .glass-card {
-  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  /* Baked opaque (was blur(20px) backdrop-filter). These cards scroll over the
+     fixed, always-animating ambient, so a live backdrop-filter re-resolved its
+     Gaussian blur every scroll frame = the "components flicker while scrolling"
+     shimmer on WebView. At 94% opacity the dropped blur is near-imperceptible
+     (Us.tsx's fully-opaque cards are the smooth control), and the per-frame GPU
+     re-sample is eliminated. Do NOT re-add backdrop-filter to scrolling cards. */
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-bottom-color: rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-card);
@@ -312,9 +316,8 @@ canvas.fixed,
     inset 0 1px 0 rgba(255, 255, 255, 1);
 } /* Layer 3 — Hero / elevated cards */
 .glass-card-hero {
-  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  /* Baked opaque (was blur(24px)) — see .glass-card. Kills scroll re-blur. */
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-bottom-color: rgba(255, 255, 255, 0.45);
   border-radius: var(--radius-card);
@@ -333,8 +336,8 @@ canvas.fixed,
   position: relative;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(28px) saturate(190%) brightness(1.04);
-  -webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.04);
+  backdrop-filter: blur(18px) saturate(190%) brightness(1.04);
+  -webkit-backdrop-filter: blur(18px) saturate(190%) brightness(1.04);
   border-top: 1px solid rgba(255, 255, 255, 0.75);
   border-left: 1px solid rgba(255, 255, 255, 0.4);
   border-right: 1px solid rgba(255, 255, 255, 0.15);
@@ -344,9 +347,8 @@ canvas.fixed,
     0 4px 16px rgba(232, 160, 176, 0.1);
 } /* ── BENTO CARD — solid card for grid items ────────────────────────────── */
 .bento-card {
-  background: color-mix(in srgb, var(--color-surface) 80%, transparent);
-  backdrop-filter: blur(16px) saturate(130%);
-  -webkit-backdrop-filter: blur(16px) saturate(130%);
+  /* Baked opaque (was blur(16px)) — Home grid tiles; see .glass-card. */
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-bottom-color: rgba(255, 255, 255, 0.38);
   border-radius: var(--radius-card);
@@ -450,8 +452,11 @@ canvas.fixed,
   position: relative;
   overflow: hidden; /* Near-transparent: the magic is the blur + specular, not the tint */
   background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(52px) saturate(220%) brightness(1.08) contrast(0.98);
-  -webkit-backdrop-filter: blur(52px) saturate(220%) brightness(1.08)
+  /* Blur capped at 22px (was 52): a 52px backdrop blur over the moving ambient
+     is both very expensive and the main at-rest glass shimmer source on WebView.
+     22px keeps the liquid-glass look without the per-frame re-sample boil. */
+  backdrop-filter: blur(22px) saturate(220%) brightness(1.08) contrast(0.98);
+  -webkit-backdrop-filter: blur(22px) saturate(220%) brightness(1.08)
     contrast(0.98); /* Directional border: top bright → sides fade → bottom nearly invisible */
   border-top: 1px solid rgba(255, 255, 255, 0.85);
   border-left: 1px solid rgba(255, 255, 255, 0.48);
@@ -534,9 +539,9 @@ canvas.fixed,
 [data-theme="starry-night"] .glass-card-hero,
 [data-theme="starry-night"] .bento-card,
 [data-theme="starry-night"] .liquid-glass {
-  background: rgba(22, 24, 58, 0.22);
-  backdrop-filter: blur(48px) saturate(200%) brightness(1.05);
-  -webkit-backdrop-filter: blur(48px) saturate(200%) brightness(1.05);
+  /* Baked opaque (was blur(22px)) — dark-theme cards; see .glass-card. The dark
+     surface must be near-opaque so the dropped blur doesn't expose sharp ambient. */
+  background: rgba(22, 24, 58, 0.93);
   border-top-color: rgba(129, 140, 248, 0.5);
   border-left-color: rgba(129, 140, 248, 0.28);
   border-right-color: rgba(10, 8, 40, 0.4);
@@ -641,8 +646,13 @@ canvas.fixed,
     rgba(255, 246, 249, 0.11) 45%,
     rgba(255, 234, 242, 0.06) 100%
   );
-  backdrop-filter: blur(32px) saturate(180%) brightness(1.03);
-  -webkit-backdrop-filter: blur(32px) saturate(180%) brightness(1.03); /* Single-weight border — thicker on top, fades on bottom */
+  /* Blur capped at 18px (was 32): this fixed pill sits on EVERY screen over the
+     always-animating ambient layer, and a large backdrop blur re-samples the
+     moving gradient every frame = the constant at-rest shimmer/flicker on
+     WebView GPUs. 18px reads identically over the soft gradient but stops the
+     boil. Do not raise back toward 32. */
+  backdrop-filter: blur(18px) saturate(180%) brightness(1.03);
+  -webkit-backdrop-filter: blur(18px) saturate(180%) brightness(1.03); /* Single-weight border — thicker on top, fades on bottom */
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-bottom-color: rgba(255, 255, 255, 0.1);
   border-radius: 2.25rem; /* Layered depth — subtle, not heavy */
@@ -770,9 +780,8 @@ canvas.fixed,
   box-shadow: var(--shadow-float);
 } /* Frosted glass with 3D depth */
 .glass-3d {
-  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  /* Baked opaque (was blur(20px)) — see .glass-card. Kills scroll re-blur. */
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-surface) 90%, white);
   border-bottom-color: rgba(var(--theme-particle-1-rgb), 0.14);
   box-shadow:
@@ -2284,8 +2293,8 @@ img {
   border-left: 1px solid rgba(255, 255, 255, 0.56);
   border-right: 1px solid rgba(255, 255, 255, 0.18);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(28px) saturate(180%) brightness(1.05);
-  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.05);
+  backdrop-filter: blur(18px) saturate(180%) brightness(1.05);
+  -webkit-backdrop-filter: blur(18px) saturate(180%) brightness(1.05);
   box-shadow:
     inset 0 1.5px 0 rgba(255, 255, 255, 0.94),
     inset 1px 0 0 rgba(255, 255, 255, 0.34),
@@ -2379,8 +2388,8 @@ img {
   border-left: 1px solid rgba(255, 255, 255, 0.64);
   border-right: 1px solid rgba(255, 255, 255, 0.24);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(34px) saturate(205%) brightness(1.08);
-  -webkit-backdrop-filter: blur(34px) saturate(205%) brightness(1.08);
+  backdrop-filter: blur(22px) saturate(205%) brightness(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(205%) brightness(1.08);
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.96),
     inset 1px 0 0 rgba(255, 255, 255, 0.46),
@@ -2520,8 +2529,8 @@ img {
   position: relative;
   border-radius: 24px;
   background: rgba(10, 10, 10, 0.12);
-  backdrop-filter: blur(36px) saturate(200%);
-  -webkit-backdrop-filter: blur(36px) saturate(200%);
+  backdrop-filter: blur(22px) saturate(200%);
+  -webkit-backdrop-filter: blur(22px) saturate(200%);
   border-top: 1px solid rgba(255, 255, 255, 0.6);
   border-left: 1px solid rgba(255, 255, 255, 0.3);
   border-right: 1px solid rgba(255, 255, 255, 0.1);

@@ -362,7 +362,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
     // Keyboard lift for the review sheet's autoFocus title input (fixed
     // items-end portal; overlay keyboard mode does not resize the WebView).
     const { keyboardOpen, keyboardHeight } = useNativeShell();
-    const [notes, setNotes] = useState<VoiceNote[]>([]);
+    const [notes, setNotes] = useState<VoiceNote[]>(() => StorageService.getVoiceNotes());
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
     const recordingDurationRef = useRef(0);

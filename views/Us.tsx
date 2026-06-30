@@ -5,6 +5,7 @@ import { feedback } from '../utils/feedback';
 import { ViewState, UsBucketItem, UsWishlistItem, UsMilestone } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { useThrottledReload } from '../hooks/useThrottledReload';
 import { toast } from '../utils/toast';
 import { listRemoveExit } from '../utils/motion';
 
@@ -95,20 +96,25 @@ const UsView: React.FC<UsProps> = ({ setView }) => {
     // Leaving the view commits any pending deferred delete right away.
     useEffect(() => () => toast.hide(), []);
 
+    // Coalesce sync bursts into one rAF reload instead of one fresh-array setState
+    // per pulled row (which re-rendered all of Us once per event during a reconcile).
+    const reloadUs = useThrottledReload(() => {
+        setBucketItems(StorageService.getUsBucketItems());
+        setWishItems(StorageService.getUsWishlistItems());
+        const syncedMilestones = StorageService.getUsMilestones();
+        setMilestones(syncedMilestones.length ? syncedMilestones : DEFAULT_MILESTONES);
+    });
     useEffect(() => {
         const onStorage = (event: Event) => {
-            const detail = (event as CustomEvent).detail;
-            if (!detail) return;
-            if (['us_bucket_items', 'us_wishlist_items', 'us_milestones', 'init'].includes(detail.table)) {
-                setBucketItems(StorageService.getUsBucketItems());
-                setWishItems(StorageService.getUsWishlistItems());
-                const syncedMilestones = StorageService.getUsMilestones();
-                setMilestones(syncedMilestones.length ? syncedMilestones : DEFAULT_MILESTONES);
+            const table = (event as CustomEvent).detail?.table;
+            if (!table) return;
+            if (['us_bucket_items', 'us_wishlist_items', 'us_milestones', 'init'].includes(table)) {
+                reloadUs();
             }
         };
         storageEventTarget.addEventListener('storage-update', onStorage);
         return () => storageEventTarget.removeEventListener('storage-update', onStorage);
-    }, []);
+    }, [reloadUs]);
 
     // ── Bucket List ──────────────────────────────────────────────────────
     const [bucketItems, setBucketItems] = useState<UsBucketItem[]>(() => StorageService.getUsBucketItems());

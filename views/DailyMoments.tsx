@@ -123,10 +123,14 @@ const PhotoCardBase: React.FC<{ photo: DailyPhoto, onOpen: (photo: DailyPhoto) =
                         <>
                             <motion.video
                                 ref={inViewVideoRef}
-                                initial={{ y: -20, scale: 1.15 }}
-                                whileInView={{ y: 0, scale: 1 }}
-                                viewport={{ once: true, margin: "50px 0px" }}
-                                transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                                // Gentle opacity fade on mount, NOT a whileInView
+                                // zoom/slide: this node only mounts AFTER its media
+                                // decodes, by which point the card is already on
+                                // screen — so the scroll-in entrance fired as a
+                                // jolt every time a thumbnail finished loading.
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                                 src={mediaUrl}
                                 className="relative w-full h-full object-cover z-[1]"
                                 muted
@@ -142,12 +146,11 @@ const PhotoCardBase: React.FC<{ photo: DailyPhoto, onOpen: (photo: DailyPhoto) =
                             </div>
                         </>
                     ) : (
-                        <motion.img 
-                            initial={{ y: -20, scale: 1.15 }}
-                            whileInView={{ y: 0, scale: 1 }}
-                            viewport={{ once: true, margin: "50px 0px" }}
-                            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-                            src={mediaUrl} 
+                        <motion.img
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                            src={mediaUrl}
                             className="relative w-full h-full object-cover z-[1]" 
                             alt="Daily moment"
                             loading="lazy"
@@ -281,7 +284,7 @@ const PostViewer: React.FC<{
         isVideo ? (photo.video || photo.image) : photo.image,
         isVideo ? (videoStoragePath || imageStoragePath) : imageStoragePath
     );
-    const [comments, setComments] = useState<Comment[]>([]);
+    const [comments, setComments] = useState<Comment[]>(() => StorageService.getComments(photo.id));
     const [commentText, setCommentText] = useState('');
     const [replyTo, setReplyTo] = useState<Comment | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);

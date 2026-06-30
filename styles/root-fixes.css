@@ -127,32 +127,38 @@ html[data-transitioning="1"] *::after {
    ~360ms transition only changes the thin see-through edge — imperceptible at
    the animation's speed, and it returns the instant the flag clears.
    `!important` here also overrides the inline `backdrop-filter` some cards set. */
-html[data-transitioning="1"] .skip-blur-on-transition,
-html[data-transitioning="1"] [data-skip-blur-on-transition],
-html[data-transitioning="1"] .glass-card,
-html[data-transitioning="1"] .glass-card-hero,
-html[data-transitioning="1"] .bento-card,
-html[data-transitioning="1"] .accent-card,
-html[data-transitioning="1"] .glass-3d,
-html[data-transitioning="1"] .liquid-glass {
+/* UNIVERSAL during the transition window (was a class allow-list). The whole
+   opening page's opacity ramps 0→1 in _run, and any live backdrop-filter nested
+   under that fractional-opacity ancestor BOILS/flashes on WebView (the group is
+   rasterised + the blur re-resolved every frame). The old allow-list missed the
+   header pill `.vh` (which is PORTALED to <body>, so it isn't even faded but
+   still re-resolves its blur over the dimming ambient) and every inline
+   `style={{backdropFilter}}` surface. A universal selector reaches all of them.
+   Cards are 80–90% opaque, so dropping blur for the ~0.5s window only changes the
+   thin see-through edge — imperceptible at animation speed; it returns the instant
+   the flag clears. (The universal animation-pause rule above already establishes
+   that a `html[data-transitioning] *` selector is acceptable here.) */
+html[data-transitioning="1"] *,
+html[data-transitioning="1"] *::before,
+html[data-transitioning="1"] *::after {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
-/* SINGLE-OWNER FADE during route transitions (push/pop/expand via _run).
-   _run animates the whole shell container's opacity 0→1, but the freshly-active
-   keep-alive shell ALSO runs its own `keep-alive-tab-enter` opacity fade — so
-   the destination fades TWICE and the two curves multiply into a soft, muddy
-   "never quite settling" reveal. It's most obvious on every BACK (the returned
-   tab swims in instead of snapping clean), and is page-weight-independent, which
-   is why back from *any* page felt off. During a _run transition the container
-   owns the fade, so suppress the shell's intrinsic one — leaving one crisp fade.
-   Tab switches take the data-tab-transitioning fast path (no container anim) and
-   keep their keep-alive-tab-enter; this rule only matches data-transitioning, so
-   tab switches are untouched. Inert at rest. */
-html[data-transitioning="1"] .keep-alive-shell.is-active {
-  animation: none !important;
-}
+/* NOTE: the keep-alive shells deliberately have NO intrinsic opacity fade.
+   An earlier `keep-alive-tab-enter` (opacity 0→1) on `.is-active` caused two
+   separate flicker bugs:
+     1. Route push/pop: `_run` ALSO fades the whole container, so the shell's
+        own fade multiplied into a muddy, never-settling double-fade.
+     2. Tab switch (the common case): the fast path flips `.is-active`↔`.is-cached`
+        in one commit, and the outgoing tab is `display:none` INSTANTLY (index.css)
+        — so for the first frame(s) of the fade the incoming tab sat at opacity:0
+        with NOTHING behind it, flashing the bare ambient background. This
+        replayed on every return to an already-visited tab = "everything flickers
+        when I switch screens."
+   Both tabs are already fully rendered keep-alive trees, so the incoming one
+   needs no entrance fade. Route push/pop keep their single container fade in
+   `_run`; cached tab switches are now a clean instant swap. */
 
 [data-lior-motion-veil="true"] {
   opacity: 0;
@@ -269,15 +275,9 @@ html[data-nav-depth="1"] .lior-ambient-world {
   z-index: 1;
   opacity: 1;
   visibility: visible;
-  /* Cached root tabs are the hottest path. Keep this as a silk fade so heavy
-     routes do not re-rasterize their entire shell while switching. */
-  animation: keep-alive-tab-enter var(--lior-motion-tab) var(--lior-ease-silk) both;
-  will-change: opacity;
-}
-
-@keyframes keep-alive-tab-enter {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  /* No entrance animation — see the note above. The incoming tab is already a
+     fully-painted keep-alive tree, so it shows at opacity:1 instantly with no
+     blank first frame. */
 }
 
 .home-reveal,

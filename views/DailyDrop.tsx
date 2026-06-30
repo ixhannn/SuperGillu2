@@ -180,7 +180,12 @@ export const DailyDrop: React.FC<DailyDropProps> = ({ setView }) => {
           <ExpiredPanel kind="both" partnerName={d.profile.partnerName} onHome={goHome} />
         ) : (
           <motion.div
-            key={`${d.drop.id}-${phase}`}
+            // Key on the drop id ONLY — not the phase. Keying on phase remounted
+            // this whole wrapper (replaying the fade-slide) every time the drop
+            // advanced your_turn→waiting→revealed, and destroyed the inner
+            // component's own AnimatePresence transition. The wrapper now mounts
+            // once per drop; the inner component crossfades phases itself.
+            key={d.drop.id}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={springSmooth}
