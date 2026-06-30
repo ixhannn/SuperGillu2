@@ -164,14 +164,18 @@ html[data-transitioning="1"] *::after {
   opacity: 0;
   transform: translate3d(-24%, 0, 0) scaleX(0.72);
   transform-origin: center;
-  will-change: transform, opacity;
-  backface-visibility: hidden;
 }
 
 html[data-transitioning="1"] [data-lior-motion-veil="true"] {
-  /* Synced to the route push so the sheen doesn't outlive the transition. */
+  /* Synced to the route push so the sheen doesn't outlive the transition.
+     will-change lives HERE — only while the veil actually animates — not on the
+     base rule: this is a position:fixed inset-0 full-screen sheen that is
+     opacity:0 and idle 99% of the time, and a permanent full-viewport backing
+     texture is pure chronic mobile-GPU layer pressure for zero visible gain. */
   animation: lior-motion-veil var(--lior-motion-push) var(--lior-ease-silk) both;
   animation-play-state: running !important;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 @keyframes lior-motion-veil {
@@ -225,17 +229,16 @@ html[data-nav-depth="1"] .lior-ambient-world {
   html[data-nav-depth="1"] .lior-ambient-world { opacity: 0.72; }
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
-   `cv-auto` utility — lets any wrapper opt into content-visibility:auto.
-   Use on long, scroll-distant sections (memory cards, timeline rows, etc.)
-   so the browser can skip layout + paint when they're outside the viewport.
-   The `auto` intrinsic-size keyword lets the browser remember each item's
-   last-painted height, keeping page height stable for scroll restore.
-   ────────────────────────────────────────────────────────────────────────── */
-.cv-auto {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
-}
+/* REMOVED: the `.cv-auto` (content-visibility:auto) utility. It was applied to
+   ZERO elements but stood as a landmine: content-visibility:auto skips an
+   off-screen subtree's rendering and re-rasterizes it on scroll-in, which
+   blanks for a frame on Android WebView (and resets any entrance animation /
+   collapses on a 320px intrinsic-size mismatch) — the exact "component
+   disappears then comes back while scrolling" symptom this codebase already
+   removed from .home-reveal, perf-list-item and the OurRoom grid. If off-screen
+   paint-skipping is ever wanted again, put `contain: layout paint` (which never
+   skips rendering) on an INNER wrapper with a REAL reserved height — never this
+   render-skipping utility on an animated/visible element. */
 
 /* ──────────────────────────────────────────────────────────────────────────
    Keep-alive tab shells.
@@ -286,7 +289,11 @@ html[data-nav-depth="1"] .lior-ambient-world {
   transform: translate3d(0, 22px, 0) scale(0.985);
   transform-origin: center;
   animation: lior-home-reveal 520ms var(--lior-ease-silk) var(--home-reveal-delay, 0ms) both;
-  will-change: transform, opacity;
+  /* No standing will-change: the entrance animation auto-promotes these to a
+     layer for its 520ms and `both` holds the resting state. Pinning will-change
+     kept ~6 grid-cell backing textures alive for the ENTIRE life of the
+     kept-alive Home tab (it stays mounted after you leave it) — chronic layer
+     pressure, not a one-time entrance cost. */
 }
 
 /* ── PERF: skip paint + backdrop-blur of far-offscreen Home sections ────────
@@ -419,22 +426,23 @@ html[data-theme="starry-night"][data-route="home"] .vh {
    the compositor thread, and re-uses one transform per icon.
    ────────────────────────────────────────────────────────────────────────── */
 .bn-icon {
-  transform: translateZ(0) scale(0.84);
+  transform: scale(0.84);
   transform-origin: center;
   /* Synced to the tab content fade (--lior-motion-tab) so the icon finishes
-     scaling exactly when the new tab reaches full opacity. */
+     scaling exactly when the new tab reaches full opacity. The transform
+     transition auto-promotes the icon to its own compositor layer for the
+     ~240ms it animates, so we intentionally set NO standing will-change /
+     translateZ(0) here — those pinned a GPU backing texture per icon on EVERY
+     screen forever (BottomNav is mounted app-wide), chronic layer-memory
+     pressure on tile-based Adreno/Mali that helps trigger the eviction flash. */
   transition: transform var(--lior-motion-tab) var(--lior-ease-silk);
-  will-change: transform;
-  backface-visibility: hidden;
 }
 .bn-icon.is-active {
   transform: translate3d(0, -1px, 0) scale(1);
 }
 .bn-fab {
-  transform: translateZ(0) scale(1);
+  transform: scale(1);
   transition: transform 170ms var(--lior-ease-soft);
-  will-change: transform;
-  backface-visibility: hidden;
 }
 .bn-fab:active {
   transform: translate3d(0, 1px, 0) scale(0.92);

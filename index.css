@@ -1683,7 +1683,9 @@ canvas.fixed,
       animation: scroll-recede-out linear both;
       animation-timeline: view();
       animation-range: exit;
-      will-change: transform, opacity;
+      /* No standing will-change: a view()-timeline animation already promotes
+         the element while it is in the exit range; pinning will-change kept the
+         backing texture allocated at rest too (chronic mobile-GPU pressure). */
     }
     @keyframes scroll-recede-out {
       to {
@@ -1698,7 +1700,8 @@ canvas.fixed,
       animation: scroll-recede-out-flat linear both;
       animation-timeline: view();
       animation-range: exit;
-      will-change: transform;
+      /* No standing will-change — the in-range scroll animation auto-promotes;
+         pinning it kept this glass-wrapping row's layer alive at rest. */
     }
     @keyframes scroll-recede-out-flat {
       to {
@@ -2136,9 +2139,12 @@ html[data-theme="starry-night"][data-tier="css-only"] .vh {
 .animate-breathe-glow,
 .holo-shimmer::before {
   will-change: transform;
-  transform: translateZ(
-    0
-  ); /* force layer promotion even before animation fires */
+  /* REMOVED the at-rest `transform: translateZ(0)` that force-promoted every
+     blob in this family to a GPU layer "even before animation fires". That hard
+     promotion held a backing texture for each ambient blob permanently —
+     including off-screen ones and the ~5 kept-alive cached tabs — which is the
+     chronic mobile-GPU layer pressure behind "components vanish all the time".
+     The infinite animations still auto-promote each blob while it animates. */
 }
 .animate-glow-pulse,
 .animate-ui-breathe,
