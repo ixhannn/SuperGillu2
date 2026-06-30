@@ -34,9 +34,13 @@ const THEME_DESCRIPTIONS: Record<ThemeId, string> = {
 };
 
 const FROSTED_PANEL_STYLE: React.CSSProperties = {
-    background: 'var(--theme-surface-glass)',
-    backdropFilter: 'blur(24px)',
-    WebkitBackdropFilter: 'blur(24px)',
+    // Baked opaque — NO live backdrop-filter. This panel wraps the theme grid and
+    // SCROLLS over the fixed ambient background; a live blur(24px) re-resolved its
+    // Gaussian every scroll frame on Android WebView, re-compositing the whole
+    // subtree each frame = the "theme buttons flash when scrolling" bug. A near-
+    // opaque surface reads the same at rest (a settings panel shows little dynamic
+    // content through the frost) and the per-scroll-frame re-sample is gone.
+    background: 'color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent)',
     border: '1.5px solid var(--theme-border-crisp)',
     boxShadow: 'var(--shadow-sm)',
 };
