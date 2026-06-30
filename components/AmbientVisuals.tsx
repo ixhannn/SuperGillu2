@@ -158,7 +158,9 @@ const AmbientMotionFallback: React.FC<{ paused?: boolean }> = ({ paused = false 
         filter: 'saturate(116%)',
         animation: 'liorAmbientWashDrift 24s ease-in-out infinite alternate',
         animationPlayState: paused ? 'paused' : 'running',
-        willChange: 'transform, opacity',
+        // No standing willChange: the infinite alternate animation auto-promotes
+        // this full-viewport layer while it moves; pinning it held a permanent
+        // backing texture even on paused/reduced-motion screens.
       }}
     />
     <div
@@ -171,7 +173,9 @@ const AmbientMotionFallback: React.FC<{ paused?: boolean }> = ({ paused = false 
         opacity: 0.68,
         animation: 'liorAmbientSheenSweep 30s ease-in-out infinite alternate',
         animationPlayState: paused ? 'paused' : 'running',
-        willChange: 'transform, opacity',
+        // No standing willChange: the infinite alternate animation auto-promotes
+        // this full-viewport layer while it moves; pinning it held a permanent
+        // backing texture even on paused/reduced-motion screens.
       }}
     />
   </div>
@@ -263,7 +267,10 @@ const AmbientVisualsImpl: React.FC<AmbientVisualsProps> = ({ paused = false }) =
             // Home reads as a gentle dissolve, never a pop.
             opacity: show3D ? 1 : 0,
             transition: 'opacity 600ms ease',
-            willChange: 'opacity',
+            // No standing willChange: the 600ms opacity transition auto-promotes
+            // this full-screen WebGL wrapper for the fade; pinning it kept a
+            // viewport-sized backing texture allocated over the live canvas for
+            // the whole app lifetime.
           }}
         >
           <Suspense fallback={null}>
