@@ -302,3 +302,13 @@
 @media (prefers-reduced-motion: reduce) {
   .pw-aurora::before, .pw-aurora::after, .pw-grain, .pw-mesh, .pw-shglow, .pw-cta::after { animation: none !important; }
 }
+
+/* Flicker bake (final hardening): no live backdrop-filter on premium-worlds
+   surfaces. The chips/cards sit over the animated sky + grain, so a live blur
+   re-resolved every frame on WebView = shimmer. Removing it keeps the dark
+   cosmic translucency (the sky shows a touch sharper through the glass) without
+   the per-frame re-sample. */
+[class*="pw-"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
