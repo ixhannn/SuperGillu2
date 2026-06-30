@@ -28,11 +28,11 @@ const BOKEH_COUNT   = 24;   // large, slow, dreamy
 const SPARKLE_COUNT = 10;   // small, drifting accents
 const TOTAL         = BOKEH_COUNT + SPARKLE_COUNT;
 
-// Full native refresh — no per-frame cap. The earlier ~30fps gate existed only
-// to throttle the backdrop-filter re-blur this full-screen canvas forced above
-// Home's glass. Home's glass is now baked opaque (the html[data-route="home"]
-// rule in root-fixes.css), so this canvas no longer triggers any re-blur and can
-// run at the panel's native rate ("full native refresh everywhere").
+// ~30fps cap — the pre-existing baseline. The bokeh motion is so slow (a full
+// orbit takes 40-350s) that 30fps is visually identical, and capping keeps
+// GPU/battery use conservative. (Home no longer pays any backdrop-filter re-blur
+// cost regardless, since its glass is baked opaque.)
+const RENDER_MIN_INTERVAL_MS = 1000 / 30;
 
 const PRESETS: Record<ParticlePreset, {
   bokehColors: string[];
@@ -351,6 +351,7 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
     // ── Animation ─────────────────────────────────────────────────
     const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
     const posArr  = posAttr.array as Float32Array;
+    let lastRenderTs = -Infinity;
 
     AnimationEngine.register({
       id:        'live-bg-3d',
@@ -363,6 +364,8 @@ export const LiveBackground3D: React.FC<LiveBackground3DProps> = ({ preset = 'sp
         // Hand the GPU back to the page transition during view switches —
         // ambient particles are invisible during a 220ms slide anyway.
         if (typeof document !== 'undefined' && document.documentElement.dataset.transitioning) return;
+        if (timestamp - lastRenderTs < RENDER_MIN_INTERVAL_MS) return;
+        lastRenderTs = timestamp;
         const t = timestamp * 0.001;
         material.uniforms.uTime.value = t;
 

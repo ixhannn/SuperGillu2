@@ -502,18 +502,19 @@ const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused
   pausedRef.current = paused;
 
   useEffect(() => {
-    // Full native refresh — no per-frame cap. The earlier 30/24fps gate existed
-    // ONLY to throttle the backdrop-filter re-blur this full-screen canvas forced
-    // above Home's glass. Home's glass is now baked opaque (the
-    // html[data-route="home"] rule in root-fixes.css), so the blob no longer
-    // triggers any re-blur and can run at the panel's native rate, matching the
-    // rest of the ambient system ("full native refresh everywhere").
+    // ~30fps cap — the pre-existing baseline. The drifting glass blob moves slowly
+    // enough that 30fps is visually identical, and capping keeps GPU/battery use
+    // conservative. (Home no longer pays any backdrop-filter re-blur cost
+    // regardless, since its glass is baked opaque via the html[data-route="home"]
+    // rule in root-fixes.css.)
+    const RENDER_MIN_INTERVAL_MS = 1000 / 30;
+    let lastInvalidateTs = -Infinity;
     AnimationEngine.register({
       id: 'floating-hearts-r3f',
       priority: 3,
       budgetMs: 0.2,
       minTier: 'medium',
-      tick() {
+      tick(_delta, timestamp) {
         if (pausedRef.current) return;
         // Hard-pause the instant a route transition starts. The `paused` prop
         // arrives via an observer -> setState -> prop hop that lags the attribute
@@ -523,6 +524,8 @@ const AnimationEngineFrameInvalidator: React.FC<{ paused: boolean }> = ({ paused
         // matching LiveBackground3D's tick.
         if (typeof document !== 'undefined'
             && document.documentElement.dataset.transitioning === '1') return;
+        if (timestamp - lastInvalidateTs < RENDER_MIN_INTERVAL_MS) return;
+        lastInvalidateTs = timestamp;
         invalidate();
       },
     });
