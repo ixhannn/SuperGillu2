@@ -631,11 +631,3 @@
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
-
-/* Flicker bake (final hardening): no live backdrop-filter on premium-hub (.lp-*)
-   surfaces. The cards sit over animated aurora blobs, so a live blur re-resolved
-   every frame = shimmer. Removing it keeps the look without the re-sample. */
-[class*="lp-"] {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}

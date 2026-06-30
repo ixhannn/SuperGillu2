@@ -2542,49 +2542,6 @@ img {
     inset 0 -3px 8px rgba(0, 0, 0, 0.25),
     0 8px 32px rgba(0, 0, 0, 0.15);
 }
-
-/* ── FLICKER BAKE (final hardening) ─────────────────────────────────────────
-   The floating header pill (.vh, on nearly every page) and the Sync-page glass
-   sit over the always-animating ambient, so a live backdrop-filter re-resolves
-   its blur every frame = residual scroll/at-rest shimmer. Removing the blur kills
-   the re-sample; where the surface was very translucent its tint is composited
-   over an opaque base so no sharp ambient shows through. The borders / specular
-   ::before / shadows on the base rules still carry the glass look. Appended last
-   so it wins; do NOT re-add backdrop-filter to these. */
-.vh,
-.liquid-glass-btn,
-.liquid-glass-btn--ultra,
-.sync-cloud-btn,
-.sync-surface,
-.sync-surface-glass-accent,
-.premium-skeuo-glass {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-.vh {
-  background: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(255, 246, 249, 0.88) 45%,
-    rgba(255, 236, 243, 0.85) 100%
-  ) !important;
-}
-.sync-surface {
-  background:
-    linear-gradient(rgba(var(--theme-particle-2-rgb), 0.18), rgba(var(--theme-particle-2-rgb), 0.18)),
-    color-mix(in srgb, var(--color-surface) 90%, white) !important;
-}
-.sync-surface-glass-accent {
-  background:
-    linear-gradient(rgba(var(--theme-particle-3-rgb), 0.22), rgba(var(--theme-particle-3-rgb), 0.22)),
-    color-mix(in srgb, var(--color-surface) 90%, white) !important;
-}
-.premium-skeuo-glass {
-  background:
-    linear-gradient(rgba(10, 10, 10, 0.12), rgba(10, 10, 10, 0.12)),
-    color-mix(in srgb, var(--color-surface) 90%, white) !important;
-}
-
 .premium-skeuo-glass::before {
   content: "";
   position: absolute;
