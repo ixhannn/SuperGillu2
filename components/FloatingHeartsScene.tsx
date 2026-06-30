@@ -603,7 +603,10 @@ export const FloatingHeartsScene: React.FC<{ paused?: boolean }> = ({ paused = f
         width: '140vw',
         height: '140vw',
         maxHeight: '125vh',
-        opacity: 0.5,
+        // Presence of the glass blob over the warm page. Bumped 0.5 -> 0.64 so it
+        // reads as a deep, present orb rather than washed-out/transparent. Opacity
+        // is a free compositor property — no per-frame GPU cost.
+        opacity: 0.64,
         willChange: 'transform', // promote to GPU compositor layer
       }}
     >

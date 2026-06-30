@@ -1,7 +1,11 @@
 const HEADER_SCROLL_RANGE = 100;
 const HEADER_HIDE_THRESHOLD = 18;
 
-const ACTIVE_BACKDROP = 'blur(18px) saturate(140%)';
+// Baked opaque (no backdrop-filter): the scrolled header sits over the animating
+// Home ambient blob, so a live blur re-resolved every frame during the most
+// GPU-contended moment (scrolling) on mobile. The background fill below is
+// bumped near-opaque so the bar reads solid without the frost.
+const ACTIVE_BACKDROP = 'none';
 
 /**
  * Keeps the home header overlay completely hidden at the top edge so the
@@ -28,7 +32,7 @@ export function getHomeHeaderOverlayState(scrollTop) {
 
   return {
     opacity,
-    background: `rgba(255,248,250,${0.74 + opacity * 0.12})`,
+    background: `rgba(255,248,250,${0.9 + opacity * 0.08})`,
     backdropFilter: ACTIVE_BACKDROP,
     webkitBackdropFilter: ACTIVE_BACKDROP,
     borderBottom: `1px solid rgba(232,160,176,${opacity * 0.16})`,
