@@ -630,7 +630,12 @@ export const HeartbeatParticles = forwardRef<HeartbeatParticlesHandle>(
                 key={spec.id}
                 frameloop="always"
                 flat
-                dpr={[1, 2]}
+                /* Cap DPR at 1.5 (was 2): this is a THIRD WebGL context spun up
+                   transiently on every Pulse send/receive. On a high-DPR phone a
+                   full-screen 2x buffer allocated at that moment is a sharp
+                   transient spike that can tip an already-loaded compositor into
+                   eviction; 1.5 stays above the soft-particle visual floor. */
+                dpr={[1, 1.5]}
                 gl={{ alpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'high-performance', preserveDrawingBuffer: import.meta.env.DEV }}
               >
                 <HeartField

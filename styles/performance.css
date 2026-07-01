@@ -1,9 +1,11 @@
 .perf-list-item {
-  content-visibility: auto;
+  /* content-visibility:auto REMOVED — its placeholder size never matched the
+     cards' real aspect-ratio height and reset to the wrong fallback on fast
+     flings/re-renders, collapsing cards and blanking-then-filling them
+     ("random components disappear for a second" on scroll). Card media is
+     already lazy, so always-rendering the cheap card frames costs little.
+     Keep containment for paint/layout isolation. */
   contain: layout paint style;
-  /* `auto` lets the browser reuse each card's last-rendered height once
-     known, so re-skipping offscreen cards never shifts scroll geometry. */
-  contain-intrinsic-size: auto 320px;
 }
 
 .perf-card-shell {
@@ -11,13 +13,7 @@
 }
 
 .perf-media {
-  content-visibility: auto;
+  /* content-visibility:auto removed (no reserved size → collapsed to 0 then
+     expanded on scroll). Paint containment is enough. */
   contain: paint;
-}
-
-@supports not (content-visibility: auto) {
-  .perf-list-item,
-  .perf-media {
-    contain: layout paint style;
-  }
 }

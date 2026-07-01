@@ -301,13 +301,9 @@ canvas.fixed,
   }
 } /* Layer 2 — Primary cards: solid, comfortable, no heavy glass */
 .glass-card {
-  /* Baked opaque (was blur(20px) backdrop-filter). These cards scroll over the
-     fixed, always-animating ambient, so a live backdrop-filter re-resolved its
-     Gaussian blur every scroll frame = the "components flicker while scrolling"
-     shimmer on WebView. At 94% opacity the dropped blur is near-imperceptible
-     (Us.tsx's fully-opaque cards are the smooth control), and the per-frame GPU
-     re-sample is eliminated. Do NOT re-add backdrop-filter to scrolling cards. */
-  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-bottom-color: rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-card);
@@ -316,8 +312,9 @@ canvas.fixed,
     inset 0 1px 0 rgba(255, 255, 255, 1);
 } /* Layer 3 — Hero / elevated cards */
 .glass-card-hero {
-  /* Baked opaque (was blur(24px)) — see .glass-card. Kills scroll re-blur. */
-  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-bottom-color: rgba(255, 255, 255, 0.45);
   border-radius: var(--radius-card);
@@ -336,8 +333,8 @@ canvas.fixed,
   position: relative;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(18px) saturate(190%) brightness(1.04);
-  -webkit-backdrop-filter: blur(18px) saturate(190%) brightness(1.04);
+  backdrop-filter: blur(28px) saturate(190%) brightness(1.04);
+  -webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.04);
   border-top: 1px solid rgba(255, 255, 255, 0.75);
   border-left: 1px solid rgba(255, 255, 255, 0.4);
   border-right: 1px solid rgba(255, 255, 255, 0.15);
@@ -347,10 +344,13 @@ canvas.fixed,
     0 4px 16px rgba(232, 160, 176, 0.1);
 } /* ── BENTO CARD — solid card for grid items ────────────────────────────── */
 .bento-card {
-  /* Baked opaque (was blur(16px)) — Home grid tiles; see .glass-card. Fully
-     removing backdrop-filter (vs a concurrent change that only cut the radius to
-     12px) is what stops the per-frame re-blur over the ambient on scroll. */
-  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  /* 12px (was 16px): the card is 80% opaque, so only a faint sliver of the
+     animated backdrop shows through — the smaller radius is imperceptible but
+     cuts the per-frame re-blur fill-rate ~45% (blur cost is ~quadratic in
+     radius). This is the biggest always-on GPU cost on idle Home. */
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-bottom-color: rgba(255, 255, 255, 0.38);
   border-radius: var(--radius-card);
@@ -454,11 +454,8 @@ canvas.fixed,
   position: relative;
   overflow: hidden; /* Near-transparent: the magic is the blur + specular, not the tint */
   background: rgba(255, 255, 255, 0.1);
-  /* Blur capped at 22px (was 52): a 52px backdrop blur over the moving ambient
-     is both very expensive and the main at-rest glass shimmer source on WebView.
-     22px keeps the liquid-glass look without the per-frame re-sample boil. */
-  backdrop-filter: blur(22px) saturate(220%) brightness(1.08) contrast(0.98);
-  -webkit-backdrop-filter: blur(22px) saturate(220%) brightness(1.08)
+  backdrop-filter: blur(52px) saturate(220%) brightness(1.08) contrast(0.98);
+  -webkit-backdrop-filter: blur(52px) saturate(220%) brightness(1.08)
     contrast(0.98); /* Directional border: top bright → sides fade → bottom nearly invisible */
   border-top: 1px solid rgba(255, 255, 255, 0.85);
   border-left: 1px solid rgba(255, 255, 255, 0.48);
@@ -541,9 +538,9 @@ canvas.fixed,
 [data-theme="starry-night"] .glass-card-hero,
 [data-theme="starry-night"] .bento-card,
 [data-theme="starry-night"] .liquid-glass {
-  /* Baked opaque (was blur(22px)) — dark-theme cards; see .glass-card. The dark
-     surface must be near-opaque so the dropped blur doesn't expose sharp ambient. */
-  background: rgba(22, 24, 58, 0.93);
+  background: rgba(22, 24, 58, 0.22);
+  backdrop-filter: blur(48px) saturate(200%) brightness(1.05);
+  -webkit-backdrop-filter: blur(48px) saturate(200%) brightness(1.05);
   border-top-color: rgba(129, 140, 248, 0.5);
   border-left-color: rgba(129, 140, 248, 0.28);
   border-right-color: rgba(10, 8, 40, 0.4);
@@ -648,13 +645,8 @@ canvas.fixed,
     rgba(255, 246, 249, 0.11) 45%,
     rgba(255, 234, 242, 0.06) 100%
   );
-  /* Blur capped at 18px (was 32): this fixed pill sits on EVERY screen over the
-     always-animating ambient layer, and a large backdrop blur re-samples the
-     moving gradient every frame = the constant at-rest shimmer/flicker on
-     WebView GPUs. 18px reads identically over the soft gradient but stops the
-     boil. Do not raise back toward 32. */
-  backdrop-filter: blur(18px) saturate(180%) brightness(1.03);
-  -webkit-backdrop-filter: blur(18px) saturate(180%) brightness(1.03); /* Single-weight border — thicker on top, fades on bottom */
+  backdrop-filter: blur(32px) saturate(180%) brightness(1.03);
+  -webkit-backdrop-filter: blur(32px) saturate(180%) brightness(1.03); /* Single-weight border — thicker on top, fades on bottom */
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-bottom-color: rgba(255, 255, 255, 0.1);
   border-radius: 2.25rem; /* Layered depth — subtle, not heavy */
@@ -782,8 +774,9 @@ canvas.fixed,
   box-shadow: var(--shadow-float);
 } /* Frosted glass with 3D depth */
 .glass-3d {
-  /* Baked opaque (was blur(20px)) — see .glass-card. Kills scroll re-blur. */
-  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid color-mix(in srgb, var(--color-surface) 90%, white);
   border-bottom-color: rgba(var(--theme-particle-1-rgb), 0.14);
   box-shadow:
@@ -1690,7 +1683,9 @@ canvas.fixed,
       animation: scroll-recede-out linear both;
       animation-timeline: view();
       animation-range: exit;
-      will-change: transform, opacity;
+      /* No standing will-change: a view()-timeline animation already promotes
+         the element while it is in the exit range; pinning will-change kept the
+         backing texture allocated at rest too (chronic mobile-GPU pressure). */
     }
     @keyframes scroll-recede-out {
       to {
@@ -1705,7 +1700,8 @@ canvas.fixed,
       animation: scroll-recede-out-flat linear both;
       animation-timeline: view();
       animation-range: exit;
-      will-change: transform;
+      /* No standing will-change — the in-range scroll animation auto-promotes;
+         pinning it kept this glass-wrapping row's layer alive at rest. */
     }
     @keyframes scroll-recede-out-flat {
       to {
@@ -2143,9 +2139,12 @@ html[data-theme="starry-night"][data-tier="css-only"] .vh {
 .animate-breathe-glow,
 .holo-shimmer::before {
   will-change: transform;
-  transform: translateZ(
-    0
-  ); /* force layer promotion even before animation fires */
+  /* REMOVED the at-rest `transform: translateZ(0)` that force-promoted every
+     blob in this family to a GPU layer "even before animation fires". That hard
+     promotion held a backing texture for each ambient blob permanently —
+     including off-screen ones and the ~5 kept-alive cached tabs — which is the
+     chronic mobile-GPU layer pressure behind "components vanish all the time".
+     The infinite animations still auto-promote each blob while it animates. */
 }
 .animate-glow-pulse,
 .animate-ui-breathe,
@@ -2295,8 +2294,8 @@ img {
   border-left: 1px solid rgba(255, 255, 255, 0.56);
   border-right: 1px solid rgba(255, 255, 255, 0.18);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(18px) saturate(180%) brightness(1.05);
-  -webkit-backdrop-filter: blur(18px) saturate(180%) brightness(1.05);
+  backdrop-filter: blur(28px) saturate(180%) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.05);
   box-shadow:
     inset 0 1.5px 0 rgba(255, 255, 255, 0.94),
     inset 1px 0 0 rgba(255, 255, 255, 0.34),
@@ -2390,8 +2389,8 @@ img {
   border-left: 1px solid rgba(255, 255, 255, 0.64);
   border-right: 1px solid rgba(255, 255, 255, 0.24);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(22px) saturate(205%) brightness(1.08);
-  -webkit-backdrop-filter: blur(22px) saturate(205%) brightness(1.08);
+  backdrop-filter: blur(34px) saturate(205%) brightness(1.08);
+  -webkit-backdrop-filter: blur(34px) saturate(205%) brightness(1.08);
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.96),
     inset 1px 0 0 rgba(255, 255, 255, 0.46),
@@ -2531,8 +2530,8 @@ img {
   position: relative;
   border-radius: 24px;
   background: rgba(10, 10, 10, 0.12);
-  backdrop-filter: blur(22px) saturate(200%);
-  -webkit-backdrop-filter: blur(22px) saturate(200%);
+  backdrop-filter: blur(36px) saturate(200%);
+  -webkit-backdrop-filter: blur(36px) saturate(200%);
   border-top: 1px solid rgba(255, 255, 255, 0.6);
   border-left: 1px solid rgba(255, 255, 255, 0.3);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
@@ -2542,49 +2541,6 @@ img {
     inset 0 -3px 8px rgba(0, 0, 0, 0.25),
     0 8px 32px rgba(0, 0, 0, 0.15);
 }
-
-/* ── FLICKER BAKE (final hardening) ─────────────────────────────────────────
-   The floating header pill (.vh, on nearly every page) and the Sync-page glass
-   sit over the always-animating ambient, so a live backdrop-filter re-resolves
-   its blur every frame = residual scroll/at-rest shimmer. Removing the blur kills
-   the re-sample; where the surface was very translucent its tint is composited
-   over an opaque base so no sharp ambient shows through. The borders / specular
-   ::before / shadows on the base rules still carry the glass look. Appended last
-   so it wins; do NOT re-add backdrop-filter to these. */
-.vh,
-.liquid-glass-btn,
-.liquid-glass-btn--ultra,
-.sync-cloud-btn,
-.sync-surface,
-.sync-surface-glass-accent,
-.premium-skeuo-glass {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-.vh {
-  background: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(255, 246, 249, 0.88) 45%,
-    rgba(255, 236, 243, 0.85) 100%
-  ) !important;
-}
-.sync-surface {
-  background:
-    linear-gradient(rgba(var(--theme-particle-2-rgb), 0.18), rgba(var(--theme-particle-2-rgb), 0.18)),
-    color-mix(in srgb, var(--color-surface) 90%, white) !important;
-}
-.sync-surface-glass-accent {
-  background:
-    linear-gradient(rgba(var(--theme-particle-3-rgb), 0.22), rgba(var(--theme-particle-3-rgb), 0.22)),
-    color-mix(in srgb, var(--color-surface) 90%, white) !important;
-}
-.premium-skeuo-glass {
-  background:
-    linear-gradient(rgba(10, 10, 10, 0.12), rgba(10, 10, 10, 0.12)),
-    color-mix(in srgb, var(--color-surface) 90%, white) !important;
-}
-
 .premium-skeuo-glass::before {
   content: "";
   position: absolute;
@@ -2608,8 +2564,14 @@ img {
  * ──────────────────────────────────────────────────────────────────────── */
 .perf-list-item,
 [data-perf-list-item="true"] {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 280px;
+  /* content-visibility:auto REMOVED — on these grid thumbnail cards it reserved a
+     placeholder that never matched the card's real aspect-ratio height and reset
+     to that wrong fallback on fast flings / re-renders, so cards collapsed and
+     blanked-then-filled ("random components disappear for a second" on scroll).
+     Card media is already lazy, so always-rendering the cheap card frames costs
+     little. `contain` still isolates layout/paint. (Also removed from
+     styles/performance.css, which previously won the cascade.) */
+  contain: layout paint style;
 }
 
 /* ─── KEEP-ALIVE TAB SHELL ──────────────────────────────────────────────
@@ -2632,10 +2594,14 @@ img {
   content-visibility: visible;
 }
 .keep-alive-shell.is-cached {
-  display: none !important;
-  /* Belt-and-braces: even if a child somewhere forces display, this
-   * skips layout/paint while keeping the React state (effects, refs)
-   * fully alive. */
-  content-visibility: hidden;
-  contain: strict;
+  /* WARM cache. NO display:none / content-visibility:hidden / contain:strict —
+   * those forced a synchronous COLD re-layout the moment you returned to a tab,
+   * so the destination's elements AND the body-portaled header/nav visibly
+   * vanished and snapped back ("elements disappear/appear when leaving a page").
+   * root-fixes.css keeps the cached shell off-flow + invisible
+   * (position:absolute; inset:0; opacity:0; visibility:hidden; pointer-events:none),
+   * so a return is a pure, instant visibility flip with zero cold render. Only
+   * ~5 root tabs, off-flow so they don't repaint on the active tab's scroll.
+   * Do NOT re-add display:none here. */
+  visibility: hidden;
 }

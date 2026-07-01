@@ -34,22 +34,21 @@ const THEME_DESCRIPTIONS: Record<ThemeId, string> = {
 };
 
 const FROSTED_PANEL_STYLE: React.CSSProperties = {
-    // Baked opaque (was a transparent bg relying entirely on blur(24px)). These
-    // settings panels scroll over the fixed animating ambient, so the live blur
-    // re-resolved every scroll frame = the scroll shimmer. --theme-surface-glass
-    // is unset, so the fallback now provides the actual (near-opaque) surface and
-    // there is no backdrop-filter to re-sample.
-    background: 'var(--theme-surface-glass, rgba(255, 255, 255, 0.92))',
+    // Baked opaque — NO live backdrop-filter. This panel wraps the theme grid and
+    // SCROLLS over the fixed ambient background; a live blur(24px) re-resolved its
+    // Gaussian every scroll frame on Android WebView, re-compositing the whole
+    // subtree each frame = the "theme buttons flash when scrolling" bug. A near-
+    // opaque surface reads the same at rest (a settings panel shows little dynamic
+    // content through the frost) and the per-scroll-frame re-sample is gone.
+    background: 'color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent)',
     border: '1.5px solid var(--theme-border-crisp)',
     boxShadow: 'var(--shadow-sm)',
 };
 
 const APPLE_GLASS_STYLE: React.CSSProperties = {
-    // Baked opaque (was blur backdrop-filter). These settings panels scroll over
-    // the fixed animating ambient, so the live blur re-sampled every scroll frame
-    // = the scroll shimmer. Removing backdrop-filter eliminates the re-sample
-    // entirely; 0.9 white keeps the panels reading as soft frosted glass.
-    background: 'rgba(255, 255, 255, 0.9)',
+    background: 'rgba(255, 255, 255, 0.45)',
+    backdropFilter: 'blur(40px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(40px) saturate(180%)',
     border: '1px solid rgba(255, 255, 255, 0.55)',
     boxShadow: '0 2px 20px rgba(0, 0, 0, 0.05), 0 0.5px 1px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.5)',
 };
@@ -760,7 +759,7 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                 {/* ── THEME PICKER ──────────────────────────────────────── */}
                 <div className="px-5">
                     <p className="text-[11.5px] font-bold uppercase tracking-[0.16em] mb-3.5 ml-1" style={{ color: 'var(--color-text-primary)', opacity: 0.85 }}>Aesthetic Studio</p>
-                    <div className="rounded-[2.5rem] glass-card-premium overflow-hidden p-0 border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
+                    <div data-theme-panel="true" className="rounded-[2.5rem] glass-card-premium overflow-hidden p-0 border-none ring-1 ring-inset ring-white/10" style={FROSTED_PANEL_STYLE}>
 
                         {/* Active theme hero */}
                         <div className="mx-4 mb-4 rounded-2xl overflow-hidden relative" style={{

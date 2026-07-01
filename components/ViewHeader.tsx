@@ -20,41 +20,41 @@ const useSpacerVisible = (ref: React.RefObject<HTMLDivElement | null>) => {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const shell = el.closest('.keep-alive-shell');
 
     const compute = () => {
-      const shell = el.closest('.keep-alive-shell');
-      const isCachedTab = shell?.classList.contains('is-cached') || shell?.getAttribute('aria-hidden') === 'true';
-      const isVisible = !isCachedTab && el.offsetParent !== null && el.offsetWidth > 0;
+      // Visibility is derived from the DELIBERATE is-cached/aria-hidden state of
+      // the owning keep-alive shell — NOT from offsetWidth/offsetParent. Those read
+      // transient zero values while the TransitionEngine writes inline
+      // transform/opacity to the shell mid-navigation, which made `visible` flip
+      // false for a frame and unmounted+replayed the whole header on every nav
+      // ("the header disappears and reappears when leaving a page"). The class is
+      // set exactly once per navigation, so it never flickers. (It also stays
+      // correct now that cached shells are warm `visibility:hidden` rather than
+      // `display:none`, where an offsetWidth check would wrongly read "visible".)
+      const isCachedTab = !!shell
+        && (shell.classList.contains('is-cached') || shell.getAttribute('aria-hidden') === 'true');
+      const isVisible = shell ? !isCachedTab : true;
       setVisible((prev) => (prev === isVisible ? prev : isVisible));
     };
 
     compute();
 
-    const shell = el.closest('.keep-alive-shell');
     let observer: MutationObserver | null = null;
     if (shell) {
+      // Observe ONLY `class` (the real active/cached signal) — never `style`, which
+      // the transition engine rewrites transiently and which caused the false flips.
       observer = new MutationObserver(compute);
-      observer.observe(shell, { attributes: true, attributeFilter: ['class', 'style'] });
-    }
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(compute);
-      resizeObserver.observe(el);
-      if (shell instanceof HTMLElement) resizeObserver.observe(shell);
+      observer.observe(shell, { attributes: true, attributeFilter: ['class'] });
     }
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') compute();
     };
-
-    window.addEventListener('resize', compute);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       observer?.disconnect();
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', compute);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [ref]);
@@ -137,7 +137,26 @@ export const ViewHeader: React.FC<ViewHeaderProps> = ({
   return (
     <>
       <div ref={spacerRef} className="vh-spacer" aria-hidden="true" />
-      {visible && typeof document !== 'undefined' ? ReactDOM.createPortal(shell, document.body) : null}
+      {typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            // Portal stays MOUNTED across navigation; we only toggle CSS
+            // visibility. Previously this was `{visible && portal}`, so a
+            // transient `visible=false` during a transition unmounted the header
+            // and replayed its entrance animation on arrival = the header
+            // blinking out/in on every nav. Keeping it mounted means the entrance
+            // plays once (on first mount) and nav is a pure show/hide.
+            <div
+              style={{
+                visibility: visible ? 'visible' : 'hidden',
+                pointerEvents: visible ? undefined : 'none',
+              }}
+              aria-hidden={visible ? undefined : true}
+            >
+              {shell}
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 };

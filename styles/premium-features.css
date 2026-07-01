@@ -1239,12 +1239,3 @@
   color: var(--recap-accent, var(--color-text-secondary));
   padding: 10px 0;
 }
-
-/* Flicker bake (final hardening): no live backdrop-filter on premium-feature
-   (.dv-*) surfaces. They scroll/animate over their screens' backdrops, so a live
-   blur re-resolved every frame = shimmer. Removing it keeps the look without the
-   per-frame re-sample. */
-[class*="dv-"] {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}

@@ -104,7 +104,11 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
             setPair(p);
         })();
         return () => { alive = false; };
-    }, [profile]);
+        // Depend on the NAMES, not the profile object — Home re-creates the profile
+        // object on every storage-update (sync burst), and `[profile]` re-ran this
+        // async load each time, churning DailyQuestion (and flipping its inner
+        // AnimatePresence branch). The names are what actually matter here.
+    }, [profile.myName, profile.partnerName]);
 
     // Live reveal: when the partner's answer reaches this device (realtime, or the
     // periodic reconcile safety net), SyncService dispatches 'daily-answers-update'.
@@ -129,7 +133,8 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
             alive = false;
             syncEventTarget.removeEventListener('daily-answers-update', onDailyAnswers);
         };
-    }, [profile]);
+        // Names, not the profile object — see the note on the load effect above.
+    }, [profile.myName, profile.partnerName]);
 
     const myAnswer = pair?.myAnswer ?? undefined;
     // Partner answer is surfaced by the service ONLY when the seal is open, so we

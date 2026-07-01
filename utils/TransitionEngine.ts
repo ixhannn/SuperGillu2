@@ -444,8 +444,13 @@ class TransitionEngineImpl {
    * lock — we always proceed by MAX_PAINT_FRAMES regardless.
    */
   private _whenPainted(c: HTMLElement, run: () => void): void {
-    const MIN_FRAMES = 2;        // preserve the original paint-the-initial-state gap
-    const MAX_PAINT_FRAMES = 8;  // ~130ms ceiling — then reveal no matter what
+    const MIN_FRAMES = 2;         // preserve the original paint-the-initial-state gap
+    const MAX_PAINT_FRAMES = 12;  // ~200ms ceiling (was 8). A cold/first-visit page
+                                  // (freshly-mounted tab) can't lay out in 8 frames,
+                                  // so the gate gave up and revealed it half-empty.
+                                  // Holds the opaque outgoing snapshot a touch longer
+                                  // — the old page stays put, which reads as "loading",
+                                  // never as a blank flash.
 
     // The committed destination is either the page overlay (non-tab views mount
     // as a distinct __overlay__ layer) or the now-active keep-alive tab shell.
@@ -464,7 +469,12 @@ class TransitionEngineImpl {
     const tick = (): void => {
       frame += 1;
       if (frame >= MIN_FRAMES && (hasPaintedContent() || frame >= MAX_PAINT_FRAMES)) {
-        run();
+        // Content is LAID OUT — but layout is not paint. Uncovering it now let the
+        // clone fade reveal a laid-out-but-not-yet-rasterized page for a frame or
+        // two, so the shared ambient background showed through and the real content
+        // then "popped in" (the reveal-then-pop seen on device). Wait two more
+        // frames so the browser actually paints the pixels before we cross-fade.
+        requestAnimationFrame(() => requestAnimationFrame(run));
         return;
       }
       requestAnimationFrame(tick);
@@ -512,9 +522,14 @@ class TransitionEngineImpl {
       'z-index:9998',
       'pointer-events:none',
       'will-change:transform,opacity',
-      'backface-visibility:hidden',
       'overflow:hidden',
-      'contain:paint',
+      // NOTE: deliberately NO `backface-visibility:hidden` / `contain:paint`
+      // here. The clone already composites on its own layer via will-change +
+      // its animated transform/opacity; those two extra hints only forced
+      // additional redundant backing-texture allocation for a viewport-sized
+      // fixed layer on EVERY push/pop/expand — a per-nav GPU spike that, on a
+      // memory-bound Android WebView, evicts other on-screen layers (they blank
+      // for a frame then re-rasterize = the "element vanishes on exit" flash).
     ].join(';');
     document.body.appendChild(clone);
 
@@ -929,29 +944,38 @@ class TransitionEngineImpl {
 
       setTimeout(() => {
         // Container is now off-screen. Hide it instantly, snap position to 0.
+        // Container is now off-screen. Snap it back to position at opacity:0,
+        // but KEEP its will-change layer promoted — clearing it here tore down
+        // the whole content layer's backing texture, forcing a from-scratch
+        // re-rasterize when opacity rose again (part of the back-swipe flash).
         c.style.transition = 'none';
         c.style.transform  = '';
         c.style.opacity    = '0';
-        c.style.willChange = '';
 
         // Fire 'te:gesture-back' — App.tsx calls flushSync(() => setState) directly.
         // TransitionEngine.navigate() is NOT called here; this is a separate flow.
         window.dispatchEvent(new CustomEvent('te:gesture-back'));
 
-        // After React commits the new view (give it one more frame), fade in.
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            c.style.transition = `opacity 160ms ${E_STANDARD}`;
-            c.style.opacity    = '1';
-            const cleanup = () => {
-              c.style.transition = '';
-              c.style.opacity    = '';
-              this._busy = false;
-              this._setTransitioning(false);
-            };
-            c.addEventListener('transitionend', cleanup, { once: true });
-            setTimeout(cleanup, 200);
-          });
+        // Hold opacity:0 only until the freshly-committed destination has
+        // actually PAINTED real content, then fade in over real pixels. The old
+        // bare double-rAF revealed the container after a fixed ~2 frames; on a
+        // slow WebView commit the destination was still empty then, so the whole
+        // content area sat transparent — the bare ambient background showing
+        // through — for many frames = "the whole screen vanishes when I swipe
+        // back". _whenPainted is hard-capped at 8 frames so it can never wedge
+        // the navigation lock.
+        this._whenPainted(c, () => {
+          c.style.transition = `opacity 160ms ${E_STANDARD}`;
+          c.style.opacity    = '1';
+          const cleanup = () => {
+            c.style.transition = '';
+            c.style.opacity    = '';
+            c.style.willChange = '';
+            this._busy = false;
+            this._setTransitioning(false);
+          };
+          c.addEventListener('transitionend', cleanup, { once: true });
+          setTimeout(cleanup, 200);
         });
       }, dur + 16);
 

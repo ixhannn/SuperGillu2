@@ -377,6 +377,9 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     const [isDissolving, setIsDissolving] = useState(false);
     const [isConnected, setIsConnected] = useState(SyncService.isConnected);
     const [isTogether, setIsTogether] = useState(false);
+    // Grace timer so a transient empty presence sync (the realtime channel rebuild
+    // on reconnect/resume) can't blink the "Together now" header off-then-on.
+    const presenceOfflineTimerRef = useRef<number | null>(null);
 
     const heroRef = useRef<HTMLDivElement>(null);
     const heartbeatBtnRef = useRef<HTMLDivElement>(null);
@@ -482,11 +485,29 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                     presences.forEach((p: any) => { if (p.user === prof.partnerName) partnerOnline = true; });
                 });
             }
-            setIsTogether(partnerOnline);
+            if (partnerOnline) {
+                // Present → show immediately and cancel any pending "went offline".
+                if (presenceOfflineTimerRef.current !== null) {
+                    window.clearTimeout(presenceOfflineTimerRef.current);
+                    presenceOfflineTimerRef.current = null;
+                }
+                setIsTogether(true);
+            } else if (presenceOfflineTimerRef.current === null) {
+                // Absent → do NOT flip off immediately. On reconnect/resume the
+                // realtime channel rebuilds and emits one EMPTY presence sync before
+                // the partner's ~5s heartbeat re-tracks; flipping off-then-on made
+                // the "Together now" header (dot + subtitle) blink. Hold the present
+                // state for a grace window; only go offline if still absent after it.
+                presenceOfflineTimerRef.current = window.setTimeout(() => {
+                    presenceOfflineTimerRef.current = null;
+                    setIsTogether(false);
+                }, 6000);
+            }
         };
         syncEventTarget.addEventListener('presence-update', handlePresence);
 
         return () => {
+            if (presenceOfflineTimerRef.current !== null) window.clearTimeout(presenceOfflineTimerRef.current);
             storageEventTarget.removeEventListener('storage-update', reloadData);
             syncEventTarget.removeEventListener('sync-update', handleSyncUpdate);
             syncEventTarget.removeEventListener('signal-received', handleSignal);
@@ -696,11 +717,14 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                     : <div className="w-full h-full flex items-center justify-center text-lior-400"><Heart fill="currentColor" size={20} /></div>
                                 }
                             </div>
-                            {isTogether && (
-                                <span
-                                    className="absolute -right-0.5 bottom-0 h-3 w-3 rounded-full border-2 border-[#f7d6bf] bg-emerald-500 animate-presence-dot"
-                                />
-                            )}
+                            {/* Always mounted — fade, don't unmount. A presence blip
+                                used to unmount+remount this dot (a visible blink); now
+                                it just fades, and the grace timer above keeps it stable. */}
+                            <span
+                                aria-hidden={!isTogether}
+                                className="absolute -right-0.5 bottom-0 h-3 w-3 rounded-full border-2 border-[#f7d6bf] bg-emerald-500 animate-presence-dot"
+                                style={{ opacity: isTogether ? 1 : 0, transition: 'opacity 240ms ease' }}
+                            />
                         </div>
                         <div className="min-w-0 text-left">
                             <h1

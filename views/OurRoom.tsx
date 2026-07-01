@@ -1001,10 +1001,13 @@ export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
                       )}
                     </div>
 
-                    {/* Item grid — offscreen rows skip layout via content-visibility */}
+                    {/* Item grid. (Removed content-visibility:auto with a 0-width
+                        contain-intrinsic-size — a 0 axis collapses the grid to zero
+                        then snaps back on scroll = "the grid disappears for a
+                        second". The shop list is small, so always-rendering it is
+                        cheap.) */}
                     <div
                       className="grid grid-cols-3 gap-2 sm:grid-cols-4"
-                      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 600px' } as React.CSSProperties}
                     >
                       {shopItems.map(({ item, locked }) => (
                         <motion.button

@@ -1330,7 +1330,13 @@ const App = () => {
                         aria-hidden={overlayLingering ? true : undefined}
                         inert={overlayLingering ? true : undefined}
                       >
-                        {overlayView}
+                        {/* Own Suspense boundary. Without it, a pushed view that
+                            suspends during commit (the gesture-back / instant paths
+                            flushSync without the preload gate) bubbled to the
+                            app-level <Suspense fallback={RouteFallback}> above and
+                            blanked EVERY keep-alive tab for a frame — the "whole
+                            elements disappear and reappear" flash. */}
+                        <Suspense fallback={null}>{overlayView}</Suspense>
                       </div>
                     )}
                   </ViewTransition>
