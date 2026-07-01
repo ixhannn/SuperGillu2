@@ -138,19 +138,20 @@ html[data-transitioning="1"] *::after {
    thin see-through edge — imperceptible at animation speed; it returns the instant
    the flag clears. (The universal animation-pause rule above already establishes
    that a `html[data-transitioning] *` selector is acceptable here.) */
-/* SCOPED with :not([data-nav-depth="1"]). This blur-suppression only needs to
-   run for TAB/MODAL transitions, where the incoming layer's opacity ramps 0→1
-   and live glass under that fractional-opacity group BOILS on WebView. But
-   PAGE OPENS (push/pop/expand) are the directions that set data-nav-depth, and
-   _run holds the incoming page at opacity:1 for them (only the opaque clone
-   fades — see dirConfig inFrom opacity '1'). At opacity:1 the glass can't boil,
-   so suppressing it there does nothing but make every glass surface — most
-   visibly the body-portaled .vh header — snap flat at nav-start then re-rasterize
-   its full blur buffer at nav-end = "the header and the page flash when you open
-   a page". Excluding nav-depth opens keeps the frost steady through the open. */
-html[data-transitioning="1"]:not([data-nav-depth="1"]) *,
-html[data-transitioning="1"]:not([data-nav-depth="1"]) *::before,
-html[data-transitioning="1"]:not([data-nav-depth="1"]) *::after {
+/* Universal blur-suppression during ALL transitions, page opens included.
+   A previous version scoped this OUT of opens (:not([data-nav-depth="1"])) to
+   stop the header/glass snapping flat→frosted. Screen-recording the device
+   proved that was the wrong trade: keeping the frosted glass LIVE through a
+   heavy-page open (the Dinner spin-wheel, the 3D bonsai) added a whole screen of
+   blur tiles right as the compositor tile budget was already maxed by the
+   transition + the page's own canvas — pushing it over "tile memory limits
+   exceeded, some content may not draw", so the open flashed a blank WHITE frame
+   (the WebView's undrawn base) and juddered. Suppressing blur for the ~460ms
+   transition frees that budget so the heavy page actually draws. The brief
+   flat-glass moment is far less jarring than a white flash + stutter. */
+html[data-transitioning="1"] *,
+html[data-transitioning="1"] *::before,
+html[data-transitioning="1"] *::after {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
