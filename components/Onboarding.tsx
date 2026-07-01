@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, MotionConfig, LayoutGroup } from 'framer-motion';
 import {
-    ArrowRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
+    ArrowRight, Bell, Calendar, Sparkles, MessageCircle, Lock, QrCode,
     Image as ImageIcon, Activity, Plus, Share2, Star,
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
+import { NotificationsService } from '../services/notifications';
 import { Haptics } from '../services/haptics';
 import { dateInputValueToStoredDate, daysTogetherFrom, parseStoredDateOnly, todayInputValue } from '../shared/dateOnly.js';
 import '../styles/onboarding.css';
@@ -25,13 +26,13 @@ interface OnboardingProps {
 // load-bearing and unchanged from the previous design.
 type Step =
     | 'feel1' | 'feel2' | 'feel3' | 'feel4' | 'feel5' | 'feel6'
-    | 'myName' | 'anniversary' | 'first-question' | 'done';
+    | 'myName' | 'partnerName' | 'anniversary' | 'first-question' | 'notify' | 'done';
 
 const FEEL_KEYS: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'feel6'];
 
 // Full step order — used to derive travel direction (forward vs back) so every
 // layer animates in the same coordinated direction for a continuous feel.
-const STEP_ORDER: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'feel6', 'myName', 'anniversary', 'first-question', 'done'];
+const STEP_ORDER: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'feel6', 'myName', 'partnerName', 'anniversary', 'first-question', 'notify', 'done'];
 
 // Premium deceleration curve (matches --lior-ease-silk used app-wide).
 const SILK = [0.16, 1, 0.3, 1] as const;
@@ -323,10 +324,12 @@ const DONE_SCENE = {
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow }) => {
     const [step, setStep] = useState<Step>('feel1');
     const [myName, setMyName] = useState('');
+    const [partnerName, setPartnerName] = useState('');
     const [anniversary, setAnniversary] = useState('');
     const [firstAnswer, setFirstAnswer] = useState('');
     const [firstQuestion, setFirstQuestion] = useState('');
     const nameRef = useRef<HTMLInputElement>(null);
+    const partnerRef = useRef<HTMLInputElement>(null);
     const answerRef = useRef<HTMLTextAreaElement>(null);
 
     const skyRef = useRef<HTMLCanvasElement>(null);
@@ -419,18 +422,23 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     };
 
     // ── Persistence (ORDER IS LOAD-BEARING — unchanged) ──────────────────────
-    //   1. saveCoupleProfile writes myName + anniversary. submitQuestionAnswer
-    //      keys the answer by profile.myName, so the name MUST persist first.
-    //   2. If a first answer was entered: getTodayQuestion(myName,'') to ensure
-    //      today's QuestionEntry exists, THEN submitQuestionAnswer(answer).
+    //   1. saveCoupleProfile writes myName + partnerName + anniversary.
+    //      submitQuestionAnswer keys the answer by profile.myName, so the name
+    //      MUST persist first.
+    //   2. If a first answer was entered: getTodayQuestion(myName, partnerName)
+    //      to ensure today's QuestionEntry exists, THEN submitQuestionAnswer.
     //   3. markOnboardingComplete last.
     const finalizeOnboarding = () => {
         const profile = StorageService.getCoupleProfile();
         const trimmedName = myName.trim();
+        const trimmedPartner = partnerName.trim();
 
         StorageService.saveCoupleProfile({
             ...profile,
             myName: trimmedName,
+            // Skipped → keep whatever the profile already had (pairing will
+            // reconcile the partner's real name later anyway).
+            partnerName: trimmedPartner || profile.partnerName,
             anniversaryDate: anniversary
                 ? dateInputValueToStoredDate(anniversary)
                 : profile.anniversaryDate,
@@ -438,7 +446,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
 
         const trimmedAnswer = firstAnswer.trim();
         if (trimmedAnswer) {
-            StorageService.getTodayQuestion(trimmedName, '');
+            StorageService.getTodayQuestion(trimmedName, trimmedPartner);
             StorageService.submitQuestionAnswer(trimmedAnswer);
         }
 
@@ -446,30 +454,42 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     };
 
     // Resolve today's ritual question only when reaching that step, so the text
-    // matches exactly what getTodayQuestion will key the answer to at finalize.
+    // matches exactly what getTodayQuestion will key the answer to at finalize
+    // (same name args in both places — partnerName is final by this step).
     const enterFirstQuestion = () => {
         if (!firstQuestion) {
-            const entry = StorageService.getTodayQuestion(myName.trim(), '');
+            const entry = StorageService.getTodayQuestion(myName.trim(), partnerName.trim());
             setFirstQuestion(entry.question);
         }
         advance('first-question');
     };
 
+    // After the first answer is sealed: show the notification primer only when a
+    // system prompt is actually available ('default' = never asked); already-
+    // granted or hard-denied users go straight to the welcome.
+    const enterAfterSeal = () => {
+        void (async () => {
+            const status = await NotificationsService.getPermissionStatus().catch(() => 'denied' as const);
+            advance(status === 'default' ? 'notify' : 'done');
+        })();
+    };
+
     const handleComplete = async () => {
         await Haptics.celebrate();
         finalizeOnboarding();
-        setTimeout(() => onComplete(myName.trim(), ''), 240);
+        setTimeout(() => onComplete(myName.trim(), partnerName.trim()), 240);
     };
 
     const handlePairNow = async () => {
         await Haptics.heartbeat();
         finalizeOnboarding();
-        if (onPairNow) onPairNow(myName.trim(), '');
-        else onComplete(myName.trim(), '');
+        if (onPairNow) onPairNow(myName.trim(), partnerName.trim());
+        else onComplete(myName.trim(), partnerName.trim());
     };
 
     useEffect(() => {
         if (step === 'myName') setTimeout(() => nameRef.current?.focus(), 420);
+        if (step === 'partnerName') setTimeout(() => partnerRef.current?.focus(), 420);
         if (step === 'first-question') setTimeout(() => answerRef.current?.focus(), 450);
     }, [step]);
 
@@ -730,13 +750,26 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             const next = feelIndex < FEEL_KEYS.length - 1 ? FEEL_KEYS[feelIndex + 1] : 'myName';
             return { label: feelSlide!.cta, onClick: () => advance(next) };
         }
-        if (step === 'myName') return { label: 'Continue', disabled: !myName.trim(), onClick: () => myName.trim() && advance('anniversary') };
+        if (step === 'myName') return { label: 'Continue', disabled: !myName.trim(), onClick: () => myName.trim() && advance('partnerName') };
+        if (step === 'partnerName') return { label: 'Continue', disabled: !partnerName.trim(), onClick: () => partnerName.trim() && advance('anniversary') };
         if (step === 'anniversary') return { label: 'Continue', onClick: () => enterFirstQuestion() };
-        if (step === 'first-question') return { label: 'Save · continue', disabled: !firstAnswer.trim(), onClick: () => { if (firstAnswer.trim()) { void Haptics.success(); advance('done'); } } };
-        return { label: 'Invite your partner', onClick: () => void handlePairNow() };
+        if (step === 'first-question') return { label: 'Save · continue', disabled: !firstAnswer.trim(), onClick: () => { if (firstAnswer.trim()) { void Haptics.success(); enterAfterSeal(); } } };
+        if (step === 'notify') {
+            return {
+                label: 'Notify me',
+                onClick: () => {
+                    void (async () => {
+                        await NotificationsService.requestPermission().catch(() => {});
+                        advance('done');
+                    })();
+                },
+            };
+        }
+        return { label: partnerName.trim() ? `Invite ${partnerName.trim().split(/\s+/)[0]}` : 'Invite your partner', onClick: () => void handlePairNow() };
     };
     const cta = ctaForStep();
     const firstName = myName.trim().split(/\s+/)[0] || '';   // warm, personal greeting on the welcome
+    const partnerFirst = partnerName.trim().split(/\s+/)[0] || '';   // personalizes seal/notify/invite copy
     // The sun SETS across the flow — it sinks (and the sky deepens) slide by slide,
     // fully down by the welcome + setup. 0 = high (feel1) → 1 = set (feel6 / Act II).
     const sunSet = isFeel ? feelIndex / (FEEL_KEYS.length - 1) : 1;
@@ -907,7 +940,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 <AnimatePresence custom={dir}>
                     {step === 'myName' && (
                         <motion.div className="lo-ob-form" key="myName" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
-                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 1 of 3</motion.p>
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 1 of 4</motion.p>
                             <motion.div className="lo-ob-namebig" variants={FIELD_VARIANTS}>{myName ? myName : <span className="ph">your name</span>}</motion.div>
                             <motion.h2 className="lo-ob-formh" variants={FIELD_VARIANTS}>What should we call you?</motion.h2>
                             <motion.p className="lo-ob-forms" variants={FIELD_VARIANTS}>How you’ll appear in your shared space.</motion.p>
@@ -917,16 +950,35 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 className="lo-ob-input"
                                 value={myName}
                                 onChange={(e) => setMyName(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter' && myName.trim()) advance('anniversary'); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && myName.trim()) advance('partnerName'); }}
                                 autoCapitalize="words" autoCorrect="off" autoComplete="off" spellCheck={false}
                                 maxLength={32} placeholder="Type your name…"
                             />
                         </motion.div>
                     )}
 
+                    {step === 'partnerName' && (
+                        <motion.div className="lo-ob-form" key="partnerName" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 2 of 4</motion.p>
+                            <motion.div className="lo-ob-namebig" variants={FIELD_VARIANTS}>{partnerName ? partnerName : <span className="ph">their name</span>}</motion.div>
+                            <motion.h2 className="lo-ob-formh" variants={FIELD_VARIANTS}>And who is this world for?</motion.h2>
+                            <motion.p className="lo-ob-forms" variants={FIELD_VARIANTS}>The other half of your story.</motion.p>
+                            <motion.input
+                                ref={partnerRef}
+                                variants={FIELD_VARIANTS}
+                                className="lo-ob-input"
+                                value={partnerName}
+                                onChange={(e) => setPartnerName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && partnerName.trim()) advance('anniversary'); }}
+                                autoCapitalize="words" autoCorrect="off" autoComplete="off" spellCheck={false}
+                                maxLength={32} placeholder="Type their name…"
+                            />
+                        </motion.div>
+                    )}
+
                     {step === 'anniversary' && (
                         <motion.div className="lo-ob-form" key="anniversary" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
-                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 2 of 3</motion.p>
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 3 of 4</motion.p>
                             <motion.h2 className="lo-ob-formh" variants={FIELD_VARIANTS}>When did your story begin?</motion.h2>
                             <motion.p className="lo-ob-forms" variants={FIELD_VARIANTS}>The day everything changed.</motion.p>
                             <motion.div className="lo-ob-input" variants={FIELD_VARIANTS} style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
@@ -945,7 +997,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
 
                     {step === 'first-question' && (
                         <motion.div className="lo-ob-form" key="first-question" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
-                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 3 of 3</motion.p>
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 4 of 4</motion.p>
                             <motion.div className="lo-ob-qcard" variants={FIELD_VARIANTS}>
                                 <p className="lo-ob-qlabel">Today’s question</p>
                                 <p className="lo-ob-qtext">“{firstQuestion}”</p>
@@ -960,7 +1012,19 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 rows={3} maxLength={300}
                                 autoCapitalize="sentences" autoCorrect="on" spellCheck
                             />
-                            <motion.p className="lo-ob-seal" variants={FIELD_VARIANTS}><Lock size={14} /> Sealed until your partner answers too.</motion.p>
+                            <motion.p className="lo-ob-seal" variants={FIELD_VARIANTS}><Lock size={14} /> Sealed until {partnerFirst || 'your partner'} answers too.</motion.p>
+                        </motion.div>
+                    )}
+
+                    {step === 'notify' && (
+                        <motion.div className="lo-ob-form" key="notify" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Almost there</motion.p>
+                            <motion.div className="lo-ob-qcard" variants={FIELD_VARIANTS} style={{ display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
+                                <div className="lo-ob-qr" style={{ width: 54, height: 54 }}><Bell size={26} /></div>
+                                <p className="lo-ob-qtext" style={{ fontSize: 17, fontStyle: 'normal' }}>Your answer is sealed.</p>
+                            </motion.div>
+                            <motion.h2 className="lo-ob-formh" variants={FIELD_VARIANTS}>Know the moment {partnerFirst || 'they'} {partnerFirst ? 'answers' : 'answer'}.</motion.h2>
+                            <motion.p className="lo-ob-forms" variants={FIELD_VARIANTS}>One gentle nudge when something is waiting for you. Never noise.</motion.p>
                         </motion.div>
                     )}
 
@@ -974,7 +1038,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 <div className="lo-ob-qr"><QrCode size={40} /></div>
                                 <div style={{ textAlign: 'left' }}>
                                     <p className="lo-ob-qlabel">One last step</p>
-                                    <p className="lo-ob-seal" style={{ justifyContent: 'flex-start', margin: '6px 0 0' }}><Share2 size={13} /> Tap “Invite your partner” to get your real code.</p>
+                                    <p className="lo-ob-seal" style={{ justifyContent: 'flex-start', margin: '6px 0 0' }}><Share2 size={13} /> Tap “{partnerFirst ? `Invite ${partnerFirst}` : 'Invite your partner'}” to get your real code.</p>
                                 </div>
                             </motion.div>
                         </motion.div>
@@ -1030,11 +1094,17 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 {isFeel && (
                     <button className="lo-ob-skip" onClick={() => advance('myName')}>Skip intro</button>
                 )}
+                {step === 'partnerName' && (
+                    <button className="lo-ob-skip" onClick={() => advance('anniversary')}>Skip for now</button>
+                )}
                 {step === 'anniversary' && (
                     <button className="lo-ob-skip" onClick={() => enterFirstQuestion()}>Skip for now</button>
                 )}
                 {step === 'first-question' && (
                     <button className="lo-ob-skip" onClick={() => { setFirstAnswer(''); advance('done'); }}>Skip for now</button>
+                )}
+                {step === 'notify' && (
+                    <button className="lo-ob-skip" onClick={() => advance('done')}>Not now</button>
                 )}
                 {step === 'done' && (
                     <button className="lo-ob-skip" onClick={() => void handleComplete()}>I’ll do it later</button>
