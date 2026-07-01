@@ -48,10 +48,68 @@ export interface BlossomAnchor {
   layer: VoxelLayer;
 }
 
+export type BonsaiSpeciesId = 'sakura' | 'wisteria' | 'plum' | 'maple';
+
+export interface BonsaiSpecies {
+  id: BonsaiSpeciesId;
+  name: string;
+  line: string;
+  leaf: readonly string[];
+  blossom: readonly string[];
+  blossomBright: string;
+  trunk: readonly string[];
+  /** 0 = puffed pads (sakura); 1 = hanging tails below pads (wisteria). */
+  droop: number;
+}
+
+export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
+  sakura: {
+    id: 'sakura',
+    name: 'Sakura',
+    line: 'The first tree. Pink as a held breath.',
+    leaf: ['#7fae5e', '#6f9e52', '#93bd6f'],
+    blossom: ['#f6c9d7', '#f2aec4', '#ec92ae', '#e77c9d'],
+    blossomBright: '#fbe3ec',
+    trunk: ['#8a6248', '#81593f', '#936b4f'],
+    droop: 0,
+  },
+  wisteria: {
+    id: 'wisteria',
+    name: 'Wisteria',
+    line: 'Lavender falls like slow rain.',
+    leaf: ['#75a45c', '#65944e', '#86b269'],
+    blossom: ['#cdb4e2', '#b79bd8', '#a487c9', '#8f72b8'],
+    blossomBright: '#e6d7f2',
+    trunk: ['#7d6a56', '#71604c', '#89755f'],
+    droop: 1,
+  },
+  plum: {
+    id: 'plum',
+    name: 'Plum',
+    line: 'It blooms earliest, in the cold, out of stubborn love.',
+    leaf: ['#7aa861', '#6a9853', '#8db571'],
+    blossom: ['#f7e6ea', '#f2c9d4', '#e8a4b8', '#c96f8c'],
+    blossomBright: '#fdf4f6',
+    trunk: ['#6f4a38', '#654232', '#7a5440'],
+    droop: 0,
+  },
+  maple: {
+    id: 'maple',
+    name: 'Maple',
+    line: 'It saves its fire for the days you keep showing up.',
+    leaf: ['#84ac58', '#749c4c', '#95b968'],
+    blossom: ['#e2734b', '#d95f3b', '#c94f2f', '#e88a5a'],
+    blossomBright: '#f2a06a',
+    trunk: ['#77503c', '#6c4735', '#835a44'],
+    droop: 0,
+  },
+};
+
 export interface BonsaiModel {
   voxels: Voxel[];
   anchors: BlossomAnchor[];
   bounds: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
+  palette: { blossom: readonly string[]; blossomBright: string };
 }
 
 export const MAX_GROWTH = 400;
@@ -204,9 +262,10 @@ const buildPad = (
   tip: PathPoint,
   attachT: number,
   scale: number,
+  species: BonsaiSpecies,
 ): void => {
   const rx = rngRange(rng, 2.6, 4.2) * scale;
-  const ry = rngRange(rng, 1.3, 1.8) * scale;
+  const ry = rngRange(rng, 1.2, 1.9) * scale;
   const rz = rngRange(rng, 2.6, 4.2) * scale;
   const cx = tip.x;
   const cy = tip.y + ry * 0.55;
@@ -221,6 +280,9 @@ const buildPad = (
         const d = Math.hypot(dx / rx, dy / ry, dz / rz);
         if (d > 1) continue;
         const shell = d > 0.62;
+        // Ragged silhouette: drop a fraction of the shell so pads read as
+        // living foliage clouds, not geometric ellipsoids.
+        if (shell && rng() < 0.13) continue;
         const threshold = Math.min(0.985, baseThreshold + d * 0.3 + rngRange(rng, 0, 0.04));
         // Outer shell voxels turn pink first; the core keeps green depth.
         const bloomAt = shell ? rngRange(rng, 0.05, 0.75) : rngRange(rng, 0.55, 1.15);
@@ -228,7 +290,7 @@ const buildPad = (
           x: Math.round(cx + dx),
           y: Math.round(cy + dy),
           z: Math.round(cz + dz),
-          color: rngPick(rng, PALETTE.leaf),
+          color: rngPick(rng, species.leaf),
           kind: 'leaf',
           layer,
           threshold,
@@ -238,7 +300,45 @@ const buildPad = (
         if (shell && dy >= 0 && rng() < 0.14) {
           anchors.push({ x: Math.round(cx + dx), y: Math.round(cy + dy) + 1, z: Math.round(cz + dz), layer });
         }
+        // Wisteria: blossom tails hang below the pad's underside.
+        if (species.droop > 0 && shell && dy <= -ry * 0.5 && rng() < 0.3) {
+          const tail = rngInt(rng, 2, 3);
+          for (let t = 1; t <= tail; t++) {
+            push(out, {
+              x: Math.round(cx + dx),
+              y: Math.round(cy + dy) - t,
+              z: Math.round(cz + dz),
+              color: rngPick(rng, species.leaf),
+              kind: 'leaf',
+              layer,
+              threshold: Math.min(0.985, threshold + t * 0.05),
+              bloomAt: rngRange(rng, 0.02, 0.4),
+              size: 0.78,
+            });
+          }
+        }
       }
+    }
+  }
+
+  // Satellite tufts break up the outline further.
+  for (let i = 0; i < 2; i++) {
+    const a = rngRange(rng, 0, Math.PI * 2);
+    const tx = Math.round(cx + Math.cos(a) * (rx + 0.8));
+    const ty = Math.round(cy + rngRange(rng, -0.5, ry * 0.5));
+    const tz = Math.round(cz + Math.sin(a) * (rz + 0.8));
+    for (let n = 0; n < 3; n++) {
+      push(out, {
+        x: tx + rngInt(rng, -1, 1),
+        y: ty + rngInt(rng, 0, 1),
+        z: tz + rngInt(rng, -1, 1),
+        color: rngPick(rng, species.leaf),
+        kind: 'leaf',
+        layer,
+        threshold: Math.min(0.985, baseThreshold + 0.28 + rngRange(rng, 0, 0.06)),
+        bloomAt: rngRange(rng, 0.1, 0.8),
+        size: 0.82,
+      });
     }
   }
 };
@@ -261,6 +361,17 @@ const buildIsland = (out: Voxel[], rng: Rng): void => {
       for (let y = -1; y >= -depth; y--) {
         if (Math.hypot(x / (R * (1 + y * 0.16)), z / (R * 0.82 * (1 + y * 0.16))) > 1) continue;
         push(out, { x, y, z, color: rngPick(rng, PALETTE.rock), kind: 'rock', threshold: 0 });
+      }
+      // Living ground detail: grass blades, wildflowers, mossy stones.
+      if (!edge && d < 0.8 && Math.hypot(x, z) > 5.5) {
+        const roll = rng();
+        if (roll < 0.045) {
+          push(out, { x, y: 1, z, color: PALETTE.grassEdge, kind: 'island', threshold: 0, size: 0.34 });
+        } else if (roll < 0.065) {
+          push(out, { x, y: 1, z, color: rng() < 0.5 ? '#f2c9d4' : '#f4f1ea', kind: 'island', threshold: 0, size: 0.38 });
+        } else if (roll < 0.078) {
+          push(out, { x, y: 1, z, color: rngPick(rng, PALETTE.rock), kind: 'rock', threshold: 0, size: 0.6 });
+        }
       }
     }
   }
@@ -366,7 +477,11 @@ const buildDecorations = (out: Voxel[], rng: Rng): void => {
   out.push({ x: 6, y: 13, z: 4, color: '#e77c9d', kind: 'decor', layer: 'canopyFront', threshold: 0, decorId: 'nest', size: 0.5 });
 };
 
-export const generateBonsaiModel = (seed: number): BonsaiModel => {
+export const generateBonsaiModel = (
+  seed: number,
+  speciesId: BonsaiSpeciesId = 'sakura',
+): BonsaiModel => {
+  const species = BONSAI_SPECIES[speciesId] ?? BONSAI_SPECIES.sakura;
   const voxels: Voxel[] = [];
   const anchors: BlossomAnchor[] = [];
 
@@ -382,11 +497,30 @@ export const generateBonsaiModel = (seed: number): BonsaiModel => {
     fillDisc(
       voxels,
       p,
-      (r) => rngPick(r, PALETTE.trunk),
+      (r) => rngPick(r, species.trunk),
       'trunk',
       (radial) => Math.max(0.03 + p.t * 0.32, radial * 0.85 - 0.05),
       trunkRng,
     );
+  }
+
+  // Nebari — the root flare bonsai are prized for. Spokes of dark root
+  // spreading over the soil, appearing as the trunk thickens.
+  const nebariRng = createRng(childSeed(seed, 'nebari'));
+  const spokes = rngInt(nebariRng, 4, 6);
+  for (let i = 0; i < spokes; i++) {
+    const a = (i / spokes) * Math.PI * 2 + rngRange(nebariRng, -0.3, 0.3);
+    for (let r = 1; r <= 2; r++) {
+      push(voxels, {
+        x: Math.round(Math.cos(a) * r),
+        y: 4,
+        z: Math.round(Math.sin(a) * r * 0.8),
+        color: species.trunk[1],
+        kind: 'trunk',
+        threshold: 0.12 + r * 0.08,
+        size: r === 2 ? 0.72 : 1,
+      });
+    }
   }
 
   const branchRng = createRng(childSeed(seed, 'branches'));
@@ -397,13 +531,13 @@ export const generateBonsaiModel = (seed: number): BonsaiModel => {
       fillDisc(
         voxels,
         p,
-        (r) => rngPick(r, PALETTE.trunk),
+        (r) => rngPick(r, species.trunk),
         'branch',
         (radial) => Math.min(0.9, 0.06 + b.attachT * 0.3 + p.t * 0.12 + radial * 0.04),
         branchRng,
       );
     }
-    buildPad(voxels, anchors, padRng, b.tip, b.attachT, b.attachT > 0.9 ? 1.05 : 0.95);
+    buildPad(voxels, anchors, padRng, b.tip, b.attachT, b.attachT > 0.9 ? 1.05 : 0.95, species);
   }
 
   const bounds = voxels.reduce(
@@ -430,5 +564,10 @@ export const generateBonsaiModel = (seed: number): BonsaiModel => {
     anchors[j] = tmp;
   }
 
-  return { voxels, anchors, bounds };
+  return {
+    voxels,
+    anchors,
+    bounds,
+    palette: { blossom: species.blossom, blossomBright: species.blossomBright },
+  };
 };

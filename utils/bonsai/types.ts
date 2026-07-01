@@ -4,7 +4,7 @@
  * and the visible tree is a pure function of (events, coupleSeed, today).
  */
 
-export type BonsaiEventType = 'water' | 'note_open';
+export type BonsaiEventType = 'water' | 'note_open' | 'plant';
 
 export interface BonsaiEvent {
   id: string;
@@ -16,6 +16,8 @@ export interface BonsaiEvent {
   /** For 'water': optional sealed note. For 'note_open': id of the opened water event. */
   note?: string | null;
   targetEventId?: string | null;
+  /** For 'plant': which species the new tree is. */
+  species?: string | null;
   createdAt: string;
 }
 
@@ -95,6 +97,8 @@ export interface BonsaiTreeState {
   bestStreak: number;
   /** Missed days auto-bridged by "rain" (one per calendar month). */
   rainDays: string[];
+  /** Bloom days where both watered within minutes of each other. */
+  twinDays: string[];
   totalWaterDays: number;
   wateredTodayByMe: boolean;
   wateredTodayByPartner: boolean;

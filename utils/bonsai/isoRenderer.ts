@@ -4,6 +4,13 @@
  * back canopy, front canopy) only when state changes; the per-frame cost is
  * just compositing those layers with a gentle sway — no per-voxel redraws,
  * no WebGL, safe under glass and cheap on mobile GPUs.
+ *
+ * Light model (what makes it read as a diorama, not flat cubes):
+ *  - hidden-face culling: faces sharing a cell with a neighbour never draw
+ *  - ambient occlusion: faces under/beside neighbours darken into crevices
+ *  - directional sun (upper-right): lit right faces, shaded left faces,
+ *    higher voxels catch slightly more light
+ *  - a soft contact shadow grounds the tree on the island
  */
 
 import { hashString } from './rng';
@@ -26,15 +33,18 @@ export interface SceneOptions {
   resting: boolean;
   golden: boolean;
   season: BonsaiSeason;
+  /** Ordinal bloom indices that were "twin blooms" (watered within minutes). */
+  twinIndices?: ReadonlySet<number>;
 }
-
-const AUTUMN_LEAVES = ['#d9a05b', '#c98a4b', '#b9793f'];
-const SNOW = '#f3f0f4';
 
 export interface ScreenPoint {
   x: number;
   y: number;
 }
+
+const AUTUMN_LEAVES = ['#d9a05b', '#c98a4b', '#b9793f'];
+const SNOW = '#f3f0f4';
+const SHADOW_INK = '#3a2b33';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
@@ -62,6 +72,11 @@ const shade = (hex: string, amount: number, desat = 0): string => {
 };
 
 const voxelJitter = (v: Voxel): number => ((hashString(`${v.x},${v.y},${v.z}`) % 9) - 4) / 100;
+
+const cellKey = (x: number, y: number, z: number): string => `${x},${y},${z}`;
+
+const isGround = (v: Voxel): boolean =>
+  (v.kind === 'island' || v.kind === 'rock') && v.y <= 1;
 
 export class VoxelSceneRenderer {
   private model: BonsaiModel;
@@ -128,6 +143,7 @@ export class VoxelSceneRenderer {
       opts.resting ? 1 : 0,
       opts.golden ? 1 : 0,
       opts.season,
+      [...(opts.twinIndices ?? [])].sort().join(','),
       this.width,
       this.height,
       this.dpr,
@@ -148,14 +164,47 @@ export class VoxelSceneRenderer {
       canopyFront: this.layerCtx('canopyFront'),
     };
 
+    // Visible voxels + per-layer occupancy (full-size voxels only) for
+    // hidden-face culling and ambient occlusion.
+    const visible: Voxel[] = [];
+    const occ: Record<VoxelLayer, Set<string>> = {
+      static: new Set(),
+      canopyBack: new Set(),
+      canopyFront: new Set(),
+    };
     for (const v of this.sorted) {
       if (!this.isVisible(v, G, opts)) continue;
-      const ctx = contexts[v.layer];
-      const color = this.colorFor(v, bloomP, opts);
-      this.drawCube(ctx, v, color, desat, this.snowTop(v, opts.season));
+      visible.push(v);
+      if ((v.size ?? 1) >= 0.95) occ[v.layer].add(cellKey(v.x, v.y, v.z));
+    }
+
+    // Ground → contact shadow → everything else. Painter order within each
+    // pass is preserved because `visible` keeps the global depth sort.
+    for (const v of visible) {
+      if (!isGround(v)) continue;
+      this.drawCube(contexts.static, v, this.colorFor(v, bloomP, opts), desat, occ.static, this.snowTop(v, opts.season));
+    }
+    this.drawContactShadow(contexts.static, G);
+    for (const v of visible) {
+      if (isGround(v)) continue;
+      this.drawCube(contexts[v.layer], v, this.colorFor(v, bloomP, opts), desat, occ[v.layer], this.snowTop(v, opts.season));
     }
 
     this.drawBloomAnchors(contexts, opts, G, desat);
+  }
+
+  /** Soft dark ellipse under the canopy — grounds the tree on the island. */
+  private drawContactShadow(ctx: CanvasRenderingContext2D, G: number): void {
+    if (G <= 0.02) return;
+    const c = this.project(0, 0.9, 0);
+    const rx = this.scale * (2.5 + 6.5 * G);
+    ctx.save();
+    ctx.globalAlpha = 0.09 + 0.07 * G;
+    ctx.fillStyle = SHADOW_INK;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, rx, rx * 0.48, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   /** Winter dusts upward-facing greenery with snow (deterministic per voxel). */
@@ -178,7 +227,7 @@ export class VoxelSceneRenderer {
     if (v.kind === 'leaf' && v.bloomAt != null && bloomP >= v.bloomAt) {
       const h = hashString(`bloom:${v.x},${v.y},${v.z}`);
       if (opts.golden && h % 41 === 0) return PALETTE.gold;
-      return PALETTE.blossom[h % PALETTE.blossom.length];
+      return this.model.palette.blossom[h % this.model.palette.blossom.length];
     }
     if (v.kind === 'leaf' && opts.season === 'autumn') {
       const h = hashString(`autumn:${v.x},${v.y},${v.z}`);
@@ -190,6 +239,14 @@ export class VoxelSceneRenderer {
     if (v.kind === 'leaf' && opts.season === 'winter') {
       return shade(v.color, 0.06, 0.25);
     }
+    // Fallen-petal carpet: the island top slowly gathers colour as the tree
+    // blooms — a visible record of every petal that ever fell.
+    if (v.kind === 'island' && v.y === 0 && bloomP > 0.05) {
+      const h = hashString(`carpet:${v.x},${v.z}`);
+      if ((h % 100) / 100 < bloomP * 0.28) {
+        return shade(this.model.palette.blossom[h % this.model.palette.blossom.length], 0.1);
+      }
+    }
     return v.color;
   }
 
@@ -200,16 +257,30 @@ export class VoxelSceneRenderer {
     desat: number,
   ): void {
     if (G < 0.4) return;
-    for (const { anchor } of this.visibleAnchors(opts.bloomCount, G)) {
+    const twins = opts.twinIndices;
+    for (const { anchor, index } of this.visibleAnchors(opts.bloomCount, G)) {
+      const twin = twins?.has(index) ?? false;
+      if (twin) {
+        // Twin blooms (watered within moments of each other) carry a gold rim.
+        const rim: Voxel = {
+          x: anchor.x, y: anchor.y, z: anchor.z,
+          color: PALETTE.gold,
+          kind: 'blossom',
+          layer: anchor.layer,
+          threshold: 0,
+          size: 1.12,
+        };
+        this.drawCube(contexts[anchor.layer], rim, PALETTE.gold, desat, null, null);
+      }
       const cube: Voxel = {
         x: anchor.x, y: anchor.y, z: anchor.z,
-        color: PALETTE.blossomBright,
+        color: this.model.palette.blossomBright,
         kind: 'blossom',
         layer: anchor.layer,
         threshold: 0,
-        size: 0.92,
+        size: twin ? 0.86 : 0.92,
       };
-      this.drawCube(contexts[anchor.layer], cube, PALETTE.blossomBright, desat);
+      this.drawCube(contexts[anchor.layer], cube, this.model.palette.blossomBright, desat, null, null);
     }
   }
 
@@ -228,8 +299,7 @@ export class VoxelSceneRenderer {
   anchorScreen(index: number): ScreenPoint | null {
     const a = this.model.anchors[index];
     if (!a) return null;
-    const p = this.project(a.x, a.y + 0.4, a.z);
-    return p;
+    return this.project(a.x, a.y + 0.4, a.z);
   }
 
   /**
@@ -306,44 +376,68 @@ export class VoxelSceneRenderer {
     v: Voxel,
     baseColor: string,
     desat: number,
+    occ: Set<string> | null,
     topOverride: string | null = null,
   ): void {
     const size = v.size ?? 1;
+    const full = size >= 0.95 && occ != null;
+
+    // Hidden-face culling + per-face ambient occlusion from neighbours.
+    const hideTop = full && occ.has(cellKey(v.x, v.y + 1, v.z));
+    const hideRight = full && occ.has(cellKey(v.x + 1, v.y, v.z));
+    const hideLeft = full && occ.has(cellKey(v.x, v.y, v.z + 1));
+    if (hideTop && hideRight && hideLeft) return;
+
+    let aoTop = 0;
+    let aoRight = 0;
+    let aoLeft = 0;
+    if (full) {
+      if (occ.has(cellKey(v.x + 1, v.y + 1, v.z))) { aoTop += 0.05; aoRight += 0.09; }
+      if (occ.has(cellKey(v.x, v.y + 1, v.z + 1))) { aoTop += 0.05; aoLeft += 0.09; }
+      if (occ.has(cellKey(v.x - 1, v.y + 1, v.z))) aoTop += 0.03;
+      if (occ.has(cellKey(v.x, v.y + 1, v.z - 1))) aoTop += 0.03;
+    }
+
     const s = this.scale * size;
     const vh = this.vh() * size;
     const p = this.project(v.x, v.y, v.z);
     // Center reduced-size cubes within their cell.
     const cy = p.y + (this.vh() - vh) * 0.5;
     const j = voxelJitter(v);
-    const top = topOverride ?? shade(baseColor, 0.14 + j, desat);
-    const right = shade(baseColor, -0.1 + j, desat);
-    const left = shade(baseColor, -0.22 + j, desat);
+    // Sun sits upper-right: lit right faces, shaded left, height catches light.
+    const lift = Math.min(0.08, Math.max(0, v.y) * 0.004);
 
-    ctx.beginPath();
-    ctx.moveTo(p.x, cy - s / 2);
-    ctx.lineTo(p.x + s, cy);
-    ctx.lineTo(p.x, cy + s / 2);
-    ctx.lineTo(p.x - s, cy);
-    ctx.closePath();
-    ctx.fillStyle = top;
-    ctx.fill();
+    if (!hideTop) {
+      ctx.beginPath();
+      ctx.moveTo(p.x, cy - s / 2);
+      ctx.lineTo(p.x + s, cy);
+      ctx.lineTo(p.x, cy + s / 2);
+      ctx.lineTo(p.x - s, cy);
+      ctx.closePath();
+      ctx.fillStyle = topOverride ?? shade(baseColor, 0.16 + j + lift - aoTop, desat);
+      ctx.fill();
+    }
 
-    ctx.beginPath();
-    ctx.moveTo(p.x - s, cy);
-    ctx.lineTo(p.x, cy + s / 2);
-    ctx.lineTo(p.x, cy + s / 2 + vh);
-    ctx.lineTo(p.x - s, cy + vh);
-    ctx.closePath();
-    ctx.fillStyle = left;
-    ctx.fill();
+    if (!hideLeft) {
+      ctx.beginPath();
+      ctx.moveTo(p.x - s, cy);
+      ctx.lineTo(p.x, cy + s / 2);
+      ctx.lineTo(p.x, cy + s / 2 + vh);
+      ctx.lineTo(p.x - s, cy + vh);
+      ctx.closePath();
+      ctx.fillStyle = shade(baseColor, -0.26 + j * 0.5 - aoLeft, desat);
+      ctx.fill();
+    }
 
-    ctx.beginPath();
-    ctx.moveTo(p.x + s, cy);
-    ctx.lineTo(p.x, cy + s / 2);
-    ctx.lineTo(p.x, cy + s / 2 + vh);
-    ctx.lineTo(p.x + s, cy + vh);
-    ctx.closePath();
-    ctx.fillStyle = right;
-    ctx.fill();
+    if (!hideRight) {
+      ctx.beginPath();
+      ctx.moveTo(p.x + s, cy);
+      ctx.lineTo(p.x, cy + s / 2);
+      ctx.lineTo(p.x, cy + s / 2 + vh);
+      ctx.lineTo(p.x + s, cy + vh);
+      ctx.closePath();
+      ctx.fillStyle = shade(baseColor, -0.06 + j + lift - aoRight, desat);
+      ctx.fill();
+    }
   }
 }

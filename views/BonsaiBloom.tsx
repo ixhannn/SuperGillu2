@@ -1,21 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BookOpen, CloudRain, Droplets, Feather, Flower2, Share2, Sparkles, UserPlus } from 'lucide-react';
+import { Bell, BookOpen, CloudRain, Droplets, Feather, Flower2, Share2, Sparkles, Sprout, TreePine, UserPlus } from 'lucide-react';
 import { ViewState } from '../types';
 import { BonsaiService } from '../services/bonsai';
 import { BonsaiShareService } from '../services/bonsaiShare';
 import { NotificationsService } from '../services/notifications';
 import { StorageService } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
-import { computeTreeState, daysBetween, seasonFor } from '../utils/bonsai/growth';
+import { canPlantNext, computeGarden, computeTreeState, daysBetween, seasonFor } from '../utils/bonsai/growth';
 import { createBonsaiShareCard } from '../utils/bonsai/shareCard';
+import { BONSAI_SPECIES, type BonsaiSpeciesId } from '../utils/bonsai/voxelModel';
 import type { BlossomNote, BonsaiEvent } from '../utils/bonsai/types';
 import { BonsaiScene, type BonsaiSceneHandle } from '../components/bonsai/BonsaiScene';
 import { WaterButton } from '../components/bonsai/WaterButton';
 import {
   BonsaiComposeSheet,
   BonsaiDaySheet,
+  BonsaiGroveSheet,
   BonsaiReadSheet,
+  BonsaiSpeciesPicker,
   BonsaiStorySheet,
 } from '../components/bonsai/BonsaiSheets';
 import { ViewHeader } from '../components/ViewHeader';
@@ -78,8 +81,19 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
   const [hour, setHour] = useState(() => new Date().getHours());
   const [composeOpen, setComposeOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
+  const [groveOpen, setGroveOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [readingNote, setReadingNote] = useState<BlossomNote | null>(null);
   const [dayOpen, setDayOpen] = useState<string | null>(null);
+  const [nudgedToday, setNudgedToday] = useState(
+    () => {
+      try {
+        return localStorage.getItem('lior_bonsai_nudge_day') === BonsaiService.today();
+      } catch {
+        return false;
+      }
+    },
+  );
   const [stageBanner, setStageBanner] = useState<{ name: string; line: string } | null>(null);
   const [partnerHere, setPartnerHere] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -135,9 +149,10 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
     };
   }, [paired]);
 
+  const garden = useMemo(() => computeGarden(events, seed), [events, seed]);
   const tree = useMemo(
-    () => computeTreeState({ events, seed, today, selfId }),
-    [events, seed, today, selfId],
+    () => computeTreeState({ events: garden.currentEvents, seed: garden.currentSeed, today, selfId }),
+    [garden, today, selfId],
   );
   const season = useMemo(() => seasonFor(today), [today]);
   const anniversary = useMemo(
@@ -196,7 +211,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
     feedback.confirm();
     if (tree.resting) toast.show('The tree stirs awake — it missed you', 'info');
     const completesBloom = tree.wateredTodayByPartner && !tree.wateredTodayByMe;
-    void BonsaiService.water().then(() => {
+    void BonsaiService.water(undefined, garden.currentIndex).then(() => {
       if (!paired) return;
       // The outside-the-app loop: their phone hears about it.
       void NotificationsService.triggerBonsaiPush(completesBloom ? 'bloomed' : 'watered', myName);
@@ -206,7 +221,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
   const handleSaveNote = (text: string) => {
     feedback.confirm();
-    void BonsaiService.setTodayNote(text);
+    void BonsaiService.setTodayNote(text, garden.currentIndex);
     toast.show(`Sealed until ${partnerName} waters the tree`, 'heart');
   };
 
@@ -215,10 +230,27 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
     if (paired) void NotificationsService.triggerBonsaiPush('note_read', myName);
   };
 
-  const firstDay = events.length > 0 ? events.reduce((min, e) => (e.day < min ? e.day : min), events[0].day) : null;
+  const segment = garden.currentEvents;
+  const firstDay = segment.length > 0 ? segment.reduce((min, e) => (e.day < min ? e.day : min), segment[0].day) : null;
   const treeAge = firstDay ? daysBetween(firstDay, today) + 1 : 0;
   const sky = skyPhaseFor(hour);
   const night = sky === 'night';
+
+  const handleNudge = () => {
+    feedback.tap();
+    setNudgedToday(true);
+    try {
+      localStorage.setItem('lior_bonsai_nudge_day', today);
+    } catch { /* non-fatal */ }
+    void NotificationsService.triggerBonsaiPush('nudge', myName);
+    toast.show(`A gentle reminder is on its way to ${partnerName}`, 'heart');
+  };
+
+  const handlePlant = (species: BonsaiSpeciesId) => {
+    feedback.milestone();
+    void BonsaiService.plantTree(species, garden.currentIndex + 1);
+    toast.show(`A ${BONSAI_SPECIES[species].name.toLowerCase()} seed is in the soil`, 'success', 4000);
+  };
 
   const handleShare = useCallback(() => {
     if (sharing) return;
@@ -227,7 +259,8 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
     window.setTimeout(async () => {
       try {
         const dataUrl = createBonsaiShareCard({
-          seed,
+          seed: garden.currentSeed,
+          species: garden.currentSpecies,
           growth: tree.growth,
           bloomCount: tree.bloomDays.length,
           decorations: new Set(tree.decorations.map((d) => d.id)),
@@ -250,7 +283,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
         setSharing(false);
       }
     }, 30);
-  }, [sharing, seed, tree, season, treeAge, night]);
+  }, [sharing, garden, tree, season, treeAge, night]);
 
   const myNoteToday = tree.notes.some((n) => !n.forMe && n.day === today);
   const rainedYesterday = tree.rainDays.length > 0
@@ -282,6 +315,14 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
       data-golden={tree.mood.golden || undefined}
     >
       <div className="bonsai-sky" aria-hidden="true">
+        {night ? (
+          <div className="bonsai-stars" />
+        ) : (
+          <>
+            <div className="bonsai-cloud bonsai-cloud--1" />
+            <div className="bonsai-cloud bonsai-cloud--2" />
+          </>
+        )}
         {tree.mood.rain && !reducedMotion && <div className="bonsai-rain" />}
       </div>
 
@@ -304,7 +345,8 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
         <BonsaiScene
           ref={sceneRef}
           tree={tree}
-          seed={seed}
+          seed={garden.currentSeed}
+          species={garden.currentSpecies}
           night={night}
           season={season}
           anniversary={anniversary}
@@ -401,6 +443,19 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
             <BookOpen size={13} />
             <span>Story</span>
           </button>
+          {(garden.completed.length > 0 || canPlantNext(tree.growth)) && (
+            <button
+              type="button"
+              className="bonsai-chip bonsai-chip--quiet"
+              onClick={() => {
+                feedback.tap();
+                setGroveOpen(true);
+              }}
+            >
+              <TreePine size={13} />
+              <span>Grove</span>
+            </button>
+          )}
           {tree.growth > 0 && (
             <button
               type="button"
@@ -415,6 +470,20 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
           )}
         </div>
 
+        {canPlantNext(tree.growth) && (
+          <button
+            type="button"
+            className="bonsai-plant-cta"
+            onClick={() => {
+              feedback.interact();
+              setPickerOpen(true);
+            }}
+          >
+            <Sprout size={16} />
+            <span>This tree is Ancient — plant the next one together</span>
+          </button>
+        )}
+
         <WaterButton
           watered={tree.wateredTodayByMe}
           planted={tree.myFirstWaterDone}
@@ -423,6 +492,13 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
           onPourEnd={() => sceneRef.current?.stopPour()}
           onComplete={handleWatered}
         />
+
+        {paired && tree.wateredTodayByMe && !tree.wateredTodayByPartner && !nudgedToday && (
+          <button type="button" className="bonsai-nudge-cta" onClick={handleNudge}>
+            <Bell size={13} />
+            <span>Remind {partnerName} gently</span>
+          </button>
+        )}
 
         {tree.wateredTodayByMe && !myNoteToday && (
           <button
@@ -473,6 +549,17 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
         onClose={() => setDayOpen(null)}
       />
       <BonsaiStorySheet open={storyOpen} tree={tree} onClose={() => setStoryOpen(false)} />
+      <BonsaiGroveSheet
+        open={groveOpen}
+        garden={garden}
+        currentGrowth={tree.growth}
+        onClose={() => setGroveOpen(false)}
+      />
+      <BonsaiSpeciesPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={handlePlant}
+      />
     </div>
   );
 };

@@ -4,7 +4,9 @@
  * overlay canvas so the voxel layers never repaint for ambience.
  */
 
-export type ParticleKind = 'petal' | 'firefly' | 'droplet' | 'sparkle' | 'gold' | 'koi' | 'lantern' | 'snow';
+export type ParticleKind =
+  | 'petal' | 'firefly' | 'droplet' | 'sparkle' | 'gold'
+  | 'koi' | 'lantern' | 'snow' | 'butterfly';
 
 interface Particle {
   kind: ParticleKind;
@@ -34,6 +36,13 @@ export class BonsaiParticles {
   private petalTimer = 0;
   private fireflyTimer = 0;
   private snowTimer = 0;
+  private butterflyTimer = 6;
+  private petalColors: readonly string[] = PETAL_COLORS;
+
+  /** Petals fall in the current tree's blossom colours. */
+  setPetalPalette(colors: readonly string[]): void {
+    this.petalColors = colors.length > 0 ? colors : PETAL_COLORS;
+  }
 
   resize(width: number, height: number): void {
     this.width = width;
@@ -62,7 +71,7 @@ export class BonsaiParticles {
       size: 2.4 + Math.random() * 2.2,
       spin: (Math.random() - 0.5) * 3,
       angle: Math.random() * Math.PI * 2,
-      color: golden ? GOLD_COLOR : PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)],
+      color: golden ? GOLD_COLOR : this.petalColors[Math.floor(Math.random() * this.petalColors.length)],
     });
   }
 
@@ -115,6 +124,25 @@ export class BonsaiParticles {
       spin: (Math.random() - 0.5) * 6,
       angle: Math.random() * Math.PI * 2,
       color: gold ? GOLD_COLOR : '#fbe3ec',
+    });
+  }
+
+  /** A butterfly crosses the scene, bobbing, and flutters off (butterfly days). */
+  spawnButterfly(): void {
+    const fromLeft = Math.random() < 0.5;
+    const vx = (22 + Math.random() * 10) * (fromLeft ? 1 : -1);
+    this.add({
+      kind: 'butterfly',
+      x: fromLeft ? -10 : this.width + 10,
+      y: this.height * (0.28 + Math.random() * 0.3),
+      vx,
+      vy: 0,
+      life: 0,
+      maxLife: (this.width + 40) / Math.abs(vx),
+      size: 2.6 + Math.random() * 1,
+      spin: Math.random() * Math.PI * 2,
+      angle: 0,
+      color: Math.random() < 0.5 ? '#f4e4ee' : '#f6dfa8',
     });
   }
 
@@ -187,7 +215,7 @@ export class BonsaiParticles {
         size: 2 + Math.random() * 2,
         spin: (Math.random() - 0.5) * 4,
         angle: Math.random() * Math.PI * 2,
-        color: PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)],
+        color: this.petalColors[Math.floor(Math.random() * this.petalColors.length)],
       });
     }
   }
@@ -208,7 +236,7 @@ export class BonsaiParticles {
         size: 2.2 + Math.random() * 2.4,
         spin: (Math.random() - 0.5) * 5,
         angle: Math.random() * Math.PI * 2,
-        color: PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)],
+        color: this.petalColors[Math.floor(Math.random() * this.petalColors.length)],
       });
     }
   }
@@ -226,6 +254,7 @@ export class BonsaiParticles {
       night: boolean;
       golden: boolean;
       snow: boolean;
+      butterfly: boolean;
       canopy: { x: number; y: number; spread: number };
     },
   ): void {
@@ -244,6 +273,11 @@ export class BonsaiParticles {
     if (opts.snow && this.snowTimer <= 0 && this.particles.filter((p) => p.kind === 'snow').length < 12) {
       this.spawnSnow();
       this.snowTimer = 0.7;
+    }
+    this.butterflyTimer -= clampedDt;
+    if (opts.butterfly && this.butterflyTimer <= 0 && !this.particles.some((p) => p.kind === 'butterfly')) {
+      this.spawnButterfly();
+      this.butterflyTimer = 24 + Math.random() * 18;
     }
 
     ctx.clearRect(0, 0, this.width, this.height);
@@ -269,6 +303,8 @@ export class BonsaiParticles {
         p.vx += Math.sin(p.life * 0.9 + p.spin) * 4 * clampedDt;
       } else if (p.kind === 'snow') {
         p.vx += Math.sin(p.life * 1.4 + p.spin) * 8 * clampedDt;
+      } else if (p.kind === 'butterfly') {
+        p.vy = Math.sin(p.life * 3.1 + p.spin) * 16;
       } else {
         p.vy += 40 * clampedDt;
       }
@@ -317,6 +353,22 @@ export class BonsaiParticles {
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (p.kind === 'butterfly') {
+      const flap = Math.abs(Math.sin(p.life * 11 + p.spin));
+      ctx.globalAlpha = fade * 0.95;
+      ctx.fillStyle = p.color;
+      const wing = p.size * (0.45 + flap * 0.55);
+      ctx.beginPath();
+      ctx.ellipse(p.x - wing * 0.6, p.y, wing, p.size * 0.62, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(p.x + wing * 0.6, p.y, wing, p.size * 0.62, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#6b4f5b';
+      ctx.fillRect(p.x - 0.7, p.y - p.size * 0.5, 1.4, p.size);
       ctx.globalAlpha = 1;
       return;
     }

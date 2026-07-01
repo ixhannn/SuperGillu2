@@ -6,11 +6,12 @@
 
 import type { BonsaiSeason } from './growth';
 import { VoxelSceneRenderer } from './isoRenderer';
-import { generateBonsaiModel } from './voxelModel';
+import { generateBonsaiModel, type BonsaiSpeciesId } from './voxelModel';
 import type { BonsaiDecorationId } from './types';
 
 export interface ShareCardInput {
   seed: number;
+  species: BonsaiSpeciesId;
   growth: number;
   bloomCount: number;
   decorations: ReadonlySet<BonsaiDecorationId>;
@@ -64,7 +65,7 @@ export const createBonsaiShareCard = (input: ShareCardInput): string => {
   tree.height = TREE_H;
   const treeCtx = tree.getContext('2d');
   if (treeCtx) {
-    const renderer = new VoxelSceneRenderer(generateBonsaiModel(input.seed));
+    const renderer = new VoxelSceneRenderer(generateBonsaiModel(input.seed, input.species));
     renderer.layout(W, TREE_H, 1);
     renderer.render({
       growth: input.growth,

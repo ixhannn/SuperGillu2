@@ -704,8 +704,9 @@ export const NotificationsService = {
    *  - 'watered'   : I watered and they haven't → "the tree is waiting on you"
    *  - 'bloomed'   : my watering completed today's pair → "a blossom opened"
    *  - 'note_read' : I opened the note they sealed → "{me} opened your note"
+   *  - 'nudge'     : explicit gentle reminder (once per day, user-initiated)
    */
-  async triggerBonsaiPush(subtype: 'watered' | 'bloomed' | 'note_read', senderName: string): Promise<void> {
+  async triggerBonsaiPush(subtype: 'watered' | 'bloomed' | 'note_read' | 'nudge', senderName: string): Promise<void> {
     if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
     try {
       const token = await SupabaseService.getAccessToken();

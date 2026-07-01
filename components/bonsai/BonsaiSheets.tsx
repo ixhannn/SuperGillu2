@@ -1,9 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CloudRain, Droplets, Flower2, Image as ImageIcon, Lock, Sparkles, X } from 'lucide-react';
+import { CloudRain, Droplets, Flower2, Image as ImageIcon, Lock, Sparkles, Sprout, TreePine, X } from 'lucide-react';
 import { BONSAI_NOTE_MAX } from '../../services/bonsai';
 import { StorageService } from '../../services/storage';
-import { BONSAI_DECORATIONS, BONSAI_STAGES } from '../../utils/bonsai/growth';
+import { BONSAI_DECORATIONS, BONSAI_STAGES, type GardenState } from '../../utils/bonsai/growth';
+import { VoxelSceneRenderer } from '../../utils/bonsai/isoRenderer';
+import {
+  BONSAI_SPECIES,
+  generateBonsaiModel,
+  type BonsaiSpeciesId,
+} from '../../utils/bonsai/voxelModel';
 import type { BlossomNote, BonsaiTreeState } from '../../utils/bonsai/types';
 
 const SHEET_SPRING = { type: 'spring' as const, stiffness: 380, damping: 38 };
@@ -219,8 +225,10 @@ export function BonsaiDaySheet({ day, tree, partnerName, onClose }: DaySheetProp
             <h3>{prettyDate(day)}</h3>
           </div>
           <p className="bonsai-sheet__sub">
-            <Droplets size={12} style={{ display: 'inline', verticalAlign: '-1px' }} /> You both
-            watered — this blossom is that day, kept.
+            <Droplets size={12} style={{ display: 'inline', verticalAlign: '-1px' }} />{' '}
+            {tree.twinDays.includes(day)
+              ? 'A twin bloom — you watered within moments of each other.'
+              : 'You both watered — this blossom is that day, kept.'}
           </p>
           <div className="bonsai-day__scroll">
             {memory?.image && (
@@ -248,6 +256,125 @@ export function BonsaiDaySheet({ day, tree, partnerName, onClose }: DaySheetProp
           </div>
         </>
       )}
+    </SheetShell>
+  );
+}
+
+/* ── Grove: every tree you've ever grown together ──────────────────── */
+
+function GroveThumb({ seed, species, growth }: { seed: number; species: BonsaiSpeciesId; growth: number }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cssSize = 128;
+    canvas.width = cssSize * dpr;
+    canvas.height = cssSize * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const renderer = new VoxelSceneRenderer(generateBonsaiModel(seed, species));
+    renderer.layout(cssSize, cssSize, dpr);
+    renderer.render({
+      growth,
+      bloomCount: 0,
+      decorations: new Set(),
+      resting: false,
+      golden: false,
+      season: 'spring',
+    });
+    renderer.composite(ctx, 0, 0, 0);
+  }, [seed, species, growth]);
+  return <canvas ref={canvasRef} className="bonsai-grove__thumb" />;
+}
+
+interface GroveSheetProps {
+  open: boolean;
+  garden: GardenState;
+  currentGrowth: number;
+  onClose: () => void;
+}
+
+export function BonsaiGroveSheet({ open, garden, currentGrowth, onClose }: GroveSheetProps) {
+  const prettyRange = (a: string | null, b: string | null): string => {
+    const fmt = (d: string) =>
+      new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+    if (!a) return '';
+    return b && b !== a ? `${fmt(a)} — ${fmt(b)}` : fmt(a);
+  };
+  return (
+    <SheetShell open={open} onClose={onClose} label="Your grove">
+      <div className="bonsai-sheet__head">
+        <TreePine size={20} />
+        <h3>Your grove</h3>
+      </div>
+      <p className="bonsai-sheet__sub">
+        Every finished tree stays. A grove, one season of you at a time.
+      </p>
+      <div className="bonsai-grove__scroll">
+        {garden.completed.map((t) => (
+          <div key={t.index} className="bonsai-grove__item">
+            <GroveThumb seed={t.seed} species={t.species} growth={t.growth} />
+            <strong>{BONSAI_SPECIES[t.species].name}</strong>
+            <span>{t.bloomCount} blooms · {prettyRange(t.firstDay, t.lastDay)}</span>
+          </div>
+        ))}
+        <div className="bonsai-grove__item is-current">
+          <GroveThumb seed={garden.currentSeed} species={garden.currentSpecies} growth={currentGrowth} />
+          <strong>{BONSAI_SPECIES[garden.currentSpecies].name}</strong>
+          <span>growing now</span>
+        </div>
+      </div>
+      {garden.completed.length === 0 && (
+        <p className="bonsai-grove__hint">
+          When this tree reaches Ancient, you&apos;ll plant the next one together — a new species,
+          a new shape, same two gardeners.
+        </p>
+      )}
+    </SheetShell>
+  );
+}
+
+/* ── Species picker: begin the next tree ───────────────────────────── */
+
+interface SpeciesPickerProps {
+  open: boolean;
+  onClose: () => void;
+  onPick: (species: BonsaiSpeciesId) => void;
+}
+
+export function BonsaiSpeciesPicker({ open, onClose, onPick }: SpeciesPickerProps) {
+  return (
+    <SheetShell open={open} onClose={onClose} label="Plant the next tree">
+      <div className="bonsai-sheet__head">
+        <Sprout size={20} />
+        <h3>Plant the next tree</h3>
+      </div>
+      <p className="bonsai-sheet__sub">
+        This one is finished — it moves to your grove, blossoms and all. Choose what grows next.
+      </p>
+      <div className="bonsai-species">
+        {(Object.values(BONSAI_SPECIES)).map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className="bonsai-species__option"
+            onClick={() => {
+              onPick(s.id);
+              onClose();
+            }}
+          >
+            <span className="bonsai-species__dots">
+              {s.blossom.slice(0, 3).map((c) => (
+                <span key={c} style={{ background: c }} />
+              ))}
+            </span>
+            <span className="bonsai-species__name">{s.name}</span>
+            <span className="bonsai-species__line">{s.line}</span>
+          </button>
+        ))}
+      </div>
     </SheetShell>
   );
 }

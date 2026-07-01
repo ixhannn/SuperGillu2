@@ -160,6 +160,9 @@ Deno.serve(async (req: Request) => {
     if (subtype === 'bloomed') {
       title = `\u{1F338} A blossom opened`;
       body  = `You and ${who} both showed up today. Go see it.`;
+    } else if (subtype === 'nudge') {
+      title = `\u{1F440} ${who} is waiting by the tree`;
+      body  = 'One hold each and today\'s blossom opens.';
     } else if (subtype === 'note_read') {
       title = `\u{1F338} ${who} opened your note`;
       body  = 'The one you tucked into a blossom.';

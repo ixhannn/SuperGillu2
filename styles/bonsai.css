@@ -61,6 +61,55 @@
   background: radial-gradient(80% 55% at 50% 30%, rgba(233, 196, 106, 0.16), transparent 70%);
 }
 
+/* Soft clouds drift across the day sky (transform-only, very slow). */
+.bonsai-cloud {
+  position: absolute;
+  width: 46%;
+  height: 90px;
+  border-radius: 100px;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+  animation: bonsai-cloud-drift 150s linear infinite;
+}
+.bonsai-cloud--1 { top: 9%; left: -30%; }
+.bonsai-cloud--2 { top: 20%; left: -55%; height: 60px; width: 36%; animation-duration: 210s; opacity: 0.7; }
+@keyframes bonsai-cloud-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(340%); }
+}
+
+/* Night stars — two twinkle layers of box-shadow points. */
+.bonsai-stars,
+.bonsai-stars::after {
+  position: absolute;
+  top: 4%;
+  left: 10%;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow:
+    4vw 2vh 0 0 rgba(255, 244, 235, 0.9), 18vw 6vh 0 0 rgba(255, 244, 235, 0.6),
+    32vw 1vh 0 0 rgba(255, 244, 235, 0.8), 47vw 8vh 0 0 rgba(255, 244, 235, 0.5),
+    61vw 3vh 0 0 rgba(255, 244, 235, 0.9), 74vw 10vh 0 0 rgba(255, 244, 235, 0.6),
+    9vw 12vh 0 0 rgba(255, 244, 235, 0.5), 55vw 14vh 0 0 rgba(255, 244, 235, 0.7),
+    80vw 5vh 0 0 rgba(255, 244, 235, 0.8), 26vw 16vh 0 0 rgba(255, 244, 235, 0.45);
+  animation: bonsai-twinkle 4.2s ease-in-out infinite;
+}
+.bonsai-stars::after {
+  content: '';
+  top: 9vh;
+  left: 6vw;
+  box-shadow:
+    12vw -2vh 0 0 rgba(255, 244, 235, 0.55), 38vw 4vh 0 0 rgba(255, 244, 235, 0.75),
+    66vw -4vh 0 0 rgba(255, 244, 235, 0.5), 51vw -7vh 0 0 rgba(255, 244, 235, 0.85),
+    22vw 7vh 0 0 rgba(255, 244, 235, 0.6), 71vw 6vh 0 0 rgba(255, 244, 235, 0.7);
+  animation-delay: 2.1s;
+}
+@keyframes bonsai-twinkle {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
 /* Soft rain — two drifting streak sheets, transform-only. */
 .bonsai-rain {
   position: absolute;
@@ -326,6 +375,106 @@
   gap: 9px;
 }
 
+/* ── Plant / nudge CTAs ────────────────────────────────────────────── */
+
+.bonsai-plant-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #e9c46a, #d4a53e);
+  color: #4a3313;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 8px 22px rgba(212, 165, 62, 0.35);
+  cursor: pointer;
+}
+
+.bonsai-nudge-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  align-self: center;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 100px;
+  background: transparent;
+  color: #a58891;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bonsai-nudge-cta:active { color: #c4687e; }
+
+/* ── Grove + species picker ────────────────────────────────────────── */
+
+.bonsai-grove__scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 10px 2px 14px;
+}
+.bonsai-grove__item {
+  flex: 0 0 auto;
+  width: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 6px 10px;
+  border-radius: 18px;
+  background: rgba(232, 160, 176, 0.07);
+}
+.bonsai-grove__item.is-current {
+  background: rgba(232, 160, 176, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(196, 104, 126, 0.25);
+}
+.bonsai-grove__thumb { width: 128px; height: 128px; }
+.bonsai-grove__item strong { font-size: 13px; margin-top: 2px; }
+.bonsai-grove__item span { font-size: 11px; color: #7c626a; margin-top: 1px; }
+.bonsai-grove__hint {
+  font-size: 12px;
+  color: #a58891;
+  text-align: center;
+  line-height: 1.5;
+  margin: 4px 0 6px;
+}
+
+.bonsai-species {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.bonsai-species__option {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(232, 160, 176, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 252, 252, 0.85);
+  cursor: pointer;
+  text-align: left;
+}
+.bonsai-species__option:active { background: rgba(232, 160, 176, 0.12); }
+.bonsai-species__dots { display: inline-flex; gap: 3px; }
+.bonsai-species__dots span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.bonsai-species__name { font-size: 14px; font-weight: 700; color: #2d1f25; }
+.bonsai-species__line { font-size: 12px; color: #7c626a; font-style: italic; }
+
 /* ── Note CTA + progress ───────────────────────────────────────────── */
 
 .bonsai-note-cta {
@@ -589,4 +738,8 @@
   .bonsai-rain { display: none; }
   .bonsai-note--unread .bonsai-note__bud { animation: none; }
   .bonsai-water--holding .bonsai-water__fill { transition: none; }
+  .bonsai-cloud { animation: none; left: 20%; }
+  .bonsai-cloud--2 { left: 55%; }
+  .bonsai-stars, .bonsai-stars::after { animation: none; }
+  .bonsai-chip__dot { animation: none; }
 }

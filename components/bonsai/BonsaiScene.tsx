@@ -9,7 +9,12 @@ import React, {
 import { AnimationEngine } from '../../utils/AnimationEngine';
 import { VoxelSceneRenderer, type SceneOptions } from '../../utils/bonsai/isoRenderer';
 import { BonsaiParticles } from '../../utils/bonsai/particles';
-import { generateBonsaiModel, growthToBloom, growthToG } from '../../utils/bonsai/voxelModel';
+import {
+  generateBonsaiModel,
+  growthToBloom,
+  growthToG,
+  type BonsaiSpeciesId,
+} from '../../utils/bonsai/voxelModel';
 import { hashString } from '../../utils/bonsai/rng';
 import type { BonsaiSeason } from '../../utils/bonsai/growth';
 import type { BlossomNote, BonsaiTreeState } from '../../utils/bonsai/types';
@@ -34,6 +39,7 @@ interface NoteOverlay {
 interface BonsaiSceneProps {
   tree: BonsaiTreeState;
   seed: number;
+  species: BonsaiSpeciesId;
   night: boolean;
   season: BonsaiSeason;
   anniversary: boolean;
@@ -47,11 +53,11 @@ const TIMELAPSE_STEPS = 14;
 const TIMELAPSE_MS = 110;
 
 export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
-  ({ tree, seed, night, season, anniversary, reducedMotion, onNoteTap, onBloomTap }, ref) => {
+  ({ tree, seed, species, night, season, anniversary, reducedMotion, onNoteTap, onBloomTap }, ref) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const mainRef = useRef<HTMLCanvasElement | null>(null);
     const fxRef = useRef<HTMLCanvasElement | null>(null);
-    const model = useMemo(() => generateBonsaiModel(seed), [seed]);
+    const model = useMemo(() => generateBonsaiModel(seed, species), [seed, species]);
     const rendererRef = useRef<VoxelSceneRenderer | null>(null);
     const particlesRef = useRef<BonsaiParticles | null>(null);
     const pouringRef = useRef(false);
@@ -80,6 +86,7 @@ export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
       rendererRef.current = new VoxelSceneRenderer(model);
     }
     if (!particlesRef.current) particlesRef.current = new BonsaiParticles();
+    particlesRef.current.setPetalPalette(model.palette.blossom);
 
     const decorations = useMemo(
       () => new Set(tree.decorations.map((d) => d.id)),
@@ -88,6 +95,17 @@ export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
     const decorationsRef = useRef(decorations);
     decorationsRef.current = decorations;
 
+    const twinIndices = useMemo(() => {
+      const set = new Set<number>();
+      for (const day of tree.twinDays) {
+        const i = tree.bloomDays.indexOf(day);
+        if (i >= 0) set.add(i);
+      }
+      return set;
+    }, [tree.twinDays, tree.bloomDays]);
+    const twinRef = useRef(twinIndices);
+    twinRef.current = twinIndices;
+
     const optsFor = (growth: number): SceneOptions => ({
       growth,
       bloomCount: treeRef.current.bloomDays.length,
@@ -95,6 +113,7 @@ export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
       resting: treeRef.current.resting,
       golden: treeRef.current.mood.golden,
       season: seasonRef.current,
+      twinIndices: twinRef.current,
     });
     const optsForRef = useRef(optsFor);
     optsForRef.current = optsFor;
@@ -159,7 +178,7 @@ export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
         });
       }
       prevGrowthRef.current = tree.growth;
-    }, [tree, decorations, season, size]);
+    }, [tree, decorations, twinIndices, season, size]);
 
     // ── Note blossom overlays (DOM buttons over the canvas) ────────────
     useEffect(() => {
@@ -237,6 +256,7 @@ export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
             night: nightRef.current && !reduced,
             golden: t.mood.golden,
             snow: seasonRef.current === 'winter' && !reduced,
+            butterfly: t.mood.butterfly && !nightRef.current && !reduced,
             canopy: { x: canopy.x, y: canopy.y, spread: 150 * bloom + 40 },
           });
         },

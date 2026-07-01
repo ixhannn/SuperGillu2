@@ -26,7 +26,7 @@ interface BonsaiRow {
   user_id: string;
   event_type: BonsaiEventType;
   day: string;
-  payload: { note?: string; target?: string } | null;
+  payload: { note?: string; target?: string; species?: string } | null;
   created_at: string;
 }
 
@@ -42,10 +42,11 @@ const rowToEvent = (row: BonsaiRow): BonsaiEvent => ({
   id: row.id,
   coupleId: row.couple_id,
   authorId: row.user_id,
-  type: row.event_type === 'note_open' ? 'note_open' : 'water',
+  type: row.event_type === 'note_open' ? 'note_open' : row.event_type === 'plant' ? 'plant' : 'water',
   day: row.day,
   note: row.payload?.note ?? null,
   targetEventId: row.payload?.target ?? null,
+  species: row.payload?.species ?? null,
   createdAt: row.created_at,
 });
 
@@ -205,16 +206,31 @@ class BonsaiServiceClass {
       user_id: userId,
       event_type: ev.type,
       day: ev.day,
-      payload: { note: ev.note || undefined, target: ev.targetEventId || undefined },
+      payload: {
+        note: ev.note || undefined,
+        target: ev.targetEventId || undefined,
+        species: ev.species || undefined,
+      },
     };
     // Conflict-update (not ignore) so a note tucked in after watering still
     // syncs through the same retry path. Only the author ever writes this
     // row (deterministic per-user id + RLS), so last-write-wins is safe.
-    const { error } = await client.from(TABLE).upsert(row, { onConflict: 'id' });
+    // Plant events are the exception: their id is shared BETWEEN partners
+    // (`_plant_N`), so first-wins + ignore keeps the race idempotent.
+    const { error } = await client
+      .from(TABLE)
+      .upsert(row, { onConflict: 'id', ignoreDuplicates: ev.type === 'plant' });
     return !error;
   }
 
-  private async record(type: BonsaiEventType, id: string, day: string, note?: string, target?: string): Promise<BonsaiEvent> {
+  private async record(
+    type: BonsaiEventType,
+    id: string,
+    day: string,
+    note?: string,
+    target?: string,
+    species?: string,
+  ): Promise<BonsaiEvent> {
     const event: BonsaiEvent = {
       id,
       coupleId: this.coupleKey(),
@@ -223,6 +239,7 @@ class BonsaiServiceClass {
       day,
       note: note ?? null,
       targetEventId: target ?? null,
+      species: species ?? null,
       createdAt: new Date().toISOString(),
     };
     // Optimistic: paint first, sync after (perceived-speed rule).
@@ -242,11 +259,22 @@ class BonsaiServiceClass {
     return event;
   }
 
+  /**
+   * Deterministic once-per-day water id. Trees after the first carry a
+   * `_tN` namespace so replanting on the same day never collides with the
+   * finished tree's final watering. Index 0 keeps the legacy shape.
+   */
+  private waterId(day: string, treeIndex: number): string {
+    return treeIndex > 0
+      ? `${this.coupleKey()}_${day}_${this.selfId()}_t${treeIndex}_w`
+      : `${this.coupleKey()}_${day}_${this.selfId()}_w`;
+  }
+
   /** Water the tree today. Idempotent — one water per partner per day. */
-  async water(note?: string): Promise<BonsaiEvent> {
+  async water(note?: string, treeIndex = 0): Promise<BonsaiEvent> {
     const day = this.today();
     const cleaned = (note ?? '').trim().slice(0, BONSAI_NOTE_MAX);
-    const id = `${this.coupleKey()}_${day}_${this.selfId()}_w`;
+    const id = this.waterId(day, treeIndex);
     // Already watered today — never overwrite (a re-push with an empty note
     // would wipe a note that was tucked in earlier).
     const existing = this.getCachedEvents().find((e) => e.id === id);
@@ -255,9 +283,9 @@ class BonsaiServiceClass {
   }
 
   /** Attach/replace today's sealed note on my existing water event. */
-  async setTodayNote(note: string): Promise<BonsaiEvent | null> {
+  async setTodayNote(note: string, treeIndex = 0): Promise<BonsaiEvent | null> {
     const day = this.today();
-    const id = `${this.coupleKey()}_${day}_${this.selfId()}_w`;
+    const id = this.waterId(day, treeIndex);
     const existing = this.getCachedEvents().find((e) => e.id === id);
     if (!existing) return null;
     const cleaned = note.trim().slice(0, BONSAI_NOTE_MAX);
@@ -275,6 +303,18 @@ class BonsaiServiceClass {
       );
     }
     return updated;
+  }
+
+  /**
+   * Complete the current tree and plant the next one. `index` is the new
+   * tree's ordinal; the shared deterministic id makes partner races safe
+   * (first plant wins, the other replay is a no-op).
+   */
+  async plantTree(species: string, index: number): Promise<BonsaiEvent> {
+    const id = `${this.coupleKey()}_plant_${index}`;
+    const existing = this.getCachedEvents().find((e) => e.id === id);
+    if (existing) return existing;
+    return this.record('plant', id, this.today(), undefined, undefined, species);
   }
 
   /** Mark a partner note as opened (drives their "it was read" moment). */

@@ -21,6 +21,53 @@ import { NotificationsService } from '../services/notifications';
 import { useRelationship } from '../hooks/useRelationship';
 import { useThrottledReload } from '../hooks/useThrottledReload';
 import { useTileOpen } from '../hooks/useTileOpen';
+import { BonsaiService } from '../services/bonsai';
+import { computeGarden, computeTreeState } from '../utils/bonsai/growth';
+
+/**
+ * Live status line for the Home bonsai card — the card itself becomes the
+ * daily trigger ("Sam watered · your turn"). Subscribing here (Home is
+ * keep-alive, mounted for the whole session) also keeps the bonsai realtime
+ * channel warm so a partner's watering updates the card the moment it lands.
+ */
+const useBonsaiCardStatus = () => {
+    const compute = () => {
+        try {
+            const events = BonsaiService.getCachedEvents();
+            const garden = computeGarden(events, BonsaiService.seed());
+            const tree = computeTreeState({
+                events: garden.currentEvents,
+                seed: garden.currentSeed,
+                today: BonsaiService.today(),
+                selfId: BonsaiService.selfId(),
+            });
+            const partner = BonsaiService.partnerName();
+            if (!tree.myFirstWaterDone && !tree.partnerFirstWaterDone) {
+                return { line: 'Plant a sakura seed together', lit: false };
+            }
+            if (tree.wateredTodayByMe && tree.wateredTodayByPartner) {
+                return { line: tree.streak > 1 ? `Bloomed today · ${tree.streak}-day streak` : 'Bloomed today', lit: true };
+            }
+            if (tree.wateredTodayByMe) return { line: `Waiting on ${partner}…`, lit: false };
+            if (tree.wateredTodayByPartner) return { line: `${partner} watered · your turn`, lit: true };
+            return { line: 'Water it together today', lit: false };
+        } catch {
+            return { line: 'Water it together, watch it bloom', lit: false };
+        }
+    };
+    const [status, setStatus] = useState(compute);
+    useEffect(() => {
+        const refresh = () => setStatus(compute());
+        const unsubscribe = BonsaiService.subscribe(refresh);
+        const clock = window.setInterval(refresh, 120_000); // day rollover / staleness
+        return () => {
+            unsubscribe();
+            window.clearInterval(clock);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return status;
+};
 
 export const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex items-center gap-3 mb-4 mt-2 px-1">
@@ -353,6 +400,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     // Tile-open lift — the tapped card "picks itself up" while the route push
     // slides the next view in, so navigation feels like opening, not jumping.
     const open = useTileOpen();
+    const bonsaiStatus = useBonsaiCardStatus();
     // Warm-init every above-the-fold value from the synchronous in-memory cache so
     // the FIRST painted frame already shows real data (day count, streak, status,
     // memories, notes, the "On this day" card) instead of flashing 0/empty and then
@@ -1182,7 +1230,9 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                 </div>
                             </div>
                             <span className="font-semibold text-sm text-gray-800">Our Bonsai</span>
-                            <span className="text-xs text-gray-400 mt-1">Water it together, watch it bloom</span>
+                            <span className={`text-xs mt-1 ${bonsaiStatus.lit ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>
+                                {bonsaiStatus.line}
+                            </span>
                         </div>
                     </div>
                 </div>

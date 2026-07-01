@@ -23,8 +23,12 @@ const bundle = async (entry) => {
 const growth = await bundle('../utils/bonsai/growth.ts');
 const model = await bundle('../utils/bonsai/voxelModel.ts');
 
-const { computeTreeState, dayMood, dayKey, addDays, daysBetween, seasonFor, BONSAI_STAGES, BONSAI_DECORATIONS } = growth;
-const { generateBonsaiModel, growthToG, MAX_GROWTH } = model;
+const {
+    computeTreeState, computeGarden, canPlantNext, treeSeed,
+    dayMood, dayKey, addDays, daysBetween, seasonFor,
+    BONSAI_STAGES, BONSAI_DECORATIONS, TWIN_WINDOW_MS,
+} = growth;
+const { generateBonsaiModel, growthToG, MAX_GROWTH, BONSAI_SPECIES } = model;
 
 const COUPLE = 'c-1';
 const ME = 'user-a';
@@ -262,6 +266,75 @@ assert.equal(seasonFor('2026-12-25'), 'winter');
     assert.ok(day1 > 0, 'something visible on day one');
     assert.ok(month > day1 && full > month, `growth strictly reveals more voxels (${day1} → ${month} → ${full})`);
     assert.ok(growthToG(3) > 0.04, 'early growth feels fast (first day visibly moves)');
+}
+
+// ── Twin blooms: both watered within minutes → gold-rimmed blossom ───
+
+{
+    const at = (day, iso) => ({ ...water(ME, day), createdAt: iso });
+    const patAt = (day, iso) => ({ ...water(PARTNER, day), createdAt: iso });
+    const twin = compute(
+        [at('2026-07-01', '2026-07-01T19:00:00.000Z'), patAt('2026-07-01', '2026-07-01T19:01:30.000Z')],
+        '2026-07-01',
+    );
+    assert.deepEqual(twin.twinDays, ['2026-07-01'], '90s apart → twin bloom');
+    const apart = compute(
+        [at('2026-07-02', '2026-07-02T08:00:00.000Z'), patAt('2026-07-02', '2026-07-02T21:00:00.000Z')],
+        '2026-07-02',
+    );
+    assert.deepEqual(apart.twinDays, [], 'hours apart → ordinary bloom');
+    assert.ok(TWIN_WINDOW_MS === 120000, 'twin window is two minutes');
+}
+
+// ── The grove: plant events segment the log into successive trees ────
+
+{
+    const both = (day) => [water(ME, day), water(PARTNER, day)];
+    const noPlants = computeGarden([...both('2026-07-01')], 42);
+    assert.equal(noPlants.currentIndex, 0);
+    assert.equal(noPlants.currentSpecies, 'sakura');
+    assert.equal(noPlants.currentSeed, 42, 'first tree keeps the base seed');
+    assert.equal(noPlants.completed.length, 0);
+
+    const plant = {
+        id: 'c-1_plant_1', coupleId: COUPLE, authorId: ME, type: 'plant',
+        day: '2026-07-10', note: null, targetEventId: null, species: 'wisteria',
+        createdAt: '2026-07-10T10:00:00.000Z',
+    };
+    const events = [
+        ...both('2026-07-01'), ...both('2026-07-02'), // old tree: 2 blooms, growth 6
+        plant,
+        ...both('2026-07-11'), // new tree: 1 bloom
+    ];
+    const garden = computeGarden(events, 42);
+    assert.equal(garden.completed.length, 1);
+    assert.equal(garden.completed[0].species, 'sakura');
+    assert.equal(garden.completed[0].growth, 6);
+    assert.equal(garden.completed[0].bloomCount, 2);
+    assert.equal(garden.currentIndex, 1);
+    assert.equal(garden.currentSpecies, 'wisteria');
+    assert.notEqual(garden.currentSeed, 42, 'new tree grows new DNA');
+    assert.equal(garden.currentSeed, treeSeed(42, 1), 'deterministic per-index seed');
+    assert.equal(garden.currentEvents.filter((e) => e.type === 'water').length, 2);
+
+    const current = computeTreeState({
+        events: garden.currentEvents, seed: garden.currentSeed, today: '2026-07-11', selfId: ME,
+    });
+    assert.equal(current.growth, 3, 'the new tree starts from its own log');
+    assert.equal(canPlantNext(current.growth), false);
+    assert.equal(canPlantNext(MAX_GROWTH), true);
+}
+
+// ── Species: distinct palettes, same engine ──────────────────────────
+
+{
+    assert.equal(Object.keys(BONSAI_SPECIES).length, 4);
+    const sakura = generateBonsaiModel(7, 'sakura');
+    const wisteria = generateBonsaiModel(7, 'wisteria');
+    assert.notDeepEqual(sakura.palette.blossom, wisteria.palette.blossom, 'species change the bloom palette');
+    assert.ok(wisteria.voxels.length > sakura.voxels.length * 0.8, 'wisteria is a full tree too');
+    const w2 = generateBonsaiModel(7, 'wisteria');
+    assert.equal(wisteria.voxels.length, w2.voxels.length, 'species models stay deterministic');
 }
 
 // ── Source guards: idempotent ids, RLS, registration stay intact ─────

@@ -5,6 +5,7 @@
  */
 
 import { childSeed, createRng } from './rng';
+import { MAX_GROWTH, type BonsaiSpeciesId } from './voxelModel';
 import type {
   BlossomNote,
   BonsaiDecoration,
@@ -69,8 +70,13 @@ export const dayMood = (seed: number, day: string): DayMood => {
   return { golden: rng() < 0.06, rain: rng() < 0.12, butterfly: rng() < 0.18 };
 };
 
+/** Both partners watered within this window → a "twin bloom". */
+export const TWIN_WINDOW_MS = 120_000;
+
 interface DayEntry {
   watered: Set<string>;
+  /** Earliest water timestamp per author — drives twin-bloom detection. */
+  wateredAt: Map<string, number>;
   noteEvents: BonsaiEvent[];
 }
 
@@ -78,12 +84,26 @@ const collectDays = (events: BonsaiEvent[]): Map<string, DayEntry> => {
   const days = new Map<string, DayEntry>();
   for (const ev of events) {
     if (ev.type !== 'water') continue;
-    const entry = days.get(ev.day) ?? { watered: new Set<string>(), noteEvents: [] };
+    const entry = days.get(ev.day)
+      ?? { watered: new Set<string>(), wateredAt: new Map<string, number>(), noteEvents: [] };
     entry.watered.add(ev.authorId);
+    const ts = Date.parse(ev.createdAt);
+    if (Number.isFinite(ts)) {
+      const prev = entry.wateredAt.get(ev.authorId);
+      if (prev === undefined || ts < prev) entry.wateredAt.set(ev.authorId, ts);
+    }
     if (ev.note && ev.note.trim().length > 0) entry.noteEvents.push(ev);
     days.set(ev.day, entry);
   }
   return days;
+};
+
+const isTwin = (entry: DayEntry): boolean => {
+  if (entry.watered.size < 2) return false;
+  const times = [...entry.wateredAt.values()];
+  if (times.length < 2) return false;
+  times.sort((a, b) => a - b);
+  return times[times.length - 1] - times[0] <= TWIN_WINDOW_MS;
 };
 
 const stageFor = (growth: number): { stage: BonsaiStage; next: BonsaiStage | null; progress: number } => {
@@ -149,6 +169,111 @@ const streaksFrom = (
   return { streak: current, best, rainDays };
 };
 
+/* ── The grove: one couple, many trees ───────────────────────────────
+   When a tree reaches Ancient it can be "completed": a 'plant' event starts
+   the next tree (new species, new DNA) and the finished one joins the grove.
+   Events are segmented chronologically by plant events, so both partners
+   derive identical gardens from the same log. */
+
+export interface CompletedTree {
+  index: number;
+  species: BonsaiSpeciesId;
+  seed: number;
+  growth: number;
+  bloomCount: number;
+  firstDay: string | null;
+  lastDay: string | null;
+}
+
+export interface GardenState {
+  completed: CompletedTree[];
+  currentIndex: number;
+  currentSpecies: BonsaiSpeciesId;
+  currentSeed: number;
+  /** Events belonging to the tree currently growing. */
+  currentEvents: BonsaiEvent[];
+}
+
+const SPECIES_IDS: readonly BonsaiSpeciesId[] = ['sakura', 'wisteria', 'plum', 'maple'];
+
+const asSpecies = (raw: string | null | undefined): BonsaiSpeciesId =>
+  SPECIES_IDS.includes(raw as BonsaiSpeciesId) ? (raw as BonsaiSpeciesId) : 'sakura';
+
+export const treeSeed = (baseSeed: number, index: number): number =>
+  index === 0 ? baseSeed : childSeed(baseSeed, `tree:${index}`);
+
+const summarizeSegment = (
+  events: BonsaiEvent[],
+  index: number,
+  species: BonsaiSpeciesId,
+  baseSeed: number,
+): CompletedTree => {
+  const days = collectDays(events);
+  let growth = 0;
+  let bloomCount = 0;
+  const sorted = [...days.keys()].sort();
+  for (const day of sorted) {
+    const both = days.get(day)!.watered.size >= 2;
+    growth += both ? GROWTH_BOTH : GROWTH_SOLO;
+    if (both) bloomCount++;
+  }
+  return {
+    index,
+    species,
+    seed: treeSeed(baseSeed, index),
+    growth,
+    bloomCount,
+    firstDay: sorted[0] ?? null,
+    lastDay: sorted[sorted.length - 1] ?? null,
+  };
+};
+
+export const computeGarden = (events: BonsaiEvent[], baseSeed: number): GardenState => {
+  const plants = events
+    .filter((e) => e.type === 'plant')
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+
+  if (plants.length === 0) {
+    return {
+      completed: [],
+      currentIndex: 0,
+      currentSpecies: 'sakura',
+      currentSeed: baseSeed,
+      currentEvents: events,
+    };
+  }
+
+  const segments: BonsaiEvent[][] = Array.from({ length: plants.length + 1 }, () => []);
+  for (const ev of events) {
+    if (ev.type === 'plant') continue;
+    let idx = 0;
+    for (let i = 0; i < plants.length; i++) {
+      if (ev.createdAt >= plants[i].createdAt) idx = i + 1;
+    }
+    segments[idx].push(ev);
+  }
+
+  const speciesOf = (segIndex: number): BonsaiSpeciesId =>
+    segIndex === 0 ? 'sakura' : asSpecies(plants[segIndex - 1].species);
+
+  const completed: CompletedTree[] = [];
+  for (let i = 0; i < segments.length - 1; i++) {
+    completed.push(summarizeSegment(segments[i], i, speciesOf(i), baseSeed));
+  }
+
+  const currentIndex = segments.length - 1;
+  return {
+    completed,
+    currentIndex,
+    currentSpecies: speciesOf(currentIndex),
+    currentSeed: treeSeed(baseSeed, currentIndex),
+    currentEvents: segments[currentIndex],
+  };
+};
+
+/** The current tree can be completed and a new seed planted. */
+export const canPlantNext = (growth: number): boolean => growth >= MAX_GROWTH;
+
 export type BonsaiSeason = 'spring' | 'summer' | 'autumn' | 'winter';
 
 /** Real-calendar season (northern hemisphere) — drives palette + ambience. */
@@ -209,13 +334,17 @@ export const computeTreeState = (input: ComputeTreeInput): BonsaiTreeState => {
 
   let growth = 0;
   const bloomDays: string[] = [];
+  const twinDays: string[] = [];
   const myWaterDays = new Set<string>();
   let partnerWatered = false;
   for (const day of sortedDays) {
     const entry = days.get(day)!;
     const both = entry.watered.size >= 2;
     growth += both ? GROWTH_BOTH : GROWTH_SOLO;
-    if (both) bloomDays.push(day);
+    if (both) {
+      bloomDays.push(day);
+      if (isTwin(entry)) twinDays.push(day);
+    }
     if (entry.watered.has(selfId)) myWaterDays.add(day);
     if ([...entry.watered].some((id) => id !== selfId)) partnerWatered = true;
   }
@@ -258,6 +387,7 @@ export const computeTreeState = (input: ComputeTreeInput): BonsaiTreeState => {
     nextStage: next,
     stageProgress: progress,
     bloomDays,
+    twinDays,
     streak,
     bestStreak: best,
     rainDays,
