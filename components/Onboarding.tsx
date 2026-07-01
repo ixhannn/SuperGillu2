@@ -82,6 +82,13 @@ const LINE_VARIANTS = {
     center: { y: '0%', transition: { duration: 0.74, ease: SILK } },
     exit: { y: '0%' },
 };
+// Subcopy follows the headline: it rises softly AFTER the last line settles, so
+// the type reads in rhythm — line, line, breath, whisper.
+const SUB_VARIANTS = {
+    enter: { opacity: 0, y: 14 },
+    center: { opacity: 1, y: 0, transition: { delay: 0.42, duration: 0.6, ease: SILK } },
+    exit: { opacity: 0, transition: { duration: 0.18 } },
+};
 
 const PHX = 147;   // phone centre x within the 294-wide composition column
 const PHY = 226;   // phone centre y — memory cards erupt from here (tracks the enlarged, lowered phone)
@@ -352,6 +359,16 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     // Persists the eased convergence across canvas-effect re-runs (which fire on
     // every slide) so the lights progress smoothly instead of snapping apart.
     const soulCurRef = useRef(0);
+    // One-shot spark burst the instant the two lights finally touch (fires once
+    // per session; persists across canvas re-runs). Wall-clock timed so a fast
+    // "Begin" tap (which re-runs the canvas effect) can't cut it mid-flight, and
+    // gated to the finale so a skipped intro never spends the payoff unstaged.
+    const burstDoneRef = useRef(false);
+    const burstT0Ref = useRef(-1);
+    const finaleRef = useRef(false);
+    // Persists the ambient clock across effect re-runs so star-twinkle / firefly
+    // blink phase never snaps when a slide advances.
+    const tRef = useRef(0);
     const [dir, setDir] = useState(1); // travel direction (+1 forward / -1 back)
 
     // Desktop preview only: scale the fixed 402x872 phone frame uniformly to fit
@@ -390,6 +407,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             feel1: 0, feel2: 0.22, feel3: 0.42, feel4: 0.66, feel5: 0.82, feel6: 1,
         };
         soulTargetRef.current = SOUL_BY_STEP[step] ?? 1; // Act II steps → stay merged
+        finaleRef.current = step === 'feel6';            // the spark-burst kiss is a finale beat
 
         // Signature "gather" beat on the welcome slide: the lights gather to
         // ~0.82, take a brief breath, then bloom to full — felt, not a linear fade.
@@ -519,8 +537,29 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         const drizzle = Array.from({ length: 14 }, () => ({
             x: Math.random(), y: Math.random(), len: rnd(16, 40), sp: rnd(.1, .22), a: rnd(.05, .13),
         }));
+        // Evening stars — FIXED positions (deterministic, so they never jump when the
+        // effect re-runs on a slide change). They fade in as the sun sets (soul rises):
+        // the sky trades its sun for stars, and the couple's constellation forms among them.
+        const estars = Array.from({ length: 18 }, (_, i) => {
+            // Golden-ratio stride (no lag-N aliasing → no accidental double-stars),
+            // mapped into the VISIBLE band [0.18, 0.82] — the sky canvas is 156%
+            // wide, so raw [0,1] would strand a third of the stars in the overscan.
+            const x = 0.18 + ((i * 0.618034 + 0.07) % 1) * 0.64;
+            let y = ((i * 0.3049 + 0.02) % 1) * 0.5;           // upper sky only
+            if (Math.abs(y - 0.155) < 0.035) y += 0.075;       // stay clear of the soul-lights line
+            return { x, y, s: 2 + (i % 3), ph: i * 1.71, sp: 0.5 + (i % 4) * 0.17 };
+        });
+        // Fireflies — a handful of warm motes waking near the cloud line at dusk.
+        // Deterministic anchors; they wander gently and blink on their own cadence.
+        // Anchors sit in the visible band and ride ABOVE the cloud top (canvas
+        // y≈250) so the motes hover AT the cloud line instead of behind the
+        // opaque puffs — they must actually read on screen.
+        const flies = Array.from({ length: 6 }, (_, i) => ({
+            x: 0.22 + i * 0.115, y: 0.48 + ((i * 0.37) % 1) * 0.08,
+            ph: i * 2.3, wx: 14 + (i % 3) * 6, wy: 9 + (i % 2) * 5,
+        }));
 
-        let raf = 0, t = 0, intensity = 0.15, soul = soulCurRef.current;
+        let raf = 0, t = tRef.current, intensity = 0.15, soul = soulCurRef.current;
 
         const drawSky = () => {
             ctx.clearRect(0, 0, W, H);
@@ -534,13 +573,40 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 ctx.drawImage(sprites[p.c], px - sz / 2, py - sz / 2, sz, sz);
             }
             // Monsoon drizzle — faint warm streaks falling through the dusk (additive).
+            // The rain arrives WITH the evening: barely-there at the first slide,
+            // present (never loud) by the magenta dusk.
             ctx.lineWidth = 1;
             ctx.strokeStyle = 'rgba(255,220,214,1)';
+            const evening = 0.45 + soul * 0.75;
             for (const r of drizzle) {
                 const y = ((r.y + t * r.sp) % 1.12) * H - H * 0.06;
                 const x = r.x * W + panRef.current * 0.4;
-                ctx.globalAlpha = r.a;
+                ctx.globalAlpha = r.a * evening;
                 ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2.5, y + r.len); ctx.stroke();
+            }
+            // Evening stars — the sky trades its sun for stars as dusk deepens.
+            if (soul > 0.3) {
+                const nightfall = (soul - 0.3) / 0.7;
+                for (const s of estars) {
+                    const tw = 0.55 + 0.45 * Math.sin(t * s.sp + s.ph);
+                    ctx.globalAlpha = nightfall * tw * 0.7;
+                    const px = s.x * W + panRef.current * 0.8;
+                    const py = s.y * H;
+                    ctx.drawImage(sprites['#fff1e2'], px - s.s, py - s.s, s.s * 2, s.s * 2);
+                }
+            }
+            // Fireflies — waking near the cloud line as the light goes down.
+            if (soul > 0.45) {
+                const wake = (soul - 0.45) / 0.55;
+                for (const f of flies) {
+                    const blink = Math.max(0, Math.sin(t * 0.7 + f.ph));
+                    const glow = blink * blink * blink;              // slow ember blink
+                    if (glow < 0.03) continue;
+                    const px = f.x * W + Math.sin(t * 0.24 + f.ph) * f.wx + panRef.current * 0.5;
+                    const py = f.y * H + Math.cos(t * 0.31 + f.ph * 1.7) * f.wy;
+                    ctx.globalAlpha = wake * glow * 0.75;
+                    ctx.drawImage(sprites['#ffcd92'], px - 4, py - 4, 8, 8);
+                }
             }
             if (intensity > 0.04) {
                 const pts = cstars.map(c => [c[0] * W + panRef.current, c[1] * H]);
@@ -550,7 +616,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                     for (let n = m + 1; n < pts.length; n++) {
                         const d = Math.hypot(pts[m][0] - pts[n][0], pts[m][1] - pts[n][1]);
                         if (d < 150) {
-                            ctx.strokeStyle = `rgba(232,110,90,${(intensity * .4 * (1 - d / 150)).toFixed(3)})`;
+                            ctx.strokeStyle = `rgba(236,110,140,${(intensity * .4 * (1 - d / 150)).toFixed(3)})`;
                             ctx.beginPath(); ctx.moveTo(pts[m][0], pts[m][1]); ctx.lineTo(pts[n][0], pts[n][1]); ctx.stroke();
                         }
                     }
@@ -574,7 +640,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 const spread = (1 - soul) * (W * 0.3) + W * 0.022;
                 const ax = cx - spread, bx = cx + spread;
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = `rgba(255,196,150,${(0.05 + soul * 0.3).toFixed(3)})`;
+                ctx.strokeStyle = `rgba(255,172,190,${(0.05 + soul * 0.3).toFixed(3)})`;
                 ctx.lineWidth = 1 + soul * 1.4;
                 ctx.beginPath(); ctx.moveTo(ax, sy); ctx.lineTo(bx, sy); ctx.stroke();
                 ctx.globalCompositeOperation = 'lighter';
@@ -590,6 +656,25 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                     ctx.globalAlpha = m * 0.55 * (0.86 + 0.14 * Math.sin(t * 1.1));
                     const mr = 24 + m * 22;
                     ctx.drawImage(sprites['#fff1e2'], cx - mr, sy - mr, mr * 2, mr * 2);
+                }
+                // The KISS: the instant the lights truly touch AT THE FINALE, a
+                // one-shot ring of sparks bursts from the meeting point (once per
+                // session; wall-clock so an effect re-run can't cut it mid-flight).
+                if (soul > 0.96 && finaleRef.current && !burstDoneRef.current) { burstDoneRef.current = true; burstT0Ref.current = performance.now(); }
+                if (burstT0Ref.current >= 0) {
+                    const bp = (performance.now() - burstT0Ref.current) / 1100;   // 0→1 over 1.1s
+                    if (bp < 1) {
+                        const ease = 1 - Math.pow(1 - bp, 3);
+                        for (let q = 0; q < 10; q++) {
+                            const ang = (q / 10) * 6.2832 + 0.31;
+                            const dist = ease * (34 + (q % 3) * 12);
+                            const px = cx + Math.cos(ang) * dist;
+                            const py = sy + Math.sin(ang) * dist * 0.8;
+                            ctx.globalAlpha = (1 - bp) * 0.85;
+                            const ss = 5 - ease * 2.5;
+                            ctx.drawImage(sprites[q % 2 ? '#ff9fb6' : '#ffcd92'], px - ss, py - ss, ss * 2, ss * 2);
+                        }
+                    }
                 }
             }
             ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -623,12 +708,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             intensity += (intensityTargetRef.current - intensity) * 0.05;
             soul += (soulTargetRef.current - soul) * 0.045;   // souls ease together
             soulCurRef.current = soul;                        // persist across re-runs
+            tRef.current = t;                                 // ambient clock survives re-runs
             panRef.current += (0 - panRef.current) * 0.08; // ease the pan kick back to rest
             drawSky(); drawDev();
             raf = requestAnimationFrame(loop);
         };
 
-        if (reduce) { intensity = intensityTargetRef.current; soul = soulTargetRef.current; soulCurRef.current = soul; drawSky(); drawDev(); }
+        if (reduce) { intensity = intensityTargetRef.current; soul = soulTargetRef.current; soulCurRef.current = soul; burstDoneRef.current = true; drawSky(); drawDev(); }
         else raf = requestAnimationFrame(loop);
 
         return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', sizeSky); };
@@ -676,7 +762,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         <div className="lo-ob-shell" ref={shellRef}>
         <div className="lo-ob" style={{ background: scene.sky, color: '#2a211d' }}>
             <div className="lo-ob-glow" style={{ opacity: scene.glow }} />
-            <div className="lo-ob-sun" style={{ opacity: scene.sun, transform: `translateY(${Math.round(sunSet * 132)}px)` }} />
+            <div className="lo-ob-sun" style={{ opacity: scene.sun, transform: `translateY(${Math.round(sunSet * 132)}px) scale(${(1 + sunSet * 0.22).toFixed(3)})` }} />
             <div className="lo-ob-rays" style={{ opacity: scene.sun * 0.85, transform: `translateY(${Math.round(sunSet * 66)}px)` }} />
 
             <div className="lo-ob-scene">
@@ -957,7 +1043,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                         </span>
                                     ))}
                                 </motion.h1>
-                                <p className="lo-ob-s">{feelSlide.s}</p>
+                                <motion.p className="lo-ob-s" variants={SUB_VARIANTS}>{feelSlide.s}</motion.p>
                             </motion.div>
                         </AnimatePresence>
                     </div>

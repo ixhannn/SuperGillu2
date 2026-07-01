@@ -77,8 +77,14 @@
  * place; the hero (Framer) and the headline (masked reveal) cascade on top. */
 .lo-ob { animation: loObWorldIn 1.2s ease both; }
 .lo-ob-scene { animation: loObSceneIn 1.05s cubic-bezier(.16, 1, .3, 1) .15s both; }
+/* …and the panel (copy + progress + CTA) rises in LAST — sky, then world, then words. */
+.lo-ob-panel { animation: loObPanelIn .9s cubic-bezier(.16, 1, .3, 1) .5s both; }
 @keyframes loObWorldIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes loObSceneIn { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+/* NOTE: the panel is centered by translateX(-50%) in its base rule — a keyframe
+ * transform REPLACES the base transform entirely, so the -50% must be carried
+ * through every keyframe or the panel is flung half off-screen. */
+@keyframes loObPanelIn { from { opacity: 0; transform: translate(-50%, 22px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* ── Ambient light ─────────────────────────────────────────────── */
 .lo-ob-glow {
@@ -558,7 +564,8 @@
   margin: 0 0 24px;
   max-width: 290px;
   text-wrap: balance;          /* even lines — no stranded last word */
-  transition: opacity 460ms ease, transform 560ms cubic-bezier(.16, 1, .3, 1);
+  /* No CSS transition here: the subcopy is a Framer motion element (SUB_VARIANTS)
+   * and a CSS transition on transform/opacity would fight its per-frame styles. */
 }
 /* Masked line reveal: each \n-delimited headline line rides up from behind an
  * overflow clip (razor-sharp, NO blur). The tiny padding + matching negative
@@ -591,6 +598,9 @@
   margin: 0 5px;
   background: radial-gradient(circle at 35% 30%, #edc79f, #c78f5d);
   box-shadow: inset 0 -1px 1px rgba(120, 70, 35, .35), inset 0 1px 1px rgba(255, 255, 255, .6);
+  /* The lit bead GROWS into place on advance instead of popping. Six ~10px dots
+   * in a fit-content pill — the layout cost is negligible and fully contained. */
+  transition: width 340ms cubic-bezier(.16, 1, .3, 1), height 340ms cubic-bezier(.16, 1, .3, 1), margin 340ms cubic-bezier(.16, 1, .3, 1);
 }
 .lo-ob-bead.next {
   background: linear-gradient(180deg, rgba(168, 120, 82, .30), rgba(168, 120, 82, .20));
@@ -853,8 +863,11 @@
 .lo-ob-code { font-family: 'Fraunces', Georgia, serif; font-weight: 700; font-size: 22px; letter-spacing: .16em; color: #7a2e44; }
 
 @media (prefers-reduced-motion: reduce) {
-  .lo-ob-cfloat, .lo-ob-icon img, .lo-ob-icon:not(.is-finale), .lo-ob-headmark img, .lo-ob-days, .lo-ob-finale-bloom, .lo-ob-ignite, .lo-ob-cta::after, .lo-ob-cloud, .lo-ob-scene, .lo-ob { animation: none; }
+  .lo-ob-cfloat, .lo-ob-icon img, .lo-ob-icon:not(.is-finale), .lo-ob-headmark img, .lo-ob-days, .lo-ob-finale-bloom, .lo-ob-ignite, .lo-ob-cta::after, .lo-ob-cloud, .lo-ob-scene, .lo-ob, .lo-ob-panel { animation: none; }
+  .lo-ob-bead { transition: none; }
   .lo-show-dome, .lo-show-chip, .lo-show-star { animation: none; }
   .lo-ob-finale-ring { animation: none; opacity: .32; }
-  .lo-ob, .lo-ob-h, .lo-ob-s, .lo-ob-dev, .lo-ob-icon, .lo-ob-name, .lo-ob-sun, .lo-ob-rays { transition: opacity 200ms ease; }
+  /* .lo-ob-s and .lo-ob-dev are Framer-driven (opacity still tweens per-frame under
+   * reducedMotion="user") — a CSS transition here would re-ease every frame. */
+  .lo-ob, .lo-ob-h, .lo-ob-icon, .lo-ob-name, .lo-ob-sun, .lo-ob-rays { transition: opacity 200ms ease; }
 }
