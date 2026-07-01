@@ -152,8 +152,6 @@ const menuCard: React.ReactNode = (
 
 interface CardDef { id: string; content: React.ReactNode; x: number; y: number; w: number; r: number; d: number; }
 
-interface ToneChip { icon: React.ReactNode; label: string; x: number; y: number; w: number; }
-
 interface FeelSlide {
     key: Step;
     h: string;
@@ -163,9 +161,8 @@ interface FeelSlide {
     sun: number;
     glow: number;
     cons: number;
-    mode: 'icon' | 'dev' | 'showcase' | 'finale';
+    mode: 'icon' | 'dev' | 'finale';
     cards: CardDef[];
-    tones?: ToneChip[];   // showcase mode — facet chips radiating from the icon
 }
 
 const ACT1: FeelSlide[] = [
@@ -218,17 +215,20 @@ const ACT1: FeelSlide[] = [
         ],
     },
     {
+        // Same phone as feel2–4 (it persists across dev slides — no remount): its
+        // screen turns to "Your world" while the four categories erupt from it as
+        // cards, in exactly the language the previous slides taught.
         key: 'feel5',
         h: 'Everything you share,\nin one place.',
         s: 'Memories, milestones, and everything in between.',
         cta: 'Continue',
         sky: 'linear-gradient(180deg,#cf4d8a,#ee74ac 22%,#ffa2cc 42%,#fceef6 64%)',
-        sun: 0.85, glow: 0.78, cons: 0.55, mode: 'showcase', cards: [],
-        tones: [
-            { icon: <ImageIcon size={14} style={{ color: '#c4683a' }} />, label: 'Memories', x: 10, y: 100, w: 108 },
-            { icon: <Star size={14} style={{ color: '#c4683a' }} />, label: 'Milestones', x: 176, y: 100, w: 108 },
-            { icon: <MessageCircle size={14} style={{ color: '#c4683a' }} />, label: 'Little notes', x: 2, y: 202, w: 116 },
-            { icon: <Sparkles size={14} style={{ color: '#e8657a' }} />, label: 'Quiet moments', x: 166, y: 202, w: 124 },
+        sun: 0.85, glow: 0.78, cons: 0.55, mode: 'dev',
+        cards: [
+            { id: 'mile', content: chipCard(<Star size={15} style={{ color: '#c8566e' }} />, 'Milestones'), x: 28, y: 52, w: 124, r: -5, d: 7 },
+            { id: 'quiet', content: chipCard(<Sparkles size={15} style={{ color: '#e8657a' }} />, 'Quiet moments'), x: 156, y: 122, w: 136, r: 5, d: 8 },
+            { id: 'mems', content: chipCard(<ImageIcon size={15} style={{ color: '#c8566e' }} />, 'Memories'), x: 176, y: 196, w: 112, r: 4, d: 6.6 },
+            { id: 'notes', content: chipCard(<MessageCircle size={15} style={{ color: '#c8566e' }} />, 'Little notes'), x: 32, y: 214, w: 120, r: -4, d: 7.2 },
         ],
     },
     {
@@ -240,25 +240,6 @@ const ACT1: FeelSlide[] = [
         sun: 0.95, glow: 0.9, cons: 1, mode: 'finale',
         cards: [],
     },
-];
-
-// Showcase (feel5): the tiny memory-stars that sparkle inside the glass dome's
-// core, and the four category chips that orbit it (two set back, two forward).
-const SHOW_STARS: Array<{ x: string; y: string; s: number; d: string }> = [
-    { x: '40%', y: '46%', s: 3, d: '0s' },
-    { x: '54%', y: '39%', s: 2.5, d: '.7s' },
-    { x: '63%', y: '51%', s: 3, d: '1.3s' },
-    { x: '45%', y: '58%', s: 2, d: '1.9s' },
-    { x: '57%', y: '63%', s: 3.5, d: '.4s' },
-    { x: '36%', y: '54%', s: 2, d: '1s' },
-];
-
-interface ShowChip { label: string; icon: React.ReactNode; back: boolean; pos: React.CSSProperties; delay: string; icBg: string; }
-const SHOW_CHIPS: ShowChip[] = [
-    { label: 'Milestones', icon: <Star size={16} />, back: true, pos: { left: 2, top: 58 }, delay: '.5s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffe7c2,#f6a267)' },
-    { label: 'Quiet moments', icon: <Sparkles size={16} />, back: true, pos: { right: 0, top: 64 }, delay: '.9s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffe0d6,#ec9a8e)' },
-    { label: 'Memories', icon: <ImageIcon size={19} />, back: false, pos: { left: -4, top: 246 }, delay: '.2s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffefd0,#f4a45e)' },
-    { label: 'Little notes', icon: <MessageCircle size={19} />, back: false, pos: { right: -6, top: 252 }, delay: '.6s', icBg: 'radial-gradient(120% 120% at 30% 25%,#ffe6cf,#efa070)' },
 ];
 
 // In-phone screen content per Act-I slide (cross-fades as the user advances).
@@ -295,12 +276,12 @@ const devContentFor = (step: Step): React.ReactNode => {
                     <div className="dlabel">in sync · 48 days</div>
                 </>
             );
-        case 'feel6':
+        case 'feel5':
             return (
                 <>
-                    <div className="dh">Your story</div>
+                    <div className="dh">Your world</div>
                     <div className="dcons" />
-                    <div className="dlabel">1,284 days together</div>
+                    <div className="dlabel">everything, in one place</div>
                 </>
             );
         default:
@@ -390,7 +371,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     const feelIndex = FEEL_KEYS.indexOf(step);
     const feelSlide = isFeel ? ACT1[feelIndex] : null;
     const isIconMode = feelSlide?.mode === 'icon';
-    const isShowcase = feelSlide?.mode === 'showcase';
     const isFinale = feelSlide?.mode === 'finale';
     const isDev = feelSlide?.mode === 'dev';
 
@@ -534,29 +514,29 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         const cstars = [[.34, .25], [.46, .16], [.6, .27], [.5, .36], [.4, .43], [.6, .43], [.5, .52]];
         // Warm monsoon drizzle — faint, slow light-streaks slipping down through the
         // sunset. Just a few thin additive lines; barely-there atmosphere, cheap.
-        const drizzle = Array.from({ length: 14 }, () => ({
-            x: Math.random(), y: Math.random(), len: rnd(16, 40), sp: rnd(.1, .22), a: rnd(.05, .13),
+        const drizzle = Array.from({ length: 18 }, () => ({
+            x: Math.random(), y: Math.random(), len: rnd(22, 54), sp: rnd(.12, .26), a: rnd(.1, .24),
         }));
         // Evening stars — FIXED positions (deterministic, so they never jump when the
         // effect re-runs on a slide change). They fade in as the sun sets (soul rises):
         // the sky trades its sun for stars, and the couple's constellation forms among them.
-        const estars = Array.from({ length: 18 }, (_, i) => {
+        const estars = Array.from({ length: 28 }, (_, i) => {
             // Golden-ratio stride (no lag-N aliasing → no accidental double-stars),
             // mapped into the VISIBLE band [0.18, 0.82] — the sky canvas is 156%
             // wide, so raw [0,1] would strand a third of the stars in the overscan.
             const x = 0.18 + ((i * 0.618034 + 0.07) % 1) * 0.64;
             let y = ((i * 0.3049 + 0.02) % 1) * 0.5;           // upper sky only
             if (Math.abs(y - 0.155) < 0.035) y += 0.075;       // stay clear of the soul-lights line
-            return { x, y, s: 2 + (i % 3), ph: i * 1.71, sp: 0.5 + (i % 4) * 0.17 };
+            return { x, y, s: 3 + (i % 3), ph: i * 1.71, sp: 0.5 + (i % 4) * 0.17 };
         });
         // Fireflies — a handful of warm motes waking near the cloud line at dusk.
         // Deterministic anchors; they wander gently and blink on their own cadence.
         // Anchors sit in the visible band and ride ABOVE the cloud top (canvas
         // y≈250) so the motes hover AT the cloud line instead of behind the
         // opaque puffs — they must actually read on screen.
-        const flies = Array.from({ length: 6 }, (_, i) => ({
-            x: 0.22 + i * 0.115, y: 0.48 + ((i * 0.37) % 1) * 0.08,
-            ph: i * 2.3, wx: 14 + (i % 3) * 6, wy: 9 + (i % 2) * 5,
+        const flies = Array.from({ length: 9 }, (_, i) => ({
+            x: 0.2 + i * 0.075, y: 0.47 + ((i * 0.37) % 1) * 0.1,
+            ph: i * 2.3, wx: 16 + (i % 3) * 8, wy: 10 + (i % 2) * 6,
         }));
 
         let raf = 0, t = tRef.current, intensity = 0.15, soul = soulCurRef.current;
@@ -584,28 +564,33 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 ctx.globalAlpha = r.a * evening;
                 ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2.5, y + r.len); ctx.stroke();
             }
-            // Evening stars — the sky trades its sun for stars as dusk deepens.
+            // Evening stars — night arrives DECISIVELY: the sky visibly fills with
+            // bright stars as dusk deepens, and individual stars flare-sparkle.
             if (soul > 0.3) {
-                const nightfall = (soul - 0.3) / 0.7;
+                const nightfall = Math.min(1, (soul - 0.3) / 0.45);
                 for (const s of estars) {
-                    const tw = 0.55 + 0.45 * Math.sin(t * s.sp + s.ph);
-                    ctx.globalAlpha = nightfall * tw * 0.7;
+                    const tw = 0.5 + 0.5 * Math.sin(t * s.sp + s.ph);
+                    const f = Math.max(0, Math.sin(t * s.sp * 1.6 + s.ph * 2.3));
+                    const flare = f * f * f * f * f * f;             // occasional bright sparkle
+                    ctx.globalAlpha = Math.min(1, nightfall * (0.35 + tw * 0.65) * (1 + flare * 0.8));
                     const px = s.x * W + panRef.current * 0.8;
                     const py = s.y * H;
-                    ctx.drawImage(sprites['#fff1e2'], px - s.s, py - s.s, s.s * 2, s.s * 2);
+                    const sz = s.s * (2 + flare * 1.6);
+                    ctx.drawImage(sprites['#fff1e2'], px - sz / 2, py - sz / 2, sz, sz);
                 }
             }
             // Fireflies — waking near the cloud line as the light goes down.
-            if (soul > 0.45) {
-                const wake = (soul - 0.45) / 0.55;
+            // Fuller blink curve + bigger motes so the embers genuinely glow.
+            if (soul > 0.4) {
+                const wake = Math.min(1, (soul - 0.4) / 0.4);
                 for (const f of flies) {
-                    const blink = Math.max(0, Math.sin(t * 0.7 + f.ph));
-                    const glow = blink * blink * blink;              // slow ember blink
-                    if (glow < 0.03) continue;
+                    const blink = Math.max(0, Math.sin(t * 0.9 + f.ph));
+                    const glow = Math.pow(blink, 1.8);
+                    if (glow < 0.05) continue;
                     const px = f.x * W + Math.sin(t * 0.24 + f.ph) * f.wx + panRef.current * 0.5;
                     const py = f.y * H + Math.cos(t * 0.31 + f.ph * 1.7) * f.wy;
-                    ctx.globalAlpha = wake * glow * 0.75;
-                    ctx.drawImage(sprites['#ffcd92'], px - 4, py - 4, 8, 8);
+                    ctx.globalAlpha = Math.min(1, wake * glow);
+                    ctx.drawImage(sprites['#ffcd92'], px - 6, py - 6, 12, 12);
                 }
             }
             if (intensity > 0.04) {
@@ -640,21 +625,21 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 const spread = (1 - soul) * (W * 0.3) + W * 0.022;
                 const ax = cx - spread, bx = cx + spread;
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = `rgba(255,172,190,${(0.05 + soul * 0.3).toFixed(3)})`;
-                ctx.lineWidth = 1 + soul * 1.4;
+                ctx.strokeStyle = `rgba(255,172,190,${(0.08 + soul * 0.38).toFixed(3)})`;
+                ctx.lineWidth = 1.2 + soul * 1.8;
                 ctx.beginPath(); ctx.moveTo(ax, sy); ctx.lineTo(bx, sy); ctx.stroke();
                 ctx.globalCompositeOperation = 'lighter';
                 const orb = (x: number, col: string, ph: number) => {
-                    const r = (11 + soul * 7) * (0.92 + 0.08 * Math.sin(t * 1.3 + ph));
-                    ctx.globalAlpha = 0.5 + soul * 0.42;
+                    const r = (13 + soul * 9) * (0.92 + 0.08 * Math.sin(t * 1.3 + ph));
+                    ctx.globalAlpha = 0.6 + soul * 0.4;
                     ctx.drawImage(sprites[col], x - r, sy - r, r * 2, r * 2);
                 };
                 orb(ax, '#ff9fb6', 0);          // one soul — warm rose
                 orb(bx, '#ffcd92', 2.1);        // the other — warm amber
                 if (soul > 0.55) {              // they meet → the world ignites
                     const m = (soul - 0.55) / 0.45;
-                    ctx.globalAlpha = m * 0.55 * (0.86 + 0.14 * Math.sin(t * 1.1));
-                    const mr = 24 + m * 22;
+                    ctx.globalAlpha = m * 0.7 * (0.86 + 0.14 * Math.sin(t * 1.1));
+                    const mr = 28 + m * 30;
                     ctx.drawImage(sprites['#fff1e2'], cx - mr, sy - mr, mr * 2, mr * 2);
                 }
                 // The KISS: the instant the lights truly touch AT THE FINALE, a
@@ -662,16 +647,16 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 // session; wall-clock so an effect re-run can't cut it mid-flight).
                 if (soul > 0.96 && finaleRef.current && !burstDoneRef.current) { burstDoneRef.current = true; burstT0Ref.current = performance.now(); }
                 if (burstT0Ref.current >= 0) {
-                    const bp = (performance.now() - burstT0Ref.current) / 1100;   // 0→1 over 1.1s
+                    const bp = (performance.now() - burstT0Ref.current) / 1400;   // 0→1 over 1.4s
                     if (bp < 1) {
                         const ease = 1 - Math.pow(1 - bp, 3);
-                        for (let q = 0; q < 10; q++) {
-                            const ang = (q / 10) * 6.2832 + 0.31;
-                            const dist = ease * (34 + (q % 3) * 12);
+                        for (let q = 0; q < 16; q++) {
+                            const ang = (q / 16) * 6.2832 + 0.31;
+                            const dist = ease * (58 + (q % 3) * 18);
                             const px = cx + Math.cos(ang) * dist;
                             const py = sy + Math.sin(ang) * dist * 0.8;
-                            ctx.globalAlpha = (1 - bp) * 0.85;
-                            const ss = 5 - ease * 2.5;
+                            ctx.globalAlpha = (1 - bp) * 0.95;
+                            const ss = 7 - ease * 3.5;
                             ctx.drawImage(sprites[q % 2 ? '#ff9fb6' : '#ffcd92'], px - ss, py - ss, ss * 2, ss * 2);
                         }
                     }
@@ -762,8 +747,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         <div className="lo-ob-shell" ref={shellRef}>
         <div className="lo-ob" style={{ background: scene.sky, color: '#2a211d' }}>
             <div className="lo-ob-glow" style={{ opacity: scene.glow }} />
-            <div className="lo-ob-sun" style={{ opacity: scene.sun, transform: `translateY(${Math.round(sunSet * 132)}px) scale(${(1 + sunSet * 0.22).toFixed(3)})` }} />
-            <div className="lo-ob-rays" style={{ opacity: scene.sun * 0.85, transform: `translateY(${Math.round(sunSet * 66)}px)` }} />
+            <div className="lo-ob-sun" style={{ opacity: scene.sun, transform: `translateY(${Math.round(sunSet * 168)}px) scale(${(1 + sunSet * 0.38).toFixed(3)})` }} />
+            <div className="lo-ob-rays" style={{ opacity: scene.sun * 0.85, transform: `translateY(${Math.round(sunSet * 84)}px)` }} />
 
             <div className="lo-ob-scene">
                 <canvas ref={skyRef} className="lo-ob-sky" aria-hidden />
@@ -787,10 +772,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                        shared-element morph into the Act II header mark projects cleanly. */
                     exit={{ opacity: 0, transition: { duration: 0.44, ease: SILK } }}
                 >
-                    {/* Mark — icon (slide 1), showcase (slide 5), finale (welcome).
-                        CONDITIONALLY MOUNTED (not opacity-toggled) so the logo can
-                        never linger or pop onto the phone slides. */}
-                    {(isIconMode || isShowcase || isFinale) && (
+                    {/* Mark — icon (slide 1) + finale (welcome). CONDITIONALLY MOUNTED
+                        (not opacity-toggled) so the logo can never linger or pop onto
+                        the phone slides. */}
+                    {(isIconMode || isFinale) && (
                         <motion.div
                             key={`mark-${step}`}
                             className="lo-ob-markwrap"
@@ -798,62 +783,37 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                         >
-                            {isShowcase ? (
-                                <div className="lo-show">
-                                    <div className="lo-show-halo" aria-hidden />
-                                    <div className="lo-show-ray" aria-hidden />
-                                    <div className="lo-show-coreglow" aria-hidden />
-                                    <div className="lo-show-pool" aria-hidden />
-                                    <div className="lo-show-dome" aria-hidden>
-                                        <div className="core" />
-                                        <div className="pip" />
-                                        <div className="cons">
-                                            {SHOW_STARS.map((s, i) => (
-                                                <span key={i} className="lo-show-star" style={{ left: s.x, top: s.y, width: s.s, height: s.s, animationDelay: s.d }} />
-                                            ))}
-                                        </div>
-                                        <div className="spec" />
-                                        <div className="rim" />
-                                    </div>
-                                    {SHOW_CHIPS.map((c) => (
-                                        <div key={c.label} className={`lo-show-chip${c.back ? ' back' : ''}`} style={{ ...c.pos, animationDelay: c.delay }}>
-                                            <div className="inner">
-                                                <span className="ic" style={{ background: c.icBg }}>{c.icon}</span>{c.label}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                            {isFinale && <div className="lo-ob-finale-bloom" />}
+                            {isFinale && <div className="lo-ob-ignite" />}
+                            {isFinale && <div className="lo-ob-finale-ring" />}
+                            {isFinale && <div className="lo-ob-finale-ring r2" />}
+                            {isFinale && <div className="lo-ob-beam" />}
+                            {/* On the finale, the mark carries layoutId="lior-mark" so it
+                                morphs into the Act II header mark on the hand-off. Its
+                                enlarged size is a CSS modifier (not an inline scale) so the
+                                FLIP interpolates size cleanly without a transform clash. */}
+                            {isFinale ? (
+                                // borderRadius in inline style (not just the CSS class) so
+                                // Framer scrapes it as a projection value and counter-scales
+                                // the squircle corners through the FLIP into the header mark.
+                                <motion.div className="lo-ob-icon is-finale" layoutId="lior-mark" style={{ borderRadius: 32 }}>
+                                    <img src="/icon-128.png" alt="Lior" />
+                                </motion.div>
                             ) : (
-                                <>
-                                    {isFinale && <div className="lo-ob-finale-bloom" />}
-                                    {isFinale && <div className="lo-ob-ignite" />}
-                                    {isFinale && <div className="lo-ob-finale-ring" />}
-                                    {isFinale && <div className="lo-ob-finale-ring r2" />}
-                                    {isFinale && <div className="lo-ob-beam" />}
-                                    {/* On the finale, the mark carries layoutId="lior-mark" so it
-                                        morphs into the Act II header mark on the hand-off. Its
-                                        enlarged size is a CSS modifier (not an inline scale) so the
-                                        FLIP interpolates size cleanly without a transform clash. */}
-                                    {isFinale ? (
-                                        // borderRadius in inline style (not just the CSS class) so
-                                        // Framer scrapes it as a projection value and counter-scales
-                                        // the squircle corners through the FLIP into the header mark.
-                                        <motion.div className="lo-ob-icon is-finale" layoutId="lior-mark" style={{ borderRadius: 32 }}>
-                                            <img src="/icon-128.png" alt="Lior" />
-                                        </motion.div>
-                                    ) : (
-                                        <div className="lo-ob-icon">
-                                            <img src="/icon-128.png" alt="Lior" />
-                                        </div>
-                                    )}
-                                    {isIconMode && <div className="lo-ob-name">Lior</div>}
-                                </>
+                                <div className="lo-ob-icon">
+                                    <img src="/icon-128.png" alt="Lior" />
+                                </div>
                             )}
+                            {isIconMode && <div className="lo-ob-name">Lior</div>}
                         </motion.div>
                     )}
 
-                    {/* Phone — only the dev slides; the constant key persists it across them. */}
+                    {/* Phone — only the dev slides; the constant key persists it across
+                        them. devwrap owns the layout box; devdrift runs the continuous
+                        gentle float on its own node so CSS never fights Framer. */}
                     {isDev && (
+                        <div className="lo-ob-devwrap">
+                        <div className="lo-ob-devdrift">
                         <motion.div
                             key="phone"
                             className="lo-ob-dev"
@@ -883,6 +843,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 <canvas ref={devCanvasRef} className="lo-ob-devcons" width={144} height={318} aria-hidden />
                             </div>
                         </motion.div>
+                        </div>
+                        </div>
                     )}
 
                     {isDev && <div className="lo-ob-mist" />}
