@@ -1,0 +1,489 @@
+/* ── Our Bonsai — voxel sakura scene ─────────────────────────────────
+   Warm, light, painterly. The sky shifts with the real time of day;
+   everything animates with transform/opacity only (no live blur). */
+
+.bonsai-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Sky — cross-fades between phases via background transition. */
+.bonsai-sky {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  transition: background 1.2s ease;
+  background: linear-gradient(180deg, #fdf6ee 0%, #fbeee6 42%, #f9e4da 100%);
+}
+.bonsai-view--dawn .bonsai-sky {
+  background: linear-gradient(180deg, #fdeee4 0%, #fbdcd2 45%, #f6cfc4 100%);
+}
+.bonsai-view--day .bonsai-sky {
+  background: linear-gradient(180deg, #f3f6ef 0%, #faf0e8 48%, #f8e6dd 100%);
+}
+.bonsai-view--dusk .bonsai-sky {
+  background: linear-gradient(180deg, #f8dfd2 0%, #f3c8bd 46%, #e8b3ad 100%);
+}
+.bonsai-view--night .bonsai-sky {
+  background: linear-gradient(180deg, #3d3550 0%, #58496066 45%, #7a5f6b 100%),
+    linear-gradient(180deg, #443b56 0%, #5c4c63 45%, #7d626d 100%);
+}
+.bonsai-view[data-golden] .bonsai-sky::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 55% at 50% 30%, rgba(233, 196, 106, 0.16), transparent 70%);
+}
+
+/* Soft rain — two drifting streak sheets, transform-only. */
+.bonsai-rain {
+  position: absolute;
+  inset: -20% 0;
+  opacity: 0.14;
+  background-image: repeating-linear-gradient(
+    12deg,
+    transparent 0px,
+    transparent 14px,
+    rgba(255, 255, 255, 0.85) 14px,
+    rgba(255, 255, 255, 0.85) 15px,
+    transparent 15px,
+    transparent 34px
+  );
+  animation: bonsai-rain-fall 1.6s linear infinite;
+}
+@keyframes bonsai-rain-fall {
+  from { transform: translateY(-34px); }
+  to { transform: translateY(0); }
+}
+
+/* Night text needs to stay readable on the dusky sky. */
+.bonsai-view--night { color: #fdf3f0; }
+
+/* ── Scene / canvas stack ──────────────────────────────────────────── */
+
+.bonsai-stage-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  z-index: 1;
+}
+
+.bonsai-scene {
+  position: absolute;
+  inset: 0;
+}
+.bonsai-scene__layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Note blossoms — DOM buds floating over the canvas. */
+.bonsai-note {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  z-index: 3;
+}
+.bonsai-note__bud {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 10px auto;
+  border-radius: 50% 50% 50% 4px;
+  background: radial-gradient(circle at 35% 30%, #fbe3ec, #ec92ae 78%);
+  box-shadow: 0 0 12px 3px rgba(236, 146, 174, 0.55);
+}
+.bonsai-note--unread .bonsai-note__bud {
+  animation: bonsai-bud-pulse 1.8s ease-in-out infinite;
+}
+.bonsai-note--sealed .bonsai-note__bud {
+  background: radial-gradient(circle at 35% 30%, #f2d7de, #cfa3b1 78%);
+  box-shadow: 0 0 8px 2px rgba(207, 163, 177, 0.4);
+  opacity: 0.85;
+}
+.bonsai-note--opened .bonsai-note__bud,
+.bonsai-note--mine .bonsai-note__bud {
+  transform: scale(0.72);
+  opacity: 0.6;
+  box-shadow: 0 0 6px 1px rgba(236, 146, 174, 0.3);
+}
+@keyframes bonsai-bud-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.28); }
+}
+
+/* Stage-up banner. */
+.bonsai-stage-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(320px, 86vw);
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: rgba(255, 252, 252, 0.92);
+  box-shadow: 0 8px 24px rgba(232, 160, 176, 0.18);
+  color: #2d1f25;
+  z-index: 4;
+}
+.bonsai-stage-banner svg { color: #e8a0b0; flex-shrink: 0; }
+.bonsai-stage-banner strong { font-size: 13px; display: block; }
+.bonsai-stage-banner p { font-size: 12px; margin: 1px 0 0; color: #7c626a; }
+
+.bonsai-mood-chip {
+  position: absolute;
+  left: 16px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  background: rgba(255, 252, 252, 0.66);
+  color: #7c626a;
+  z-index: 2;
+}
+.bonsai-mood-chip--gold { color: #a87d24; background: rgba(255, 246, 224, 0.8); }
+.bonsai-view--night .bonsai-mood-chip { background: rgba(60, 50, 72, 0.55); color: #f4e4de; }
+
+/* ── Bottom panel ──────────────────────────────────────────────────── */
+
+.bonsai-panel {
+  position: relative;
+  z-index: 2;
+  margin: 0 14px;
+  margin-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  padding: 16px 16px 14px;
+  border-radius: 26px;
+  background: rgba(255, 252, 252, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 16px 40px rgba(232, 160, 176, 0.14), 0 4px 12px rgba(232, 160, 176, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #2d1f25;
+}
+
+.bonsai-panel__intro,
+.bonsai-panel__resting {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7c626a;
+  margin: 0;
+}
+.bonsai-panel__resting { color: #a87d24; }
+
+.bonsai-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.bonsai-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a58891;
+  background: rgba(232, 160, 176, 0.1);
+  border: 1px solid rgba(232, 160, 176, 0.16);
+}
+.bonsai-chip--on {
+  color: #fff;
+  background: linear-gradient(135deg, #e8a0b0, #c4687e);
+  border-color: transparent;
+}
+.bonsai-chip--streak {
+  color: #c4687e;
+  background: rgba(255, 252, 252, 0.85);
+  border-color: rgba(232, 160, 176, 0.3);
+}
+.bonsai-chip--quiet {
+  background: transparent;
+  border-color: rgba(124, 98, 106, 0.18);
+  color: #7c626a;
+  cursor: pointer;
+}
+.bonsai-chip--invite {
+  cursor: pointer;
+  color: #c4687e;
+  background: rgba(255, 252, 252, 0.85);
+  border: 1px dashed rgba(196, 104, 126, 0.45);
+}
+
+/* ── Water button ──────────────────────────────────────────────────── */
+
+.bonsai-water {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  border: none;
+  border-radius: 20px;
+  padding: 15px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #e8a0b0, #c4687e);
+  box-shadow: 0 10px 26px rgba(196, 104, 126, 0.32);
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.18s var(--spring-snappy, ease), box-shadow 0.3s ease;
+}
+.bonsai-water:active { transform: scale(0.98); }
+.bonsai-water--done {
+  background: linear-gradient(135deg, #9dca78, #6f9e52);
+  box-shadow: 0 8px 20px rgba(111, 158, 82, 0.28);
+  cursor: default;
+}
+
+.bonsai-water__fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(135deg, rgba(159, 209, 232, 0.75), rgba(127, 188, 217, 0.75));
+  transition: transform 0.2s ease;
+}
+.bonsai-water--holding .bonsai-water__fill {
+  transform: scaleX(1);
+  transition: transform 1.3s linear;
+}
+
+.bonsai-water__face {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+/* ── Note CTA + progress ───────────────────────────────────────────── */
+
+.bonsai-note-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px;
+  border-radius: 16px;
+  border: 1px dashed rgba(196, 104, 126, 0.4);
+  background: rgba(232, 160, 176, 0.07);
+  color: #c4687e;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bonsai-progress { display: flex; flex-direction: column; gap: 5px; }
+.bonsai-progress__track {
+  height: 5px;
+  border-radius: 100px;
+  background: rgba(232, 160, 176, 0.16);
+  overflow: hidden;
+}
+.bonsai-progress__fill {
+  height: 100%;
+  border-radius: 100px;
+  background: linear-gradient(90deg, #f2aec4, #c4687e);
+  transition: width 0.8s var(--spring-gentle, ease);
+}
+.bonsai-progress__hint {
+  font-size: 11px;
+  color: #a58891;
+  text-align: center;
+}
+
+/* ── Sheets ────────────────────────────────────────────────────────── */
+
+.bonsai-sheet__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(45, 31, 37, 0.32);
+  z-index: 60;
+}
+.bonsai-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  padding: 22px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+  border-radius: 28px 28px 0 0;
+  background: #fffcfc;
+  box-shadow: 0 -18px 50px rgba(45, 31, 37, 0.18);
+  color: #2d1f25;
+  max-height: 78dvh;
+  display: flex;
+  flex-direction: column;
+}
+.bonsai-sheet__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(232, 160, 176, 0.12);
+  color: #a58891;
+  cursor: pointer;
+}
+.bonsai-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding-right: 40px;
+}
+.bonsai-sheet__head svg { color: #e8a0b0; flex-shrink: 0; }
+.bonsai-sheet__head h3 { font-size: 16px; font-weight: 700; margin: 0; }
+.bonsai-sheet__sub { font-size: 13px; color: #7c626a; line-height: 1.5; margin: 0 0 12px; }
+.bonsai-sheet__note {
+  font-size: 17px;
+  line-height: 1.55;
+  font-style: italic;
+  margin: 10px 0 14px;
+  color: #4a333c;
+}
+.bonsai-sheet__input {
+  width: 100%;
+  resize: none;
+  border: 1px solid rgba(232, 160, 176, 0.35);
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  color: #2d1f25;
+  background: rgba(255, 252, 252, 0.9);
+  outline: none;
+}
+.bonsai-sheet__input:focus { border-color: #e8a0b0; }
+.bonsai-sheet__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.bonsai-sheet__count { font-size: 11px; color: #a58891; }
+
+.bonsai-cta {
+  border: none;
+  border-radius: 100px;
+  padding: 11px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #e8a0b0, #c4687e);
+  box-shadow: 0 8px 20px rgba(196, 104, 126, 0.3);
+  cursor: pointer;
+}
+.bonsai-cta:disabled { opacity: 0.45; box-shadow: none; }
+
+/* ── Story sheet ───────────────────────────────────────────────────── */
+
+.bonsai-story__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.bonsai-story__stats > div {
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 16px;
+  background: rgba(232, 160, 176, 0.09);
+}
+.bonsai-story__stats strong { display: block; font-size: 20px; color: #c4687e; }
+.bonsai-story__stats span { font-size: 11px; color: #7c626a; }
+
+.bonsai-story__scroll {
+  overflow-y: auto;
+  min-height: 0;
+  margin-top: 6px;
+  padding-right: 4px;
+}
+.bonsai-story__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a58891;
+  margin: 14px 0 8px;
+}
+.bonsai-story__stages { display: flex; flex-direction: column; gap: 2px; }
+.bonsai-story__stage {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 7px 4px;
+  opacity: 0.45;
+}
+.bonsai-story__stage.is-reached { opacity: 1; }
+.bonsai-story__stage.is-current strong { color: #c4687e; }
+.bonsai-story__dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(232, 160, 176, 0.3);
+}
+.bonsai-story__stage.is-reached .bonsai-story__dot {
+  background: linear-gradient(135deg, #f2aec4, #c4687e);
+}
+.bonsai-story__stage strong { font-size: 13px; display: block; }
+.bonsai-story__stage p { font-size: 12px; color: #7c626a; margin: 1px 0 0; }
+
+.bonsai-story__decor { display: flex; flex-direction: column; gap: 6px; }
+.bonsai-story__decor-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border-radius: 14px;
+  background: rgba(232, 160, 176, 0.07);
+  opacity: 0.55;
+}
+.bonsai-story__decor-item.is-unlocked { opacity: 1; }
+.bonsai-story__decor-item svg { color: #e8a0b0; margin-top: 2px; flex-shrink: 0; }
+.bonsai-story__decor-item strong { font-size: 13px; display: block; }
+.bonsai-story__decor-item p { font-size: 12px; color: #7c626a; margin: 1px 0 0; }
+.bonsai-story__hint {
+  font-size: 12px;
+  color: #a58891;
+  text-align: center;
+  margin: 16px 0 4px;
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .bonsai-rain { display: none; }
+  .bonsai-note--unread .bonsai-note__bud { animation: none; }
+  .bonsai-water--holding .bonsai-water__fill { transition: none; }
+}

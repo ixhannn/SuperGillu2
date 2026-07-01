@@ -1181,8 +1181,8 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                     <TreeDeciduous size={22} className="text-emerald-500" />
                                 </div>
                             </div>
-                            <span className="font-semibold text-sm text-gray-800">Bonsai</span>
-                            <span className="text-xs text-gray-400 mt-1">Your tree, grown by your days together</span>
+                            <span className="font-semibold text-sm text-gray-800">Our Bonsai</span>
+                            <span className="text-xs text-gray-400 mt-1">Water it together, watch it bloom</span>
                         </div>
                     </div>
                 </div>
