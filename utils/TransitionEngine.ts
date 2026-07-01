@@ -444,8 +444,13 @@ class TransitionEngineImpl {
    * lock — we always proceed by MAX_PAINT_FRAMES regardless.
    */
   private _whenPainted(c: HTMLElement, run: () => void): void {
-    const MIN_FRAMES = 2;        // preserve the original paint-the-initial-state gap
-    const MAX_PAINT_FRAMES = 8;  // ~130ms ceiling — then reveal no matter what
+    const MIN_FRAMES = 2;         // preserve the original paint-the-initial-state gap
+    const MAX_PAINT_FRAMES = 12;  // ~200ms ceiling (was 8). A cold/first-visit page
+                                  // (freshly-mounted tab) can't lay out in 8 frames,
+                                  // so the gate gave up and revealed it half-empty.
+                                  // Holds the opaque outgoing snapshot a touch longer
+                                  // — the old page stays put, which reads as "loading",
+                                  // never as a blank flash.
 
     // The committed destination is either the page overlay (non-tab views mount
     // as a distinct __overlay__ layer) or the now-active keep-alive tab shell.
@@ -464,7 +469,12 @@ class TransitionEngineImpl {
     const tick = (): void => {
       frame += 1;
       if (frame >= MIN_FRAMES && (hasPaintedContent() || frame >= MAX_PAINT_FRAMES)) {
-        run();
+        // Content is LAID OUT — but layout is not paint. Uncovering it now let the
+        // clone fade reveal a laid-out-but-not-yet-rasterized page for a frame or
+        // two, so the shared ambient background showed through and the real content
+        // then "popped in" (the reveal-then-pop seen on device). Wait two more
+        // frames so the browser actually paints the pixels before we cross-fade.
+        requestAnimationFrame(() => requestAnimationFrame(run));
         return;
       }
       requestAnimationFrame(tick);
