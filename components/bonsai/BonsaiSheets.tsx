@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Flower2, Lock, Sparkles, X } from 'lucide-react';
+import { CloudRain, Droplets, Flower2, Image as ImageIcon, Lock, Sparkles, X } from 'lucide-react';
 import { BONSAI_NOTE_MAX } from '../../services/bonsai';
+import { StorageService } from '../../services/storage';
 import { BONSAI_DECORATIONS, BONSAI_STAGES } from '../../utils/bonsai/growth';
 import type { BlossomNote, BonsaiTreeState } from '../../utils/bonsai/types';
 
@@ -155,6 +156,102 @@ export function BonsaiReadSheet({ note, partnerName, onClose, onOpened }: ReadSh
   );
 }
 
+/* ── Day: a blossom is a real day — notes + the memory you kept ────── */
+
+interface DaySheetProps {
+  day: string | null;
+  tree: BonsaiTreeState;
+  partnerName: string;
+  onClose: () => void;
+}
+
+const prettyDate = (day: string): string =>
+  new Date(`${day}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+
+export function BonsaiDaySheet({ day, tree, partnerName, onClose }: DaySheetProps) {
+  const [memory, setMemory] = useState<{ text: string; image: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!day) {
+      setMemory(null);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      try {
+        const match = StorageService.getMemories().find(
+          (m) => (m.date || '').slice(0, 10) === day && (m.imageId || m.image || m.storagePath || m.text),
+        );
+        if (!match) {
+          if (live) setMemory(null);
+          return;
+        }
+        let image: string | null = null;
+        try {
+          image = await StorageService.getImage(match.imageId || '', match.image, match.storagePath);
+        } catch {
+          image = null;
+        }
+        if (live) setMemory({ text: (match.text || '').trim(), image });
+      } catch {
+        if (live) setMemory(null);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [day]);
+
+  const notes = day
+    ? tree.notes.filter((n) => n.day === day && (!n.forMe || n.unlocked))
+    : [];
+
+  return (
+    <SheetShell open={day != null} onClose={onClose} label="A blossom day">
+      {day && (
+        <>
+          <div className="bonsai-sheet__head">
+            <Flower2 size={20} />
+            <h3>{prettyDate(day)}</h3>
+          </div>
+          <p className="bonsai-sheet__sub">
+            <Droplets size={12} style={{ display: 'inline', verticalAlign: '-1px' }} /> You both
+            watered — this blossom is that day, kept.
+          </p>
+          <div className="bonsai-day__scroll">
+            {memory?.image && (
+              <img className="bonsai-day__photo" src={memory.image} alt="A memory from this day" />
+            )}
+            {memory && !memory.image && memory.text && (
+              <p className="bonsai-day__memory-text">
+                <ImageIcon size={13} /> “{memory.text}”
+              </p>
+            )}
+            {memory?.image && memory.text && (
+              <p className="bonsai-day__caption">“{memory.text}”</p>
+            )}
+            {notes.map((n) => (
+              <div key={n.eventId} className="bonsai-day__note">
+                <span>{n.forMe ? partnerName : 'You'}</span>
+                <p>“{n.note}”</p>
+              </div>
+            ))}
+            {!memory && notes.length === 0 && (
+              <p className="bonsai-day__empty">
+                A quiet one — no photos, no notes. Just the two of you showing up. That counts most.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </SheetShell>
+  );
+}
+
 /* ── Story: stages, streaks, decorations ───────────────────────────── */
 
 interface StorySheetProps {
@@ -219,6 +316,12 @@ export function BonsaiStorySheet({ open, tree, onClose }: StorySheetProps) {
         <p className="bonsai-story__hint">
           Watering together on the same day grows the tree 3× faster and opens a permanent blossom.
         </p>
+        {tree.rainDays.length > 0 && (
+          <p className="bonsai-story__hint bonsai-story__hint--rain">
+            <CloudRain size={12} /> Rain covered {tree.rainDays.length} missed{' '}
+            {tree.rainDays.length === 1 ? 'day' : 'days'} for you — one per month, on the house.
+          </p>
+        )}
       </div>
     </SheetShell>
   );

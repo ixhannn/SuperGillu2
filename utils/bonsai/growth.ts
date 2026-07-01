@@ -38,6 +38,7 @@ export const BONSAI_DECORATIONS: readonly BonsaiDecoration[] = [
   { id: 'koi-pond', name: 'Koi Pond', description: 'A 14-day streak pools into a tiny koi pond.', metric: 'streak', threshold: 14 },
   { id: 'bench', name: 'Garden Bench', description: '30 shared blooms earn a bench for two.', metric: 'bloom', threshold: 30 },
   { id: 'torii', name: 'Torii Gate', description: 'A 30-day streak raises a gate at the garden edge.', metric: 'streak', threshold: 30 },
+  { id: 'nest', name: 'Songbird Nest', description: '50 shared blooms and a songbird moves in.', metric: 'bloom', threshold: 50 },
 ];
 
 const DAY_MS = 86400000;
@@ -99,9 +100,37 @@ const stageFor = (growth: number): { stage: BonsaiStage; next: BonsaiStage | nul
   return { stage, next, progress };
 };
 
-const streaksFrom = (bloomDays: string[], today: string): { streak: number; best: number } => {
-  if (bloomDays.length === 0) return { streak: 0, best: 0 };
-  const sorted = [...bloomDays].sort();
+/**
+ * Rain days: one single-day gap per calendar month is bridged automatically —
+ * "the rain watered it for you". Warm streak protection, never a punishment.
+ * Deterministic: computed forward over the sorted bloom days, so both partners
+ * agree on exactly which days it rained.
+ */
+const bridgeRainDays = (sorted: string[]): { effective: string[]; rainDays: string[] } => {
+  const effective: string[] = [];
+  const rainDays: string[] = [];
+  const usedMonths = new Set<string>();
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && daysBetween(sorted[i - 1], sorted[i]) === 2) {
+      const missed = addDays(sorted[i - 1], 1);
+      const month = missed.slice(0, 7);
+      if (!usedMonths.has(month)) {
+        usedMonths.add(month);
+        rainDays.push(missed);
+        effective.push(missed);
+      }
+    }
+    effective.push(sorted[i]);
+  }
+  return { effective, rainDays };
+};
+
+const streaksFrom = (
+  bloomDays: string[],
+  today: string,
+): { streak: number; best: number; rainDays: string[] } => {
+  if (bloomDays.length === 0) return { streak: 0, best: 0, rainDays: [] };
+  const { effective: sorted, rainDays } = bridgeRainDays([...bloomDays].sort());
   let best = 1;
   let run = 1;
   for (let i = 1; i < sorted.length; i++) {
@@ -110,14 +139,25 @@ const streaksFrom = (bloomDays: string[], today: string): { streak: number; best
   }
   const last = sorted[sorted.length - 1];
   const gap = daysBetween(last, today);
-  if (gap > 1) return { streak: 0, best };
+  if (gap > 1) return { streak: 0, best, rainDays };
   // Current run counts while today is still winnable (gap 0 or 1).
   let current = 1;
   for (let i = sorted.length - 1; i > 0; i--) {
     if (daysBetween(sorted[i - 1], sorted[i]) === 1) current++;
     else break;
   }
-  return { streak: current, best };
+  return { streak: current, best, rainDays };
+};
+
+export type BonsaiSeason = 'spring' | 'summer' | 'autumn' | 'winter';
+
+/** Real-calendar season (northern hemisphere) — drives palette + ambience. */
+export const seasonFor = (day: string): BonsaiSeason => {
+  const month = Number(day.slice(5, 7));
+  if (month >= 3 && month <= 5) return 'spring';
+  if (month >= 6 && month <= 8) return 'summer';
+  if (month >= 9 && month <= 11) return 'autumn';
+  return 'winter';
 };
 
 const buildNotes = (
@@ -181,7 +221,7 @@ export const computeTreeState = (input: ComputeTreeInput): BonsaiTreeState => {
   }
 
   const { stage, next, progress } = stageFor(growth);
-  const { streak, best } = streaksFrom(bloomDays, today);
+  const { streak, best, rainDays } = streaksFrom(bloomDays, today);
 
   const todayEntry = days.get(today);
   const wateredTodayByMe = todayEntry?.watered.has(selfId) ?? false;
@@ -220,6 +260,7 @@ export const computeTreeState = (input: ComputeTreeInput): BonsaiTreeState => {
     bloomDays,
     streak,
     bestStreak: best,
+    rainDays,
     totalWaterDays: sortedDays.length,
     wateredTodayByMe,
     wateredTodayByPartner,

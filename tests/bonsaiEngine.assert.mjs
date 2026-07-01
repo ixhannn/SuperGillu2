@@ -23,7 +23,7 @@ const bundle = async (entry) => {
 const growth = await bundle('../utils/bonsai/growth.ts');
 const model = await bundle('../utils/bonsai/voxelModel.ts');
 
-const { computeTreeState, dayMood, dayKey, addDays, daysBetween, BONSAI_STAGES } = growth;
+const { computeTreeState, dayMood, dayKey, addDays, daysBetween, seasonFor, BONSAI_STAGES, BONSAI_DECORATIONS } = growth;
 const { generateBonsaiModel, growthToG, MAX_GROWTH } = model;
 
 const COUPLE = 'c-1';
@@ -108,6 +108,56 @@ assert.equal(daysBetween('2026-07-01', '2026-07-04'), 3);
     const later = compute(events, '2026-07-06');
     assert.equal(later.streak, 0);
     assert.equal(later.bestStreak, 3);
+}
+
+// ── Rain days: one missed day per calendar month is bridged ──────────
+
+{
+    const both = (day) => [water(ME, day), water(PARTNER, day)];
+    // Bloom 1,2,3 · miss 4 · bloom 5,6 → rain bridges the 4th, streak lives.
+    const events = [
+        ...both('2026-07-01'), ...both('2026-07-02'), ...both('2026-07-03'),
+        ...both('2026-07-05'), ...both('2026-07-06'),
+    ];
+    const tree = compute(events, '2026-07-06');
+    assert.deepEqual(tree.rainDays, ['2026-07-04'], 'the single missed day is rain-bridged');
+    assert.equal(tree.streak, 6, 'streak survives one missed day per month');
+    assert.equal(tree.bestStreak, 6);
+
+    // A SECOND miss in the same month is NOT bridged (one per month).
+    const events2 = [...events, ...both('2026-07-08')];
+    const tree2 = compute(events2, '2026-07-08');
+    assert.deepEqual(tree2.rainDays, ['2026-07-04'], 'monthly rain budget is one');
+    assert.equal(tree2.streak, 1, 'second gap breaks the run');
+    assert.equal(tree2.bestStreak, 6);
+
+    // A miss in a NEW month gets its own rain day.
+    const events3 = [
+        ...both('2026-07-30'), ...both('2026-07-31'),
+        ...both('2026-08-02'), // miss 08-01 → bridged (August budget)
+    ];
+    const tree3 = compute(events3, '2026-08-02');
+    assert.deepEqual(tree3.rainDays, ['2026-08-01']);
+    assert.equal(tree3.streak, 4);
+
+    // A 2+ day gap is never bridged — rain covers single misses only.
+    const events4 = [...both('2026-07-01'), ...both('2026-07-04')];
+    const tree4 = compute(events4, '2026-07-04');
+    assert.deepEqual(tree4.rainDays, [], 'multi-day gaps are not bridged');
+    assert.equal(tree4.streak, 1);
+}
+
+// ── Seasons + nest decoration ────────────────────────────────────────
+
+assert.equal(seasonFor('2026-07-02'), 'summer');
+assert.equal(seasonFor('2026-04-10'), 'spring');
+assert.equal(seasonFor('2026-10-01'), 'autumn');
+assert.equal(seasonFor('2026-12-25'), 'winter');
+{
+    const nest = BONSAI_DECORATIONS.find((d) => d.id === 'nest');
+    assert.ok(nest, 'songbird nest decoration exists');
+    assert.equal(nest.metric, 'bloom');
+    assert.equal(nest.threshold, 50);
 }
 
 // ── Stages ───────────────────────────────────────────────────────────

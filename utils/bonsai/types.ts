@@ -46,7 +46,8 @@ export type BonsaiDecorationId =
   | 'wind-chime'
   | 'koi-pond'
   | 'bench'
-  | 'torii';
+  | 'torii'
+  | 'nest';
 
 export interface BonsaiDecoration {
   id: BonsaiDecorationId;
@@ -92,6 +93,8 @@ export interface BonsaiTreeState {
   /** Current consecutive both-watered streak (today counts once complete). */
   streak: number;
   bestStreak: number;
+  /** Missed days auto-bridged by "rain" (one per calendar month). */
+  rainDays: string[];
   totalWaterDays: number;
   wateredTodayByMe: boolean;
   wateredTodayByPartner: boolean;

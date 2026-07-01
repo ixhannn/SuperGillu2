@@ -352,6 +352,18 @@ const buildDecorations = (out: Voxel[], rng: Rng): void => {
   }
   for (let x = -4; x <= 4; x++) decorVoxel(out, 'torii', x, 6, tz, PALETTE.torii, 0.92);
   for (let x = -3; x <= 3; x++) decorVoxel(out, 'torii', x, 5, tz, PALETTE.torii, 0.7);
+  // Songbird nest — tucked into the front canopy so it reads as "in the tree".
+  const nest: Array<[number, number, number, string, number]> = [
+    [5, 12, 3, PALETTE.wood, 0.8],
+    [6, 12, 3, PALETTE.wood, 0.7],
+    [5, 12, 4, PALETTE.wood, 0.7],
+    [5, 13, 3, PALETTE.koiWhite, 0.55],
+  ];
+  for (const [x, y, z, color, size] of nest) {
+    out.push({ x, y, z, color, kind: 'decor', layer: 'canopyFront', threshold: 0, decorId: 'nest', size });
+  }
+  // The bird itself — a warm rose fleck perched on the rim.
+  out.push({ x: 6, y: 13, z: 4, color: '#e77c9d', kind: 'decor', layer: 'canopyFront', threshold: 0, decorId: 'nest', size: 0.5 });
 };
 
 export const generateBonsaiModel = (seed: number): BonsaiModel => {

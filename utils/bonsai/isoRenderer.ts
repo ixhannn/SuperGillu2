@@ -7,6 +7,7 @@
  */
 
 import { hashString } from './rng';
+import type { BonsaiSeason } from './growth';
 import type { BonsaiDecorationId } from './types';
 import {
   growthToBloom,
@@ -24,7 +25,11 @@ export interface SceneOptions {
   decorations: ReadonlySet<BonsaiDecorationId>;
   resting: boolean;
   golden: boolean;
+  season: BonsaiSeason;
 }
+
+const AUTUMN_LEAVES = ['#d9a05b', '#c98a4b', '#b9793f'];
+const SNOW = '#f3f0f4';
 
 export interface ScreenPoint {
   x: number;
@@ -33,11 +38,17 @@ export interface ScreenPoint {
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
-const hexToRgb = (hex: string): [number, number, number] => [
-  parseInt(hex.slice(1, 3), 16),
-  parseInt(hex.slice(3, 5), 16),
-  parseInt(hex.slice(5, 7), 16),
-];
+const hexToRgb = (color: string): [number, number, number] => {
+  if (color.startsWith('rgb')) {
+    const parts = color.slice(color.indexOf('(') + 1, -1).split(',').map(Number);
+    return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  }
+  return [
+    parseInt(color.slice(1, 3), 16),
+    parseInt(color.slice(3, 5), 16),
+    parseInt(color.slice(5, 7), 16),
+  ];
+};
 
 /** Lighten (amount > 0) or darken (amount < 0), optionally desaturate. */
 const shade = (hex: string, amount: number, desat = 0): string => {
@@ -116,6 +127,7 @@ export class VoxelSceneRenderer {
       [...opts.decorations].sort().join(','),
       opts.resting ? 1 : 0,
       opts.golden ? 1 : 0,
+      opts.season,
       this.width,
       this.height,
       this.dpr,
@@ -139,11 +151,18 @@ export class VoxelSceneRenderer {
     for (const v of this.sorted) {
       if (!this.isVisible(v, G, opts)) continue;
       const ctx = contexts[v.layer];
-      const color = this.colorFor(v, bloomP, opts.golden);
-      this.drawCube(ctx, v, color, desat);
+      const color = this.colorFor(v, bloomP, opts);
+      this.drawCube(ctx, v, color, desat, this.snowTop(v, opts.season));
     }
 
     this.drawBloomAnchors(contexts, opts, G, desat);
+  }
+
+  /** Winter dusts upward-facing greenery with snow (deterministic per voxel). */
+  private snowTop(v: Voxel, season: BonsaiSeason): string | null {
+    if (season !== 'winter') return null;
+    if (v.kind !== 'leaf' && v.kind !== 'island') return null;
+    return hashString(`snow:${v.x},${v.y},${v.z}`) % 10 < 4 ? SNOW : null;
   }
 
   private isVisible(v: Voxel, G: number, opts: SceneOptions): boolean {
@@ -155,11 +174,21 @@ export class VoxelSceneRenderer {
     return G >= v.threshold;
   }
 
-  private colorFor(v: Voxel, bloomP: number, golden: boolean): string {
+  private colorFor(v: Voxel, bloomP: number, opts: SceneOptions): string {
     if (v.kind === 'leaf' && v.bloomAt != null && bloomP >= v.bloomAt) {
       const h = hashString(`bloom:${v.x},${v.y},${v.z}`);
-      if (golden && h % 41 === 0) return PALETTE.gold;
+      if (opts.golden && h % 41 === 0) return PALETTE.gold;
       return PALETTE.blossom[h % PALETTE.blossom.length];
+    }
+    if (v.kind === 'leaf' && opts.season === 'autumn') {
+      const h = hashString(`autumn:${v.x},${v.y},${v.z}`);
+      if (h % 5 < 2) return AUTUMN_LEAVES[h % AUTUMN_LEAVES.length];
+    }
+    if (v.kind === 'leaf' && opts.season === 'summer') {
+      return shade(v.color, -0.06);
+    }
+    if (v.kind === 'leaf' && opts.season === 'winter') {
+      return shade(v.color, 0.06, 0.25);
     }
     return v.color;
   }
@@ -201,6 +230,26 @@ export class VoxelSceneRenderer {
     if (!a) return null;
     const p = this.project(a.x, a.y + 0.4, a.z);
     return p;
+  }
+
+  /**
+   * Hit-test a tap (CSS px) against visible bloom-day blossoms.
+   * Returns the blossom's ordinal index (its position in bloomDays).
+   */
+  pickAnchor(x: number, y: number, bloomCount: number, growth: number): number | null {
+    const G = growthToG(growth);
+    let bestIdx: number | null = null;
+    let bestDist = 24; // generous touch target
+    for (const { index } of this.visibleAnchors(bloomCount, G)) {
+      const p = this.anchorScreen(index);
+      if (!p) continue;
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = index;
+      }
+    }
+    return bestIdx;
   }
 
   /** Screen points of voxels newly revealed between two growth values. */
@@ -257,6 +306,7 @@ export class VoxelSceneRenderer {
     v: Voxel,
     baseColor: string,
     desat: number,
+    topOverride: string | null = null,
   ): void {
     const size = v.size ?? 1;
     const s = this.scale * size;
@@ -265,7 +315,7 @@ export class VoxelSceneRenderer {
     // Center reduced-size cubes within their cell.
     const cy = p.y + (this.vh() - vh) * 0.5;
     const j = voxelJitter(v);
-    const top = shade(baseColor, 0.14 + j, desat);
+    const top = topOverride ?? shade(baseColor, 0.14 + j, desat);
     const right = shade(baseColor, -0.1 + j, desat);
     const left = shade(baseColor, -0.22 + j, desat);
 

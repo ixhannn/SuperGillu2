@@ -4,7 +4,7 @@
  * overlay canvas so the voxel layers never repaint for ambience.
  */
 
-export type ParticleKind = 'petal' | 'firefly' | 'droplet' | 'sparkle' | 'gold';
+export type ParticleKind = 'petal' | 'firefly' | 'droplet' | 'sparkle' | 'gold' | 'koi' | 'lantern' | 'snow';
 
 interface Particle {
   kind: ParticleKind;
@@ -33,6 +33,7 @@ export class BonsaiParticles {
   private height = 0;
   private petalTimer = 0;
   private fireflyTimer = 0;
+  private snowTimer = 0;
 
   resize(width: number, height: number): void {
     this.width = width;
@@ -117,6 +118,80 @@ export class BonsaiParticles {
     });
   }
 
+  /** A koi arcs out of the pond and splashes back (golden days only). */
+  spawnKoiJump(pondX: number, pondY: number): void {
+    this.add({
+      kind: 'koi',
+      x: pondX,
+      y: pondY,
+      vx: 14 + Math.random() * 10,
+      vy: -78 - Math.random() * 18,
+      life: 0,
+      maxLife: 1.15,
+      size: 3.4,
+      spin: 0,
+      angle: 0,
+      color: '#f28c5f',
+    });
+    this.spawnDroplets(pondX, pondY - 4, 3);
+  }
+
+  /** A warm paper lantern drifts up — anniversary evenings. */
+  spawnLantern(): void {
+    if (this.particles.filter((p) => p.kind === 'lantern').length >= 3) return;
+    this.add({
+      kind: 'lantern',
+      x: this.width * (0.2 + Math.random() * 0.6),
+      y: this.height + 10,
+      vx: (Math.random() - 0.5) * 6,
+      vy: -14 - Math.random() * 8,
+      life: 0,
+      maxLife: 11 + Math.random() * 4,
+      size: 4.5 + Math.random() * 2,
+      spin: Math.random() * Math.PI * 2,
+      angle: 0,
+      color: '#ffce7a',
+    });
+  }
+
+  /** Gentle drifting snowflakes (winter ambience). */
+  spawnSnow(): void {
+    this.add({
+      kind: 'snow',
+      x: Math.random() * this.width,
+      y: -8,
+      vx: (Math.random() - 0.5) * 10,
+      vy: 16 + Math.random() * 10,
+      life: 0,
+      maxLife: 9 + Math.random() * 4,
+      size: 1.2 + Math.random() * 1.2,
+      spin: (Math.random() - 0.5) * 2,
+      angle: Math.random() * Math.PI * 2,
+      color: '#ffffff',
+    });
+  }
+
+  /** Petals spiralling around a point — the "together right now" moment. */
+  swirl(cx: number, cy: number): void {
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const r = 30 + Math.random() * 40;
+      this.add({
+        kind: 'petal',
+        x: cx + Math.cos(a) * r,
+        y: cy + Math.sin(a) * r * 0.6,
+        vx: -Math.sin(a) * 34,
+        vy: Math.cos(a) * 20 - 12,
+        life: 0,
+        maxLife: 2 + Math.random(),
+        size: 2 + Math.random() * 2,
+        spin: (Math.random() - 0.5) * 4,
+        angle: Math.random() * Math.PI * 2,
+        color: PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)],
+      });
+    }
+  }
+
   /** Celebration burst when today becomes a both-watered bloom day. */
   burst(x: number, y: number, golden: boolean): void {
     for (let i = 0; i < 22; i++) {
@@ -146,7 +221,13 @@ export class BonsaiParticles {
   tick(
     ctx: CanvasRenderingContext2D,
     dt: number,
-    opts: { petalRate: number; night: boolean; golden: boolean; canopy: { x: number; y: number; spread: number } },
+    opts: {
+      petalRate: number;
+      night: boolean;
+      golden: boolean;
+      snow: boolean;
+      canopy: { x: number; y: number; spread: number };
+    },
   ): void {
     const clampedDt = Math.min(dt, 0.1);
     this.petalTimer -= clampedDt;
@@ -158,6 +239,11 @@ export class BonsaiParticles {
     if (opts.night && this.fireflyTimer <= 0 && this.particles.filter((p) => p.kind === 'firefly').length < 7) {
       this.spawnFirefly();
       this.fireflyTimer = 0.9;
+    }
+    this.snowTimer -= clampedDt;
+    if (opts.snow && this.snowTimer <= 0 && this.particles.filter((p) => p.kind === 'snow').length < 12) {
+      this.spawnSnow();
+      this.snowTimer = 0.7;
     }
 
     ctx.clearRect(0, 0, this.width, this.height);
@@ -176,13 +262,21 @@ export class BonsaiParticles {
         p.vy = Math.max(-12, Math.min(12, p.vy));
       } else if (p.kind === 'droplet') {
         p.vy += 160 * clampedDt;
+      } else if (p.kind === 'koi') {
+        p.vy += 210 * clampedDt;
+        p.angle = Math.atan2(p.vy, p.vx);
+      } else if (p.kind === 'lantern') {
+        p.vx += Math.sin(p.life * 0.9 + p.spin) * 4 * clampedDt;
+      } else if (p.kind === 'snow') {
+        p.vx += Math.sin(p.life * 1.4 + p.spin) * 8 * clampedDt;
       } else {
         p.vy += 40 * clampedDt;
       }
       p.x += p.vx * clampedDt;
       p.y += p.vy * clampedDt;
-      p.angle += p.spin * clampedDt;
+      if (p.kind !== 'koi') p.angle += p.spin * clampedDt;
       if (p.y > this.height + 12 || p.x < -12 || p.x > this.width + 12) continue;
+      if (p.kind === 'lantern' && p.y < -16) continue;
 
       this.draw(ctx, p, t);
       next.push(p);
@@ -199,6 +293,47 @@ export class BonsaiParticles {
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size * (1 + pulse * 0.6), 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (p.kind === 'lantern') {
+      const flicker = 0.75 + 0.25 * Math.sin(p.life * 5 + p.spin);
+      ctx.globalAlpha = fade * 0.5 * flicker;
+      ctx.fillStyle = '#ffe4b0';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = fade * 0.95;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, p.size * 0.7, p.size, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (p.kind === 'snow') {
+      ctx.globalAlpha = fade * 0.8;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (p.kind === 'koi') {
+      ctx.globalAlpha = fade;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.size, p.size * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f4f1ea';
+      ctx.beginPath();
+      ctx.ellipse(-p.size * 0.5, 0, p.size * 0.35, p.size * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
       ctx.globalAlpha = 1;
       return;
     }

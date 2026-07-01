@@ -1,13 +1,23 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BookOpen, CloudRain, Droplets, Feather, Flower2, Sparkles, UserPlus } from 'lucide-react';
+import { BookOpen, CloudRain, Droplets, Feather, Flower2, Share2, Sparkles, UserPlus } from 'lucide-react';
 import { ViewState } from '../types';
 import { BonsaiService } from '../services/bonsai';
-import { computeTreeState, daysBetween } from '../utils/bonsai/growth';
+import { BonsaiShareService } from '../services/bonsaiShare';
+import { NotificationsService } from '../services/notifications';
+import { StorageService } from '../services/storage';
+import { syncEventTarget } from '../services/sync';
+import { computeTreeState, daysBetween, seasonFor } from '../utils/bonsai/growth';
+import { createBonsaiShareCard } from '../utils/bonsai/shareCard';
 import type { BlossomNote, BonsaiEvent } from '../utils/bonsai/types';
 import { BonsaiScene, type BonsaiSceneHandle } from '../components/bonsai/BonsaiScene';
 import { WaterButton } from '../components/bonsai/WaterButton';
-import { BonsaiComposeSheet, BonsaiReadSheet, BonsaiStorySheet } from '../components/bonsai/BonsaiSheets';
+import {
+  BonsaiComposeSheet,
+  BonsaiDaySheet,
+  BonsaiReadSheet,
+  BonsaiStorySheet,
+} from '../components/bonsai/BonsaiSheets';
 import { ViewHeader } from '../components/ViewHeader';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
@@ -20,6 +30,8 @@ interface BonsaiBloomProps {
 
 type SkyPhase = 'dawn' | 'day' | 'dusk' | 'night';
 
+const SEEN_GROWTH_KEY = 'lior_bonsai_seen_v1';
+
 const skyPhaseFor = (hour: number): SkyPhase => {
   if (hour < 5) return 'night';
   if (hour < 8) return 'dawn';
@@ -28,10 +40,36 @@ const skyPhaseFor = (hour: number): SkyPhase => {
   return 'night';
 };
 
+const readSeenGrowth = (coupleKey: string): number | null => {
+  try {
+    const raw = localStorage.getItem(SEEN_GROWTH_KEY);
+    const parsed = raw ? (JSON.parse(raw) as { coupleKey: string; growth: number }) : null;
+    return parsed && parsed.coupleKey === coupleKey ? parsed.growth : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeSeenGrowth = (coupleKey: string, growth: number): void => {
+  try {
+    localStorage.setItem(SEEN_GROWTH_KEY, JSON.stringify({ coupleKey, growth }));
+  } catch {
+    /* non-fatal */
+  }
+};
+
+/** Today is the couple's anniversary (month + day match). */
+const isAnniversaryToday = (anniversaryDate: string | undefined, today: string): boolean => {
+  if (!anniversaryDate) return false;
+  const md = anniversaryDate.slice(5, 10);
+  return md.length === 5 && md === today.slice(5, 10);
+};
+
 export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
   const seed = useMemo(() => BonsaiService.seed(), []);
   const selfId = useMemo(() => BonsaiService.selfId(), []);
   const partnerName = useMemo(() => BonsaiService.partnerName(), []);
+  const myName = useMemo(() => BonsaiService.myName(), []);
   const paired = useMemo(() => BonsaiService.isPaired(), []);
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
 
@@ -41,9 +79,13 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
   const [composeOpen, setComposeOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
   const [readingNote, setReadingNote] = useState<BlossomNote | null>(null);
+  const [dayOpen, setDayOpen] = useState<string | null>(null);
   const [stageBanner, setStageBanner] = useState<{ name: string; line: string } | null>(null);
+  const [partnerHere, setPartnerHere] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const sceneRef = useRef<BonsaiSceneHandle | null>(null);
+  const presenceOffTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const unsubscribe = BonsaiService.subscribe(setEvents);
@@ -58,12 +100,67 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
     };
   }, []);
 
+  // ── Presence: "together right now" (Home's grace-window pattern) ────
+  useEffect(() => {
+    if (!paired) return;
+    const handlePresence = (e: Event) => {
+      const state = (e as CustomEvent).detail as Record<string, { user?: string }[]> | null;
+      const prof = StorageService.getCoupleProfile();
+      let online = false;
+      if (state) {
+        Object.values(state).forEach((presences) => {
+          presences.forEach((p) => {
+            if (p.user && p.user === prof.partnerName) online = true;
+          });
+        });
+      }
+      if (online) {
+        if (presenceOffTimerRef.current !== null) {
+          window.clearTimeout(presenceOffTimerRef.current);
+          presenceOffTimerRef.current = null;
+        }
+        setPartnerHere(true);
+      } else if (presenceOffTimerRef.current === null) {
+        // Hold through the empty presence sync realtime emits on reconnect.
+        presenceOffTimerRef.current = window.setTimeout(() => {
+          presenceOffTimerRef.current = null;
+          setPartnerHere(false);
+        }, 6000);
+      }
+    };
+    syncEventTarget.addEventListener('presence-update', handlePresence);
+    return () => {
+      if (presenceOffTimerRef.current !== null) window.clearTimeout(presenceOffTimerRef.current);
+      syncEventTarget.removeEventListener('presence-update', handlePresence);
+    };
+  }, [paired]);
+
   const tree = useMemo(
     () => computeTreeState({ events, seed, today, selfId }),
     [events, seed, today, selfId],
   );
+  const season = useMemo(() => seasonFor(today), [today]);
+  const anniversary = useMemo(
+    () => isAnniversaryToday(StorageService.getCoupleProfile().anniversaryDate, today),
+    [today],
+  );
 
-  // ── Moment detection (partner watered live, bloom completed, stage up) ──
+  // ── Comeback time-lapse: replay what grew since you last looked ─────
+  const timelapseDoneRef = useRef(false);
+  useEffect(() => {
+    if (timelapseDoneRef.current || tree.growth === 0) return;
+    timelapseDoneRef.current = true;
+    const seen = readSeenGrowth(BonsaiService.coupleKey());
+    if (seen != null && tree.growth - seen >= 3) {
+      window.setTimeout(() => sceneRef.current?.timelapse(seen), 450);
+    }
+  }, [tree.growth]);
+  useEffect(() => {
+    if (tree.growth > 0) writeSeenGrowth(BonsaiService.coupleKey(), tree.growth);
+  }, [tree.growth]);
+
+  // ── Moment detection (partner watered live, bloom completed, stage up,
+  //    partner arrived) ─────────────────────────────────────────────────
   const prevRef = useRef<{ partner: boolean; bloom: boolean; stageId: string } | null>(null);
   useEffect(() => {
     const bloomToday = tree.wateredTodayByMe && tree.wateredTodayByPartner;
@@ -86,10 +183,25 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
     prevRef.current = { partner: tree.wateredTodayByPartner, bloom: bloomToday, stageId: tree.stage.id };
   }, [tree, partnerName]);
 
+  const prevHereRef = useRef(false);
+  useEffect(() => {
+    if (partnerHere && !prevHereRef.current) {
+      sceneRef.current?.swirl();
+      feedback.tapSilent();
+    }
+    prevHereRef.current = partnerHere;
+  }, [partnerHere]);
+
   const handleWatered = () => {
     feedback.confirm();
     if (tree.resting) toast.show('The tree stirs awake — it missed you', 'info');
-    void BonsaiService.water();
+    const completesBloom = tree.wateredTodayByPartner && !tree.wateredTodayByMe;
+    void BonsaiService.water().then(() => {
+      if (!paired) return;
+      // The outside-the-app loop: their phone hears about it.
+      void NotificationsService.triggerBonsaiPush(completesBloom ? 'bloomed' : 'watered', myName);
+    });
+    if (partnerHere) sceneRef.current?.swirl();
   };
 
   const handleSaveNote = (text: string) => {
@@ -100,18 +212,62 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
   const handleNoteOpened = (note: BlossomNote) => {
     void BonsaiService.markNoteOpened(note.eventId);
+    if (paired) void NotificationsService.triggerBonsaiPush('note_read', myName);
   };
 
-  const myNoteToday = tree.notes.some((n) => !n.forMe && n.day === today);
-  const sky = skyPhaseFor(hour);
-  const night = sky === 'night';
   const firstDay = events.length > 0 ? events.reduce((min, e) => (e.day < min ? e.day : min), events[0].day) : null;
   const treeAge = firstDay ? daysBetween(firstDay, today) + 1 : 0;
+  const sky = skyPhaseFor(hour);
+  const night = sky === 'night';
+
+  const handleShare = useCallback(() => {
+    if (sharing) return;
+    feedback.tap();
+    setSharing(true);
+    window.setTimeout(async () => {
+      try {
+        const dataUrl = createBonsaiShareCard({
+          seed,
+          growth: tree.growth,
+          bloomCount: tree.bloomDays.length,
+          decorations: new Set(tree.decorations.map((d) => d.id)),
+          golden: tree.mood.golden,
+          season,
+          stageName: tree.stage.name,
+          stageLine: tree.stage.line,
+          streak: tree.streak,
+          dayCount: treeAge,
+          night,
+        });
+        const shared = await BonsaiShareService.shareCard(
+          dataUrl,
+          `Day ${treeAge} of our bonsai — ${tree.stage.name}. Grown together on Lior.`,
+        );
+        if (shared) feedback.confirm();
+      } catch {
+        toast.show("Couldn't build the share card", 'error');
+      } finally {
+        setSharing(false);
+      }
+    }, 30);
+  }, [sharing, seed, tree, season, treeAge, night]);
+
+  const myNoteToday = tree.notes.some((n) => !n.forMe && n.day === today);
+  const rainedYesterday = tree.rainDays.length > 0
+    && tree.streak > 0
+    && daysBetween(tree.rainDays[tree.rainDays.length - 1], today) <= 2;
 
   const partnerChip = paired ? (
-    <div className={`bonsai-chip ${tree.wateredTodayByPartner ? 'bonsai-chip--on' : ''}`}>
+    <div
+      className={[
+        'bonsai-chip',
+        tree.wateredTodayByPartner ? 'bonsai-chip--on' : '',
+        partnerHere ? 'bonsai-chip--here' : '',
+      ].join(' ')}
+    >
       <Droplets size={13} />
       <span>{partnerName}</span>
+      {partnerHere && <span className="bonsai-chip__dot" aria-label="here right now" />}
     </div>
   ) : (
     <button type="button" className="bonsai-chip bonsai-chip--invite" onClick={() => setView('sync')}>
@@ -121,14 +277,17 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
   );
 
   return (
-    <div className={`bonsai-view bonsai-view--${sky}`} data-golden={tree.mood.golden || undefined}>
+    <div
+      className={`bonsai-view bonsai-view--${sky} bonsai-view--${season}`}
+      data-golden={tree.mood.golden || undefined}
+    >
       <div className="bonsai-sky" aria-hidden="true">
         {tree.mood.rain && !reducedMotion && <div className="bonsai-rain" />}
       </div>
 
       <ViewHeader
         title="Our Bonsai"
-        subtitle={tree.stage.name}
+        subtitle={partnerHere ? `${tree.stage.name} · together now` : tree.stage.name}
         variant="transparent"
         borderless
         rightSlot={
@@ -147,10 +306,16 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
           tree={tree}
           seed={seed}
           night={night}
+          season={season}
+          anniversary={anniversary}
           reducedMotion={reducedMotion}
           onNoteTap={(note) => {
             feedback.tap();
             setReadingNote(note);
+          }}
+          onBloomTap={(day) => {
+            feedback.tap();
+            setDayOpen(day);
           }}
         />
 
@@ -184,6 +349,12 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
             <span>A golden-petal day</span>
           </div>
         )}
+        {anniversary && (
+          <div className="bonsai-mood-chip bonsai-mood-chip--anniversary">
+            <Flower2 size={12} />
+            <span>Your day — lanterns are up</span>
+          </div>
+        )}
       </div>
 
       <div className="bonsai-panel">
@@ -200,6 +371,11 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
         {tree.resting && (
           <p className="bonsai-panel__resting">
             Your tree missed you. It never dies — water it and it wakes up.
+          </p>
+        )}
+        {rainedYesterday && !tree.resting && (
+          <p className="bonsai-panel__rain-note">
+            <CloudRain size={12} /> It rained while you were away — your streak held.
           </p>
         )}
 
@@ -225,6 +401,18 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
             <BookOpen size={13} />
             <span>Story</span>
           </button>
+          {tree.growth > 0 && (
+            <button
+              type="button"
+              className="bonsai-chip bonsai-chip--quiet"
+              onClick={handleShare}
+              disabled={sharing}
+              aria-label="Share your tree"
+            >
+              <Share2 size={13} />
+              <span>{sharing ? '…' : 'Share'}</span>
+            </button>
+          )}
         </div>
 
         <WaterButton
@@ -277,6 +465,12 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
         partnerName={partnerName}
         onClose={() => setReadingNote(null)}
         onOpened={handleNoteOpened}
+      />
+      <BonsaiDaySheet
+        day={dayOpen}
+        tree={tree}
+        partnerName={partnerName}
+        onClose={() => setDayOpen(null)}
       />
       <BonsaiStorySheet open={storyOpen} tree={tree} onClose={() => setStoryOpen(false)} />
     </div>
