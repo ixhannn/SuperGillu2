@@ -32,7 +32,7 @@
   height: 100%;
   overflow: hidden;
   font-family: 'Afacad Flux', var(--font-ui, system-ui), sans-serif;
-  background: linear-gradient(180deg, #ffaf4d, #ffc873 20%, #ffe2ad 38%, #fffaf4 62%);
+  background: linear-gradient(180deg, #ff8656, #ffa781 22%, #ffceba 42%, #fff3ec 64%);
   transition: background 900ms cubic-bezier(.16, 1, .3, 1);
   -webkit-tap-highlight-color: transparent;
   user-select: none;
@@ -72,6 +72,14 @@
   }
 }
 
+/* ── Grand first-launch: the world assembles on the very first open (one-shot) ──
+ * The warm world blooms up over the dark shell and the sky region rises into
+ * place; the hero (Framer) and the headline (masked reveal) cascade on top. */
+.lo-ob { animation: loObWorldIn 1.2s ease both; }
+.lo-ob-scene { animation: loObSceneIn 1.05s cubic-bezier(.16, 1, .3, 1) .15s both; }
+@keyframes loObWorldIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes loObSceneIn { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+
 /* ── Ambient light ─────────────────────────────────────────────── */
 .lo-ob-glow {
   position: absolute;
@@ -81,7 +89,7 @@
   width: 300px;
   height: 300px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 214, 156, .55), rgba(255, 196, 150, .18) 46%, transparent 70%);
+  background: radial-gradient(circle, rgba(255, 168, 192, .5), rgba(255, 150, 180, .16) 46%, transparent 70%);
   pointer-events: none;
   z-index: 1;
   transition: opacity 900ms ease;
@@ -93,10 +101,12 @@
   width: 156px;
   height: 156px;
   border-radius: 50%;
-  background: radial-gradient(circle at 36% 36%, rgba(255, 255, 255, .68), rgba(255, 240, 200, .34) 45%, rgba(255, 220, 175, .12) 70%, transparent 84%), radial-gradient(circle, rgba(255, 200, 140, .05), transparent 62%);
+  background: radial-gradient(circle at 36% 36%, rgba(255, 250, 246, .7), rgba(255, 210, 222, .36) 45%, rgba(255, 176, 192, .14) 70%, transparent 84%), radial-gradient(circle, rgba(255, 150, 175, .06), transparent 62%);
   pointer-events: none;
   z-index: 1;
-  transition: opacity 900ms ease;
+  /* transform (the sun-set descent) only fires on slide change — no standing
+   * will-change; the browser promotes on-demand for the 1s transition. */
+  transition: opacity 900ms ease, transform 1000ms cubic-bezier(.16, 1, .3, 1);
 }
 /* Volumetric god-rays from the sun (top-right). Static, masked to fade out. */
 .lo-ob-rays {
@@ -108,13 +118,13 @@
   pointer-events: none;
   z-index: 1;
   background: conic-gradient(from 196deg at 86% 8%,
-    transparent 0deg, rgba(255, 240, 206, .13) 7deg, transparent 15deg,
-    transparent 26deg, rgba(255, 240, 206, .10) 33deg, transparent 41deg,
-    transparent 54deg, rgba(255, 240, 206, .08) 60deg, transparent 69deg,
+    transparent 0deg, rgba(255, 222, 214, .13) 7deg, transparent 15deg,
+    transparent 26deg, rgba(255, 216, 210, .10) 33deg, transparent 41deg,
+    transparent 54deg, rgba(255, 210, 208, .08) 60deg, transparent 69deg,
     transparent 360deg);
   -webkit-mask-image: radial-gradient(62% 62% at 86% 8%, #000, transparent 76%);
   mask-image: radial-gradient(62% 62% at 86% 8%, #000, transparent 76%);
-  transition: opacity 900ms ease;
+  transition: opacity 900ms ease, transform 1000ms cubic-bezier(.16, 1, .3, 1);
 }
 
 /* ── The scene region (top of screen) ──────────────────────────── */
@@ -143,13 +153,21 @@
   height: 256px;
   pointer-events: none;
   background:
-    radial-gradient(120% 56% at 50% 22%, rgba(255, 206, 158, .34), transparent 66%),
+    radial-gradient(120% 56% at 50% 22%, rgba(255, 158, 184, .34), transparent 66%),
     radial-gradient(44% 56% at 14% 58%, rgba(255, 255, 255, .98), transparent 70%),
     radial-gradient(54% 66% at 42% 46%, #fff, transparent 72%),
     radial-gradient(46% 60% at 70% 58%, rgba(255, 255, 255, .97), transparent 70%),
     radial-gradient(50% 60% at 92% 52%, rgba(255, 255, 255, .95), transparent 70%),
     radial-gradient(120% 52% at 50% 94%, rgba(255, 250, 244, .98), transparent 78%);
   filter: blur(12px);          /* STATIC blur — never animated */
+  /* Slow monsoon drift — TRANSFORM only, so the baked blur is a composited texture
+   * move (never re-rasterised) and the compositor stays clean. */
+  animation: loObCloudDrift 30s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes loObCloudDrift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-20px, 3px, 0); }
 }
 .lo-ob-fade {
   position: absolute;
@@ -165,7 +183,9 @@
   position: absolute;
   left: 50%;
   top: calc(env(safe-area-inset-top) + 34px);
-  transform: translateX(-50%);
+  /* Centre with a margin offset (not translateX) so Framer owns the transform
+   * for the Act I → Act II lift/dissolve without fighting the CSS centering. */
+  margin-left: -147px;
   width: 294px;
   height: 470px;
   z-index: 3;
@@ -186,8 +206,29 @@
   border-radius: 26px;
   overflow: hidden;
   box-shadow: 0 0 84px 20px rgba(255, 150, 140, .42), 0 0 40px 8px rgba(255, 184, 168, .28), 0 18px 38px rgba(190, 88, 92, .3);
-  transition: transform 600ms cubic-bezier(.16, 1, .3, 1);
   z-index: 4;
+  /* No CSS transform-transition here: on the finale this element is a Framer
+   * layoutId target, and a CSS transition would fight Framer's per-frame FLIP. */
+}
+/* Finale mark — enlarged via box SIZE (not an inline scale) so the shared-element
+ * morph into the Act II header mark interpolates size cleanly. */
+.lo-ob-icon.is-finale {
+  top: 104px;
+  width: 119px;
+  height: 119px;
+  margin-left: -59.5px;
+  border-radius: 32px;
+}
+/* feel1 mark drifts gently in space (cinematic float). Scoped to :not(.is-finale)
+ * because the finale mark's transform is owned by the Framer layoutId morph —
+ * a CSS animation there would fight the FLIP. The img keeps its own breath. */
+.lo-ob-icon:not(.is-finale) {
+  animation: loObMarkFloat 8.5s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes loObMarkFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(.8deg); }
 }
 .lo-ob-icon img {
   width: 100%;
@@ -195,10 +236,17 @@
   object-fit: cover;
   border-radius: 26px;
   transform: scale(1.16);   /* crops the dark bezel baked into the PNG */
-  animation: loObBreath 5s ease-in-out infinite;
+  animation: loObBreath 12s ease-in-out infinite;
   will-change: transform;
 }
-@keyframes loObBreath { 0%, 100% { transform: scale(1.16); } 50% { transform: scale(1.2); } }
+/* Exhale-weighted "sigh", not a symmetric pulse: ~4s expand · ~2s hold · ~6s
+ * settle. Reads as breathing rather than a loop. Transform-only. */
+@keyframes loObBreath {
+  0% { transform: scale(1.16); }
+  33% { transform: scale(1.205); }
+  50% { transform: scale(1.205); }
+  100% { transform: scale(1.16); }
+}
 
 /* Finale (welcome): a big warm bloom blooming behind the mark. */
 .lo-ob-finale-bloom {
@@ -216,6 +264,29 @@
   animation: loObBloom 6s ease-in-out infinite;
 }
 @keyframes loObBloom { 0%, 100% { transform: scale(0.92); opacity: .82; } 50% { transform: scale(1.06); opacity: 1; } }
+/* Finale IGNITION — a one-shot warm flash that blooms out of the mark the moment
+ * the welcome arrives (the two lights have merged and the world lights up). Plays
+ * once (markwrap remounts on feel6). Transform + opacity only. */
+.lo-ob-ignite {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  margin-left: -95px;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 244, 220, .95), rgba(255, 208, 162, .45) 40%, transparent 70%);
+  z-index: 2;
+  pointer-events: none;
+  transform: scale(.2);
+  opacity: 0;
+  animation: loObIgnite 1.5s cubic-bezier(.16, 1, .3, 1) forwards;
+}
+@keyframes loObIgnite {
+  0% { transform: scale(.2); opacity: 0; }
+  22% { opacity: 1; }
+  100% { transform: scale(2.7); opacity: 0; }
+}
 /* Finale "arrival" rings — soft halos emanating from the mark. */
 .lo-ob-finale-ring {
   position: absolute;
@@ -489,6 +560,17 @@
   text-wrap: balance;          /* even lines — no stranded last word */
   transition: opacity 460ms ease, transform 560ms cubic-bezier(.16, 1, .3, 1);
 }
+/* Masked line reveal: each \n-delimited headline line rides up from behind an
+ * overflow clip (razor-sharp, NO blur). The tiny padding + matching negative
+ * margin gives serif ascenders/descenders + italic side-bearings room so the
+ * clip never shaves a glyph, with zero net change to line spacing. Framer
+ * animates the inner span's transform; the clip lives on the line wrapper. */
+/* Smooth masked-line reveal: each line rises up from behind an overflow clip
+ * (razor-sharp, no blur). The tiny padding + matching negative margin gives serif
+ * ascenders/descenders room so the clip never shaves a glyph, with no net change
+ * to line spacing. Framer drives the inner span's translateY; the clip is here. */
+.lo-ob-h-line { display: block; overflow: hidden; padding: 0.06em 0.05em; margin: -0.06em -0.05em; }
+.lo-ob-h-inner { display: block; will-change: transform; text-wrap: balance; }
 /* Progress = warm "tactile" clay: lit honey beads resting in a soft recessed
  * trough. Done beads are raised + amber; the current bead is larger + lit (with
  * a STATIC glow halo); remaining beads are recessed sockets. All depth is static
@@ -555,8 +637,30 @@
   background: linear-gradient(180deg, rgba(255, 224, 180, .16), rgba(255, 224, 180, 0) 42%);
   pointer-events: none;
 }
+/* A slow warm light sweeping across the button — a quiet "alive" idle that reads
+ * as premium. Transform-only (clipped by the button's overflow:hidden) so it
+ * never recomputes a blur over the live canvas. */
+.lo-ob-cta::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 38%;
+  background: linear-gradient(105deg, transparent, rgba(255, 234, 200, .20) 50%, transparent);
+  transform: translateX(-180%) skewX(-12deg);
+  animation: loObCtaSheen 6.5s cubic-bezier(.5, 0, .2, 1) infinite;
+  animation-delay: 1.4s;
+  pointer-events: none;
+}
+@keyframes loObCtaSheen {
+  0% { transform: translateX(-180%) skewX(-12deg); }
+  45% { transform: translateX(420%) skewX(-12deg); }
+  100% { transform: translateX(420%) skewX(-12deg); }
+}
 .lo-ob-cta:active { transform: translateY(1px) scale(.99); }
 .lo-ob-cta[disabled] { opacity: .5; cursor: default; }
+.lo-ob-cta[disabled]::after { animation: none; opacity: 0; }
 .lo-ob-cta-inner {
   position: relative;
   display: flex;
@@ -594,14 +698,60 @@
 }
 
 /* ── Act II — setup steps (centered glass forms in the same world) */
-.lo-ob-form {
+/* Stage: a full-bleed grid whose single cell centres every step. All steps share
+ * that one cell (grid-area 1/1) so the outgoing + incoming cards stay stacked and
+ * centred during their cross-dissolve. pointer-events pass through to the hero
+ * when no form is mounted; the form itself re-enables them. */
+/* Stage centres the persistent brand mark + the swapping form together as a
+ * column. The forms themselves still share ONE grid cell so the outgoing +
+ * incoming steps stay stacked + centred during their cross-dissolve. */
+.lo-ob-formstage {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  pointer-events: none;
+}
+.lo-ob-forms-grid {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+}
+.lo-ob-forms-grid > * {
+  grid-area: 1 / 1;
+}
+/* Persistent brand mark above the setup card — the Act I finale mark morphs
+ * down into it (shared layoutId) and it stays as the quiet anchor through setup.
+ * Sized via width/height (not transform) so the FLIP interpolates size cleanly. */
+.lo-ob-headmark {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  margin: 0 0 22px;
+  border-radius: 17px;
+  overflow: hidden;
+  flex: none;
+  pointer-events: none;
+  box-shadow: 0 0 40px 8px rgba(255, 150, 140, .34), 0 0 22px 4px rgba(255, 184, 168, .24), 0 10px 24px rgba(190, 88, 92, .26);
+  z-index: 2;
+}
+.lo-ob-headmark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 17px;
+  transform: scale(1.16);   /* crops the dark bezel baked into the PNG */
+  animation: loObBreath 12s ease-in-out infinite;
+  will-change: transform;
+}
+.lo-ob-form {
+  position: relative;
   width: calc(100% - 52px);
   max-width: 340px;
-  z-index: 6;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -653,9 +803,15 @@
   outline: none;
   text-align: center;
   box-shadow: 0 10px 26px rgba(190, 110, 60, .14), inset 0 1px 0 rgba(255, 255, 255, .85);
+  transition: border-color 220ms ease, box-shadow 260ms cubic-bezier(.16, 1, .3, 1);
 }
 .lo-ob-ta { min-height: 96px; resize: none; line-height: 1.5; text-align: left; }
-.lo-ob-input:focus, .lo-ob-ta:focus { border-color: rgba(232, 54, 90, .45); }
+/* Focus: a soft warm glow ring blooms around the field — a gentle "you're here"
+ * micro-interaction (box-shadow/border only; the static backdrop blur is untouched). */
+.lo-ob-input:focus, .lo-ob-ta:focus {
+  border-color: rgba(232, 54, 90, .5);
+  box-shadow: 0 0 0 3px rgba(232, 54, 90, .13), 0 14px 34px rgba(190, 110, 60, .2), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
 .lo-ob-days {
   font-family: 'Fraunces', Georgia, serif;
   font-weight: 700;
@@ -697,8 +853,8 @@
 .lo-ob-code { font-family: 'Fraunces', Georgia, serif; font-weight: 700; font-size: 22px; letter-spacing: .16em; color: #7a2e44; }
 
 @media (prefers-reduced-motion: reduce) {
-  .lo-ob-cfloat, .lo-ob-icon img, .lo-ob-days, .lo-ob-finale-bloom { animation: none; }
+  .lo-ob-cfloat, .lo-ob-icon img, .lo-ob-icon:not(.is-finale), .lo-ob-headmark img, .lo-ob-days, .lo-ob-finale-bloom, .lo-ob-ignite, .lo-ob-cta::after, .lo-ob-cloud, .lo-ob-scene, .lo-ob { animation: none; }
   .lo-show-dome, .lo-show-chip, .lo-show-star { animation: none; }
   .lo-ob-finale-ring { animation: none; opacity: .32; }
-  .lo-ob, .lo-ob-h, .lo-ob-s, .lo-ob-dev, .lo-ob-icon, .lo-ob-name { transition: opacity 200ms ease; }
+  .lo-ob, .lo-ob-h, .lo-ob-s, .lo-ob-dev, .lo-ob-icon, .lo-ob-name, .lo-ob-sun, .lo-ob-rays { transition: opacity 200ms ease; }
 }

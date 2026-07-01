@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig, LayoutGroup } from 'framer-motion';
 import {
     ArrowRight, Calendar, Sparkles, MessageCircle, Lock, QrCode,
     Image as ImageIcon, Activity, Plus, Share2, Star,
@@ -33,19 +33,54 @@ const FEEL_KEYS: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'feel6']
 // layer animates in the same coordinated direction for a continuous feel.
 const STEP_ORDER: Step[] = ['feel1', 'feel2', 'feel3', 'feel4', 'feel5', 'feel6', 'myName', 'anniversary', 'first-question', 'done'];
 
-// Directional, depth-layered transition variants. `custom` carries the travel
-// direction (+1 forward / -1 back). The headline copy travels furthest
-// (foreground), the phone's screen content a little less (mid-ground) — together
-// they read as one camera move from slide to slide.
+// Premium deceleration curve (matches --lior-ease-silk used app-wide).
+const SILK = [0.16, 1, 0.3, 1] as const;
+const EXIT_EASE = [0.4, 0, 0.2, 1] as const;
+
+// ── Smooth, confident transition system ──────────────────────────────────────
+// `custom` carries the travel direction (+1 forward / -1 back). Layers move on
+// slightly different depths (copy furthest, phone-screen less) so a slide change
+// reads as one calm camera move — clearly present but never busy (premium through
+// restraint, à la Brainrot). transform + opacity only, transition-triggered (no
+// idle cost). Under <MotionConfig reducedMotion="user"> the travel collapses to a
+// plain fade.
 const COPY_VARIANTS = {
-    enter: (d: number) => ({ opacity: 0, x: d * 44 }),
-    center: { opacity: 1, x: 0 },
-    exit: (d: number) => ({ opacity: 0, x: d * -44 }),
+    enter: (d: number) => ({ opacity: 0, x: d * 60, scale: 0.97 }),
+    center: { opacity: 1, x: 0, scale: 1 },
+    exit: (d: number) => ({ opacity: 0, x: d * -52, scale: 0.98 }),
 };
+// The phone's inner screen content cross-fades a little less than the copy.
 const SCREEN_VARIANTS = {
     enter: (d: number) => ({ opacity: 0, x: d * 28 }),
     center: { opacity: 1, x: 0 },
     exit: (d: number) => ({ opacity: 0, x: d * -28 }),
+};
+// Act II setup steps: the card slides in (directional) and settles from a gentle
+// scale while its fields rise in a soft cascade.
+const FORM_VARIANTS = {
+    enter: (d: number) => ({ opacity: 0, x: d * 50, scale: 0.97 }),
+    center: {
+        opacity: 1, x: 0, scale: 1,
+        transition: { duration: 0.55, ease: SILK, when: 'beforeChildren' as const, staggerChildren: 0.06, delayChildren: 0.1 },
+    },
+    exit: (d: number) => ({ opacity: 0, x: d * -50, scale: 0.98, transition: { duration: 0.3, ease: EXIT_EASE } }),
+};
+const FIELD_VARIANTS = {
+    enter: { opacity: 0, y: 22 },
+    center: { opacity: 1, y: 0, transition: { duration: 0.5, ease: SILK } },
+};
+
+// Smooth masked-line reveal: each \n line rises up from behind an overflow clip,
+// staggered — razor-sharp, no blur, no flip. Clean and editorial.
+const HEADLINE_VARIANTS = {
+    enter: {},
+    center: { transition: { staggerChildren: 0.09, delayChildren: 0.06 } },
+    exit: {},
+};
+const LINE_VARIANTS = {
+    enter: { y: '115%' },
+    center: { y: '0%', transition: { duration: 0.74, ease: SILK } },
+    exit: { y: '0%' },
 };
 
 const PHX = 147;   // phone centre x within the 294-wide composition column
@@ -132,7 +167,7 @@ const ACT1: FeelSlide[] = [
         h: 'A place that’s\nonly yours.',
         s: 'Every relationship deserves a world of its own.',
         cta: 'Start our story',
-        sky: 'linear-gradient(180deg,#ffaf4d,#ffc873 20%,#ffe2ad 38%,#fffaf4 62%)',
+        sky: 'linear-gradient(180deg,#ff8656,#ffa781 22%,#ffceba 42%,#fff3ec 64%)',
         sun: 1, glow: 1, cons: 0, mode: 'icon', cards: [],
     },
     {
@@ -140,7 +175,7 @@ const ACT1: FeelSlide[] = [
         h: 'Moments move\nfaster than\nwe can hold them.',
         s: 'The ordinary days are the ones we miss most.',
         cta: 'Continue',
-        sky: 'linear-gradient(180deg,#ff9a5e,#ffbe83 22%,#ffdcb8 40%,#fffaf5 62%)',
+        sky: 'linear-gradient(180deg,#ff7168,#ff938c 22%,#ffc0bc 42%,#fff1ef 64%)',
         sun: 0.8, glow: 0.7, cons: 0.12, mode: 'dev',
         cards: [
             { id: 'm', content: memCard('linear-gradient(135deg,#ffd3a0,#ff9bb6)', 'Jun 14', 'Sea Point'), x: 28, y: 56, w: 152, r: -5, d: 7 },
@@ -153,7 +188,7 @@ const ACT1: FeelSlide[] = [
         h: 'The little things\nbecome\nthe big things.',
         s: 'A small note. A quiet question. A day remembered.',
         cta: 'Continue',
-        sky: 'linear-gradient(180deg,#ff8f7e,#ffb693 24%,#ffd9c4 42%,#fffaf6 62%)',
+        sky: 'linear-gradient(180deg,#f85f72,#ff8496 22%,#ffb4c2 42%,#fff0f3 64%)',
         sun: 0.7, glow: 0.6, cons: 0.28, mode: 'dev',
         cards: [
             { id: 'q', content: chipCard(<MessageCircle size={15} style={{ color: '#c4683a' }} />, 'a quiet question'), x: 28, y: 58, w: 150, r: -5, d: 7.5 },
@@ -166,7 +201,7 @@ const ACT1: FeelSlide[] = [
         h: 'Not just keeping\nyour story.\nBuilding it.',
         s: 'Two of you, gathering into something only you share.',
         cta: 'Continue',
-        sky: 'linear-gradient(180deg,#ff7d92,#ffaa8f 26%,#ffd2c2 44%,#fffaf6 62%)',
+        sky: 'linear-gradient(180deg,#e6537f,#ff7aa0 22%,#ffa8c8 42%,#feeff5 64%)',
         sun: 0.6, glow: 0.55, cons: 0.72, mode: 'dev',
         cards: [
             { id: 'sync', content: dotsCard('in sync'), x: 28, y: 40, w: 122, r: -5, d: 7 },
@@ -180,7 +215,7 @@ const ACT1: FeelSlide[] = [
         h: 'Everything you share,\nin one place.',
         s: 'Memories, milestones, and everything in between.',
         cta: 'Continue',
-        sky: 'linear-gradient(180deg,#ff8763,#ffb07e 22%,#ffd4a6 42%,#fff6ec 64%)',
+        sky: 'linear-gradient(180deg,#cf4d8a,#ee74ac 22%,#ffa2cc 42%,#fceef6 64%)',
         sun: 0.85, glow: 0.78, cons: 0.55, mode: 'showcase', cards: [],
         tones: [
             { icon: <ImageIcon size={14} style={{ color: '#c4683a' }} />, label: 'Memories', x: 10, y: 100, w: 108 },
@@ -194,7 +229,7 @@ const ACT1: FeelSlide[] = [
         h: 'This is where\nyour story lives.',
         s: 'Welcome to Lior.',
         cta: 'Begin',
-        sky: 'linear-gradient(180deg,#ff8a63,#ffb27e 22%,#ffd6a8 42%,#fff6ec 64%)',
+        sky: 'linear-gradient(180deg,#b8478a,#dd6ea8 22%,#f59ec9 42%,#faebf4 64%)',
         sun: 0.95, glow: 0.9, cons: 1, mode: 'finale',
         cards: [],
     },
@@ -287,11 +322,11 @@ const StatusIcons: React.FC<{ color: string; h: number }> = ({ color, h }) => {
 // ─── The living sky: dust + a constellation that builds with each slide ────────
 
 const ACT2_SCENE = {
-    sky: 'linear-gradient(180deg,#ff9a6a,#ffc28e 24%,#ffe0be 44%,#fffaf4 64%)',
+    sky: 'linear-gradient(180deg,#dd6098,#f584b4 24%,#ffb2d2 44%,#fceef6 64%)',
     sun: 0.7, glow: 0.55, cons: 0.55,
 };
 const DONE_SCENE = {
-    sky: 'linear-gradient(180deg,#ff8a63,#ffb27e 22%,#ffd6a8 42%,#fff6ec 64%)',
+    sky: 'linear-gradient(180deg,#b8478a,#dd6ea8 22%,#f59ec9 42%,#faebf4 64%)',
     sun: 0.95, glow: 0.9, cons: 1,
 };
 
@@ -311,6 +346,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     const shellRef = useRef<HTMLDivElement>(null);
     const intensityTargetRef = useRef(0.15);
     const panRef = useRef(0);          // transient background pan, kicked on each advance
+    // Two-lights convergence: the couple's two souls find each other across Act I.
+    // 0 = far apart (feel1) → 1 = merged at centre (finale + Act II).
+    const soulTargetRef = useRef(0);
+    // Persists the eased convergence across canvas-effect re-runs (which fire on
+    // every slide) so the lights progress smoothly instead of snapping apart.
+    const soulCurRef = useRef(0);
     const [dir, setDir] = useState(1); // travel direction (+1 forward / -1 back)
 
     // Desktop preview only: scale the fixed 402x872 phone frame uniformly to fit
@@ -343,6 +384,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     }, [feelSlide, step]);
 
     useEffect(() => {
+        // Two-lights convergence drives across the whole flow: the two souls start
+        // far apart and draw together slide by slide, merging at the welcome + setup.
+        const SOUL_BY_STEP: Partial<Record<Step, number>> = {
+            feel1: 0, feel2: 0.22, feel3: 0.42, feel4: 0.66, feel5: 0.82, feel6: 1,
+        };
+        soulTargetRef.current = SOUL_BY_STEP[step] ?? 1; // Act II steps → stay merged
+
         // Signature "gather" beat on the welcome slide: the lights gather to
         // ~0.82, take a brief breath, then bloom to full — felt, not a linear fade.
         if (step === 'feel6') {
@@ -360,9 +408,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
     }, [anniversary]);
 
     const advance = (next: Step) => {
-        // The "Building it" slide is where the two lights converge — an intimate
-        // lub-dub instead of the usual light tick.
+        // Tactile choreography: "Building it" (feel4) = the two lights converge → an
+        // intimate lub-dub; arriving at the welcome (feel6) = a quiet celebratory
+        // milestone; everything else = the workhorse light tick.
         if (next === 'feel4') void Haptics.heartbeat();
+        else if (next === 'feel6') void Haptics.milestone();
         else void Haptics.tap();
         const d = STEP_ORDER.indexOf(next) >= STEP_ORDER.indexOf(step) ? 1 : -1;
         setDir(d);
@@ -464,8 +514,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             ph: Math.random() * 6.2832, sp: rnd(.3, .9), c: warm[(Math.random() * warm.length) | 0],
         }));
         const cstars = [[.34, .25], [.46, .16], [.6, .27], [.5, .36], [.4, .43], [.6, .43], [.5, .52]];
+        // Warm monsoon drizzle — faint, slow light-streaks slipping down through the
+        // sunset. Just a few thin additive lines; barely-there atmosphere, cheap.
+        const drizzle = Array.from({ length: 14 }, () => ({
+            x: Math.random(), y: Math.random(), len: rnd(16, 40), sp: rnd(.1, .22), a: rnd(.05, .13),
+        }));
 
-        let raf = 0, t = 0, intensity = 0.15;
+        let raf = 0, t = 0, intensity = 0.15, soul = soulCurRef.current;
 
         const drawSky = () => {
             ctx.clearRect(0, 0, W, H);
@@ -477,6 +532,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 ctx.globalAlpha = p.a * tw * .8;
                 const sz = p.r * 7;
                 ctx.drawImage(sprites[p.c], px - sz / 2, py - sz / 2, sz, sz);
+            }
+            // Monsoon drizzle — faint warm streaks falling through the dusk (additive).
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(255,220,214,1)';
+            for (const r of drizzle) {
+                const y = ((r.y + t * r.sp) % 1.12) * H - H * 0.06;
+                const x = r.x * W + panRef.current * 0.4;
+                ctx.globalAlpha = r.a;
+                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2.5, y + r.len); ctx.stroke();
             }
             if (intensity > 0.04) {
                 const pts = cstars.map(c => [c[0] * W + panRef.current, c[1] * H]);
@@ -497,6 +561,35 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                     ctx.globalAlpha = intensity * tw;
                     const sz = 7 + intensity * 5;
                     ctx.drawImage(sprites[warm[k % warm.length]], pts[k][0] - sz / 2, pts[k][1] - sz / 2, sz, sz);
+                }
+            }
+
+            // ── Two soul-lights: the couple finding each other across the slides.
+            // They start far apart and converge to the centre; a filament between
+            // them brightens as they near, and a warm bloom ignites where they meet
+            // (the "growing world"). Cheap — a few draws on the existing canvas. ──
+            {
+                const cx = W * 0.5 + panRef.current;
+                const sy = H * 0.155;
+                const spread = (1 - soul) * (W * 0.3) + W * 0.022;
+                const ax = cx - spread, bx = cx + spread;
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = `rgba(255,196,150,${(0.05 + soul * 0.3).toFixed(3)})`;
+                ctx.lineWidth = 1 + soul * 1.4;
+                ctx.beginPath(); ctx.moveTo(ax, sy); ctx.lineTo(bx, sy); ctx.stroke();
+                ctx.globalCompositeOperation = 'lighter';
+                const orb = (x: number, col: string, ph: number) => {
+                    const r = (11 + soul * 7) * (0.92 + 0.08 * Math.sin(t * 1.3 + ph));
+                    ctx.globalAlpha = 0.5 + soul * 0.42;
+                    ctx.drawImage(sprites[col], x - r, sy - r, r * 2, r * 2);
+                };
+                orb(ax, '#ff9fb6', 0);          // one soul — warm rose
+                orb(bx, '#ffcd92', 2.1);        // the other — warm amber
+                if (soul > 0.55) {              // they meet → the world ignites
+                    const m = (soul - 0.55) / 0.45;
+                    ctx.globalAlpha = m * 0.55 * (0.86 + 0.14 * Math.sin(t * 1.1));
+                    const mr = 24 + m * 22;
+                    ctx.drawImage(sprites['#fff1e2'], cx - mr, sy - mr, mr * 2, mr * 2);
                 }
             }
             ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -528,12 +621,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         const loop = () => {
             t += 0.016;
             intensity += (intensityTargetRef.current - intensity) * 0.05;
+            soul += (soulTargetRef.current - soul) * 0.045;   // souls ease together
+            soulCurRef.current = soul;                        // persist across re-runs
             panRef.current += (0 - panRef.current) * 0.08; // ease the pan kick back to rest
             drawSky(); drawDev();
             raf = requestAnimationFrame(loop);
         };
 
-        if (reduce) { intensity = intensityTargetRef.current; drawSky(); drawDev(); }
+        if (reduce) { intensity = intensityTargetRef.current; soul = soulTargetRef.current; soulCurRef.current = soul; drawSky(); drawDev(); }
         else raf = requestAnimationFrame(loop);
 
         return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', sizeSky); };
@@ -552,6 +647,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             const e = 1 - Math.pow(1 - p, 3);
             setDaysDisplay(Math.round(daysApart * e));
             if (p < 1) raf = requestAnimationFrame(tick);
+            else void Haptics.milestone();   // a soft tactile "landing" as the count settles
         };
         raf = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(raf);
@@ -565,17 +661,23 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         }
         if (step === 'myName') return { label: 'Continue', disabled: !myName.trim(), onClick: () => myName.trim() && advance('anniversary') };
         if (step === 'anniversary') return { label: 'Continue', onClick: () => enterFirstQuestion() };
-        if (step === 'first-question') return { label: 'Save · continue', disabled: !firstAnswer.trim(), onClick: () => firstAnswer.trim() && advance('done') };
+        if (step === 'first-question') return { label: 'Save · continue', disabled: !firstAnswer.trim(), onClick: () => { if (firstAnswer.trim()) { void Haptics.success(); advance('done'); } } };
         return { label: 'Invite your partner', onClick: () => void handlePairNow() };
     };
     const cta = ctaForStep();
+    const firstName = myName.trim().split(/\s+/)[0] || '';   // warm, personal greeting on the welcome
+    // The sun SETS across the flow — it sinks (and the sky deepens) slide by slide,
+    // fully down by the welcome + setup. 0 = high (feel1) → 1 = set (feel6 / Act II).
+    const sunSet = isFeel ? feelIndex / (FEEL_KEYS.length - 1) : 1;
 
     return (
+        <MotionConfig reducedMotion="user">
+        <LayoutGroup>
         <div className="lo-ob-shell" ref={shellRef}>
         <div className="lo-ob" style={{ background: scene.sky, color: '#2a211d' }}>
             <div className="lo-ob-glow" style={{ opacity: scene.glow }} />
-            <div className="lo-ob-sun" style={{ opacity: scene.sun }} />
-            <div className="lo-ob-rays" style={{ opacity: scene.sun * 0.85 }} />
+            <div className="lo-ob-sun" style={{ opacity: scene.sun, transform: `translateY(${Math.round(sunSet * 132)}px)` }} />
+            <div className="lo-ob-rays" style={{ opacity: scene.sun * 0.85, transform: `translateY(${Math.round(sunSet * 66)}px)` }} />
 
             <div className="lo-ob-scene">
                 <canvas ref={skyRef} className="lo-ob-sky" aria-hidden />
@@ -583,9 +685,22 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                 <div className="lo-ob-fade" />
             </div>
 
+
             {/* ── Act I: the phone-in-clouds hero ─────────────────────────── */}
+            {/* AnimatePresence stays mounted across feel1‑6 (stable key) and only
+                fires on the Act I → Act II hand‑off: the whole scene lifts and
+                dissolves upward as the setup card blooms in from centre. */}
+            <AnimatePresence>
             {isFeel && feelSlide && (
-                <div className="lo-ob-comp">
+                <motion.div
+                    className="lo-ob-comp"
+                    key="act1-comp"
+                    initial={{ opacity: 0, scale: 0.9, y: 30 }}
+                    animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.95, ease: SILK, delay: 0.15 } }}
+                    /* Opacity-only exit: keeps the finale mark's box untransformed so the
+                       shared-element morph into the Act II header mark projects cleanly. */
+                    exit={{ opacity: 0, transition: { duration: 0.44, ease: SILK } }}
+                >
                     {/* Mark — icon (slide 1), showcase (slide 5), finale (welcome).
                         CONDITIONALLY MOUNTED (not opacity-toggled) so the logo can
                         never linger or pop onto the phone slides. */}
@@ -625,15 +740,26 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                             ) : (
                                 <>
                                     {isFinale && <div className="lo-ob-finale-bloom" />}
+                                    {isFinale && <div className="lo-ob-ignite" />}
                                     {isFinale && <div className="lo-ob-finale-ring" />}
                                     {isFinale && <div className="lo-ob-finale-ring r2" />}
                                     {isFinale && <div className="lo-ob-beam" />}
-                                    <div
-                                        className="lo-ob-icon"
-                                        style={{ transform: isFinale ? 'scale(1.24)' : 'scale(1)' }}
-                                    >
-                                        <img src="/icon-128.png" alt="Lior" />
-                                    </div>
+                                    {/* On the finale, the mark carries layoutId="lior-mark" so it
+                                        morphs into the Act II header mark on the hand-off. Its
+                                        enlarged size is a CSS modifier (not an inline scale) so the
+                                        FLIP interpolates size cleanly without a transform clash. */}
+                                    {isFinale ? (
+                                        // borderRadius in inline style (not just the CSS class) so
+                                        // Framer scrapes it as a projection value and counter-scales
+                                        // the squircle corners through the FLIP into the header mark.
+                                        <motion.div className="lo-ob-icon is-finale" layoutId="lior-mark" style={{ borderRadius: 32 }}>
+                                            <img src="/icon-128.png" alt="Lior" />
+                                        </motion.div>
+                                    ) : (
+                                        <div className="lo-ob-icon">
+                                            <img src="/icon-128.png" alt="Lior" />
+                                        </div>
+                                    )}
                                     {isIconMode && <div className="lo-ob-name">Lior</div>}
                                 </>
                             )}
@@ -678,19 +804,20 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                     <div className="lo-ob-cards">
                         <AnimatePresence>
                             {feelSlide.cards.map((c, i) => {
-                                // Tiered springs: foreground cards snap in first (snappier),
-                                // deeper layers settle gently — a layered "eruption", not a flat stagger.
+                                // Smooth tiered eruption: cards rise out of the phone and settle
+                                // gently into place, foreground first — calm, well-damped springs
+                                // (no spin, no overshoot), a layered reveal rather than an explosion.
                                 const spring = i === 0
-                                    ? { type: 'spring' as const, stiffness: 380, damping: 32, mass: 0.8 }
+                                    ? { type: 'spring' as const, stiffness: 360, damping: 32, mass: 0.8 }
                                     : i === 1
                                         ? { type: 'spring' as const, stiffness: 260, damping: 30, mass: 0.9 }
-                                        : { type: 'spring' as const, stiffness: 200, damping: 28, mass: 1.1 };
+                                        : { type: 'spring' as const, stiffness: 210, damping: 29, mass: 1.05 };
                                 return (
                                     <motion.div
                                         key={`${step}-${c.id}`}
                                         className="lo-ob-card"
                                         style={{ left: c.x, top: c.y, width: c.w }}
-                                        initial={{ x: PHX - (c.x + c.w / 2), y: PHY - (c.y + 22), scale: 0.32, opacity: 0, rotate: 0 }}
+                                        initial={{ x: PHX - (c.x + c.w / 2), y: PHY - (c.y + 22), scale: 0.34, opacity: 0, rotate: 0 }}
                                         animate={{ x: 0, y: 0, scale: 1, opacity: 1, rotate: c.r }}
                                         exit={{ x: PHX - (c.x + c.w / 2), y: PHY - (c.y + 22), scale: 0.3, opacity: 0, rotate: 0, transition: { duration: 0.32, ease: [0.4, 0, 0.2, 1] } }}
                                         transition={{ delay: 0.16 + i * 0.1, ...spring }}
@@ -703,83 +830,110 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                             })}
                         </AnimatePresence>
                     </div>
-                </div>
-            )}
-
-            {/* ── Act II: setup steps (centered glass forms) ──────────────── */}
-            {step === 'myName' && (
-                <motion.div className="lo-ob-form" key="myName" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
-                    <p className="lo-ob-eyebrow">Step 1 of 3</p>
-                    <div className="lo-ob-namebig">{myName ? myName : <span className="ph">your name</span>}</div>
-                    <h2 className="lo-ob-formh">What should we call you?</h2>
-                    <p className="lo-ob-forms">How you’ll appear in your shared space.</p>
-                    <input
-                        ref={nameRef}
-                        className="lo-ob-input"
-                        value={myName}
-                        onChange={(e) => setMyName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && myName.trim()) advance('anniversary'); }}
-                        autoCapitalize="words" autoCorrect="off" autoComplete="off" spellCheck={false}
-                        maxLength={32} placeholder="Type your name…"
-                    />
                 </motion.div>
             )}
+            </AnimatePresence>
 
-            {step === 'anniversary' && (
-                <motion.div className="lo-ob-form" key="anniversary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
-                    <p className="lo-ob-eyebrow">Step 2 of 3</p>
-                    <h2 className="lo-ob-formh">When did your story begin?</h2>
-                    <p className="lo-ob-forms">The day everything changed.</p>
-                    <div className="lo-ob-input" style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
-                        <Calendar size={20} style={{ color: '#e8657a', flexShrink: 0 }} />
-                        <input
-                            type="date" value={anniversary} max={todayInputValue()}
-                            onChange={(e) => setAnniversary(e.target.value)}
-                            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: anniversary ? '#2a211d' : '#94897e', width: '100%', cursor: 'pointer' }}
-                        />
-                    </div>
-                    {anniversary && daysApart > 0 && (
-                        <div className="lo-ob-days">{daysDisplay.toLocaleString()}<small>days together — and counting</small></div>
+            {/* ── Act II: setup steps (centered glass forms) ──────────────────
+                One stage, one AnimatePresence. Each step is a card that slides in
+                the travel direction while its fields cascade upward (FIELD_VARIANTS
+                stagger); the outgoing step slides the opposite way and dissolves,
+                so consecutive steps read as one continuous "page turn". The shared
+                grid cell keeps both stacked + centred during the brief overlap.
+                The header mark persists across all Act II steps and carries
+                layoutId="lior-mark", so the Act I finale mark MORPHS down into it on
+                the hand-off and it stays as the quiet brand anchor through setup. */}
+            <div className="lo-ob-formstage">
+                {!isFeel && (
+                    <motion.div
+                        className="lo-ob-headmark"
+                        layoutId="lior-mark"
+                        aria-hidden
+                        style={{ borderRadius: 17 }}
+                        transition={{ layout: { type: 'spring', bounce: 0, duration: 0.62 } }}
+                    >
+                        <img src="/icon-128.png" alt="" />
+                    </motion.div>
+                )}
+                <div className="lo-ob-forms-grid">
+                <AnimatePresence custom={dir}>
+                    {step === 'myName' && (
+                        <motion.div className="lo-ob-form" key="myName" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 1 of 3</motion.p>
+                            <motion.div className="lo-ob-namebig" variants={FIELD_VARIANTS}>{myName ? myName : <span className="ph">your name</span>}</motion.div>
+                            <motion.h2 className="lo-ob-formh" variants={FIELD_VARIANTS}>What should we call you?</motion.h2>
+                            <motion.p className="lo-ob-forms" variants={FIELD_VARIANTS}>How you’ll appear in your shared space.</motion.p>
+                            <motion.input
+                                ref={nameRef}
+                                variants={FIELD_VARIANTS}
+                                className="lo-ob-input"
+                                value={myName}
+                                onChange={(e) => setMyName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && myName.trim()) advance('anniversary'); }}
+                                autoCapitalize="words" autoCorrect="off" autoComplete="off" spellCheck={false}
+                                maxLength={32} placeholder="Type your name…"
+                            />
+                        </motion.div>
                     )}
-                </motion.div>
-            )}
 
-            {step === 'first-question' && (
-                <motion.div className="lo-ob-form" key="first-question" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
-                    <p className="lo-ob-eyebrow">Step 3 of 3</p>
-                    <div className="lo-ob-qcard">
-                        <p className="lo-ob-qlabel">Today’s question</p>
-                        <p className="lo-ob-qtext">“{firstQuestion}”</p>
-                    </div>
-                    <textarea
-                        ref={answerRef}
-                        className="lo-ob-ta"
-                        value={firstAnswer}
-                        onChange={(e) => { setFirstAnswer(e.target.value); if (e.target.value.length > 0) void Haptics.select(); }}
-                        placeholder="Write your answer…"
-                        rows={3} maxLength={300}
-                        autoCapitalize="sentences" autoCorrect="on" spellCheck
-                    />
-                    <p className="lo-ob-seal"><Lock size={14} /> Sealed until your partner answers too.</p>
-                </motion.div>
-            )}
+                    {step === 'anniversary' && (
+                        <motion.div className="lo-ob-form" key="anniversary" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 2 of 3</motion.p>
+                            <motion.h2 className="lo-ob-formh" variants={FIELD_VARIANTS}>When did your story begin?</motion.h2>
+                            <motion.p className="lo-ob-forms" variants={FIELD_VARIANTS}>The day everything changed.</motion.p>
+                            <motion.div className="lo-ob-input" variants={FIELD_VARIANTS} style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+                                <Calendar size={20} style={{ color: '#e8657a', flexShrink: 0 }} />
+                                <input
+                                    type="date" value={anniversary} max={todayInputValue()}
+                                    onChange={(e) => setAnniversary(e.target.value)}
+                                    style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: anniversary ? '#2a211d' : '#94897e', width: '100%', cursor: 'pointer' }}
+                                />
+                            </motion.div>
+                            {anniversary && daysApart > 0 && (
+                                <div className="lo-ob-days">{daysDisplay.toLocaleString()}<small>days together — and counting</small></div>
+                            )}
+                        </motion.div>
+                    )}
 
-            {step === 'done' && (
-                <motion.div className="lo-ob-form" key="done" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
-                    <div className="lo-ob-icon" style={{ position: 'relative', left: 'auto', top: 'auto', margin: '0 auto 20px' }}>
-                        <img src="/icon-128.png" alt="Lior" />
-                    </div>
-                    <p className="lo-ob-eyebrow">Welcome</p>
-                    <h2 className="lo-ob-formh" style={{ fontSize: myName.length > 10 ? '30px' : '36px', marginBottom: 18 }}>{myName || 'You’re all set'}</h2>
-                    <div className="lo-ob-invite">
-                        <div className="lo-ob-qr"><QrCode size={40} /></div>
-                        <div style={{ textAlign: 'left' }}>
-                            <p className="lo-ob-qlabel">One last step</p>
-                            <p className="lo-ob-seal" style={{ justifyContent: 'flex-start', margin: '6px 0 0' }}><Share2 size={13} /> Tap “Invite your partner” to get your real code.</p>
-                        </div>
-                    </div>
-                </motion.div>
-            )}
+                    {step === 'first-question' && (
+                        <motion.div className="lo-ob-form" key="first-question" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>Step 3 of 3</motion.p>
+                            <motion.div className="lo-ob-qcard" variants={FIELD_VARIANTS}>
+                                <p className="lo-ob-qlabel">Today’s question</p>
+                                <p className="lo-ob-qtext">“{firstQuestion}”</p>
+                            </motion.div>
+                            <motion.textarea
+                                ref={answerRef}
+                                variants={FIELD_VARIANTS}
+                                className="lo-ob-ta"
+                                value={firstAnswer}
+                                onChange={(e) => { setFirstAnswer(e.target.value); if (e.target.value.length > 0) void Haptics.select(); }}
+                                placeholder="Write your answer…"
+                                rows={3} maxLength={300}
+                                autoCapitalize="sentences" autoCorrect="on" spellCheck
+                            />
+                            <motion.p className="lo-ob-seal" variants={FIELD_VARIANTS}><Lock size={14} /> Sealed until your partner answers too.</motion.p>
+                        </motion.div>
+                    )}
+
+                    {step === 'done' && (
+                        <motion.div className="lo-ob-form" key="done" variants={FORM_VARIANTS} custom={dir} initial="enter" animate="center" exit="exit">
+                            {/* The Lior mark is the persistent header mark above the stage
+                                (it morphed in from Act I) — no separate icon here. */}
+                            <motion.p className="lo-ob-eyebrow" variants={FIELD_VARIANTS}>{firstName ? 'Welcome,' : 'Welcome'}</motion.p>
+                            <motion.h2 className="lo-ob-formh" variants={FIELD_VARIANTS} style={{ fontSize: firstName.length > 10 ? '30px' : '38px', marginBottom: 18 }}>{firstName || 'You’re all set'}</motion.h2>
+                            <motion.div className="lo-ob-invite" variants={FIELD_VARIANTS}>
+                                <div className="lo-ob-qr"><QrCode size={40} /></div>
+                                <div style={{ textAlign: 'left' }}>
+                                    <p className="lo-ob-qlabel">One last step</p>
+                                    <p className="lo-ob-seal" style={{ justifyContent: 'flex-start', margin: '6px 0 0' }}><Share2 size={13} /> Tap “Invite your partner” to get your real code.</p>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+                </div>
+            </div>
 
             {/* ── Bottom panel: copy (Act I) + progress + CTA ─────────────── */}
             <div className="lo-ob-panel">
@@ -794,9 +948,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
                                 initial="enter"
                                 animate="center"
                                 exit="exit"
-                                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                                transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
                             >
-                                <h1 className="lo-ob-h">{feelSlide.h}</h1>
+                                <motion.h1 className="lo-ob-h" variants={HEADLINE_VARIANTS}>
+                                    {feelSlide.h.split('\n').map((line, i) => (
+                                        <span className="lo-ob-h-line" key={i}>
+                                            <motion.span className="lo-ob-h-inner" variants={LINE_VARIANTS}>{line}</motion.span>
+                                        </span>
+                                    ))}
+                                </motion.h1>
                                 <p className="lo-ob-s">{feelSlide.s}</p>
                             </motion.div>
                         </AnimatePresence>
@@ -834,5 +994,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
             </div>
         </div>
         </div>
+        </LayoutGroup>
+        </MotionConfig>
     );
 };
