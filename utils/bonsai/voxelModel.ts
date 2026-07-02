@@ -50,26 +50,45 @@ export interface BlossomAnchor {
 
 export type BonsaiSpeciesId = 'sakura' | 'wisteria' | 'plum' | 'maple';
 
-/** Geometry grammar — what makes each species SHAPED differently. */
+/**
+ * Geometry grammar — what makes each species a DIFFERENT bonsai style.
+ * The defining bonsai look: flat foliage PADS stacked with negative space
+ * along a dramatic trunk, largest pad lowest, a small apex crowning the top.
+ */
 export interface BonsaiShape {
   /** Trunk height range (voxels). */
   height: [number, number];
-  /** Lean amplitude range — how gnarled the S-curve is. */
+  /** Lean amplitude range — how dramatic the trunk line is. */
   lean: [number, number];
-  /** Main crown lobe radius range. */
-  crownRx: [number, number];
-  /** Crown flatness: ry = rx * crownFlat (low = wide umbrella, high = dome). */
-  crownFlat: number;
-  /** Number of secondary crown lobes. */
-  lobes: number;
-  /** How far secondary lobes scatter from the main lobe (× crownRx). */
-  lobeSpread: [number, number];
-  /** Shell drop fraction — high = airy, see-through crown (plum). */
+  /** true = one-direction arc (cascade); false = classic S-curve (moyogi). */
+  arc?: boolean;
+  /** Trunk thickness multiplier (literati trunks are thin). */
+  girth: number;
+  /** Foliage pad tiers stacked along the trunk, including the apex. */
+  tiers: number;
+  /** Lowest (largest) pad radius range. */
+  padRx: [number, number];
+  /** Pad flatness: ry = max(1.7, rx * padFlat). Low = razor-flat clouds. */
+  padFlat: number;
+  /** Each tier above shrinks by this factor. */
+  padShrink: number;
+  /** Shell drop fraction — high = airy, see-through pads. */
   sparse: number;
-  /** Branch length range (they reach from trunk into the crown). */
+  /** Foliage voxel size — fine-leaved species use smaller cubes. */
+  leafSize: number;
+  /** Side-branch reach from trunk to pad centres. */
   branchLen: [number, number];
-  /** 0 = none; 1 = blossom tails hang below the crown (wisteria). */
+  /** 0 = none; 1 = blossom racemes hang below pad rims (wisteria). */
   droop: number;
+  /** Blossoms bud straight from bare wood (plum flowers before leafing). */
+  bareBloom?: boolean;
+}
+
+/** Each species gets its own glazed ceramic. */
+export interface BonsaiPot {
+  body: string;
+  rim: string;
+  foot: string;
 }
 
 export interface BonsaiSpecies {
@@ -80,6 +99,7 @@ export interface BonsaiSpecies {
   blossom: readonly string[];
   blossomBright: string;
   trunk: readonly string[];
+  pot: BonsaiPot;
   shape: BonsaiShape;
 }
 
@@ -92,11 +112,12 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossom: ['#f6c9d7', '#f2aec4', '#ec92ae', '#e77c9d'],
     blossomBright: '#fbe3ec',
     trunk: ['#8a6248', '#81593f', '#936b4f'],
-    // Classic broad umbrella over a curving trunk.
+    pot: { body: '#c98a8f', rim: '#b5767c', foot: '#a2666d' },
+    // Moyogi (informal upright): S-curve trunk, three alternating pads + apex.
     shape: {
-      height: [11, 13], lean: [1.2, 1.8],
-      crownRx: [5.4, 6.2], crownFlat: 0.48, lobes: 4, lobeSpread: [0.5, 0.75],
-      sparse: 0.13, branchLen: [2.5, 4], droop: 0,
+      height: [10, 12], lean: [1.6, 2.2], girth: 1,
+      tiers: 4, padRx: [4.4, 5.2], padFlat: 0.34, padShrink: 0.74,
+      sparse: 0.13, leafSize: 0.9, branchLen: [2.4, 3.4], droop: 0,
     },
   },
   wisteria: {
@@ -107,11 +128,12 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossom: ['#cdb4e2', '#b79bd8', '#a487c9', '#8f72b8'],
     blossomBright: '#e6d7f2',
     trunk: ['#7d6a56', '#71604c', '#89755f'],
-    // Low, arched, extra-wide flat canopy dripping blossom tails.
+    pot: { body: '#5b6b8c', rim: '#4c5a77', foot: '#414d66' },
+    // Cascade-leaning arch: broad flat canopy raining blossom racemes.
     shape: {
-      height: [9, 11], lean: [2.0, 2.8],
-      crownRx: [6.4, 7.2], crownFlat: 0.34, lobes: 3, lobeSpread: [0.55, 0.8],
-      sparse: 0.12, branchLen: [3, 5], droop: 1,
+      height: [8, 10], lean: [2.6, 3.4], arc: true, girth: 1.05,
+      tiers: 2, padRx: [5.6, 6.4], padFlat: 0.3, padShrink: 0.72,
+      sparse: 0.1, leafSize: 0.88, branchLen: [2, 3], droop: 1,
     },
   },
   plum: {
@@ -122,11 +144,14 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossom: ['#f7e6ea', '#f2c9d4', '#e8a4b8', '#c96f8c'],
     blossomBright: '#fdf4f6',
     trunk: ['#6f4a38', '#654232', '#7a5440'],
-    // Tall, angular, AIRY — separate blossom clouds on long visible branches.
+    pot: { body: '#9a8d80', rim: '#877a6e', foot: '#75695e' },
+    // Literati (bunjin): tall thin serpentine trunk, sparse crowns high up,
+    // blossoms budding straight from the bare wood.
     shape: {
-      height: [13, 15], lean: [2.2, 3.0],
-      crownRx: [3.2, 3.9], crownFlat: 0.6, lobes: 5, lobeSpread: [1.0, 1.5],
-      sparse: 0.24, branchLen: [4, 6], droop: 0,
+      height: [13, 15], lean: [2.6, 3.4], girth: 0.72,
+      tiers: 2, padRx: [2.6, 3.2], padFlat: 0.44, padShrink: 0.82,
+      sparse: 0.3, leafSize: 0.74, branchLen: [3.2, 4.6], droop: 0,
+      bareBloom: true,
     },
   },
   maple: {
@@ -137,11 +162,13 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossom: ['#e2734b', '#d95f3b', '#c94f2f', '#e88a5a'],
     blossomBright: '#f2a06a',
     trunk: ['#77503c', '#6c4735', '#835a44'],
-    // Upright and full — a tall layered dome on a straighter trunk.
+    pot: { body: '#a9c4b0', rim: '#93b09c', foot: '#7f9c88' },
+    // Upright layered broom: thick trunk, dense fine-leaf tiers, the lower
+    // pads burning darker red than the crown.
     shape: {
-      height: [13, 15], lean: [0.7, 1.1],
-      crownRx: [5.2, 6.0], crownFlat: 0.66, lobes: 4, lobeSpread: [0.45, 0.7],
-      sparse: 0.1, branchLen: [2, 3.5], droop: 0,
+      height: [11, 13], lean: [1.0, 1.4], girth: 1.12,
+      tiers: 4, padRx: [4.2, 5.0], padFlat: 0.4, padShrink: 0.72,
+      sparse: 0.06, leafSize: 0.84, branchLen: [2, 3], droop: 0,
     },
   },
 };
@@ -232,7 +259,7 @@ const fillDisc = (
   }
 };
 
-/** Gnarled bonsai trunk: an S-curve lean, parameters from the species shape. */
+/** Bonsai trunk line: S-curve (moyogi) or one-direction arc (cascade). */
 const buildTrunkPath = (rng: Rng, baseY: number, shape: BonsaiShape): PathPoint[] => {
   const height = rngInt(rng, shape.height[0], shape.height[1]);
   const leanDir = rngRange(rng, 0, Math.PI * 2);
@@ -242,170 +269,212 @@ const buildTrunkPath = (rng: Rng, baseY: number, shape: BonsaiShape): PathPoint[
   // Half-steps keep the voxelised curve connected through diagonal moves.
   for (let i = 0; i <= height * 2; i++) {
     const t = i / (height * 2);
-    // S-curve: lean out, then pull back over the pot.
-    const sway = Math.sin(t * Math.PI) * leanAmp - Math.sin(t * Math.PI * 2) * leanAmp * counter * 0.4;
+    // Cascade arcs steadily out over the pot edge; moyogi leans out then
+    // pulls the apex back over the nebari (the classic S).
+    const sway = shape.arc
+      ? Math.sin(t * Math.PI * 0.55) * leanAmp
+      : Math.sin(t * Math.PI) * leanAmp - Math.sin(t * Math.PI * 2) * leanAmp * counter * 0.4;
     const x = Math.cos(leanDir) * sway;
     const z = Math.sin(leanDir) * sway * 0.8;
-    const r = 2.0 * (1 - t) + 0.7;
+    const r = (2.0 * (1 - t) + 0.7) * shape.girth;
     points.push({ x, y: baseY + i / 2, z, r, t });
   }
   return points;
 };
 
 /**
- * The crown is ONE coherent mass: a big central lobe sitting on the trunk
- * top (so the trunk visibly enters it), with species-many secondary lobes
- * scattered around it. Sakura reads umbrella, wisteria reads wide-and-flat,
- * plum reads as separate airy clouds, maple reads tall dome.
+ * Bonsai pads: flat foliage clouds stacked with NEGATIVE SPACE between them.
+ * Side pads alternate left/right of the trunk line (the classic staircase
+ * silhouette), shrink as they climb, and a small apex pad crowns the top.
  */
-interface CrownLobe {
+interface PadSpec {
   cx: number;
   cy: number;
   cz: number;
   rx: number;
   ry: number;
   rz: number;
-  /** Growth threshold base — the main lobe leafs out first. */
+  /** Growth threshold base — lower pads leaf out first. */
   attachT: number;
-  main: boolean;
+  /** 0 = lowest tier … 1 = apex; drives the maple's fire gradient. */
+  tint: number;
+  /** Trunk point the pad's branch grows from (apex has none). */
+  branchFrom: PathPoint | null;
 }
 
-const planCrown = (rng: Rng, trunk: PathPoint[], shape: BonsaiShape): CrownLobe[] => {
+const planPads = (rng: Rng, trunk: PathPoint[], shape: BonsaiShape): PadSpec[] => {
+  const pads: PadSpec[] = [];
   const top = trunk[trunk.length - 1];
-  const rx = rngRange(rng, shape.crownRx[0], shape.crownRx[1]);
-  const ry = Math.max(2, rx * shape.crownFlat);
-  // Pull the crown centre back over the pot so the silhouette balances.
-  const main: CrownLobe = {
-    cx: top.x * 0.5,
-    cy: top.y + ry * 0.45,
-    cz: top.z * 0.5,
-    rx,
-    ry,
-    rz: rx * rngRange(rng, 0.85, 1),
-    attachT: 0.5,
-    main: true,
-  };
-  const lobes: CrownLobe[] = [main];
-  const golden = 2.39996;
-  let azimuth = rngRange(rng, 0, Math.PI * 2);
-  for (let i = 0; i < shape.lobes; i++) {
-    azimuth += golden + rngRange(rng, -0.3, 0.3);
-    const spread = rx * rngRange(rng, shape.lobeSpread[0], shape.lobeSpread[1]);
-    const scale = rngRange(rng, 0.45, 0.62);
-    lobes.push({
-      cx: main.cx + Math.cos(azimuth) * spread,
-      cy: main.cy + rngRange(rng, -ry * 0.45, ry * 0.55),
-      cz: main.cz + Math.sin(azimuth) * spread * 0.9,
-      rx: rx * scale,
-      ry: Math.max(1.4, ry * scale * 1.1),
-      rz: rx * scale * rngRange(rng, 0.85, 1),
-      attachT: 0.62 + i * 0.07,
-      main: false,
+  const baseRx = rngRange(rng, shape.padRx[0], shape.padRx[1]);
+  const sideTiers = Math.max(0, shape.tiers - 1);
+  // Side pads jut perpendicular-ish to the lean so the silhouette staggers.
+  const leanAngle = Math.atan2(top.z, top.x || 0.001);
+  let side = rng() < 0.5 ? 1 : -1;
+
+  for (let i = 0; i < sideTiers; i++) {
+    const attachT = 0.42 + (i / Math.max(1, sideTiers)) * 0.4;
+    const from = trunk[Math.round(attachT * (trunk.length - 1))];
+    const rx = baseRx * Math.pow(shape.padShrink, i);
+    const ry = Math.max(1.7, rx * shape.padFlat);
+    const azimuth = leanAngle + side * (Math.PI / 2 + rngRange(rng, -0.35, 0.35));
+    side = -side;
+    const reach = rngRange(rng, shape.branchLen[0], shape.branchLen[1]) + rx * 0.4;
+    pads.push({
+      cx: from.x + Math.cos(azimuth) * reach,
+      cy: from.y + rngRange(rng, 0.8, 1.6),
+      cz: from.z + Math.sin(azimuth) * reach * 0.85,
+      rx,
+      ry,
+      rz: rx * rngRange(rng, 0.85, 1),
+      attachT,
+      tint: sideTiers <= 1 ? 0 : i / sideTiers,
+      branchFrom: from,
     });
   }
-  return lobes;
+
+  // Apex pad sits ON the trunk top — the tree's crown.
+  const apexRx = Math.max(2.2, baseRx * Math.pow(shape.padShrink, sideTiers));
+  const apexRy = Math.max(1.7, apexRx * shape.padFlat * 1.15);
+  pads.push({
+    cx: top.x,
+    cy: top.y + apexRy * 0.5,
+    cz: top.z,
+    rx: apexRx,
+    ry: apexRy,
+    rz: apexRx * rngRange(rng, 0.85, 1),
+    attachT: 0.86,
+    tint: 1,
+    branchFrom: null,
+  });
+  return pads;
 };
 
-/** Thick connecting branches from the trunk out to each secondary lobe. */
-const buildBranchesToLobes = (
+/** Thick, slightly sagging limbs from the trunk out to each side pad. */
+const buildBranchesToPads = (
   out: Voxel[],
   rng: Rng,
-  trunk: PathPoint[],
-  lobes: CrownLobe[],
+  pads: PadSpec[],
   species: BonsaiSpecies,
 ): void => {
-  const shape = species.shape;
-  for (const lobe of lobes) {
-    if (lobe.main) continue;
-    // Attach where the trunk is closest in height to just under the lobe.
-    const attachT = Math.min(0.9, Math.max(0.45, rngRange(rng, 0.55, 0.85)));
-    const start = trunk[Math.round(attachT * (trunk.length - 1))];
-    const target = { x: lobe.cx, y: lobe.cy - lobe.ry * 0.4, z: lobe.cz };
-    const len = Math.hypot(target.x - start.x, target.y - start.y, target.z - start.z);
-    const capped = Math.min(len, rngRange(rng, shape.branchLen[0], shape.branchLen[1]) + len * 0.4);
-    const steps = Math.max(4, Math.round(capped)) * 2;
+  for (const pad of pads) {
+    const from = pad.branchFrom;
+    if (!from) continue;
+    const target = { x: pad.cx, y: pad.cy - pad.ry * 0.35, z: pad.cz };
+    const len = Math.hypot(target.x - from.x, target.y - from.y, target.z - from.z);
+    const steps = Math.max(4, Math.round(len)) * 2;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       // Slight sag makes the limb read as wood carrying weight.
-      const sag = Math.sin(t * Math.PI) * 0.5;
+      const sag = Math.sin(t * Math.PI) * 0.45;
       fillDisc(
         out,
         {
-          x: start.x + (target.x - start.x) * t,
-          y: start.y + (target.y - start.y) * t - sag,
-          z: start.z + (target.z - start.z) * t,
-          r: 1.1 * (1 - t) + 0.4,
+          x: from.x + (target.x - from.x) * t,
+          y: from.y + (target.y - from.y) * t - sag,
+          z: from.z + (target.z - from.z) * t,
+          r: (1.05 * (1 - t) + 0.42) * species.shape.girth,
           t,
         },
         (r) => rngPick(r, species.trunk),
         'branch',
-        (radial) => Math.min(0.9, 0.08 + attachT * 0.26 + t * 0.1 + radial * 0.04),
+        (radial) => Math.min(0.9, 0.06 + pad.attachT * 0.28 + t * 0.1 + radial * 0.04),
         rng,
       );
     }
   }
 };
 
-const fillLobe = (
+const fillPad = (
   out: Voxel[],
   anchors: BlossomAnchor[],
   rng: Rng,
-  lobe: CrownLobe,
+  pad: PadSpec,
   species: BonsaiSpecies,
 ): void => {
   const shape = species.shape;
-  const layer: VoxelLayer = lobe.cz < 0 ? 'canopyBack' : 'canopyFront';
-  // Leaves arrive early (main lobe by G≈0.3) so the young tree never looks bare.
-  const baseThreshold = lobe.main ? 0.24 : 0.14 + lobe.attachT * 0.34;
+  const layer: VoxelLayer = pad.cz < 0 ? 'canopyBack' : 'canopyFront';
+  // Lower pads leaf out first so the young tree never looks bare.
+  const baseThreshold = 0.16 + pad.attachT * 0.36;
+  // Maple's fire gradient: lower pads burn darker than the crown.
+  const tintShift = (pad.tint - 0.5) * 0.12;
 
-  for (let dx = -Math.ceil(lobe.rx); dx <= Math.ceil(lobe.rx); dx++) {
-    for (let dy = -Math.ceil(lobe.ry); dy <= Math.ceil(lobe.ry); dy++) {
-      for (let dz = -Math.ceil(lobe.rz); dz <= Math.ceil(lobe.rz); dz++) {
-        const d = Math.hypot(dx / lobe.rx, dy / lobe.ry, dz / lobe.rz);
+  for (let dx = -Math.ceil(pad.rx); dx <= Math.ceil(pad.rx); dx++) {
+    for (let dy = -Math.ceil(pad.ry); dy <= Math.ceil(pad.ry); dy++) {
+      for (let dz = -Math.ceil(pad.rz); dz <= Math.ceil(pad.rz); dz++) {
+        const d = Math.hypot(dx / pad.rx, dy / pad.ry, dz / pad.rz);
         if (d > 1) continue;
-        const shell = d > 0.62;
-        // Ragged silhouette: drop shell voxels so the crown reads as living
-        // foliage; plum drops many more for its airy look.
+        // Bonsai pads are cloud-topped and FLAT underneath: trim the belly.
+        if (dy < -pad.ry * 0.3 && d > 0.5) continue;
+        const shell = d > 0.6;
+        // Ragged silhouette; literati pads drop far more for the airy look.
         if (shell && rng() < shape.sparse) continue;
-        // The underside thins out — real crowns are darker and sparser below.
-        if (dy < -lobe.ry * 0.4 && rng() < 0.35) continue;
-        const threshold = Math.min(0.985, baseThreshold + d * 0.3 + rngRange(rng, 0, 0.04));
-        // Outer shell voxels turn pink first; the core keeps green depth.
+        const threshold = Math.min(0.985, baseThreshold + d * 0.28 + rngRange(rng, 0, 0.04));
+        // Outer shell voxels turn colour first; the core keeps green depth.
         const bloomAt = shell ? rngRange(rng, 0.05, 0.75) : rngRange(rng, 0.55, 1.15);
         push(out, {
-          x: Math.round(lobe.cx + dx),
-          y: Math.round(lobe.cy + dy),
-          z: Math.round(lobe.cz + dz),
-          color: rngPick(rng, species.leaf),
+          x: Math.round(pad.cx + dx),
+          y: Math.round(pad.cy + dy),
+          z: Math.round(pad.cz + dz),
+          color: shadeHex(rngPick(rng, species.leaf), tintShift),
           kind: 'leaf',
           layer,
           threshold,
           bloomAt,
-          size: shell ? 0.88 : 1,
+          size: shell ? shape.leafSize : 1,
         });
-        if (shell && dy >= 0 && rng() < 0.12) {
-          anchors.push({ x: Math.round(lobe.cx + dx), y: Math.round(lobe.cy + dy) + 1, z: Math.round(lobe.cz + dz), layer });
+        if (shell && dy >= 0 && rng() < 0.3) {
+          anchors.push({ x: Math.round(pad.cx + dx), y: Math.round(pad.cy + dy) + 1, z: Math.round(pad.cz + dz), layer });
         }
-        // Wisteria: blossom tails rain from the crown's underside.
-        if (shape.droop > 0 && shell && dy <= -lobe.ry * 0.35 && rng() < 0.42) {
-          const tail = rngInt(rng, 2, 4);
+        // Wisteria racemes: tapering blossom columns raining from pad rims.
+        if (shape.droop > 0 && d > 0.7 && dy <= 0 && rng() < 0.45) {
+          const tail = rngInt(rng, 3, 5);
           for (let t = 1; t <= tail; t++) {
             push(out, {
-              x: Math.round(lobe.cx + dx),
-              y: Math.round(lobe.cy + dy) - t,
-              z: Math.round(lobe.cz + dz),
+              x: Math.round(pad.cx + dx),
+              y: Math.round(pad.cy + dy) - t,
+              z: Math.round(pad.cz + dz),
               color: rngPick(rng, species.leaf),
               kind: 'leaf',
               layer,
-              threshold: Math.min(0.985, threshold + t * 0.05),
-              bloomAt: rngRange(rng, 0.02, 0.4),
-              size: 0.74,
+              threshold: Math.min(0.985, threshold + t * 0.04),
+              bloomAt: rngRange(rng, 0.02, 0.35),
+              size: Math.max(0.5, 0.8 - t * 0.07),
             });
           }
         }
       }
     }
   }
+};
+
+/** Plum blooms on bare wood: blossom buds sprinkled along trunk + limbs. */
+const buildBareBlooms = (out: Voxel[], rng: Rng, trunk: PathPoint[], species: BonsaiSpecies): void => {
+  for (const p of trunk) {
+    if (p.t < 0.35 || rng() > 0.55) continue;
+    const ox = rngInt(rng, -1, 1);
+    const oz = rngInt(rng, -1, 1);
+    if (ox === 0 && oz === 0) continue;
+    push(out, {
+      x: Math.round(p.x) + ox,
+      y: Math.round(p.y) + rngInt(rng, 0, 1),
+      z: Math.round(p.z) + oz,
+      color: rngPick(rng, species.leaf),
+      kind: 'leaf',
+      layer: oz < 0 ? 'canopyBack' : 'canopyFront',
+      threshold: Math.min(0.985, 0.3 + p.t * 0.35 + rngRange(rng, 0, 0.05)),
+      bloomAt: rngRange(rng, 0.02, 0.45),
+      size: 0.58,
+    });
+  }
+};
+
+/** Small lighten/darken used at model build time (species tier gradients). */
+const shadeHex = (hex: string, amount: number): string => {
+  if (amount === 0) return hex;
+  const c = (o: number) => parseInt(hex.slice(o, o + 2), 16);
+  const mix = (v: number) =>
+    Math.round(Math.min(255, Math.max(0, amount >= 0 ? v + (255 - v) * amount : v * (1 + amount))));
+  return `rgb(${mix(c(1))},${mix(c(3))},${mix(c(5))})`;
 };
 
 const buildIsland = (out: Voxel[], rng: Rng): void => {
@@ -442,7 +511,7 @@ const buildIsland = (out: Voxel[], rng: Rng): void => {
   }
 };
 
-const buildPot = (out: Voxel[], rng: Rng): void => {
+const buildPot = (out: Voxel[], pot: BonsaiPot): void => {
   const rx = 3.6;
   const rz = 2.8;
   for (let y = 1; y <= 3; y++) {
@@ -454,7 +523,7 @@ const buildPot = (out: Voxel[], rng: Rng): void => {
         const rim = y === 3 && d > 0.62;
         push(out, {
           x, y, z,
-          color: rim ? PALETTE.potRim : y === 1 ? PALETTE.potFoot : PALETTE.pot,
+          color: rim ? pot.rim : y === 1 ? pot.foot : pot.body,
           kind: 'pot',
           threshold: 0,
         });
@@ -464,7 +533,6 @@ const buildPot = (out: Voxel[], rng: Rng): void => {
       }
     }
   }
-  void rng;
 };
 
 const buildSeedAndSprout = (out: Voxel[]): void => {
@@ -551,7 +619,7 @@ export const generateBonsaiModel = (
   const anchors: BlossomAnchor[] = [];
 
   buildIsland(voxels, createRng(childSeed(seed, 'island')));
-  buildPot(voxels, createRng(childSeed(seed, 'pot')));
+  buildPot(voxels, species.pot);
   buildSeedAndSprout(voxels);
   buildDecorations(voxels, createRng(childSeed(seed, 'decor')));
 
@@ -590,12 +658,15 @@ export const generateBonsaiModel = (
     }
   }
 
-  const crownRng = createRng(childSeed(seed, `crown:${species.id}`));
-  const lobes = planCrown(crownRng, trunk, species.shape);
-  buildBranchesToLobes(voxels, createRng(childSeed(seed, `branches:${species.id}`)), trunk, lobes, species);
+  const padRng = createRng(childSeed(seed, `pads:${species.id}`));
+  const pads = planPads(padRng, trunk, species.shape);
+  buildBranchesToPads(voxels, createRng(childSeed(seed, `branches:${species.id}`)), pads, species);
   const leafRng = createRng(childSeed(seed, `leaves:${species.id}`));
-  for (const lobe of lobes) {
-    fillLobe(voxels, anchors, leafRng, lobe, species);
+  for (const pad of pads) {
+    fillPad(voxels, anchors, leafRng, pad, species);
+  }
+  if (species.shape.bareBloom) {
+    buildBareBlooms(voxels, createRng(childSeed(seed, `buds:${species.id}`)), trunk, species);
   }
 
   const bounds = voxels.reduce(
