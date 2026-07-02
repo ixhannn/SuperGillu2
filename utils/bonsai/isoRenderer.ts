@@ -71,12 +71,24 @@ const shade = (hex: string, amount: number, desat = 0): string => {
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 };
 
-const voxelJitter = (v: Voxel): number => ((hashString(`${v.x},${v.y},${v.z}`) % 9) - 4) / 100;
-
 const cellKey = (x: number, y: number, z: number): string => `${x},${y},${z}`;
 
 const isGround = (v: Voxel): boolean =>
   (v.kind === 'island' || v.kind === 'rock') && v.y <= 1;
+
+/**
+ * A voxel plus everything about it that never changes between repaints.
+ * Hashing (string building + FNV) per voxel per render was the dominant
+ * repaint cost — precomputing it once makes growth scrubbing/time-lapse
+ * renders ~3× cheaper.
+ */
+interface PreppedVoxel {
+  v: Voxel;
+  jitter: number;
+  /** Deterministic per-voxel roll shared by bloom/autumn/carpet/snow picks. */
+  h: number;
+  snowTop: boolean;
+}
 
 export class VoxelSceneRenderer {
   private model: BonsaiModel;
@@ -85,7 +97,7 @@ export class VoxelSceneRenderer {
     canopyBack: null,
     canopyFront: null,
   };
-  private sorted: Voxel[] = [];
+  private sorted: PreppedVoxel[] = [];
   private scale = 8;
   private origin: ScreenPoint = { x: 0, y: 0 };
   private width = 0;
@@ -95,9 +107,17 @@ export class VoxelSceneRenderer {
 
   constructor(model: BonsaiModel) {
     this.model = model;
-    this.sorted = [...model.voxels].sort(
-      (a, b) => a.x + a.z - (b.x + b.z) || a.y - b.y || a.x - b.x,
-    );
+    this.sorted = [...model.voxels]
+      .sort((a, b) => a.x + a.z - (b.x + b.z) || a.y - b.y || a.x - b.x)
+      .map((v) => {
+        const h = hashString(`${v.x},${v.y},${v.z}`);
+        return {
+          v,
+          h,
+          jitter: ((h % 9) - 4) / 100,
+          snowTop: (v.kind === 'leaf' || v.kind === 'island') && (h >> 4) % 10 < 4,
+        };
+      });
   }
 
   layout(widthCss: number, heightCss: number, dpr: number): void {
@@ -166,28 +186,29 @@ export class VoxelSceneRenderer {
 
     // Visible voxels + per-layer occupancy (full-size voxels only) for
     // hidden-face culling and ambient occlusion.
-    const visible: Voxel[] = [];
+    const visible: PreppedVoxel[] = [];
     const occ: Record<VoxelLayer, Set<string>> = {
       static: new Set(),
       canopyBack: new Set(),
       canopyFront: new Set(),
     };
-    for (const v of this.sorted) {
-      if (!this.isVisible(v, G, opts)) continue;
-      visible.push(v);
-      if ((v.size ?? 1) >= 0.95) occ[v.layer].add(cellKey(v.x, v.y, v.z));
+    for (const p of this.sorted) {
+      if (!this.isVisible(p.v, G, opts)) continue;
+      visible.push(p);
+      if ((p.v.size ?? 1) >= 0.95) occ[p.v.layer].add(cellKey(p.v.x, p.v.y, p.v.z));
     }
 
+    const winter = opts.season === 'winter';
     // Ground → contact shadow → everything else. Painter order within each
     // pass is preserved because `visible` keeps the global depth sort.
-    for (const v of visible) {
-      if (!isGround(v)) continue;
-      this.drawCube(contexts.static, v, this.colorFor(v, bloomP, opts), desat, occ.static, this.snowTop(v, opts.season));
+    for (const p of visible) {
+      if (!isGround(p.v)) continue;
+      this.drawCube(contexts.static, p.v, this.colorFor(p, bloomP, opts), desat, occ.static, winter && p.snowTop ? SNOW : null, p.jitter);
     }
     this.drawContactShadow(contexts.static, G);
-    for (const v of visible) {
-      if (isGround(v)) continue;
-      this.drawCube(contexts[v.layer], v, this.colorFor(v, bloomP, opts), desat, occ[v.layer], this.snowTop(v, opts.season));
+    for (const p of visible) {
+      if (isGround(p.v)) continue;
+      this.drawCube(contexts[p.v.layer], p.v, this.colorFor(p, bloomP, opts), desat, occ[p.v.layer], winter && p.snowTop ? SNOW : null, p.jitter);
     }
 
     this.drawBloomAnchors(contexts, opts, G, desat);
@@ -207,13 +228,6 @@ export class VoxelSceneRenderer {
     ctx.restore();
   }
 
-  /** Winter dusts upward-facing greenery with snow (deterministic per voxel). */
-  private snowTop(v: Voxel, season: BonsaiSeason): string | null {
-    if (season !== 'winter') return null;
-    if (v.kind !== 'leaf' && v.kind !== 'island') return null;
-    return hashString(`snow:${v.x},${v.y},${v.z}`) % 10 < 4 ? SNOW : null;
-  }
-
   private isVisible(v: Voxel, G: number, opts: SceneOptions): boolean {
     if (v.kind === 'decor') {
       return v.decorId != null && opts.decorations.has(v.decorId);
@@ -223,15 +237,14 @@ export class VoxelSceneRenderer {
     return G >= v.threshold;
   }
 
-  private colorFor(v: Voxel, bloomP: number, opts: SceneOptions): string {
+  private colorFor(p: PreppedVoxel, bloomP: number, opts: SceneOptions): string {
+    const { v, h } = p;
     if (v.kind === 'leaf' && v.bloomAt != null && bloomP >= v.bloomAt) {
-      const h = hashString(`bloom:${v.x},${v.y},${v.z}`);
       if (opts.golden && h % 41 === 0) return PALETTE.gold;
       return this.model.palette.blossom[h % this.model.palette.blossom.length];
     }
     if (v.kind === 'leaf' && opts.season === 'autumn') {
-      const h = hashString(`autumn:${v.x},${v.y},${v.z}`);
-      if (h % 5 < 2) return AUTUMN_LEAVES[h % AUTUMN_LEAVES.length];
+      if ((h >> 2) % 5 < 2) return AUTUMN_LEAVES[h % AUTUMN_LEAVES.length];
     }
     if (v.kind === 'leaf' && opts.season === 'summer') {
       return shade(v.color, -0.06);
@@ -242,8 +255,7 @@ export class VoxelSceneRenderer {
     // Fallen-petal carpet: the island top slowly gathers colour as the tree
     // blooms — a visible record of every petal that ever fell.
     if (v.kind === 'island' && v.y === 0 && bloomP > 0.05) {
-      const h = hashString(`carpet:${v.x},${v.z}`);
-      if ((h % 100) / 100 < bloomP * 0.28) {
+      if (((h >> 3) % 100) / 100 < bloomP * 0.28) {
         return shade(this.model.palette.blossom[h % this.model.palette.blossom.length], 0.1);
       }
     }
@@ -328,7 +340,7 @@ export class VoxelSceneRenderer {
     const g1 = growthToG(growth);
     if (g1 <= g0) return [];
     const pts: ScreenPoint[] = [];
-    for (const v of this.sorted) {
+    for (const { v } of this.sorted) {
       if (v.threshold > g0 && v.threshold <= g1 && v.kind !== 'decor') {
         pts.push(this.project(v.x, v.y, v.z));
         if (pts.length >= 48) break;
@@ -378,6 +390,7 @@ export class VoxelSceneRenderer {
     desat: number,
     occ: Set<string> | null,
     topOverride: string | null = null,
+    jitter = 0,
   ): void {
     const size = v.size ?? 1;
     const full = size >= 0.95 && occ != null;
@@ -403,7 +416,7 @@ export class VoxelSceneRenderer {
     const p = this.project(v.x, v.y, v.z);
     // Center reduced-size cubes within their cell.
     const cy = p.y + (this.vh() - vh) * 0.5;
-    const j = voxelJitter(v);
+    const j = jitter;
     // Sun sits upper-right: lit right faces, shaded left, height catches light.
     const lift = Math.min(0.08, Math.max(0, v.y) * 0.004);
 

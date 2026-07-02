@@ -157,7 +157,9 @@ export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
         window.removeEventListener('resize', apply);
         retries.forEach((t) => window.clearTimeout(t));
       };
-    }, []);
+      // `model` dep: planting a new species swaps the renderer, which must be
+      // re-measured or it stays 0×0 and paints a blank tree.
+    }, [model]);
 
     // ── Repaint voxel layers when derived state changes ────────────────
     useEffect(() => {
