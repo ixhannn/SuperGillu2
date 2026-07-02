@@ -266,6 +266,22 @@ assert.equal(seasonFor('2026-12-25'), 'winter');
     assert.ok(day1 > 0, 'something visible on day one');
     assert.ok(month > day1 && full > month, `growth strictly reveals more voxels (${day1} → ${month} → ${full})`);
     assert.ok(growthToG(3) > 0.04, 'early growth feels fast (first day visibly moves)');
+
+    // PACING CONTRACT: the stage ladder and the voxel reveal must agree.
+    // A "Sapling" (growth 12) already has leaves; a "Young Tree" (24) has a
+    // real canopy forming. (Regression guard — the pad rework once left the
+    // tree a bare trunk until growth ~39 while stages congratulated growth.)
+    for (const s of [7, 777, 12345]) {
+        for (const sp of ['sakura', 'wisteria', 'plum', 'maple']) {
+            const m = generateBonsaiModel(s, sp);
+            const leavesAt = (g) =>
+                m.voxels.filter((v) => v.kind === 'leaf' && growthToG(g) >= v.threshold).length;
+            const sapling = leavesAt(12);
+            const young = leavesAt(24);
+            assert.ok(sapling > 0, `${sp} seed ${s}: a Sapling (growth 12) must show leaves, got ${sapling}`);
+            assert.ok(young > sapling * 1.5, `${sp} seed ${s}: canopy keeps filling by Young Tree (${sapling} → ${young})`);
+        }
+    }
 }
 
 // ── Twin blooms: both watered within minutes → gold-rimmed blossom ───

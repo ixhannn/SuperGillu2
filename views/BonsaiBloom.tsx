@@ -31,6 +31,93 @@ interface BonsaiBloomProps {
   setView: (view: ViewState) => void;
 }
 
+/* ── TEMPORARY dev-only age scrubber (e2e preview only, not committed) ── */
+
+const DEV_AGE_ENABLED =
+  import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('e2e') === '1';
+
+const seedAgeDays = (days: number): BonsaiEvent[] => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const key = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const events: BonsaiEvent[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const day = key(d);
+    const note = i === 1 ? 'thinking of you at the bus stop' : i === 5 ? 'you make ordinary days lucky' : null;
+    events.push({
+      id: `solo_${day}_me_w`, coupleId: 'solo', authorId: 'me', type: 'water',
+      day, note: i === 5 ? note : null, targetEventId: null, createdAt: `${day}T19:00:00.000Z`,
+    });
+    events.push({
+      id: `solo_${day}_partner_w`, coupleId: 'solo', authorId: 'partner-sim', type: 'water',
+      day, note: i === 1 ? note : null, targetEventId: null, createdAt: `${day}T19:01:00.000Z`,
+    });
+  }
+  return events;
+};
+
+function DevAgePanel({ onSeed }: { onSeed: (events: BonsaiEvent[]) => void }) {
+  const [days, setDays] = useState(0);
+  const debounceRef = useRef<number | null>(null);
+  // A range drag fires dozens of change events per second; each seed+rerender
+  // costs tens of ms, so applying on EVERY tick queued seconds of main-thread
+  // work and froze the page. Label updates live; the tree re-seeds only once
+  // the value settles.
+  const apply = (n: number, immediate = false) => {
+    setDays(n);
+    if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+    const run = () => {
+      debounceRef.current = null;
+      const events = seedAgeDays(n);
+      try {
+        localStorage.setItem('lior_bonsai_events_v1', JSON.stringify({ coupleKey: 'solo', events, pendingIds: [] }));
+        localStorage.removeItem('lior_bonsai_seen_v1');
+      } catch { /* dev only */ }
+      onSeed(events);
+    };
+    if (immediate) run();
+    else debounceRef.current = window.setTimeout(run, 160);
+  };
+  return (
+    <div
+      style={{
+        position: 'fixed', top: 70, left: 10, zIndex: 99,
+        background: 'rgba(255,252,252,0.92)', borderRadius: 14, padding: '8px 12px',
+        boxShadow: '0 6px 18px rgba(45,31,37,0.18)', fontSize: 11, color: '#7c626a',
+        display: 'flex', flexDirection: 'column', gap: 4, width: 190,
+      }}
+    >
+      <strong style={{ color: '#2d1f25' }}>Tree age: {days} days (dev)</strong>
+      <input
+        type="range"
+        min={0}
+        max={140}
+        value={days}
+        onChange={(e) => apply(Number(e.target.value))}
+        style={{ width: '100%' }}
+      />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {[0, 3, 10, 30, 60, 100, 134].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => apply(n, true)}
+            style={{
+              border: '1px solid rgba(196,104,126,0.35)', borderRadius: 8, background: 'transparent',
+              color: '#c4687e', fontSize: 10, padding: '2px 7px', cursor: 'pointer',
+            }}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type SkyPhase = 'dawn' | 'day' | 'dusk' | 'night';
 
 const SEEN_GROWTH_KEY = 'lior_bonsai_seen_v1';
@@ -43,19 +130,21 @@ const skyPhaseFor = (hour: number): SkyPhase => {
   return 'night';
 };
 
-const readSeenGrowth = (coupleKey: string): number | null => {
+// Keyed per couple AND tree index — a replant must not inherit the finished
+// tree's high-water mark (it would suppress the new tree's first time-lapse).
+const readSeenGrowth = (treeKey: string): number | null => {
   try {
     const raw = localStorage.getItem(SEEN_GROWTH_KEY);
     const parsed = raw ? (JSON.parse(raw) as { coupleKey: string; growth: number }) : null;
-    return parsed && parsed.coupleKey === coupleKey ? parsed.growth : null;
+    return parsed && parsed.coupleKey === treeKey ? parsed.growth : null;
   } catch {
     return null;
   }
 };
 
-const writeSeenGrowth = (coupleKey: string, growth: number): void => {
+const writeSeenGrowth = (treeKey: string, growth: number): void => {
   try {
-    localStorage.setItem(SEEN_GROWTH_KEY, JSON.stringify({ coupleKey, growth }));
+    localStorage.setItem(SEEN_GROWTH_KEY, JSON.stringify({ coupleKey: treeKey, growth }));
   } catch {
     /* non-fatal */
   }
@@ -162,17 +251,18 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
   // ── Comeback time-lapse: replay what grew since you last looked ─────
   const timelapseDoneRef = useRef(false);
+  const treeKey = `${BonsaiService.coupleKey()}:${garden.currentIndex}`;
   useEffect(() => {
     if (timelapseDoneRef.current || tree.growth === 0) return;
     timelapseDoneRef.current = true;
-    const seen = readSeenGrowth(BonsaiService.coupleKey());
+    const seen = readSeenGrowth(treeKey);
     if (seen != null && tree.growth - seen >= 3) {
       window.setTimeout(() => sceneRef.current?.timelapse(seen), 450);
     }
-  }, [tree.growth]);
+  }, [tree.growth, treeKey]);
   useEffect(() => {
-    if (tree.growth > 0) writeSeenGrowth(BonsaiService.coupleKey(), tree.growth);
-  }, [tree.growth]);
+    if (tree.growth > 0) writeSeenGrowth(treeKey, tree.growth);
+  }, [tree.growth, treeKey]);
 
   // ── Moment detection (partner watered live, bloom completed, stage up,
   //    partner arrived) ─────────────────────────────────────────────────
@@ -325,6 +415,8 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
         )}
         {tree.mood.rain && !reducedMotion && <div className="bonsai-rain" />}
       </div>
+
+      {DEV_AGE_ENABLED && <DevAgePanel onSeed={setEvents} />}
 
       <ViewHeader
         title="Our Bonsai"

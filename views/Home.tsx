@@ -22,16 +22,30 @@ import { useRelationship } from '../hooks/useRelationship';
 import { useThrottledReload } from '../hooks/useThrottledReload';
 import { useTileOpen } from '../hooks/useTileOpen';
 import { BonsaiService } from '../services/bonsai';
-import { computeGarden, computeTreeState } from '../utils/bonsai/growth';
+import { computeGarden, computeTreeState, seasonFor } from '../utils/bonsai/growth';
+import { BonsaiMiniTree } from '../components/bonsai/BonsaiMiniTree';
+
+interface BonsaiCardStatus {
+    line: string;
+    lit: boolean;
+    streak: number;
+    /** The current tree's DNA + state, for the live mini portrait. */
+    mini: {
+        seed: number;
+        species: 'sakura' | 'wisteria' | 'plum' | 'maple';
+        growth: number;
+        bloomCount: number;
+    } | null;
+}
 
 /**
- * Live status line for the Home bonsai card — the card itself becomes the
+ * Live status for the Home bonsai card — the card itself becomes the
  * daily trigger ("Sam watered · your turn"). Subscribing here (Home is
  * keep-alive, mounted for the whole session) also keeps the bonsai realtime
  * channel warm so a partner's watering updates the card the moment it lands.
  */
-const useBonsaiCardStatus = () => {
-    const compute = () => {
+const useBonsaiCardStatus = (): BonsaiCardStatus => {
+    const compute = (): BonsaiCardStatus => {
         try {
             const events = BonsaiService.getCachedEvents();
             const garden = computeGarden(events, BonsaiService.seed());
@@ -42,17 +56,24 @@ const useBonsaiCardStatus = () => {
                 selfId: BonsaiService.selfId(),
             });
             const partner = BonsaiService.partnerName();
+            const mini = {
+                seed: garden.currentSeed,
+                species: garden.currentSpecies,
+                growth: tree.growth,
+                bloomCount: tree.bloomDays.length,
+            };
+            const base = { streak: tree.streak, mini };
             if (!tree.myFirstWaterDone && !tree.partnerFirstWaterDone) {
-                return { line: 'Plant a sakura seed together', lit: false };
+                return { ...base, line: 'Plant a sakura seed together', lit: false };
             }
             if (tree.wateredTodayByMe && tree.wateredTodayByPartner) {
-                return { line: tree.streak > 1 ? `Bloomed today · ${tree.streak}-day streak` : 'Bloomed today', lit: true };
+                return { ...base, line: tree.streak > 1 ? `Bloomed today · ${tree.streak}-day streak` : 'Bloomed today', lit: true };
             }
-            if (tree.wateredTodayByMe) return { line: `Waiting on ${partner}…`, lit: false };
-            if (tree.wateredTodayByPartner) return { line: `${partner} watered · your turn`, lit: true };
-            return { line: 'Water it together today', lit: false };
+            if (tree.wateredTodayByMe) return { ...base, line: `Waiting on ${partner}…`, lit: false };
+            if (tree.wateredTodayByPartner) return { ...base, line: `${partner} watered · your turn`, lit: true };
+            return { ...base, line: 'Water it together today', lit: false };
         } catch {
-            return { line: 'Water it together, watch it bloom', lit: false };
+            return { line: 'Water it together, watch it bloom', lit: false, streak: 0, mini: null };
         }
     };
     const [status, setStatus] = useState(compute);
@@ -1223,16 +1244,60 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         onClick={(e) => open(e, () => setView('bonsai-bloom'))}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div data-coachmark="bonsai" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
-                            <div className="mb-3">
-                                <div className="p-2.5 rounded-xl inline-block bg-emerald-50 border border-emerald-100/50">
-                                    <TreeDeciduous size={22} className="text-emerald-500" />
+                        <div
+                            data-coachmark="bonsai"
+                            className="bento-card p-5 relative overflow-hidden spring-press"
+                            style={{
+                                background: 'linear-gradient(135deg, rgba(255,252,250,0.95) 0%, rgba(246,240,235,0.92) 58%, rgba(233,242,232,0.9) 100%)',
+                            }}
+                        >
+                            {/* Soft ground glow the mini tree sits in */}
+                            <div
+                                className="absolute pointer-events-none"
+                                aria-hidden="true"
+                                style={{
+                                    right: -14,
+                                    top: '50%',
+                                    transform: 'translateY(-42%)',
+                                    width: 118,
+                                    height: 118,
+                                    background: 'radial-gradient(closest-side, rgba(147,192,109,0.22), rgba(246,201,215,0.14) 55%, transparent 75%)',
+                                }}
+                            />
+                            <div className="relative flex items-center h-full gap-3">
+                                <div className="flex flex-col min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                        <span className="font-semibold text-sm text-gray-800">Our Bonsai</span>
+                                        {bonsaiStatus.streak > 1 && (
+                                            <span
+                                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                                                style={{ color: '#c4687e', background: 'rgba(232,160,176,0.14)' }}
+                                            >
+                                                {bonsaiStatus.streak}d
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className={`text-xs leading-snug ${bonsaiStatus.lit ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>
+                                        {bonsaiStatus.line}
+                                    </span>
+                                </div>
+                                <div className="flex-shrink-0 -my-2 -mr-1">
+                                    {bonsaiStatus.mini ? (
+                                        <BonsaiMiniTree
+                                            seed={bonsaiStatus.mini.seed}
+                                            species={bonsaiStatus.mini.species}
+                                            growth={bonsaiStatus.mini.growth}
+                                            bloomCount={bonsaiStatus.mini.bloomCount}
+                                            season={seasonFor(BonsaiService.today())}
+                                            size={86}
+                                        />
+                                    ) : (
+                                        <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100/50">
+                                            <TreeDeciduous size={22} className="text-emerald-500" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <span className="font-semibold text-sm text-gray-800">Our Bonsai</span>
-                            <span className={`text-xs mt-1 ${bonsaiStatus.lit ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>
-                                {bonsaiStatus.line}
-                            </span>
                         </div>
                     </div>
                 </div>

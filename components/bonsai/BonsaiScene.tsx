@@ -80,10 +80,12 @@ export const BonsaiScene = forwardRef<BonsaiSceneHandle, BonsaiSceneProps>(
 
     const modelRef = useRef<typeof model | null>(null);
     if (modelRef.current !== model) {
-      // The seed (and thus the model) is stable for a mounted scene; this
-      // lazy-init just guards the first render and future remounts.
+      // Model swaps on species change (planting the next tree) and on mount.
       modelRef.current = model;
       rendererRef.current = new VoxelSceneRenderer(model);
+      // A fresh tree starts its growth story over — without this reset the
+      // old tree's growth (400) suppresses the new tree's reveal sparkles.
+      prevGrowthRef.current = null;
     }
     if (!particlesRef.current) particlesRef.current = new BonsaiParticles();
     particlesRef.current.setPetalPalette(model.palette.blossom);

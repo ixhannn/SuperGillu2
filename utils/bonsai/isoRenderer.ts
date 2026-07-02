@@ -241,7 +241,9 @@ export class VoxelSceneRenderer {
     const { v, h } = p;
     if (v.kind === 'leaf' && v.bloomAt != null && bloomP >= v.bloomAt) {
       if (opts.golden && h % 41 === 0) return PALETTE.gold;
-      return this.model.palette.blossom[h % this.model.palette.blossom.length];
+      const bloom = this.model.palette.blossom[h % this.model.palette.blossom.length];
+      // Carry the pad-tier tint through the bloom (maple's fire gradient).
+      return v.tint ? shade(bloom, v.tint) : bloom;
     }
     if (v.kind === 'leaf' && opts.season === 'autumn') {
       if ((h >> 2) % 5 < 2) return AUTUMN_LEAVES[h % AUTUMN_LEAVES.length];

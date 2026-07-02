@@ -37,6 +37,9 @@ export interface Voxel {
   bloomAt?: number;
   /** Voxel scale (petal fluff uses < 1). */
   size?: number;
+  /** Per-tier shade shift, carried through to bloom colours (maple's fire
+   *  gradient must survive the green→blossom transition). */
+  tint?: number;
   decorId?: BonsaiDecorationId;
 }
 
@@ -377,7 +380,8 @@ const buildBranchesToPads = (
         },
         (r) => rngPick(r, species.trunk),
         'branch',
-        (radial) => Math.min(0.9, 0.06 + pad.attachT * 0.28 + t * 0.1 + radial * 0.04),
+        // Limbs finish just before their pad leafs out.
+        (radial) => Math.min(0.9, 0.03 + pad.attachT * 0.14 + t * 0.05 + radial * 0.04),
         rng,
       );
     }
@@ -393,8 +397,10 @@ const fillPad = (
 ): void => {
   const shape = species.shape;
   const layer: VoxelLayer = pad.cz < 0 ? 'canopyBack' : 'canopyFront';
-  // Lower pads leaf out first so the young tree never looks bare.
-  const baseThreshold = 0.16 + pad.attachT * 0.36;
+  // Pacing contract: first leaves by "Sapling" (growth ~10, G≈0.16), the
+  // apex crown by "Young Tree" (growth ~27). Structure lands early, density
+  // fills through mid-game, and the bloom colour carries the late game.
+  const baseThreshold = 0.04 + pad.attachT * 0.18;
   // Maple's fire gradient: lower pads burn darker than the crown.
   const tintShift = (pad.tint - 0.5) * 0.12;
 
@@ -421,6 +427,7 @@ const fillPad = (
           threshold,
           bloomAt,
           size: shell ? shape.leafSize : 1,
+          tint: tintShift,
         });
         if (shell && dy >= 0 && rng() < 0.3) {
           anchors.push({ x: Math.round(pad.cx + dx), y: Math.round(pad.cy + dy) + 1, z: Math.round(pad.cz + dz), layer });
@@ -461,7 +468,7 @@ const buildBareBlooms = (out: Voxel[], rng: Rng, trunk: PathPoint[], species: Bo
       color: rngPick(rng, species.leaf),
       kind: 'leaf',
       layer: oz < 0 ? 'canopyBack' : 'canopyFront',
-      threshold: Math.min(0.985, 0.3 + p.t * 0.35 + rngRange(rng, 0, 0.05)),
+      threshold: Math.min(0.985, 0.14 + p.t * 0.3 + rngRange(rng, 0, 0.05)),
       bloomAt: rngRange(rng, 0.02, 0.45),
       size: 0.58,
     });
