@@ -652,6 +652,15 @@ const backupCurrentContentForAccount = (userId: string | null) => {
     })();
 };
 
+// Set ONLY by prepareForSignOut() (an explicit user sign-out), and consumed by
+// the next activateAccount(null). It distinguishes a real sign-out (where the
+// base account's content MUST be cleared for tenant isolation) from a transient
+// "no session" — e.g. getSession() timing out on a cold/flaky launch — where the
+// real session is still valid and arrives via onAuthStateChange a moment later.
+// Without this gate, a transient null wiped the signed-in user's local memories/
+// keepsakes (persisting empty arrays into IndexedDB) and blanked the app.
+let explicitSignOutPending = false;
+
 const clearBaseContentForAccountSwitch = () => {
     for (const { storageKey, cacheKey } of CONTENT_COLLECTION_STORES) {
         (DATA_CACHE as Record<string, unknown[]>)[cacheKey] = [];
@@ -2532,11 +2541,24 @@ export const StorageService = {
                 backupCurrentProfileForAccount(previousUserId);
                 backupCurrentContentForAccount(previousUserId);
             }
-            localStorage.removeItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID);
-            clearBaseProfileForAccountSwitch();
-            clearBaseContentForAccountSwitch();
+            // Only an EXPLICIT sign-out (prepareForSignOut set the flag) may clear
+            // the base account. A null that arrives without it is a transient "no
+            // session" — e.g. getSession() timed out on a cold/flaky launch (the 8s
+            // race in SupabaseService.getSession). The valid session resolves via
+            // onAuthStateChange moments later, so wiping here would needlessly
+            // destroy the signed-in user's local memories/keepsakes (and persist
+            // empty arrays into IndexedDB), blanking the app after a reinstall.
+            if (explicitSignOutPending) {
+                explicitSignOutPending = false;
+                localStorage.removeItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID);
+                clearBaseProfileForAccountSwitch();
+                clearBaseContentForAccountSwitch();
+            }
             return;
         }
+
+        // A real account is being activated — any stale sign-out intent is moot.
+        explicitSignOutPending = false;
 
         if (previousUserId && previousUserId !== normalizedUserId) {
             backupCurrentProfileForAccount(previousUserId);
@@ -2563,6 +2585,11 @@ export const StorageService = {
     },
 
     prepareForSignOut: () => {
+        // Mark this as an EXPLICIT sign-out so the activateAccount(null) that
+        // follows (via onAuthStateChange) is allowed to clear the base account's
+        // content. A null that arrives WITHOUT this flag is a transient session
+        // read failure and must not wipe anything.
+        explicitSignOutPending = true;
         const activeUserId = localStorage.getItem(ACCOUNT_LOCAL_KEYS.ACTIVE_USER_ID) || SupabaseService.getCachedUserId();
         backupCurrentProfileForAccount(activeUserId);
         backupCurrentContentForAccount(activeUserId);
