@@ -43,7 +43,6 @@ export function BonsaiMiniTree({
       canvas.height = Math.round(size * dpr);
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       // Model generation is the expensive part — reuse it while the tree's
       // DNA is unchanged (daily growth only repaints).
       const key = `${seed}:${species}`;
@@ -51,7 +50,16 @@ export function BonsaiMiniTree({
         rendererRef.current = { key, renderer: new VoxelSceneRenderer(generateBonsaiModel(seed, species)) };
       }
       const renderer = rendererRef.current.renderer;
-      renderer.layout(size, size, dpr);
+      // The renderer's minimum voxel scale would crop the island at thumb
+      // sizes — render the FULL diorama at a comfortable internal size and
+      // downscale, so the whole floating island fits the badge.
+      const inner = 180;
+      const buffer = document.createElement('canvas');
+      buffer.width = inner;
+      buffer.height = inner;
+      const bufferCtx = buffer.getContext('2d');
+      if (!bufferCtx) return;
+      renderer.layout(inner, inner, 1);
       renderer.render({
         growth,
         bloomCount,
@@ -60,7 +68,11 @@ export function BonsaiMiniTree({
         golden: false,
         season,
       });
-      renderer.composite(ctx, 0, 0, 0);
+      renderer.composite(bufferCtx, 0, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(buffer, 0, 0, canvas.width, canvas.height);
     }, 220);
     return () => {
       live = false;

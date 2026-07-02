@@ -1244,60 +1244,36 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                         onClick={(e) => open(e, () => setView('bonsai-bloom'))}
                         className="w-full h-full cursor-pointer"
                     >
-                        <div
-                            data-coachmark="bonsai"
-                            className="bento-card p-5 relative overflow-hidden spring-press"
-                            style={{
-                                background: 'linear-gradient(135deg, rgba(255,252,250,0.95) 0%, rgba(246,240,235,0.92) 58%, rgba(233,242,232,0.9) 100%)',
-                            }}
-                        >
-                            {/* Soft ground glow the mini tree sits in */}
-                            <div
-                                className="absolute pointer-events-none"
-                                aria-hidden="true"
-                                style={{
-                                    right: -14,
-                                    top: '50%',
-                                    transform: 'translateY(-42%)',
-                                    width: 118,
-                                    height: 118,
-                                    background: 'radial-gradient(closest-side, rgba(147,192,109,0.22), rgba(246,201,215,0.14) 55%, transparent 75%)',
-                                }}
-                            />
-                            <div className="relative flex items-center h-full gap-3">
-                                <div className="flex flex-col min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 mb-1.5">
-                                        <span className="font-semibold text-sm text-gray-800">Our Bonsai</span>
-                                        {bonsaiStatus.streak > 1 && (
-                                            <span
-                                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                                                style={{ color: '#c4687e', background: 'rgba(232,160,176,0.14)' }}
-                                            >
-                                                {bonsaiStatus.streak}d
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span className={`text-xs leading-snug ${bonsaiStatus.lit ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>
-                                        {bonsaiStatus.line}
-                                    </span>
-                                </div>
-                                <div className="flex-shrink-0 -my-2 -mr-1">
-                                    {bonsaiStatus.mini ? (
-                                        <BonsaiMiniTree
-                                            seed={bonsaiStatus.mini.seed}
-                                            species={bonsaiStatus.mini.species}
-                                            growth={bonsaiStatus.mini.growth}
-                                            bloomCount={bonsaiStatus.mini.bloomCount}
-                                            season={seasonFor(BonsaiService.today())}
-                                            size={86}
-                                        />
-                                    ) : (
-                                        <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100/50">
-                                            <TreeDeciduous size={22} className="text-emerald-500" />
-                                        </div>
-                                    )}
+                        <div data-coachmark="bonsai" className="bento-card p-5 flex flex-col h-full relative overflow-hidden spring-press">
+                            <div className="mb-3">
+                                <div className="p-2.5 rounded-xl inline-block bg-emerald-50 border border-emerald-100/50">
+                                    <TreeDeciduous size={22} className="text-emerald-500" />
                                 </div>
                             </div>
+                            <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-gray-800">Our Bonsai</span>
+                                {bonsaiStatus.streak > 1 && (
+                                    <span className="text-[10px] font-semibold text-rose-400">
+                                        {bonsaiStatus.streak}d
+                                    </span>
+                                )}
+                            </div>
+                            <span className={`text-xs mt-1 ${bonsaiStatus.lit ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>
+                                {bonsaiStatus.line}
+                            </span>
+                            {/* The couple's actual tree, sitting quietly on the right. */}
+                            {bonsaiStatus.mini && (
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    <BonsaiMiniTree
+                                        seed={bonsaiStatus.mini.seed}
+                                        species={bonsaiStatus.mini.species}
+                                        growth={bonsaiStatus.mini.growth}
+                                        bloomCount={bonsaiStatus.mini.bloomCount}
+                                        season={seasonFor(BonsaiService.today())}
+                                        size={72}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
