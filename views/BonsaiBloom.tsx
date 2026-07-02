@@ -420,7 +420,13 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
       <ViewHeader
         title="Our Bonsai"
-        subtitle={partnerHere ? `${tree.stage.name} · together now` : tree.stage.name}
+        subtitle={
+          partnerHere
+            ? `${tree.stage.name} · together now`
+            : treeAge > 0
+              ? `${tree.stage.name} · day ${treeAge}`
+              : tree.stage.name
+        }
         variant="transparent"
         borderless
         rightSlot={
@@ -489,6 +495,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
             <span>Your day — lanterns are up</span>
           </div>
         )}
+        <div className="bonsai-scene-fade" aria-hidden="true" />
       </div>
 
       <div className="bonsai-panel">
@@ -513,53 +520,51 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
           </p>
         )}
 
-        <div className="bonsai-panel__chips">
-          <div className={`bonsai-chip ${tree.wateredTodayByMe ? 'bonsai-chip--on' : ''}`}>
-            <Droplets size={13} />
-            <span>You</span>
-          </div>
-          {partnerChip}
-          {treeAge > 0 && (
-            <div className="bonsai-chip bonsai-chip--quiet">
-              <span>Day {treeAge}</span>
+        <div className="bonsai-panel__row">
+          <div className="bonsai-panel__chips">
+            <div className={`bonsai-chip ${tree.wateredTodayByMe ? 'bonsai-chip--on' : ''}`}>
+              <Droplets size={13} />
+              <span>You</span>
             </div>
-          )}
-          <button
-            type="button"
-            className="bonsai-chip bonsai-chip--quiet"
-            onClick={() => {
-              feedback.tap();
-              setStoryOpen(true);
-            }}
-          >
-            <BookOpen size={13} />
-            <span>Story</span>
-          </button>
-          {(garden.completed.length > 0 || canPlantNext(tree.growth)) && (
+            {partnerChip}
+          </div>
+          <div className="bonsai-panel__actions">
             <button
               type="button"
-              className="bonsai-chip bonsai-chip--quiet"
+              className="bonsai-iconbtn bonsai-iconbtn--story"
               onClick={() => {
                 feedback.tap();
-                setGroveOpen(true);
+                setStoryOpen(true);
               }}
+              aria-label="The story of your tree"
             >
-              <TreePine size={13} />
-              <span>Grove</span>
+              <BookOpen size={15} />
             </button>
-          )}
-          {tree.growth > 0 && (
-            <button
-              type="button"
-              className="bonsai-chip bonsai-chip--quiet"
-              onClick={handleShare}
-              disabled={sharing}
-              aria-label="Share your tree"
-            >
-              <Share2 size={13} />
-              <span>{sharing ? '…' : 'Share'}</span>
-            </button>
-          )}
+            {(garden.completed.length > 0 || canPlantNext(tree.growth)) && (
+              <button
+                type="button"
+                className="bonsai-iconbtn bonsai-iconbtn--grove"
+                onClick={() => {
+                  feedback.tap();
+                  setGroveOpen(true);
+                }}
+                aria-label="Your grove"
+              >
+                <TreePine size={15} />
+              </button>
+            )}
+            {tree.growth > 0 && (
+              <button
+                type="button"
+                className="bonsai-iconbtn bonsai-iconbtn--share"
+                onClick={handleShare}
+                disabled={sharing}
+                aria-label="Share your tree"
+              >
+                <Share2 size={15} />
+              </button>
+            )}
+          </div>
         </div>
 
         {canPlantNext(tree.growth) && (

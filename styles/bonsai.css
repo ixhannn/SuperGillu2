@@ -155,6 +155,27 @@
   pointer-events: none;
 }
 
+/* The scene melts into the panel instead of ending at a hard line. */
+.bonsai-scene-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(249, 228, 218, 0.55));
+  z-index: 1;
+}
+.bonsai-view--dawn .bonsai-scene-fade {
+  background: linear-gradient(180deg, transparent, rgba(246, 207, 196, 0.55));
+}
+.bonsai-view--dusk .bonsai-scene-fade {
+  background: linear-gradient(180deg, transparent, rgba(232, 179, 173, 0.5));
+}
+.bonsai-view--night .bonsai-scene-fade {
+  background: linear-gradient(180deg, transparent, rgba(74, 60, 82, 0.45));
+}
+
 /* Note blossoms — DOM buds floating over the canvas. */
 .bonsai-note {
   position: absolute;
@@ -213,20 +234,29 @@
   z-index: 4;
 }
 .bonsai-stage-banner svg { color: #e8a0b0; flex-shrink: 0; }
-.bonsai-stage-banner strong { font-size: 13px; display: block; }
-.bonsai-stage-banner p { font-size: 12px; margin: 1px 0 0; color: #7c626a; }
+.bonsai-stage-banner strong { font-size: 13px; display: block; letter-spacing: 0.01em; }
+.bonsai-stage-banner p {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 12.5px;
+  margin: 1px 0 0;
+  color: #7c626a;
+}
 
 .bonsai-mood-chip {
   position: absolute;
   left: 16px;
-  bottom: 10px;
+  bottom: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 5px 11px;
   border-radius: 100px;
-  font-size: 11px;
-  background: rgba(255, 252, 252, 0.66);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(255, 252, 252, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   color: #7c626a;
   z-index: 2;
 }
@@ -241,32 +271,66 @@
   z-index: 2;
   margin: 0 14px;
   margin-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-  padding: 16px 16px 14px;
-  border-radius: 26px;
-  background: rgba(255, 252, 252, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 16px 40px rgba(232, 160, 176, 0.14), 0 4px 12px rgba(232, 160, 176, 0.06);
+  padding: 18px 18px 15px;
+  border-radius: 30px;
+  background: rgba(255, 252, 251, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 18px 44px rgba(232, 160, 176, 0.16),
+    0 4px 12px rgba(232, 160, 176, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 13px;
   color: #2d1f25;
 }
 
 .bonsai-panel__intro,
 .bonsai-panel__resting {
-  font-size: 13px;
-  line-height: 1.5;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: #7c626a;
   margin: 0;
+  text-align: center;
+  padding: 0 6px;
 }
 .bonsai-panel__resting { color: #a87d24; }
 
+.bonsai-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
 .bonsai-panel__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
+.bonsai-panel__actions {
+  display: flex;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.bonsai-iconbtn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(232, 160, 176, 0.1);
+  color: #a58891;
+  cursor: pointer;
+  transition: transform 0.16s var(--spring-snappy, ease), background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.bonsai-iconbtn:active { transform: scale(0.9); background: rgba(232, 160, 176, 0.2); }
+.bonsai-iconbtn:disabled { opacity: 0.5; }
 
 .bonsai-chip {
   display: inline-flex;
@@ -335,24 +399,46 @@
   overflow: hidden;
   width: 100%;
   border: none;
-  border-radius: 20px;
-  padding: 15px 18px;
+  border-radius: 22px;
+  padding: 16px 18px;
   font-size: 15px;
   font-weight: 700;
+  letter-spacing: 0.01em;
   color: #fff;
-  background: linear-gradient(135deg, #e8a0b0, #c4687e);
-  box-shadow: 0 10px 26px rgba(196, 104, 126, 0.32);
+  background: linear-gradient(160deg, #eba9b8 0%, #d4788e 55%, #b95c73 100%);
+  box-shadow:
+    0 10px 26px rgba(196, 104, 126, 0.34),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -2px 6px rgba(140, 62, 82, 0.22);
   cursor: pointer;
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
   transition: transform 0.18s var(--spring-snappy, ease), box-shadow 0.3s ease;
 }
 .bonsai-water:active { transform: scale(0.98); }
+/* A slow breathing glow invites the daily hold (compositor-only: opacity). */
+.bonsai-water::after {
+  content: '';
+  position: absolute;
+  inset: -14px;
+  border-radius: inherit;
+  background: radial-gradient(60% 100% at 50% 100%, rgba(255, 214, 226, 0.55), transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  animation: bonsai-water-breathe 3.6s ease-in-out infinite;
+}
+@keyframes bonsai-water-breathe {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
 .bonsai-water--done {
-  background: linear-gradient(135deg, #9dca78, #6f9e52);
-  box-shadow: 0 8px 20px rgba(111, 158, 82, 0.28);
+  background: linear-gradient(160deg, #adce8b 0%, #8cb56a 60%, #74a054 100%);
+  box-shadow:
+    0 8px 20px rgba(111, 158, 82, 0.26),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
   cursor: default;
 }
+.bonsai-water--done::after { animation: none; opacity: 0; }
 
 .bonsai-water__fill {
   position: absolute;
@@ -493,11 +579,11 @@
   cursor: pointer;
 }
 
-.bonsai-progress { display: flex; flex-direction: column; gap: 5px; }
+.bonsai-progress { display: flex; flex-direction: column; gap: 6px; }
 .bonsai-progress__track {
-  height: 5px;
+  height: 4px;
   border-radius: 100px;
-  background: rgba(232, 160, 176, 0.16);
+  background: rgba(232, 160, 176, 0.14);
   overflow: hidden;
 }
 .bonsai-progress__fill {
@@ -508,7 +594,8 @@
 }
 .bonsai-progress__hint {
   font-size: 11px;
-  color: #a58891;
+  letter-spacing: 0.02em;
+  color: #ab8f98;
   text-align: center;
 }
 
@@ -526,14 +613,22 @@
   right: 0;
   bottom: 0;
   z-index: 61;
-  padding: 22px 20px calc(22px + env(safe-area-inset-bottom, 0px));
-  border-radius: 28px 28px 0 0;
+  padding: 14px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+  border-radius: 30px 30px 0 0;
   background: #fffcfc;
-  box-shadow: 0 -18px 50px rgba(45, 31, 37, 0.18);
+  box-shadow: 0 -18px 50px rgba(45, 31, 37, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   color: #2d1f25;
   max-height: 78dvh;
   display: flex;
   flex-direction: column;
+}
+.bonsai-sheet__grabber {
+  width: 36px;
+  height: 4px;
+  border-radius: 100px;
+  background: rgba(165, 136, 145, 0.28);
+  margin: 0 auto 14px;
+  flex-shrink: 0;
 }
 .bonsai-sheet__close {
   position: absolute;
@@ -738,6 +833,7 @@
   .bonsai-rain { display: none; }
   .bonsai-note--unread .bonsai-note__bud { animation: none; }
   .bonsai-water--holding .bonsai-water__fill { transition: none; }
+  .bonsai-water::after { animation: none; }
   .bonsai-cloud { animation: none; left: 20%; }
   .bonsai-cloud--2 { left: 55%; }
   .bonsai-stars, .bonsai-stars::after { animation: none; }

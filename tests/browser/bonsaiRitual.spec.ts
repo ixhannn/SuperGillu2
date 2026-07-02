@@ -92,11 +92,10 @@ test('a grown tree shows streak, story and share', async ({ page }) => {
   await expect(page.locator('.bonsai-water')).toContainText('Watered today');
   await expect(page.locator('.bonsai-chip--streak')).toContainText('30');
 
-  const storyChip = page.locator('.bonsai-chip--quiet', { hasText: 'Story' });
-  await storyChip.click();
+  await page.locator('.bonsai-iconbtn--story').click();
   const sheet = page.locator('.bonsai-sheet');
   await expect(sheet).toContainText('The story of your tree');
   await expect(sheet.locator('.bonsai-story__stage.is-reached')).not.toHaveCount(0);
   await page.locator('.bonsai-sheet__close').click();
-  await expect(page.locator('.bonsai-chip--quiet', { hasText: 'Share' })).toBeVisible();
+  await expect(page.locator('.bonsai-iconbtn--share')).toBeVisible();
 });

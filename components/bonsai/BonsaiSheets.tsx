@@ -43,6 +43,7 @@ function SheetShell({ open, onClose, label, children }: SheetShellProps) {
             exit={{ y: '105%' }}
             transition={SHEET_SPRING}
           >
+            <span className="bonsai-sheet__grabber" aria-hidden="true" />
             <button type="button" className="bonsai-sheet__close" onClick={onClose} aria-label="Close">
               <X size={18} />
             </button>
