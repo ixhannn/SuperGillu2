@@ -10,6 +10,7 @@ import type { ConfettiHandle } from './PhysicsConfetti';
 import { OfflineNotice } from './OfflineNotice';
 import { ViewState } from '../types';
 import { shouldPauseAmbientMotionForView } from '../utils/ambientMotion';
+import { getViewSurface } from '../views/viewSurfaces';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,16 +30,9 @@ interface LayoutProps {
   };
 }
 
-const VIEW_SURFACES: Partial<Record<ViewState, string>> = {
-  'private-space': '#f1edf3',
-  // Pulse is an immersive near-black screen. Without a matching surface the
-  // pink app background showed through the content column's bottom padding,
-  // so the page looked like it ended abruptly mid-screen.
-  'aura-signal': '#050508',
-  // Premium Worlds is an immersive cosmic screen — match its deep base so the
-  // pink app background never bleeds behind the bottom nav / safe-area gutter.
-  premium: '#0a0712',
-};
+// Full-bleed per-view surfaces live in views/viewSurfaces.ts — every view
+// that paints its own immersive background must be registered there, or the
+// pink theme shell clips through the pt-safe / pb-32 scroll gutters.
 
 // Views that hide the bottom tab bar. (Pulse keeps the nav — its dock orb is
 // lifted clear of it and the dark canvas bleeds behind it; hiding it left a
@@ -54,7 +48,7 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   // wrapperRef = overflow:hidden clip container for the app's main scroll root.
   const wrapperRef  = useRef<HTMLElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
-  const viewSurface = VIEW_SURFACES[currentView] ?? 'transparent';
+  const viewSurface = getViewSurface(currentView);
 
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
