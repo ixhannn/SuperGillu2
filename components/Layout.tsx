@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, createContext, useContext, memo, useCallback, useMemo } from 'react';
 import { BottomNav } from './BottomNav';
 import { AmbientVisuals } from './AmbientVisuals';
+import { ThemeRevealLayer } from './ThemeRevealLayer';
 import { TogetherMode } from './TogetherMode';
 import { DebugOverlay } from './DebugOverlay';
 import { DynamicToast } from './DynamicToast';
@@ -123,6 +124,12 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
         }}
         onClick={handleRipple}
       >
+        {/* Cinematic theme-change bloom. z-index:-1 inside this fixed shell →
+            paints above the shell's own --theme-bg-main background but BELOW the
+            ambient world / vignette / content, so the new theme can wash outward
+            from the tapped swatch without any card ever blinking. */}
+        <ThemeRevealLayer />
+
         {/* No paused prop — AmbientVisuals reads <html data-transitioning>
             directly so toggling it during a navigation no longer breaks
             Layout's React.memo and forces a re-render of every keep-alive
