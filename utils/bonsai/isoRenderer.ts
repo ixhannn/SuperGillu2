@@ -71,6 +71,25 @@ const shade = (hex: string, amount: number, desat = 0): string => {
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 };
 
+/**
+ * Face lighting that PRESERVES SATURATION. The old approach lightened/darkened
+ * toward white/black which drained saturated greens into mud. Instead we scale
+ * brightness (`mult` = the face's light level) while gently pushing each
+ * channel away from its own grey (`sat`>1) so lit faces stay vivid and shaded
+ * faces read as a deeper version of the same hue, not a washed-out one.
+ * `desat` (resting mode only) is the one path that greys the colour out.
+ */
+const litFace = (hex: string, mult: number, sat: number, desat: number): string => {
+  const [r, g, b] = hexToRgb(hex);
+  const grey = (r + g + b) / 3;
+  if (desat > 0) {
+    const d = (c: number): number => clamp((c + (grey - c) * desat) * mult, 0, 255);
+    return `rgb(${Math.round(d(r))},${Math.round(d(g))},${Math.round(d(b))})`;
+  }
+  const ch = (c: number): number => clamp((grey + (c - grey) * sat) * mult, 0, 255);
+  return `rgb(${Math.round(ch(r))},${Math.round(ch(g))},${Math.round(ch(b))})`;
+};
+
 const cellKey = (x: number, y: number, z: number): string => `${x},${y},${z}`;
 
 const isGround = (v: Voxel): boolean =>
@@ -407,14 +426,15 @@ export class VoxelSceneRenderer {
     const hideLeft = full && occ.has(cellKey(v.x, v.y, v.z + 1));
     if (hideTop && hideRight && hideLeft) return;
 
+    // Softer ambient occlusion so crevices read without muddying the colour.
     let aoTop = 0;
     let aoRight = 0;
     let aoLeft = 0;
     if (full) {
-      if (occ.has(cellKey(v.x + 1, v.y + 1, v.z))) { aoTop += 0.05; aoRight += 0.09; }
-      if (occ.has(cellKey(v.x, v.y + 1, v.z + 1))) { aoTop += 0.05; aoLeft += 0.09; }
-      if (occ.has(cellKey(v.x - 1, v.y + 1, v.z))) aoTop += 0.03;
-      if (occ.has(cellKey(v.x, v.y + 1, v.z - 1))) aoTop += 0.03;
+      if (occ.has(cellKey(v.x + 1, v.y + 1, v.z))) { aoTop += 0.03; aoRight += 0.05; }
+      if (occ.has(cellKey(v.x, v.y + 1, v.z + 1))) { aoTop += 0.03; aoLeft += 0.05; }
+      if (occ.has(cellKey(v.x - 1, v.y + 1, v.z))) aoTop += 0.02;
+      if (occ.has(cellKey(v.x, v.y + 1, v.z - 1))) aoTop += 0.02;
     }
 
     const s = this.scale * size;
@@ -424,7 +444,10 @@ export class VoxelSceneRenderer {
     const cy = p.y + (this.vh() - vh) * 0.5;
     const j = jitter;
     // Sun sits upper-right: lit right faces, shaded left, height catches light.
-    const lift = Math.min(0.08, Math.max(0, v.y) * 0.004);
+    const lift = Math.min(0.06, Math.max(0, v.y) * 0.003);
+    // Wood reads as a darker, bolder silhouette against the foliage.
+    const wood = v.kind === 'trunk' || v.kind === 'branch' ? 0.9 : 1;
+    const sat = 1.18;
 
     if (!hideTop) {
       ctx.beginPath();
@@ -433,7 +456,7 @@ export class VoxelSceneRenderer {
       ctx.lineTo(p.x, cy + s / 2);
       ctx.lineTo(p.x - s, cy);
       ctx.closePath();
-      ctx.fillStyle = topOverride ?? shade(baseColor, 0.16 + j + lift - aoTop, desat);
+      ctx.fillStyle = topOverride ?? litFace(baseColor, (1.15 + j + lift - aoTop) * wood, sat, desat);
       ctx.fill();
     }
 
@@ -444,7 +467,7 @@ export class VoxelSceneRenderer {
       ctx.lineTo(p.x, cy + s / 2 + vh);
       ctx.lineTo(p.x - s, cy + vh);
       ctx.closePath();
-      ctx.fillStyle = shade(baseColor, -0.26 + j * 0.5 - aoLeft, desat);
+      ctx.fillStyle = litFace(baseColor, (0.72 + j * 0.5 - aoLeft) * wood, sat, desat);
       ctx.fill();
     }
 
@@ -455,7 +478,7 @@ export class VoxelSceneRenderer {
       ctx.lineTo(p.x, cy + s / 2 + vh);
       ctx.lineTo(p.x + s, cy + vh);
       ctx.closePath();
-      ctx.fillStyle = shade(baseColor, -0.06 + j + lift - aoRight, desat);
+      ctx.fillStyle = litFace(baseColor, (0.95 + j + lift - aoRight) * wood, sat, desat);
       ctx.fill();
     }
   }

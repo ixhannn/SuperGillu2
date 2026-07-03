@@ -116,11 +116,12 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossomBright: '#fbe3ec',
     trunk: ['#7a5236', '#6d472e', '#855b41'],
     pot: { body: '#b9524a', rim: '#a2443d', foot: '#8c3a34' },
-    // Moyogi (informal upright): S-curve trunk, rounded pads + apex.
+    // Moyogi (informal upright): S-curve trunk, four clearly separated pads
+    // climbing in a staircase with sky between them, small apex crown.
     shape: {
-      height: [10, 12], lean: [1.6, 2.2], girth: 1,
-      tiers: 4, padRx: [4.4, 5.2], padFlat: 0.62, padShrink: 0.76,
-      sparse: 0.11, leafSize: 0.92, branchLen: [2.4, 3.4], droop: 0,
+      height: [13, 15], lean: [1.8, 2.4], girth: 1.08,
+      tiers: 4, padRx: [3.6, 4.2], padFlat: 0.42, padShrink: 0.72,
+      sparse: 0.12, leafSize: 0.94, branchLen: [3.2, 4.4], droop: 0,
     },
   },
   wisteria: {
@@ -132,11 +133,12 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossomBright: '#e6d7f2',
     trunk: ['#6f5d4a', '#635341', '#7c6853'],
     pot: { body: '#4a5a7e', rim: '#3d4c6c', foot: '#33415c' },
-    // Cascade-leaning arch: broad rounded canopy raining blossom racemes.
+    // Cascade-leaning arch: broad low pads raining blossom racemes, a clear
+    // gap under the crown so the racemes read against the sky.
     shape: {
-      height: [8, 10], lean: [2.6, 3.4], arc: true, girth: 1.05,
-      tiers: 3, padRx: [5.2, 6.0], padFlat: 0.5, padShrink: 0.74,
-      sparse: 0.09, leafSize: 0.9, branchLen: [2, 3], droop: 1,
+      height: [9, 11], lean: [2.8, 3.6], arc: true, girth: 1.06,
+      tiers: 3, padRx: [4.4, 5.2], padFlat: 0.44, padShrink: 0.72,
+      sparse: 0.1, leafSize: 0.9, branchLen: [2.8, 4.0], droop: 1,
     },
   },
   plum: {
@@ -148,12 +150,12 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossomBright: '#fdf4f6',
     trunk: ['#66422f', '#5b3a29', '#714c38'],
     pot: { body: '#9a8d80', rim: '#877a6e', foot: '#75695e' },
-    // Literati (bunjin): tall thin serpentine trunk, sparse crowns high up,
-    // blossoms budding straight from the bare wood.
+    // Literati (bunjin): tall thin serpentine trunk mostly bare, a few small
+    // airy crowns riding high, blossoms budding straight off the wood.
     shape: {
-      height: [13, 15], lean: [2.6, 3.4], girth: 0.72,
-      tiers: 3, padRx: [2.8, 3.4], padFlat: 0.58, padShrink: 0.84,
-      sparse: 0.24, leafSize: 0.78, branchLen: [3.2, 4.6], droop: 0,
+      height: [14, 16], lean: [2.8, 3.6], girth: 0.8,
+      tiers: 3, padRx: [2.6, 3.2], padFlat: 0.54, padShrink: 0.82,
+      sparse: 0.28, leafSize: 0.78, branchLen: [3.6, 5.2], droop: 0,
       bareBloom: true,
     },
   },
@@ -166,12 +168,12 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     blossomBright: '#f2a06a',
     trunk: ['#6d4632', '#623d2b', '#78503b'],
     pot: { body: '#8fb59b', rim: '#7aa186', foot: '#688e74' },
-    // Upright layered broom: thick trunk, dense rounded tiers, the lower
-    // pads burning darker red than the crown.
+    // Upright layered broom: thick straight trunk, four tidy rounded tiers
+    // stacked with air between them, lower pads burning darker than the crown.
     shape: {
-      height: [11, 13], lean: [1.0, 1.4], girth: 1.14,
-      tiers: 4, padRx: [4.2, 5.0], padFlat: 0.64, padShrink: 0.74,
-      sparse: 0.05, leafSize: 0.88, branchLen: [2, 3], droop: 0,
+      height: [14, 16], lean: [0.9, 1.3], girth: 1.16,
+      tiers: 4, padRx: [3.6, 4.2], padFlat: 0.46, padShrink: 0.72,
+      sparse: 0.08, leafSize: 0.9, branchLen: [2.6, 3.6], droop: 0,
     },
   },
 };
@@ -279,8 +281,9 @@ const buildTrunkPath = (rng: Rng, baseY: number, shape: BonsaiShape): PathPoint[
       : Math.sin(t * Math.PI) * leanAmp - Math.sin(t * Math.PI * 2) * leanAmp * counter * 0.4;
     const x = Math.cos(leanDir) * sway;
     const z = Math.sin(leanDir) * sway * 0.8;
-    // Beefier, dramatically tapering trunk (thick nebari → fine apex).
-    const r = (2.5 * Math.pow(1 - t, 1.3) + 0.7) * shape.girth;
+    // A bold-but-elegant trunk: a solid nebari base tapering to a fine apex,
+    // dark enough to read between the pads without becoming a fat column.
+    const r = (2.4 * Math.pow(1 - t, 1.5) + 0.5) * shape.girth;
     points.push({ x, y: baseY + i / 2, z, r, t });
   }
   return points;
@@ -316,16 +319,20 @@ const planPads = (rng: Rng, trunk: PathPoint[], shape: BonsaiShape): PadSpec[] =
   let side = rng() < 0.5 ? 1 : -1;
 
   for (let i = 0; i < sideTiers; i++) {
-    const attachT = 0.42 + (i / Math.max(1, sideTiers)) * 0.4;
+    // A full staircase: pads climb from low (0.30) to high (0.82) so each sits
+    // in its own y-band with sky between them and the bare lower trunk shows.
+    const attachT = 0.30 + (i / Math.max(1, sideTiers - 1 || 1)) * 0.52;
     const from = trunk[Math.round(attachT * (trunk.length - 1))];
     const rx = baseRx * Math.pow(shape.padShrink, i);
-    const ry = Math.max(1.7, rx * shape.padFlat);
-    const azimuth = leanAngle + side * (Math.PI / 2 + rngRange(rng, -0.35, 0.35));
+    // Thin flat plates (lower floor) so distinct pads keep clear air between.
+    const ry = Math.max(1.3, rx * shape.padFlat);
+    const azimuth = leanAngle + side * (Math.PI / 2 + rngRange(rng, -0.3, 0.3));
     side = -side;
-    const reach = rngRange(rng, shape.branchLen[0], shape.branchLen[1]) + rx * 0.4;
+    // Push pads well off the trunk so sky opens between the wood and the pad.
+    const reach = rngRange(rng, shape.branchLen[0], shape.branchLen[1]) + rx * 0.55;
     pads.push({
       cx: from.x + Math.cos(azimuth) * reach,
-      cy: from.y + rngRange(rng, 0.8, 1.6),
+      cy: from.y + rngRange(rng, 0.6, 1.3),
       cz: from.z + Math.sin(azimuth) * reach * 0.85,
       rx,
       ry,
@@ -338,7 +345,7 @@ const planPads = (rng: Rng, trunk: PathPoint[], shape: BonsaiShape): PadSpec[] =
 
   // Apex pad sits ON the trunk top — the tree's crown.
   const apexRx = Math.max(2.2, baseRx * Math.pow(shape.padShrink, sideTiers));
-  const apexRy = Math.max(1.7, apexRx * shape.padFlat * 1.15);
+  const apexRy = Math.max(1.3, apexRx * shape.padFlat * 1.15);
   pads.push({
     cx: top.x,
     cy: top.y + apexRy * 0.5,
@@ -376,7 +383,7 @@ const buildBranchesToPads = (
           x: from.x + (target.x - from.x) * t,
           y: from.y + (target.y - from.y) * t - sag,
           z: from.z + (target.z - from.z) * t,
-          r: (1.05 * (1 - t) + 0.42) * species.shape.girth,
+          r: (0.72 * (1 - t) + 0.34) * species.shape.girth,
           t,
         },
         (r) => rngPick(r, species.trunk),
@@ -418,21 +425,26 @@ const fillPad = (
   // Maple's fire gradient: lower pads burn darker than the crown.
   const tintShift = (pad.tint - 0.5) * 0.12;
 
+  // A COMPACT rounded dome: one solid core blob plus a few small bumps pulled
+  // in TIGHT (never past ~0.5 of the radius) so the pad's footprint stays ~its
+  // own radius and neighbouring pads keep clear air between them — the surface
+  // stays gently lumpy without sprawling into one merged blob.
   const blobs: FoliageBlob[] = [
-    { cx: pad.cx, cy: pad.cy, cz: pad.cz, rx: pad.rx * 0.66, ry: pad.ry * 0.94, rz: pad.rz * 0.66 },
+    { cx: pad.cx, cy: pad.cy, cz: pad.cz, rx: pad.rx * 0.85, ry: pad.ry * 0.92, rz: pad.rz * 0.85 },
   ];
-  const satellites = rngInt(rng, 4, 6) + Math.round(pad.rx * 0.45);
+  const satellites = rngInt(rng, 3, 4) + Math.round(pad.rx * 0.25);
   for (let i = 0; i < satellites; i++) {
     const a = rng() * Math.PI * 2;
-    const dist = rngRange(rng, 0.42, 0.94);
-    const s = rngRange(rng, 0.34, 0.52);
+    const dist = rngRange(rng, 0.18, 0.46);
+    const s = rngRange(rng, 0.4, 0.54);
     blobs.push({
       cx: pad.cx + Math.cos(a) * pad.rx * dist,
-      // Bias satellites upward so the pad domes on top and stays fuller.
-      cy: pad.cy + rngRange(rng, -pad.ry * 0.3, pad.ry * 0.62),
+      // Keep bumps near the pad's own plane so pads stay FLAT plates with air
+      // between them, instead of doming up and merging with the pad above.
+      cy: pad.cy + rngRange(rng, -pad.ry * 0.15, pad.ry * 0.22),
       cz: pad.cz + Math.sin(a) * pad.rz * dist,
       rx: pad.rx * s,
-      ry: pad.ry * s * rngRange(rng, 0.85, 1.12),
+      ry: pad.ry * s * rngRange(rng, 0.8, 1),
       rz: pad.rz * s,
     });
   }
@@ -493,7 +505,7 @@ const fillPad = (
       size: shell ? shape.leafSize : 1,
       tint: tintShift,
     });
-    if (exposedTop && rng() < 0.32) {
+    if (exposedTop && rng() < 0.55) {
       anchors.push({ x, y: y + 1, z, layer });
     }
   }
@@ -552,7 +564,9 @@ const shadeHex = (hex: string, amount: number): string => {
 };
 
 const buildIsland = (out: Voxel[], rng: Rng): void => {
-  const R = 10.5;
+  // A small, quiet floating disc — the base is subordinate so the tree is the
+  // hero (was a big busy island competing with the canopy).
+  const R = 7.6;
   for (let x = -Math.ceil(R); x <= Math.ceil(R); x++) {
     for (let z = -Math.ceil(R); z <= Math.ceil(R); z++) {
       const d = Math.hypot(x / R, z / (R * 0.82));
@@ -565,20 +579,18 @@ const buildIsland = (out: Voxel[], rng: Rng): void => {
         threshold: 0,
       });
       // Tapering rock underside gives the floating-diorama silhouette.
-      const depth = Math.max(1, Math.round((1 - d) * 3.2));
+      const depth = Math.max(1, Math.round((1 - d) * 2.6));
       for (let y = -1; y >= -depth; y--) {
         if (Math.hypot(x / (R * (1 + y * 0.16)), z / (R * 0.82 * (1 + y * 0.16))) > 1) continue;
         push(out, { x, y, z, color: rngPick(rng, PALETTE.rock), kind: 'rock', threshold: 0 });
       }
-      // Living ground detail: grass blades, wildflowers, mossy stones.
-      if (!edge && d < 0.8 && Math.hypot(x, z) > 5.5) {
+      // A little living ground detail, kept sparse so it stays quiet.
+      if (!edge && d < 0.82 && Math.hypot(x, z) > 4.6) {
         const roll = rng();
-        if (roll < 0.045) {
-          push(out, { x, y: 1, z, color: PALETTE.grassEdge, kind: 'island', threshold: 0, size: 0.34 });
-        } else if (roll < 0.065) {
-          push(out, { x, y: 1, z, color: rng() < 0.5 ? '#f2c9d4' : '#f4f1ea', kind: 'island', threshold: 0, size: 0.38 });
-        } else if (roll < 0.078) {
-          push(out, { x, y: 1, z, color: rngPick(rng, PALETTE.rock), kind: 'rock', threshold: 0, size: 0.6 });
+        if (roll < 0.04) {
+          push(out, { x, y: 1, z, color: PALETTE.grassEdge, kind: 'island', threshold: 0, size: 0.32 });
+        } else if (roll < 0.055) {
+          push(out, { x, y: 1, z, color: rng() < 0.5 ? '#f2c9d4' : '#f4f1ea', kind: 'island', threshold: 0, size: 0.36 });
         }
       }
     }
