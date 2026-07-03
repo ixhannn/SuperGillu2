@@ -112,9 +112,21 @@ select {
    land at the device's full refresh rate. The flag is cleared the moment the
    transition completes.
    ────────────────────────────────────────────────────────────────────────── */
-html[data-transitioning="1"] *,
-html[data-transitioning="1"] *::before,
-html[data-transitioning="1"] *::after {
+/* Scoped to the ANIMATED surfaces (the transition shell + the engine's fixed
+   clones), not `html[data-transitioning] *`. The old universal selector forced a
+   FULL-DOCUMENT style recalc twice per navigation (set + clear — measured ~20ms
+   + ~10ms on desktop with a small DOM; several times that on a phone with a real
+   account) and paused chrome/ambient animations that have their own scoped
+   gating (AmbientVisuals ships its own `:root[data-transitioning]
+   [data-lior-ambient-motion]` rule, and the WebGL layers read the attribute in
+   JS). Pausing only the layers that are actually moving keeps the GPU saving
+   where it matters and makes the flag toggle cheap. */
+html[data-transitioning="1"] [data-transition-shell="true"] *,
+html[data-transitioning="1"] [data-transition-shell="true"] *::before,
+html[data-transitioning="1"] [data-transition-shell="true"] *::after,
+html[data-transitioning="1"] .te-clone *,
+html[data-transitioning="1"] .te-clone *::before,
+html[data-transitioning="1"] .te-clone *::after {
   animation-play-state: paused !important;
 }
 
@@ -149,11 +161,55 @@ html[data-transitioning="1"] *::after {
    (the WebView's undrawn base) and juddered. Suppressing blur for the ~460ms
    transition frees that budget so the heavy page actually draws. The brief
    flat-glass moment is far less jarring than a white flash + stutter. */
-html[data-transitioning="1"] *,
-html[data-transitioning="1"] *::before,
-html[data-transitioning="1"] *::after {
+/* SCOPED to the animated layers (transition shell + engine clones), NOT the
+   whole document. The in-page glass cards — the "whole screen of blur tiles"
+   that blew the compositor tile budget on heavy opens — all live INSIDE the
+   transition shell (and its clone), so they are still suppressed while they
+   scale/fade. What changed: the small PORTALED chrome strips (header pill `.vh`,
+   bottom nav, toasts) keep their frosted glass through the transition. Those are
+   a few thin static strips — nowhere near the tile-budget blowup — and exempting
+   them removes the single most VISIBLE artifact of every open/close: the entire
+   app chrome snapping flat at nav start and snapping back frosted up to a second
+   later (the reported "flashy/flickery" tile opens). It also spares the
+   full-document style recalc the universal selector forced on every toggle. */
+html[data-transitioning="1"] [data-transition-shell="true"] *,
+html[data-transitioning="1"] [data-transition-shell="true"] *::before,
+html[data-transitioning="1"] [data-transition-shell="true"] *::after,
+html[data-transitioning="1"] .te-clone *,
+html[data-transitioning="1"] .te-clone *::before,
+html[data-transitioning="1"] .te-clone *::after {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Paint-gap protection (the "brief flash right after a tile opens"), v2.
+   Root-caused on-device by frame capture: every Lior page is a TRANSPARENT
+   surface over the one shared ANIMATED ambient world, so any moment where a
+   not-yet-painted page region is exposed showed the moving ambient through the
+   gap — the reported flash.
+
+   v1 backed the live shell with an opaque theme gradient while
+   data-transitioning was set. That closed the gap but SNAPPED: gradients don't
+   interpolate, so the between-cards areas blinked flat↔live at the START and
+   END of every navigation — a new micro-flash of its own.
+
+   v2 does it smoothly, in two parts:
+   1. The SOLID backing lives only on the engine's snapshots that truly need to
+      be opaque cards (`.te-solid`, set by TransitionEngine: the shrinking
+      close-card and the sliding clones — without it their transparent regions
+      would ghost the destination through the moving page).
+   2. The live destination is protected by fading the AMBIENT WORLD itself out
+      during the transition window. It rides the existing 420ms opacity
+      transition (no snap), deepens the already-shipped nav-depth recede
+      (0.46 → 0), and what remains behind the page gaps is html/body's own
+      static theme gradient — the calm flat surface v1 painted, reached
+      smoothly. By reveal time (~380ms into an open) the ambient is fully out,
+      so an unpainted region can only ever show still, flat theme. When the
+      flag clears, the ambient breathes back in over 420ms — no end snap. */
+html[data-transitioning="1"] .te-clone.te-solid .keep-alive-shell.is-active,
+html[data-transitioning="1"] .te-clone.te-solid.keep-alive-shell.is-active {
+  background: var(--theme-bg-main, linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%));
 }
 
 /* Page-open stability for the Profile theme grid. While a route transition is
@@ -244,12 +300,27 @@ html[data-nav-depth="1"] .lior-ambient-world {
   transition-duration: 320ms;
 }
 
+/* Paint-gap protection v2 (see the .te-solid block above): while a route
+   transition runs, the ambient world fades FULLY out — smoothly, on its own
+   existing opacity transition — so any not-yet-painted page region exposes only
+   the static theme gradient beneath (html/body background), never the moving
+   ambient. Placed AFTER the nav-depth rule (equal specificity) so the deeper
+   fade wins while both flags are set. Also frees the entire GPU budget for the
+   transition itself — the WebGL layers pause via their own data-transitioning
+   JS gates, and now their last-drawn frame isn't even composited. */
+html[data-transitioning="1"] .lior-ambient-world {
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lior-ambient-world {
     transform: translateZ(0) !important;
     transition: opacity 200ms linear;
   }
   html[data-nav-depth="1"] .lior-ambient-world { opacity: 0.72; }
+  /* Reduced motion keeps the deep-fade (it's an opacity dim, not motion) so the
+     same paint-gap guarantee holds under _xfade. */
+  html[data-transitioning="1"] .lior-ambient-world { opacity: 0; }
 }
 
 /* REMOVED: the `.cv-auto` (content-visibility:auto) utility. It was applied to

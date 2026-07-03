@@ -20,6 +20,16 @@ export const T_POP          = 260;
 export const T_MODAL_OPEN   = 380;
 export const T_MODAL_CLOSE  = 240;
 
+// Container-transform (tile → page) timings. The card you tapped GROWS into the
+// page (open) and the page SHRINKS back into its tile (close) — the App-Store /
+// Material container-transform pattern, tuned brisk.
+const T_MORPH_GROW     = 340;  // tile rect → full screen
+const T_MORPH_REVEAL   = 170;  // opaque surface dissolves over the painted page
+const T_MORPH_SHRINK   = 300;  // full screen → tile rect
+const T_MORPH_FADE     = 140;  // shrinking card's final fade (tail-overlapped)
+// Apple's sheet curve — fast launch, long soft landing. No overshoot.
+const E_MORPH = 'cubic-bezier(0.32, 0.72, 0, 1)';
+
 // ─── Easing ───────────────────────────────────────────────────────────────────
 const E_SILK     = 'cubic-bezier(0.16, 1, 0.3, 1)';
 const E_STANDARD = 'cubic-bezier(0.22, 1, 0.36, 1)';
@@ -90,39 +100,56 @@ interface DirConfig {
 function dirConfig(dir: EngineDirection, _W: number): DirConfig {
   const ty = (p: string, sc = 1) => `translate3d(0,${p},0) scale(${sc})`;
 
-  // This JS-clone path is now the PRIMARY route animator (the View Transitions
-  // API is disabled because it snapshotted the fixed background). The outgoing
-  // page is cloned ON TOP: "forward" motions recede + fade the old layer to
-  // reveal the new sliding in beneath; "back" motions slide the opaque old
-  // layer off to reveal the screen beneath. Tuned for a premium "arrive &
-  // settle" open and a clean slide-off close, over the still background.
+  // This JS-clone path is the PRIMARY route animator (the View Transitions API
+  // is disabled because it snapshotted the fixed background).
+  //
+  // OPEN/CLOSE are FAST OPAQUE SLIDES — the "deck of cards" model — after the
+  // scale-bloom + clone-crossfade era proved structurally flash-prone on real
+  // Android (2026-07-03 device frame captures): every Lior page is a
+  // TRANSPARENT surface over one shared animated background, so any crossfade
+  // has a mid-fade phase where BOTH layers are semi-transparent and the moving
+  // ambient bleeds through — mistime the reveal by 2 frames on a slow paint and
+  // it reads as a flash/flicker. Sliding sidesteps the whole failure class:
+  //   • NEITHER layer ever animates opacity — both stay at 1 the entire time.
+  //   • During data-transitioning the active shell (and its copy inside the
+  //     clone) carries an opaque theme background (root-fixes.css paint-gap
+  //     mask), so the two layers are solid surfaces: at every instant the
+  //     screen is covered by old page ∪ new page. Nothing can bleed through,
+  //     no matter how late the destination paints.
+  //   • It's FAST — 300ms open / 260ms close instead of the 460-520ms bloom —
+  //     and matches the gesture-back motion (page slides right), so forward
+  //     and back are one coherent physical metaphor.
+  //
+  // Coverage-safety: the incoming layer starts at a small opposite-direction
+  // offset and settles on E_SILK (which covers most of its distance in the
+  // first ~40% of the duration), while the outgoing clone leaves on a
+  // slow-start accelerate — so the outgoing edge never outruns the incoming
+  // edge and the background can never peek between them.
   switch (dir) {
     case 'tab':
       return { dur: T_TAB,  inEase: E_SILK, outEase: E_SILK,
         inFrom: [ty('14px', 0.985),  '0'],
         outTo:  [ty('-10px', 1.008), '0'] };
     case 'push':
-      // OPEN: the new page BLOOMS into place on the SPRING — scales up from 94%
-      // + fades in with the alive settle, while the outgoing page (cloned on top)
-      // recedes to 105% + fades out. No sideways slide, no clip window that would
-      // expose the shared background; content morphs in place over the STILL bg.
-      return { dur: 460, inEase: E_SPRING, outEase: E_SILK,
-        // Incoming opacity stays 1: only the opaque CLONE fades out on top. If the
-        // new page itself fades 0→1, its live backdrop-filter glass sits under a
-        // fractional-opacity ancestor for the whole animation and boils on WebView
-        // (the reported "whole opened page flickers"). The clone IS the crossfade.
-        inFrom: ['scale(0.94)', '1'],
-        outTo:  ['scale(1.05)', '0'] };
+    case 'expand':
+      // OPEN: the current page (cloned on top, full opacity) slides off LEFT —
+      // forward motion — while the destination beneath settles in from a small
+      // rightward offset. Reads as the old page peeling away to reveal the new
+      // one already arriving. No scale, no fade, no crossfade → nothing to
+      // mistime, nothing to flicker. ('expand' kept as an alias so useTileOpen's
+      // upgrade path needs no changes; the tile press-lift still gives the
+      // tactile origin cue.)
+      return { dur: 300, inEase: E_SILK, outEase: 'cubic-bezier(0.5, 0, 0.28, 1)',
+        inFrom: ['translate3d(56px,0,0)', '1'],
+        outTo:  ['translate3d(-104%,0,0)', '1'] };
     case 'pop':
-      // CLOSE: the leaving page (cloned on top) collapses back + fades out on the
-      // gentle accelerate (E_COLLAPSE — clean, no overshoot on a dismiss) while the
-      // screen beneath returns from 103% + fades in and SETTLES on the spring. The
-      // settle-in is what makes the close feel finished instead of abrupt.
-      return { dur: 340, inEase: E_SPRING, outEase: E_COLLAPSE,
-        // Reveal the destination at full opacity (only the leaving clone fades) so
-        // its backdrop-filter glass never sits under a fractional-opacity group.
-        inFrom: ['scale(1.03)', '1'],
-        outTo:  ['scale(0.93)', '0'] };
+      // CLOSE: the leaving detail (cloned on top, full opacity) slides off
+      // RIGHT — the exact mirror of open and the same motion as the interactive
+      // edge-swipe back gesture — while the tab beneath settles from a small
+      // leftward offset. Both layers opaque, no fades.
+      return { dur: 260, inEase: E_SILK, outEase: 'cubic-bezier(0.5, 0, 0.28, 1)',
+        inFrom: ['translate3d(-40px,0,0)', '1'],
+        outTo:  ['translate3d(104%,0,0)', '1'] };
     case 'modal':
       return { dur: T_MODAL_OPEN,  inEase: E_SILK, outEase: E_STANDARD,
         inFrom: [ty('100%', 1),      '1'],
@@ -131,21 +158,6 @@ function dirConfig(dir: EngineDirection, _W: number): DirConfig {
       return { dur: T_MODAL_CLOSE, inEase: E_SILK, outEase: E_EXIT,
         inFrom: [ty('-1.2%', 0.97),  '0.9'],
         outTo:  [ty('100%', 1),      '1'] };
-    case 'expand':
-      // Tile-open bloom — the headline morph. _run sets transform-origin to the
-      // tapped tile's centre (--lior-open-x/y) so the new page grows OUT OF the
-      // card the finger touched, and the SPRING gives it the alive grow-and-settle
-      // the flat tween lacked. Scale starts at 91% (a touch deeper than push, so
-      // the grow-from-tile reads) — the background recede (html[data-nav-depth])
-      // dims the stage behind during the bloom, so the small edge gap reads as the
-      // page lifting forward, not as a bare-background flash. Longer dur lets the
-      // spring's settle play out.
-      return { dur: 520, inEase: E_SPRING, outEase: E_SILK,
-        // Incoming opacity 1 (only the clone fades): the bloom is the scale-up +
-        // the clone dissolving over it. Fading the live-glass page 0→1 was the
-        // primary cause of the whole-page open flicker on WebView.
-        inFrom: ['scale(0.91)', '1'],
-        outTo:  ['scale(1.06)', '0'] };
   }
 }
 
@@ -176,7 +188,14 @@ class TransitionEngineImpl {
   // Rect + radius of the most-recently-tapped interactive element, captured
   // globally so ANY tile/button open can clip-reveal from where the finger
   // landed. Consumed (and expired after 700ms) by navigate().
-  private _tapOrigin: { x: number; y: number; w: number; h: number; radius: string; t: number } | null = null;
+  private _tapOrigin: { x: number; y: number; w: number; h: number; radius: string; t: number; el: HTMLElement | null } | null = null;
+
+  // The tile rect a container-transform OPEN grew out of — the matching CLOSE
+  // shrinks the page back into this exact rect ("the page returns to its
+  // tile"). Set by _morphOpen, consumed by the next pop, cleared by any other
+  // navigation (a deeper push / tab switch / gesture breaks the open↔close
+  // spatial pairing, so the close falls back to the directional slide).
+  private _closeMorph: { x: number; y: number; w: number; h: number; radius: string } | null = null;
 
   // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -260,7 +279,8 @@ class TransitionEngineImpl {
       const s = document.documentElement.style;
       s.setProperty('--lior-open-x', `${Math.round(o.x + o.w / 2)}px`);
       s.setProperty('--lior-open-y', `${Math.round(o.y + o.h / 2)}px`);
-      this._tapOrigin = null; // consume so a later programmatic nav re-centres
+      // NOT consumed here — _consumeOrigin() below reads the full rect for the
+      // container transform (and nulls it).
       effectiveDir = 'expand';
     }
 
@@ -294,14 +314,27 @@ class TransitionEngineImpl {
       return true;
     }
 
-    // OPEN / CLOSE → content BLOOM over the STILL background, via _run below.
-    // A clip-path morph was tried and rejected on camera: Lior's pages are
-    // transparent surfaces over ONE shared background world, so growing a clip
-    // window just exposed that bright background as a pink "blob flash" for most
-    // of the animation — it never read as content expanding. Sideways slides
-    // were rejected too. _run instead cross-dissolves the page CONTENT with a
-    // subtle scale (blooming from the tapped tile's origin on `expand`, centre
-    // otherwise) and never touches the live background, so nothing blobs.
+    // ── Container transform (the shipped tile open/close) ───────────────────
+    // OPEN: the tapped card grows into the page (_morphOpen). Every tap-driven
+    // push has a fresh origin rect (_captureTap); programmatic navs get the
+    // centre fallback, so opens are ALWAYS the same physical gesture. CLOSE:
+    // if this pop pairs with a morph-open (no deeper nav in between), the page
+    // shrinks back into the exact tile it grew from (_morphClose); otherwise
+    // the directional slide in _run takes it.
+    if (effectiveDir === 'expand') {
+      const o = this._consumeOrigin();
+      this._closeMorph = o;
+      this._morphOpen(c, o, commit, wrappedComplete);
+      return true;
+    }
+    if (effectiveDir === 'pop' && this._closeMorph) {
+      const o = this._closeMorph;
+      this._closeMorph = null;
+      this._morphClose(c, o, commit, wrappedComplete);
+      return true;
+    }
+    // Any other navigation breaks the open↔close spatial pairing.
+    this._closeMorph = null;
 
     // ── Native View Transitions API (Chromium 111+) ─────────────────────────
     // Lets the COMPOSITOR thread snapshot the old/new DOM. No JS cloneNode,
@@ -410,7 +443,12 @@ class TransitionEngineImpl {
     c.style.opacity    = '0';
     requestAnimationFrame(() => {
       commit();
-      requestAnimationFrame(() => {
+      // Commits are time-sliced (startTransition in App.tsx), so a bare
+      // double-rAF could raise opacity while the container still holds the
+      // OUTGOING view — old content flashing back at full opacity, then
+      // popping to the destination. Gate the fade-in on the committed route +
+      // painted content exactly like the animated path does.
+      this._whenPainted(c, () => {
         c.style.opacity = '1';
         const cleanup = () => {
           c.style.transition = '';
@@ -443,43 +481,175 @@ class TransitionEngineImpl {
    * Hard frame cap so a genuinely slow/stuck page can NEVER wedge the navigation
    * lock — we always proceed by MAX_PAINT_FRAMES regardless.
    */
-  private _whenPainted(c: HTMLElement, run: () => void): void {
+  private _whenPainted(
+    c: HTMLElement,
+    run: (committed: boolean) => void,
+    onLayout?: (committed: boolean) => void,
+    maxFrames = 30,               // ~500ms default ceiling (was 12/~200ms). Engine
+                                  // commits are TIME-SLICED (startTransition in
+                                  // App.tsx), so the destination can land several
+                                  // frames after navigate(). The outgoing snapshot
+                                  // holds opaque meanwhile — reads as "loading",
+                                  // never as a blank flash — and the cap still
+                                  // guarantees the nav lock can't wedge. Callers
+                                  // with a SYNCHRONOUS commit (gesture-back) pass a
+                                  // tighter cap. `run`/`onLayout` receive whether
+                                  // the route had actually committed, so the
+                                  // cap-tripped path can degrade gracefully instead
+                                  // of animating STALE outgoing content.
+    settleFrames = 6,             // Frames to hold the OPAQUE outgoing snapshot on
+                                  // top AFTER the destination has laid out, before
+                                  // starting the crossfade — lets a heavy page
+                                  // rasterize behind cover. COLD opens (freshly
+                                  // mounted, slow first paint) pass a larger value
+                                  // so the user sees the held outgoing page, not an
+                                  // empty surface, until real content is ready;
+                                  // WARM navigations (back to a cached tab — already
+                                  // painted) pass a small value so back stays snappy.
+  ): void {
     const MIN_FRAMES = 2;         // preserve the original paint-the-initial-state gap
-    const MAX_PAINT_FRAMES = 12;  // ~200ms ceiling (was 8). A cold/first-visit page
-                                  // (freshly-mounted tab) can't lay out in 8 frames,
-                                  // so the gate gave up and revealed it half-empty.
-                                  // Holds the opaque outgoing snapshot a touch longer
-                                  // — the old page stays put, which reads as "loading",
-                                  // never as a blank flash.
+
+    // Opens commit asynchronously now, so "has the DOM I'm inspecting even been
+    // committed yet?" must be answered before the paint probes below mean
+    // anything. App.tsx mirrors currentView to <html data-route> in an effect;
+    // waiting for it to move past its value at gate-start keeps the gate from
+    // passing on the OUTGOING view's still-active layer (or a lingering cached
+    // overlay with stale content). The frame cap remains the escape hatch.
+    const routeAtStart = typeof document !== 'undefined'
+      ? document.documentElement.dataset.route
+      : undefined;
+    const routeCommitted = (): boolean =>
+      typeof document === 'undefined'
+      || document.documentElement.dataset.route !== routeAtStart;
 
     // The committed destination is either the page overlay (non-tab views mount
-    // as a distinct __overlay__ layer) or the now-active keep-alive tab shell.
+    // as a distinct __overlay__ layer — must be the ACTIVE one, not a lingering
+    // cached overlay holding the previous detail view's content) or the
+    // now-active keep-alive tab shell.
     const contentLayer = (): HTMLElement | null =>
-      (c.querySelector('[data-keep-alive-tab="__overlay__"]') as HTMLElement | null)
+      (c.querySelector('.keep-alive-shell.is-active[data-keep-alive-tab="__overlay__"]') as HTMLElement | null)
       ?? (c.querySelector('.keep-alive-shell.is-active') as HTMLElement | null);
 
     const hasPaintedContent = (): boolean => {
       const el = contentLayer();
-      // Real content has laid out (a non-trivial box with at least one child) vs.
-      // an empty shell that would reveal the bare background beneath the fade.
-      return !!el && el.childElementCount > 0 && el.getBoundingClientRect().height > 4;
+      if (!el) return false;
+      // The keep-alive shell is `min-height:100%`, so its OWN box is always
+      // full-height — checking its height/childCount only proves the shell
+      // mounted, not that the destination's real content laid out. A freshly
+      // committed page has its header + an empty content wrapper for a frame or
+      // two before the (often heavy: gradients, blur-3xl, glass) body paints.
+      // Require a non-trivial descendant COUNT as a cheap "the body is really
+      // here" proxy — an empty shell (header only) is a handful of nodes; a real
+      // page body is dozens. Tuned low enough that even a minimal page clears it.
+      return el.querySelectorAll('*').length >= 12;
     };
 
+    // Once the committed content has laid out we UN-HIDE it (onLayout) but keep
+    // the opaque outgoing clone fully on top, then wait SETTLE_FRAMES more before
+    // starting the clone's dissolve. Device capture showed the destination's
+    // first real paint (heavy hero: two blur-3xl blooms + gradient glass) lands
+    // ~3 frames AFTER layout; the old bare double-rAF began fading the clone
+    // before that paint, so the transparent page flashed the bare ambient world
+    // for a few frames ("a brief flash right after the tile opens"). Letting the
+    // page rasterize BEHIND the opaque clone means the dissolve only ever reveals
+    // fully-painted pixels. It's behind the clone, so the extra frames cost
+    // nothing visible — just a hair more "held outgoing", never a void.
+    const SETTLE_FRAMES = settleFrames;
+
     let frame = 0;
+    let revealedAt = -1;
     const tick = (): void => {
       frame += 1;
-      if (frame >= MIN_FRAMES && (hasPaintedContent() || frame >= MAX_PAINT_FRAMES)) {
-        // Content is LAID OUT — but layout is not paint. Uncovering it now let the
-        // clone fade reveal a laid-out-but-not-yet-rasterized page for a frame or
-        // two, so the shared ambient background showed through and the real content
-        // then "popped in" (the reveal-then-pop seen on device). Wait two more
-        // frames so the browser actually paints the pixels before we cross-fade.
-        requestAnimationFrame(() => requestAnimationFrame(run));
+      if (revealedAt < 0) {
+        if (frame >= MIN_FRAMES && ((routeCommitted() && hasPaintedContent()) || frame >= maxFrames)) {
+          // Un-hide the destination behind the still-opaque clone and begin the
+          // settle countdown so it can actually rasterize before the crossfade.
+          onLayout?.(routeCommitted());
+          revealedAt = frame;
+        }
+        requestAnimationFrame(tick);
+        return;
+      }
+      if (frame - revealedAt >= SETTLE_FRAMES) {
+        run(routeCommitted());
         return;
       }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  }
+
+  // ── Outgoing-page snapshot (shared by _run and the morph paths) ────────────
+
+  /**
+   * Deep-clone the VISIBLE (active) layer only — cached keep-alive tabs are
+   * display:none but cloneNode(true) on the container would still deep-copy
+   * their multi-thousand-node trees (the hitch felt right before an open).
+   * Copies canvas pixels (cloneNode leaves canvases blank), strips the
+   * mid-flight tile-lift class (its keyframe restarts-then-freezes inside the
+   * clone = tile flicker), tags `.te-clone` (scopes the transition-window CSS
+   * suppressions + the paint-gap mask applies to the copied `.is-active` shell,
+   * making the snapshot an OPAQUE surface), and appends it fixed over the
+   * container's box. Caller owns removal.
+   */
+  private _snapshot(c: HTMLElement, zIndex: number, solid = true): HTMLElement {
+    const activeLayer = c.querySelector('.keep-alive-shell.is-active');
+    let clone: HTMLElement;
+    if (activeLayer) {
+      clone = c.cloneNode(false) as HTMLElement;
+      clone.appendChild(activeLayer.cloneNode(true));
+    } else {
+      clone = c.cloneNode(true) as HTMLElement;
+    }
+    const rect = c.getBoundingClientRect();
+    clone.setAttribute('aria-hidden', 'true');
+    clone.classList.add('te-clone');
+    // `.te-solid` → root-fixes.css backs the copied shell with the opaque theme
+    // gradient. Required whenever the snapshot MOVES over other content (the
+    // shrinking close-card, the sliding clones) — its transparent regions would
+    // otherwise ghost the destination through the traveling page. The morph
+    // OPEN's backdrop opts out: it holds perfectly still exactly where the live
+    // page was, so its gaps show the ambient world exactly as at rest — no
+    // snap when it swaps in.
+    if (solid) clone.classList.add('te-solid');
+    for (const lifted of clone.querySelectorAll('.tile-open-lifting')) {
+      lifted.classList.remove('tile-open-lifting');
+    }
+    // Canvas pixels don't survive cloneNode — copy them so canvas-driven pages
+    // (bonsai, drawings) don't blink out of the snapshot. GPU-backed sources
+    // without preserveDrawingBuffer may read blank — same as before, never worse.
+    {
+      const srcRoot = (activeLayer ?? c) as HTMLElement;
+      const srcCanvases = srcRoot.querySelectorAll('canvas');
+      const dstCanvases = clone.querySelectorAll('canvas');
+      const n = Math.min(srcCanvases.length, dstCanvases.length, 6);
+      for (let i = 0; i < n; i++) {
+        const src = srcCanvases[i];
+        if (src.width < 1 || src.height < 1) continue;
+        try {
+          dstCanvases[i].getContext('2d')?.drawImage(src, 0, 0);
+        } catch (_) { /* tainted/GPU-backed — stays blank, same as before */ }
+      }
+    }
+    clone.style.cssText = [
+      'position:fixed',
+      `top:${rect.top}px`,
+      `left:${rect.left}px`,
+      `width:${rect.width}px`,
+      `height:${rect.height}px`,
+      `z-index:${zIndex}`,
+      'pointer-events:none',
+      'will-change:transform,opacity',
+      'overflow:hidden',
+      // Soft edge shadow: the snapshot reads as a CARD over the destination.
+      // Static shadow on a composited, transform-only layer = painted once.
+      'box-shadow:0 0 44px rgba(63,29,42,0.22)',
+      // NOTE: deliberately NO `backface-visibility:hidden` / `contain:paint` —
+      // those forced redundant backing textures for a viewport-sized layer on
+      // every nav; on memory-bound WebViews that evicted on-screen layers.
+    ].join(';');
+    document.body.appendChild(clone);
+    return clone;
   }
 
   // ── Core programmatic transition ──────────────────────────────────────────
@@ -493,45 +663,13 @@ class TransitionEngineImpl {
     const W   = window.innerWidth;
     const cfg = dirConfig(dir, W);
 
-    // ① Snapshot outgoing page.
-    // Clone ONLY the visible (active) layer, not the whole shell container. The
-    // container holds every mounted keep-alive tab; cached tabs are
-    // `display:none` but `cloneNode(true)` still deep-copies their
-    // multi-thousand-node React trees — a synchronous allocation that grows with
-    // every tab ever visited and is the hitch felt right before the bloom. We
-    // shallow-clone the container (preserving its box) and graft a deep clone of
-    // just the one `.is-active` layer (the active tab, or the page overlay), so
-    // the snapshot is visually identical with a fraction of the node count.
-    // Falls back to the full clone if no active layer resolves.
-    const activeLayer = c.querySelector('.keep-alive-shell.is-active');
-    let clone: HTMLElement;
-    if (activeLayer) {
-      clone = c.cloneNode(false) as HTMLElement;
-      clone.appendChild(activeLayer.cloneNode(true));
-    } else {
-      clone = c.cloneNode(true) as HTMLElement;
-    }
+    // ① Snapshot outgoing page (shared with the morph paths — see _snapshot).
+    // z-index 14: covers the page container (z auto/0) but sits DELIBERATELY
+    // below the portaled chrome (header .vh-shell z-20, bottom nav z-60) — the
+    // chrome stays live and steady through every transition instead of being
+    // buried by a full-screen snapshot.
+    const clone = this._snapshot(c, 14);
     const rect  = c.getBoundingClientRect();
-    clone.setAttribute('aria-hidden', 'true');
-    clone.style.cssText = [
-      'position:fixed',
-      `top:${rect.top}px`,
-      `left:${rect.left}px`,
-      `width:${rect.width}px`,
-      `height:${rect.height}px`,
-      'z-index:9998',
-      'pointer-events:none',
-      'will-change:transform,opacity',
-      'overflow:hidden',
-      // NOTE: deliberately NO `backface-visibility:hidden` / `contain:paint`
-      // here. The clone already composites on its own layer via will-change +
-      // its animated transform/opacity; those two extra hints only forced
-      // additional redundant backing-texture allocation for a viewport-sized
-      // fixed layer on EVERY push/pop/expand — a per-nav GPU spike that, on a
-      // memory-bound Android WebView, evicts other on-screen layers (they blank
-      // for a frame then re-rasterize = the "element vanishes on exit" flash).
-    ].join(';');
-    document.body.appendChild(clone);
 
     // ② Pre-position incoming container at initial state (no transition)
     c.style.transition = 'none';
@@ -550,8 +688,20 @@ class TransitionEngineImpl {
     }
     c.style.transform  = cfg.inFrom[0];
     c.style.opacity    = cfg.inFrom[1];
+    // Park the live container invisible while the commit lands. Opens commit
+    // React asynchronously now (startTransition in App.tsx), so for a few frames
+    // the container still holds the OUTGOING view — visible through the
+    // translucent parts of the clone as a scaled double-image ghost — and then
+    // the incoming view at its pre-positioned scale before it has rasterized.
+    // The clone is a pixel-identical copy sitting exactly on top, so hiding the
+    // real container here is invisible; _whenPainted's onLayout un-hides it
+    // right before the cross-fade starts.
+    c.style.visibility = 'hidden';
 
-    // ③ Commit React synchronously
+    // ③ Commit React. For opens this is time-sliced (startTransition) — the
+    //    single biggest main-thread task of a tile tap (mounting the new detail
+    //    view) no longer runs inside the tap's frame, which was the freeze felt
+    //    on device. The paint gate below waits for it to land.
     commit();
 
     // ④ Hold the opaque outgoing clone until the freshly-committed destination
@@ -561,31 +711,293 @@ class TransitionEngineImpl {
     //    fade-out began after a bare double-rAF while the incoming lazy/async page
     //    was still empty, so the shared ambient background bled through for the
     //    whole animation and the bloom played over nothing.
-    this._whenPainted(c, () => {
+    this._whenPainted(c, (committed) => {
       // Animate clone out
       const t = `${cfg.dur}ms`;
       clone.style.transition = `transform ${t} ${cfg.outEase}, opacity ${t} ${cfg.outEase}`;
       clone.style.transform  = cfg.outTo[0];
       clone.style.opacity    = cfg.outTo[1];
 
-      // Animate container to identity
-      c.style.transition = `transform ${t} ${cfg.inEase}, opacity ${t} ${cfg.inEase}`;
-      c.style.transform  = 'translateZ(0) scale(1)';
-      c.style.opacity    = '1';
+      // Animate container to identity — unless the frame cap tripped before the
+      // sliced commit landed (sustained main-thread starvation). In that case
+      // onLayout already snapped the container to identity: animating it now
+      // would make the STALE outgoing content perform the entrance bloom. The
+      // clone just dissolves over identical pixels and the destination swaps in
+      // place whenever React's commit finally flushes.
+      if (committed) {
+        c.style.transition = `transform ${t} ${cfg.inEase}, opacity ${t} ${cfg.inEase}`;
+        c.style.transform  = 'translateZ(0) scale(1)';
+        c.style.opacity    = '1';
+      }
 
       const cleanup = () => {
         clone.remove();
         c.style.transition = '';
         c.style.willChange = '';
         c.style.transformOrigin = '';
-        if (c.style.transform === 'translateZ(0) scale(1)') c.style.transform = '';
-        if (c.style.opacity   === '1')                       c.style.opacity   = '';
+        c.style.visibility = '';   // defensive: onLayout already cleared it
+        // Clear the animated end-state UNCONDITIONALLY. The old guard compared
+        // against the literal 'translateZ(0) scale(1)', but CSSOM serializes the
+        // stored value as 'translateZ(0px) scale(1)', so it never matched — the
+        // container kept a permanent inline transform after the first navigation
+        // (a standing full-screen composited layer, and a containing block that
+        // broke position:fixed for every descendant). Unconditional is safe: the
+        // engine holds the _busy lock until this runs, so nothing else can have
+        // written transform/opacity meanwhile (gesture tracking checks !_busy).
+        c.style.transform = '';
+        c.style.opacity   = '';
         this._busy = false;
         done?.();
       };
       const tid = window.setTimeout(cleanup, cfg.dur + 50);
       clone.addEventListener('transitionend', () => { clearTimeout(tid); cleanup(); }, { once: true });
-    });
+    }, (committed) => {
+      // onLayout: the committed destination has laid out behind the snapshot —
+      // reveal the container at its pre-positioned state so it rasterizes during
+      // the two settle frames before the cross-fade begins. If the cap tripped
+      // BEFORE the sliced commit landed, the container still holds the OUTGOING
+      // view: snap it to identity first so the stale content doesn't bloom.
+      if (!committed) {
+        c.style.transform = 'translateZ(0) scale(1)';
+        c.style.opacity   = '1';
+        c.style.transformOrigin = '';
+      }
+      c.style.visibility = '';
+    },
+    // maxFrames: default cap.
+    30,
+    // settleFrames: a few frames for the committed page to rasterize behind the
+    // opaque snapshot before the slide starts. The slide model is far less
+    // paint-sensitive than the old crossfade (the destination is revealed
+    // PROGRESSIVELY as the clone travels, and any unpainted region shows the
+    // opaque theme mask, not the ambient), so a short settle keeps taps snappy.
+    (dir === 'expand' || dir === 'push') ? 4 : 3);
+  }
+
+  // ── Container transform: the card you tapped BECOMES the page ─────────────
+
+  /**
+   * OPEN — "travel into the card" (App-Store / Material container transform).
+   *
+   *   1. The old page holds perfectly still (static opaque snapshot beneath).
+   *   2. An opaque theme-surfaced CARD, matching the tapped tile's exact rect
+   *      and radius, GROWS from under the finger to fill the screen (pure
+   *      compositor transform, Apple sheet curve). The growth itself is the
+   *      loading cover: the destination commits + paints behind it.
+   *   3. The instant the card has arrived AND the page has painted, the old
+   *      snapshot is dropped (invisible — the card covers everything) and the
+   *      card dissolves over the fully-painted page.
+   *
+   * Flash-proof by construction: the screen is always covered by [old page ∪
+   * growing opaque card], and the final dissolve is ONE translucent layer over
+   * an OPAQUE page (paint-gap mask) — the animated ambient can never bleed
+   * through, no matter how late the destination paints.
+   */
+  private _morphOpen(
+    c: HTMLElement,
+    o: { x: number; y: number; w: number; h: number; radius: string; el?: HTMLElement | null },
+    commit: () => void,
+    done?: () => void,
+  ): void {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+
+    // Static backdrop: the page being left, held perfectly still. z 12 — above
+    // the page container (z auto/0), below the growing card (z 14), and both
+    // below the portaled chrome (header z-20, nav z-60) so the pills stay live.
+    // NOT solid: it doesn't move, so its ambient gaps look exactly like rest —
+    // the swap-in is invisible (the ambient deep-fade handles paint-gap safety).
+    const clone = this._snapshot(c, 12, false);
+
+    // The growing card. Sized at FULL SCREEN and FLIP-transformed down onto the
+    // tile rect, so the animation is transform-only (compositor). Opaque theme
+    // surface + a soft luminous wash so it reads as the tile lifting toward
+    // you, not a blank sheet.
+    const sx = Math.max(o.w / W, 0.02);
+    const sy = Math.max(o.h / H, 0.02);
+    const tx = o.x + o.w / 2 - W / 2;
+    const ty = o.y + o.h / 2 - H / 2;
+    const surface = document.createElement('div');
+    surface.setAttribute('aria-hidden', 'true');
+    surface.className = 'te-morph-card';
+    surface.style.cssText = [
+      'position:fixed',
+      'top:0', 'left:0',
+      `width:${W}px`, `height:${H}px`,
+      'z-index:14',   // above backdrop snapshot (12), below chrome (20/60)
+      'pointer-events:none',
+      'background:var(--theme-bg-main, linear-gradient(168deg, #F8E7EC 0%, #EBD4DB 50%, #DEBFC9 100%))',
+      'border-radius:26px',
+      'will-change:transform,opacity',
+      'box-shadow:0 24px 80px rgba(63,29,42,0.30)',
+      `transform:translate3d(${tx}px,${ty}px,0) scale(${sx},${sy})`,
+    ].join(';');
+    const wash = document.createElement('div');
+    wash.style.cssText = 'position:absolute;inset:0;border-radius:inherit;'
+      + 'background:linear-gradient(160deg, rgba(255,255,255,0.55), rgba(255,255,255,0.14) 55%, rgba(255,255,255,0))';
+    surface.appendChild(wash);
+
+    // Carry the tapped tile's CONTENT with the card — the container transform
+    // reads as "MY tile is opening", not "a sheet appeared". The tile snapshot
+    // is counter-scaled so that at t=0 it exactly overlays the real tile
+    // (surface scale × inverse scale = identity), then it eases toward natural
+    // size while fading out over the first ~40% of the growth — dissolving as
+    // the card becomes the page. Compositor-only (transform + opacity).
+    let tileGhost: HTMLElement | null = null;
+    if (o.el && o.el.isConnected) {
+      try {
+        const ghost = o.el.cloneNode(true) as HTMLElement;
+        ghost.style.cssText = [
+          'position:absolute', 'top:0', 'left:0',
+          `width:${o.w}px`, `height:${o.h}px`,
+          'margin:0',
+          `border-radius:${o.radius && o.radius !== '0px' ? o.radius : '26px'}`,
+          'overflow:hidden',
+          'transform-origin:0 0',
+          `transform:scale(${W / o.w},${H / o.h})`,
+          'will-change:transform,opacity',
+          'pointer-events:none',
+        ].join(';');
+        surface.appendChild(ghost);
+        tileGhost = ghost;
+      } catch (_) { /* clone failed — card grows without the content carry */ }
+    }
+    document.body.appendChild(surface);
+
+    // Park the live container invisible while the (time-sliced) commit lands —
+    // it sits beneath the clone + card, so nothing half-mounted is ever seen.
+    c.style.visibility = 'hidden';
+    commit();
+
+    let grown = false;
+    let painted = false;
+    let revealed = false;
+    let finished = false;
+    let failsafe = 0;
+
+    const cleanup = () => {
+      // Idempotent: the failsafe timer, the dissolve's transitionend AND its
+      // backup timeout can all race here (a stall followed by recovery fires
+      // more than one) — done() must only ever complete the navigation once.
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(failsafe);
+      clone.remove();
+      surface.remove();
+      c.style.visibility = '';
+      this._busy = false;
+      done?.();
+    };
+    // Hard failsafe: whatever happens (missed transitionend on a backgrounded
+    // tab, etc.), the nav lock cannot wedge.
+    failsafe = window.setTimeout(cleanup, T_MORPH_GROW + T_MORPH_REVEAL + 900);
+
+    const reveal = () => {
+      if (revealed || !grown || !painted) return;
+      revealed = true;
+      // The card fully covers the screen: drop the old snapshot invisibly, then
+      // dissolve the card over the painted destination.
+      clone.remove();
+      surface.style.transition = `opacity ${T_MORPH_REVEAL}ms ${E_SILK}`;
+      surface.style.opacity = '0';
+      const tid = window.setTimeout(cleanup, T_MORPH_REVEAL + 60);
+      surface.addEventListener('transitionend', () => { window.clearTimeout(tid); cleanup(); }, { once: true });
+    };
+
+    // Paint gate: un-hide the destination behind cover as soon as it lands.
+    // (If the cap trips uncommitted — sustained starvation — we proceed anyway;
+    // App.tsx's onComplete force-flush lands the content, same degraded path as
+    // the slide. Small settle: the card covers everything regardless.)
+    this._whenPainted(c, () => {
+      c.style.visibility = '';
+      painted = true;
+      reveal();
+    }, undefined, 30, 2);
+
+    // Launch the growth on the next frame (initial transform must paint first).
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      surface.style.transition = `transform ${T_MORPH_GROW}ms ${E_MORPH}`;
+      surface.style.transform = 'translate3d(0,0,0) scale(1)';
+      if (tileGhost) {
+        // Track the card's growth (same duration/ease so the net motion stays
+        // continuous) while dissolving in the first ~40% of the trip.
+        tileGhost.style.transition = `transform ${T_MORPH_GROW}ms ${E_MORPH}, opacity ${Math.round(T_MORPH_GROW * 0.4)}ms ${E_SILK}`;
+        tileGhost.style.transform = 'scale(1,1)';
+        tileGhost.style.opacity = '0';
+      }
+      const tid = window.setTimeout(() => { grown = true; reveal(); }, T_MORPH_GROW + 80);
+      // NOT {once}: the tile ghost's transitionend events BUBBLE through the
+      // surface and would consume a once-listener before the surface's own
+      // transform finishes. Filter instead; the listener dies with the node.
+      surface.addEventListener('transitionend', (ev) => {
+        if (ev.propertyName !== 'transform' || ev.target !== surface) return;
+        window.clearTimeout(tid);
+        grown = true;
+        reveal();
+      });
+    }));
+  }
+
+  /**
+   * CLOSE — the page SHRINKS back into the tile it came from, over the live
+   * destination. Mirror of _morphOpen: the current page's opaque snapshot
+   * collapses (transform-only) onto the stored tile rect while the real
+   * destination is already sitting beneath it, then fades out in its final
+   * moments. One translucent layer over an opaque page — nothing can flash.
+   */
+  private _morphClose(
+    c: HTMLElement,
+    o: { x: number; y: number; w: number; h: number; radius: string },
+    commit: () => void,
+    done?: () => void,
+  ): void {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+
+    // The collapsing page — above the live destination (z auto/0), below chrome.
+    const clone = this._snapshot(c, 14);
+
+    c.style.visibility = 'hidden';
+    commit();
+
+    let finished = false;
+    let failsafe = 0;
+    const cleanup = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(failsafe);
+      clone.remove();
+      c.style.visibility = '';
+      this._busy = false;
+      done?.();
+    };
+    failsafe = window.setTimeout(cleanup, T_MORPH_SHRINK + 900);
+
+    // Wait for the (warm, keep-alive) destination to be ready beneath, then
+    // collapse the snapshot into the tile rect. The fade is tail-overlapped so
+    // the card is already tile-sized and visually "landing" as it dissolves.
+    this._whenPainted(c, () => {
+      c.style.visibility = '';
+      const sx = Math.max(o.w / W, 0.02);
+      const sy = Math.max(o.h / H, 0.02);
+      const tx = o.x + o.w / 2 - W / 2;
+      const ty = o.y + o.h / 2 - H / 2;
+      clone.style.borderRadius = '26px';
+      clone.style.transition = [
+        `transform ${T_MORPH_SHRINK}ms ${E_MORPH}`,
+        `opacity ${T_MORPH_FADE}ms ${E_SILK} ${T_MORPH_SHRINK - T_MORPH_FADE}ms`,
+      ].join(', ');
+      requestAnimationFrame(() => {
+        clone.style.transform = `translate3d(${tx}px,${ty}px,0) scale(${sx},${sy})`;
+        clone.style.opacity = '0';
+      });
+      const tid = window.setTimeout(cleanup, T_MORPH_SHRINK + 80);
+      clone.addEventListener('transitionend', (ev) => {
+        if (ev.propertyName !== 'opacity' || ev.target !== clone) return;
+        window.clearTimeout(tid);
+        cleanup();
+      });
+    }, undefined, 30, 2);
   }
 
   // ── Container morph (tile → page) ─────────────────────────────────────────
@@ -696,7 +1108,10 @@ class TransitionEngineImpl {
     if (r.width < 6 || r.height < 6) return;
     let radius = '0px';
     try { radius = getComputedStyle(el).borderRadius || '0px'; } catch (_) { /* ignore */ }
-    this._tapOrigin = { x: r.left, y: r.top, w: r.width, h: r.height, radius, t: performance.now() };
+    // Keep the element itself: the container-transform open clones the tapped
+    // tile's CONTENT into the growing card so "your tile" visibly becomes the
+    // page (held only until consumed/overwritten by the next tap).
+    this._tapOrigin = { x: r.left, y: r.top, w: r.width, h: r.height, radius, t: performance.now(), el };
   };
 
   /**
@@ -705,15 +1120,15 @@ class TransitionEngineImpl {
    * lose it) or, failing that, a small rect at screen centre. Always returns a
    * usable rect so opens/closes are ALWAYS a morph — never a fallback slide.
    */
-  private _consumeOrigin(): { x: number; y: number; w: number; h: number; radius: string } {
+  private _consumeOrigin(): { x: number; y: number; w: number; h: number; radius: string; el: HTMLElement | null } {
     const o = this._tapOrigin;
     this._tapOrigin = null;
     if (o && (performance.now() - o.t) < 2500) {
-      return { x: o.x, y: o.y, w: o.w, h: o.h, radius: o.radius };
+      return { x: o.x, y: o.y, w: o.w, h: o.h, radius: o.radius, el: o.el };
     }
     const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-    return { x: vw / 2 - 28, y: vh * 0.4, w: 56, h: 56, radius: '28px' };
+    return { x: vw / 2 - 28, y: vh * 0.4, w: 56, h: 56, radius: '28px', el: null };
   }
 
   /**
@@ -801,6 +1216,7 @@ class TransitionEngineImpl {
     const oRect = overlay.getBoundingClientRect();
     const clone = overlay.cloneNode(true) as HTMLElement;
     clone.setAttribute('aria-hidden', 'true');
+    clone.classList.add('te-clone');   // scoped blur/animation suppression target
     clone.style.cssText = [
       'position:fixed',
       `top:${oRect.top}px`, `left:${oRect.left}px`,
@@ -954,6 +1370,9 @@ class TransitionEngineImpl {
 
         // Fire 'te:gesture-back' — App.tsx calls flushSync(() => setState) directly.
         // TransitionEngine.navigate() is NOT called here; this is a separate flow.
+        // The gesture pops the page itself, so the stored morph-close pairing is
+        // consumed/broken — a later unrelated pop must not shrink into a stale rect.
+        this._closeMorph = null;
         window.dispatchEvent(new CustomEvent('te:gesture-back'));
 
         // Hold opacity:0 only until the freshly-committed destination has
@@ -962,8 +1381,11 @@ class TransitionEngineImpl {
         // slow WebView commit the destination was still empty then, so the whole
         // content area sat transparent — the bare ambient background showing
         // through — for many frames = "the whole screen vanishes when I swipe
-        // back". _whenPainted is hard-capped at 8 frames so it can never wedge
-        // the navigation lock.
+        // back". This flow's commit is SYNCHRONOUS (flushSync in the
+        // te:gesture-back listener above), so unlike the sliced navigate() path
+        // it resolves in 2-3 frames — cap at 12 frames (~200ms), not the default
+        // 30 the async path needs, so a starved device never holds the screen
+        // blank for half a second. The cap still means it can never wedge.
         this._whenPainted(c, () => {
           c.style.transition = `opacity 160ms ${E_STANDARD}`;
           c.style.opacity    = '1';
@@ -976,7 +1398,7 @@ class TransitionEngineImpl {
           };
           c.addEventListener('transitionend', cleanup, { once: true });
           setTimeout(cleanup, 200);
-        });
+        }, undefined, 12);
       }, dur + 16);
 
     } else {

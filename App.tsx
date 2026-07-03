@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useEffect, useCallback, useRef, createContext, useContext, useLayoutEffect, useMemo } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useRef, createContext, useContext, useLayoutEffect, useMemo, startTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { Heart } from 'lucide-react';
 import { Onboarding } from './components/Onboarding';
@@ -548,11 +548,36 @@ const App = () => {
     const accepted = TransitionEngine.navigate(
       dir as EngineDirection,
       () => {
-        flushSync(() => {
+        // Commit TIME-SLICED. Committing inside flushSync put the whole
+        // destination render in the tap's frame — the single biggest main-thread
+        // task of a navigation (measured 86-142ms on device) — which was the core
+        // of the user's original "laggy/jittery tile open". startTransition keeps
+        // the tap responsive; the engine parks the live container behind its
+        // snapshot and PAINT-GATES the reveal, and the paint-gap MASK
+        // (root-fixes.css) keeps any pre-paint gap a calm flat theme surface
+        // instead of the ambient swirl that read as "a brief flash". The
+        // onComplete force-flush below covers the degraded (starved) case.
+        startTransition(() => {
           commitView(destination);
         });
       },
       () => {
+        // The engine is about to release its navigation lock. If the sliced
+        // commit above still hasn't landed (its paint gate capped out under
+        // sustained starvation — routeCommitted stayed false), force it NOW,
+        // synchronously, before anything else can run: an orphaned transition
+        // flushing AFTER the lock releases would jump-cut over whatever
+        // navigation the user started next (review finding: abandoned-commit
+        // stomp). <html data-route> mirrors currentView via effect and is
+        // already === destination on every normally-gated completion, so this
+        // is a no-op except in the degraded path; re-running commitView is
+        // idempotent (same-value setStates).
+        if (typeof document !== 'undefined'
+          && document.documentElement.dataset.route !== destination) {
+          flushSync(() => {
+            commitView(destination);
+          });
+        }
         requestAnimationFrame(() => finalizeNavigation(navToken));
       },
     );
