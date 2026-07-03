@@ -114,13 +114,13 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     leaf: ['#7fae5e', '#6f9e52', '#93bd6f'],
     blossom: ['#f6c9d7', '#f2aec4', '#ec92ae', '#e77c9d'],
     blossomBright: '#fbe3ec',
-    trunk: ['#8a6248', '#81593f', '#936b4f'],
-    pot: { body: '#c98a8f', rim: '#b5767c', foot: '#a2666d' },
-    // Moyogi (informal upright): S-curve trunk, three alternating pads + apex.
+    trunk: ['#7a5236', '#6d472e', '#855b41'],
+    pot: { body: '#b9524a', rim: '#a2443d', foot: '#8c3a34' },
+    // Moyogi (informal upright): S-curve trunk, rounded pads + apex.
     shape: {
       height: [10, 12], lean: [1.6, 2.2], girth: 1,
-      tiers: 4, padRx: [4.4, 5.2], padFlat: 0.34, padShrink: 0.74,
-      sparse: 0.13, leafSize: 0.9, branchLen: [2.4, 3.4], droop: 0,
+      tiers: 4, padRx: [4.4, 5.2], padFlat: 0.62, padShrink: 0.76,
+      sparse: 0.11, leafSize: 0.92, branchLen: [2.4, 3.4], droop: 0,
     },
   },
   wisteria: {
@@ -130,13 +130,13 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     leaf: ['#75a45c', '#65944e', '#86b269'],
     blossom: ['#cdb4e2', '#b79bd8', '#a487c9', '#8f72b8'],
     blossomBright: '#e6d7f2',
-    trunk: ['#7d6a56', '#71604c', '#89755f'],
-    pot: { body: '#5b6b8c', rim: '#4c5a77', foot: '#414d66' },
-    // Cascade-leaning arch: broad flat canopy raining blossom racemes.
+    trunk: ['#6f5d4a', '#635341', '#7c6853'],
+    pot: { body: '#4a5a7e', rim: '#3d4c6c', foot: '#33415c' },
+    // Cascade-leaning arch: broad rounded canopy raining blossom racemes.
     shape: {
       height: [8, 10], lean: [2.6, 3.4], arc: true, girth: 1.05,
-      tiers: 2, padRx: [5.6, 6.4], padFlat: 0.3, padShrink: 0.72,
-      sparse: 0.1, leafSize: 0.88, branchLen: [2, 3], droop: 1,
+      tiers: 3, padRx: [5.2, 6.0], padFlat: 0.5, padShrink: 0.74,
+      sparse: 0.09, leafSize: 0.9, branchLen: [2, 3], droop: 1,
     },
   },
   plum: {
@@ -146,14 +146,14 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     leaf: ['#7aa861', '#6a9853', '#8db571'],
     blossom: ['#f7e6ea', '#f2c9d4', '#e8a4b8', '#c96f8c'],
     blossomBright: '#fdf4f6',
-    trunk: ['#6f4a38', '#654232', '#7a5440'],
+    trunk: ['#66422f', '#5b3a29', '#714c38'],
     pot: { body: '#9a8d80', rim: '#877a6e', foot: '#75695e' },
     // Literati (bunjin): tall thin serpentine trunk, sparse crowns high up,
     // blossoms budding straight from the bare wood.
     shape: {
       height: [13, 15], lean: [2.6, 3.4], girth: 0.72,
-      tiers: 2, padRx: [2.6, 3.2], padFlat: 0.44, padShrink: 0.82,
-      sparse: 0.3, leafSize: 0.74, branchLen: [3.2, 4.6], droop: 0,
+      tiers: 3, padRx: [2.8, 3.4], padFlat: 0.58, padShrink: 0.84,
+      sparse: 0.24, leafSize: 0.78, branchLen: [3.2, 4.6], droop: 0,
       bareBloom: true,
     },
   },
@@ -164,14 +164,14 @@ export const BONSAI_SPECIES: Record<BonsaiSpeciesId, BonsaiSpecies> = {
     leaf: ['#84ac58', '#749c4c', '#95b968'],
     blossom: ['#e2734b', '#d95f3b', '#c94f2f', '#e88a5a'],
     blossomBright: '#f2a06a',
-    trunk: ['#77503c', '#6c4735', '#835a44'],
-    pot: { body: '#a9c4b0', rim: '#93b09c', foot: '#7f9c88' },
-    // Upright layered broom: thick trunk, dense fine-leaf tiers, the lower
+    trunk: ['#6d4632', '#623d2b', '#78503b'],
+    pot: { body: '#8fb59b', rim: '#7aa186', foot: '#688e74' },
+    // Upright layered broom: thick trunk, dense rounded tiers, the lower
     // pads burning darker red than the crown.
     shape: {
-      height: [11, 13], lean: [1.0, 1.4], girth: 1.12,
-      tiers: 4, padRx: [4.2, 5.0], padFlat: 0.4, padShrink: 0.72,
-      sparse: 0.06, leafSize: 0.84, branchLen: [2, 3], droop: 0,
+      height: [11, 13], lean: [1.0, 1.4], girth: 1.14,
+      tiers: 4, padRx: [4.2, 5.0], padFlat: 0.64, padShrink: 0.74,
+      sparse: 0.05, leafSize: 0.88, branchLen: [2, 3], droop: 0,
     },
   },
 };
@@ -279,7 +279,8 @@ const buildTrunkPath = (rng: Rng, baseY: number, shape: BonsaiShape): PathPoint[
       : Math.sin(t * Math.PI) * leanAmp - Math.sin(t * Math.PI * 2) * leanAmp * counter * 0.4;
     const x = Math.cos(leanDir) * sway;
     const z = Math.sin(leanDir) * sway * 0.8;
-    const r = (2.0 * (1 - t) + 0.7) * shape.girth;
+    // Beefier, dramatically tapering trunk (thick nebari → fine apex).
+    const r = (2.5 * Math.pow(1 - t, 1.3) + 0.7) * shape.girth;
     points.push({ x, y: baseY + i / 2, z, r, t });
   }
   return points;
@@ -388,6 +389,20 @@ const buildBranchesToPads = (
   }
 };
 
+interface FoliageBlob {
+  cx: number;
+  cy: number;
+  cz: number;
+  rx: number;
+  ry: number;
+  rz: number;
+}
+
+/**
+ * A foliage pad is a CLUSTER of overlapping rounded blobs — a core dome plus
+ * satellites bunched on top — so its surface is bumpy and voluminous like
+ * real clipped bonsai foliage (cauliflower/broccoli), not a smooth ellipsoid.
+ */
 const fillPad = (
   out: Voxel[],
   anchors: BlossomAnchor[],
@@ -397,58 +412,110 @@ const fillPad = (
 ): void => {
   const shape = species.shape;
   const layer: VoxelLayer = pad.cz < 0 ? 'canopyBack' : 'canopyFront';
-  // Pacing contract: first leaves by "Sapling" (growth ~10, G≈0.16), the
-  // apex crown by "Young Tree" (growth ~27). Structure lands early, density
-  // fills through mid-game, and the bloom colour carries the late game.
-  const baseThreshold = 0.04 + pad.attachT * 0.18;
+  // Pacing contract: first leaves by "Sapling" (growth ~10), the crown fills
+  // through mid-game, and the bloom colour carries the late game.
+  const baseThreshold = 0.02 + pad.attachT * 0.16;
   // Maple's fire gradient: lower pads burn darker than the crown.
   const tintShift = (pad.tint - 0.5) * 0.12;
 
-  for (let dx = -Math.ceil(pad.rx); dx <= Math.ceil(pad.rx); dx++) {
-    for (let dy = -Math.ceil(pad.ry); dy <= Math.ceil(pad.ry); dy++) {
-      for (let dz = -Math.ceil(pad.rz); dz <= Math.ceil(pad.rz); dz++) {
-        const d = Math.hypot(dx / pad.rx, dy / pad.ry, dz / pad.rz);
-        if (d > 1) continue;
-        // Bonsai pads are cloud-topped and FLAT underneath: trim the belly.
-        if (dy < -pad.ry * 0.3 && d > 0.5) continue;
-        const shell = d > 0.6;
-        // Ragged silhouette; literati pads drop far more for the airy look.
-        if (shell && rng() < shape.sparse) continue;
-        const threshold = Math.min(0.985, baseThreshold + d * 0.28 + rngRange(rng, 0, 0.04));
-        // Outer shell voxels turn colour first; the core keeps green depth.
-        const bloomAt = shell ? rngRange(rng, 0.05, 0.75) : rngRange(rng, 0.55, 1.15);
-        push(out, {
-          x: Math.round(pad.cx + dx),
-          y: Math.round(pad.cy + dy),
-          z: Math.round(pad.cz + dz),
-          color: shadeHex(rngPick(rng, species.leaf), tintShift),
-          kind: 'leaf',
-          layer,
-          threshold,
-          bloomAt,
-          size: shell ? shape.leafSize : 1,
-          tint: tintShift,
-        });
-        if (shell && dy >= 0 && rng() < 0.3) {
-          anchors.push({ x: Math.round(pad.cx + dx), y: Math.round(pad.cy + dy) + 1, z: Math.round(pad.cz + dz), layer });
-        }
-        // Wisteria racemes: tapering blossom columns raining from pad rims.
-        if (shape.droop > 0 && d > 0.7 && dy <= 0 && rng() < 0.45) {
-          const tail = rngInt(rng, 3, 5);
-          for (let t = 1; t <= tail; t++) {
-            push(out, {
-              x: Math.round(pad.cx + dx),
-              y: Math.round(pad.cy + dy) - t,
-              z: Math.round(pad.cz + dz),
-              color: rngPick(rng, species.leaf),
-              kind: 'leaf',
-              layer,
-              threshold: Math.min(0.985, threshold + t * 0.04),
-              bloomAt: rngRange(rng, 0.02, 0.35),
-              size: Math.max(0.5, 0.8 - t * 0.07),
-            });
+  const blobs: FoliageBlob[] = [
+    { cx: pad.cx, cy: pad.cy, cz: pad.cz, rx: pad.rx * 0.66, ry: pad.ry * 0.94, rz: pad.rz * 0.66 },
+  ];
+  const satellites = rngInt(rng, 4, 6) + Math.round(pad.rx * 0.45);
+  for (let i = 0; i < satellites; i++) {
+    const a = rng() * Math.PI * 2;
+    const dist = rngRange(rng, 0.42, 0.94);
+    const s = rngRange(rng, 0.34, 0.52);
+    blobs.push({
+      cx: pad.cx + Math.cos(a) * pad.rx * dist,
+      // Bias satellites upward so the pad domes on top and stays fuller.
+      cy: pad.cy + rngRange(rng, -pad.ry * 0.3, pad.ry * 0.62),
+      cz: pad.cz + Math.sin(a) * pad.rz * dist,
+      rx: pad.rx * s,
+      ry: pad.ry * s * rngRange(rng, 0.85, 1.12),
+      rz: pad.rz * s,
+    });
+  }
+
+  // Union of blob cells; remember the closest-to-a-bump-surface distance.
+  const cells = new Map<string, { x: number; y: number; z: number; minD: number; padD: number }>();
+  for (const b of blobs) {
+    const rcx = Math.ceil(b.rx);
+    const rcy = Math.ceil(b.ry);
+    const rcz = Math.ceil(b.rz);
+    for (let dx = -rcx; dx <= rcx; dx++) {
+      for (let dy = -rcy; dy <= rcy; dy++) {
+        for (let dz = -rcz; dz <= rcz; dz++) {
+          const d = Math.hypot(dx / b.rx, dy / b.ry, dz / b.rz);
+          if (d > 1) continue;
+          const x = Math.round(b.cx + dx);
+          const y = Math.round(b.cy + dy);
+          const z = Math.round(b.cz + dz);
+          const key = `${x},${y},${z}`;
+          const prev = cells.get(key);
+          if (prev) {
+            if (d < prev.minD) prev.minD = d;
+          } else {
+            const padD = Math.hypot(
+              (x - pad.cx) / pad.rx,
+              (y - pad.cy) / (pad.ry * 1.25),
+              (z - pad.cz) / pad.rz,
+            );
+            cells.set(key, { x, y, z, minD: d, padD });
           }
         }
+      }
+    }
+  }
+
+  const has = (x: number, y: number, z: number): boolean => cells.has(`${x},${y},${z}`);
+
+  for (const cell of cells.values()) {
+    const { x, y, z, minD, padD } = cell;
+    // Trim the deep belly of the lowest pads a touch (lift them off the pot).
+    if (pad.tint < 0.34 && y < pad.cy - pad.ry * 0.7) continue;
+    const exposedTop = !has(x, y + 1, z);
+    const exposedSide =
+      !has(x + 1, y, z) || !has(x - 1, y, z) || !has(x, y, z + 1) || !has(x, y, z - 1);
+    const shell = exposedTop || exposedSide || minD > 0.72;
+    // Airy species drop some side-shell voxels for a see-through crown.
+    if (shell && exposedSide && !exposedTop && rng() < shape.sparse) continue;
+    const threshold = Math.min(0.985, baseThreshold + padD * 0.24 + rngRange(rng, 0, 0.03));
+    // Shell voxels turn to blossom first; the core keeps its green depth.
+    const bloomAt = shell ? rngRange(rng, 0.05, 0.7) : rngRange(rng, 0.6, 1.2);
+    push(out, {
+      x, y, z,
+      color: shadeHex(rngPick(rng, species.leaf), tintShift),
+      kind: 'leaf',
+      layer,
+      threshold,
+      bloomAt,
+      size: shell ? shape.leafSize : 1,
+      tint: tintShift,
+    });
+    if (exposedTop && rng() < 0.32) {
+      anchors.push({ x, y: y + 1, z, layer });
+    }
+  }
+
+  // Wisteria racemes: tapering blossom columns raining from the pad underside.
+  if (shape.droop > 0) {
+    for (const cell of cells.values()) {
+      const { x, y, z } = cell;
+      if (has(x, y - 1, z)) continue; // only from the underside surface
+      if (y > pad.cy - pad.ry * 0.1) continue;
+      if (rng() > 0.4) continue;
+      const tail = rngInt(rng, 3, 6);
+      for (let t = 1; t <= tail; t++) {
+        push(out, {
+          x, y: y - t, z,
+          color: rngPick(rng, species.leaf),
+          kind: 'leaf',
+          layer,
+          threshold: Math.min(0.985, 0.12 + t * 0.03 + rngRange(rng, 0, 0.03)),
+          bloomAt: rngRange(rng, 0.02, 0.32),
+          size: Math.max(0.48, 0.82 - t * 0.07),
+        });
       }
     }
   }
@@ -518,25 +585,58 @@ const buildIsland = (out: Voxel[], rng: Rng): void => {
   }
 };
 
+/**
+ * A round, substantial glazed pot: tapered stave walls, a wider top rim lip,
+ * little feet, and a mounded soil dome the trunk rises out of. Sits at y=1..3
+ * with the soil surface meeting the trunk base at y=4.
+ */
 const buildPot = (out: Voxel[], pot: BonsaiPot): void => {
-  const rx = 3.6;
-  const rz = 2.8;
-  for (let y = 1; y <= 3; y++) {
-    const shrink = y === 1 ? 0.82 : 1;
-    for (let x = -4; x <= 4; x++) {
-      for (let z = -3; z <= 3; z++) {
-        const d = Math.hypot(x / (rx * shrink), z / (rz * shrink));
-        if (d > 1) continue;
-        const rim = y === 3 && d > 0.62;
-        push(out, {
-          x, y, z,
-          color: rim ? pot.rim : y === 1 ? pot.foot : pot.body,
-          kind: 'pot',
-          threshold: 0,
-        });
-        if (y === 3 && d <= 0.62) {
-          push(out, { x, y, z, color: PALETTE.soil, kind: 'soil', threshold: 0 });
-        }
+  const R = 4.4;
+  const topY = 3;
+  const staveDark = shadeHex(pot.body, -0.12);
+  const staveLight = shadeHex(pot.body, 0.06);
+
+  // Walls — a hollow tapered cylinder with vertical stave banding.
+  for (let y = 1; y <= topY; y++) {
+    const rr = R * (0.9 + 0.1 * (y / topY));
+    const rc = Math.ceil(rr);
+    for (let x = -rc; x <= rc; x++) {
+      for (let z = -rc; z <= rc; z++) {
+        const dist = Math.hypot(x, z);
+        if (dist > rr || dist < rr - 1.5) continue;
+        const sector = Math.floor(((Math.atan2(z, x) + Math.PI) / (Math.PI * 2)) * 20);
+        const color = sector % 2 === 0 ? staveDark : staveLight;
+        push(out, { x, y, z, color, kind: 'pot', threshold: 0 });
+      }
+    }
+  }
+
+  // Rim — a wider lip ring crowning the walls.
+  const rimR = R + 0.5;
+  const rrc = Math.ceil(rimR);
+  for (let x = -rrc; x <= rrc; x++) {
+    for (let z = -rrc; z <= rrc; z++) {
+      const dist = Math.hypot(x, z);
+      if (dist > rimR || dist < R - 1.6) continue;
+      push(out, { x, y: topY, z, color: pot.rim, kind: 'pot', threshold: 0 });
+    }
+  }
+
+  // Four little feet under the pot.
+  for (const [fx, fz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]] as const) {
+    push(out, { x: Math.round(fx * R * 0.62), y: 0, z: Math.round(fz * R * 0.62), color: pot.foot, kind: 'pot', threshold: 0 });
+  }
+
+  // Soil — a low dome peaking at the trunk base, filling the pot mouth.
+  const soilR = R - 0.7;
+  const sc = Math.ceil(soilR);
+  for (let x = -sc; x <= sc; x++) {
+    for (let z = -sc; z <= sc; z++) {
+      const dist = Math.hypot(x, z);
+      if (dist > soilR) continue;
+      const domeTop = topY + Math.round((1 - dist / soilR) * 1.4);
+      for (let y = topY; y <= domeTop; y++) {
+        push(out, { x, y, z, color: PALETTE.soil, kind: 'soil', threshold: 0 });
       }
     }
   }

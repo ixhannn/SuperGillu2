@@ -241,7 +241,11 @@ export class VoxelSceneRenderer {
     const { v, h } = p;
     if (v.kind === 'leaf' && v.bloomAt != null && bloomP >= v.bloomAt) {
       if (opts.golden && h % 41 === 0) return PALETTE.gold;
-      const bloom = this.model.palette.blossom[h % this.model.palette.blossom.length];
+      // ~1 in 3 blossoms is the bright/white variant — a fuller, real-sakura
+      // sprinkle rather than flat pink.
+      const bloom = h % 3 === 0
+        ? this.model.palette.blossomBright
+        : this.model.palette.blossom[h % this.model.palette.blossom.length];
       // Carry the pad-tier tint through the bloom (maple's fire gradient).
       return v.tint ? shade(bloom, v.tint) : bloom;
     }

@@ -298,23 +298,110 @@
 }
 .bonsai-panel__resting { color: #a87d24; }
 
-.bonsai-panel__row {
+/* ── Day goal: two dewdrops that fill as each partner waters ────────── */
+
+.bonsai-daygoal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.bonsai-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  min-width: 66px;
+  cursor: default;
+}
+.bonsai-drop--invite { cursor: pointer; }
+.bonsai-drop__orb {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50% 50% 50% 4px;
+  transform: rotate(45deg);
+  background: rgba(232, 160, 176, 0.12);
+  border: 1.5px solid rgba(232, 160, 176, 0.28);
+  color: #c19aa3;
+  transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+.bonsai-drop__orb > svg { transform: rotate(-45deg); }
+.bonsai-drop.is-filled .bonsai-drop__orb {
+  background: linear-gradient(160deg, #a9dcf1, #6fb6d9);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(111, 182, 217, 0.4);
+}
+.bonsai-drop.is-here .bonsai-drop__orb {
+  box-shadow: 0 0 0 3px rgba(232, 160, 176, 0.28), 0 6px 16px rgba(232, 160, 176, 0.4);
+}
+.bonsai-drop--invite .bonsai-drop__orb {
+  border-style: dashed;
+  border-color: rgba(196, 104, 126, 0.5);
+  color: #c4687e;
+}
+.bonsai-drop__name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b7079;
+  max-width: 74px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bonsai-drop.is-filled .bonsai-drop__name { color: #5a8199; }
+/* The bridge between the drops completes + glows when both have watered. */
+.bonsai-daygoal__bridge {
+  height: 3px;
+  width: 34px;
+  border-radius: 100px;
+  margin-bottom: 18px;
+  background: rgba(232, 160, 176, 0.22);
+  position: relative;
+  overflow: hidden;
+}
+.bonsai-daygoal__bridge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6fb6d9, #e8a0b0);
+  transition: transform 0.5s var(--spring-gentle, ease);
+}
+.bonsai-daygoal__bridge.is-complete::after { transform: scaleX(1); }
+
+.bonsai-panel__actions {
+  display: flex;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+/* ── Footer: progress + quick actions ──────────────────────────────── */
+
+.bonsai-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bonsai-footer__meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
-.bonsai-panel__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+.bonsai-footer .bonsai-progress__hint {
+  text-align: left;
   min-width: 0;
-}
-.bonsai-panel__actions {
-  display: flex;
-  gap: 7px;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .bonsai-iconbtn {
   width: 36px;
@@ -440,16 +527,27 @@
 }
 .bonsai-water--done::after { animation: none; opacity: 0; }
 
+/* Liquid rises from the bottom as you hold — like filling a watering can. */
 .bonsai-water__fill {
   position: absolute;
   inset: 0;
-  transform: scaleX(0);
-  transform-origin: left center;
-  background: linear-gradient(135deg, rgba(159, 209, 232, 0.75), rgba(127, 188, 217, 0.75));
-  transition: transform 0.2s ease;
+  transform: scaleY(0);
+  transform-origin: bottom center;
+  background: linear-gradient(180deg, rgba(180, 224, 244, 0.9), rgba(127, 188, 217, 0.82));
+  transition: transform 0.25s ease;
+}
+.bonsai-water__fill::before {
+  content: '';
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  top: -6px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(200, 232, 247, 0.95);
 }
 .bonsai-water--holding .bonsai-water__fill {
-  transform: scaleX(1);
+  transform: scaleY(1);
   transition: transform 1.3s linear;
 }
 
