@@ -445,6 +445,7 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
         used:    "This QR was already used. Ask your partner to generate a new one.",
         self:    "That's your own QR code! Ask your partner to show theirs.",
         already_linked: 'Your account is already linked. Go back and tap "Refresh shared data" to restore your connection.',
+        rate_limited: "Too many attempts. Wait a few minutes and try again.",
         network: "Network error. Check your connection and try again.",
       };
       setScanPhase('error');
@@ -564,6 +565,9 @@ export const Sync: React.FC<SyncProps> = ({ setView }) => {
 
   const handleLogout = async () => {
     StorageService.prepareForSignOut();
+    // Drop this device's push token while the JWT is still valid, so a signed-out
+    // device stops receiving the partner's notifications.
+    await NotificationsService.clearPushTokenForThisDevice();
     if (SupabaseService.client) await SupabaseService.client.auth.signOut();
     SupabaseService.setCachedUserId(null);
     StorageService.activateAccount(null);

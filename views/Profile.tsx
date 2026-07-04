@@ -10,6 +10,7 @@ import { ViewState, CoupleProfile } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { ThemeService, THEMES, ThemeId } from '../services/theme';
 import { SupabaseService } from '../services/supabase';
+import { NotificationsService } from '../services/notifications';
 import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
 import { AmbientPrefs } from '../services/ambientPrefs';
@@ -437,6 +438,9 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
             onConfirm: async () => {
                 try {
                     StorageService.prepareForSignOut();
+                    // Drop this device's push token while the JWT is still valid, so a
+                    // signed-out device stops receiving the partner's notifications.
+                    await NotificationsService.clearPushTokenForThisDevice();
                     if (SupabaseService.client) {
                         const { error } = await SupabaseService.client.auth.signOut();
                         if (error) {

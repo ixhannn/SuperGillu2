@@ -46,7 +46,7 @@ import {
 // (services/mediaStorage.ts:signManagedUrls), then flip this to `false`. Until
 // then, unsigned managed reads are at least served `private, max-age=0` (below)
 // so the key can't be amplified through shared/CDN caches.
-const ALLOW_UNSIGNED_MEDIA = true;
+const ALLOW_UNSIGNED_MEDIA = false;
 // TTL ceiling (seconds) for the private Cache-Control we set on a signed hit.
 // Must not exceed the sign-media TTL (900s) so caches never outlive a signature.
 const SIGNED_MEDIA_MAX_AGE_SECONDS = 900;

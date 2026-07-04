@@ -5,8 +5,12 @@
          through Capacitor's backButton listener, which relies on the legacy
          onBackPressed dispatch. Enabling onBackInvokedCallback would bypass
          that listener on Android 13+ and back would background the app. -->
+    <!-- allowBackup=false: the WebView localStorage holds the Supabase session
+         (auth tokens). Android's device-to-device / cloud auto-backup would let
+         that session be restored onto a DIFFERENT device, so we opt out entirely
+         rather than ship a couple's private session in a backup blob. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:enableOnBackInvokedCallback="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

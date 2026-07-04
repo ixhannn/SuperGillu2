@@ -599,6 +599,25 @@ export const NotificationsService = {
   },
 
   /**
+   * Remove THIS device's push token on sign-out so a logged-out (or ex-)partner's
+   * device stops receiving pushes. `device_push_tokens` RLS only lets a user delete
+   * their OWN rows, so the caller MUST await this while the session is still valid —
+   * i.e. BEFORE `auth.signOut()`. Only this device's row (id = `${userId}:${deviceId}`)
+   * is removed, leaving the user's other signed-in devices untouched. Best-effort:
+   * never throws, so a network blip can't strand the user mid sign-out.
+   */
+  async clearPushTokenForThisDevice(): Promise<void> {
+    try {
+      const client = SupabaseService.client;
+      if (!client) return;
+      const userId = await SupabaseService.getCurrentUserId();
+      if (!userId) return;
+      const deviceId = localStorage.getItem('lior_device_id') || 'unknown';
+      await client.from('device_push_tokens').delete().eq('id', `${userId}:${deviceId}`);
+    } catch { /* best-effort — never block sign-out */ }
+  },
+
+  /**
    * Trigger the server-side partner nudge after recording a pulse check.
    * Fire-and-forget — does not block the recording flow.
    * Forwards `{ type, senderName }` so the edge function can tailor the

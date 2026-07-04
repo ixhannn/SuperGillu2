@@ -14,7 +14,7 @@ export interface PairInvite {
   coupleId: string;
 }
 
-export type ClaimError = 'invalid' | 'expired' | 'used' | 'self' | 'already_linked' | 'network';
+export type ClaimError = 'invalid' | 'expired' | 'used' | 'self' | 'already_linked' | 'rate_limited' | 'network';
 
 export type ClaimResult =
   | { ok: true; partnerUserId: string; partnerName: string; coupleId: string }
@@ -55,7 +55,7 @@ const getE2EMock = (): PairingE2EMock | null => (
 );
 
 const normalizeClaimError = (value: string | null | undefined): ClaimError => {
-  if (value === 'invalid' || value === 'expired' || value === 'used' || value === 'self' || value === 'already_linked') {
+  if (value === 'invalid' || value === 'expired' || value === 'used' || value === 'self' || value === 'already_linked' || value === 'rate_limited') {
     return value;
   }
   return 'network';
