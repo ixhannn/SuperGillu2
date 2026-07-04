@@ -1,0 +1,20 @@
+# Release signing config for Lior.
+#
+# 1. Generate the keystore (run from the `android/` folder):
+#      keytool -genkeypair -v -keystore lior-upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias lior-upload
+#    It creates android/lior-upload.jks and prompts for a keystore password,
+#    your name/org (any values), and a key password (press Enter to reuse the
+#    keystore password).
+#
+# 2. Copy this file to `android/key.properties` and fill in the real values.
+#    key.properties and *.jks are git-ignored — NEVER commit them.
+#
+# 3. Build:  cd android && ./gradlew bundleRelease   (AAB for Play)
+#         or ./gradlew assembleRelease                (APK)
+#
+# storeFile is resolved relative to the android/ folder.
+
+storeFile=lior-upload.jks
+storePassword=CHANGE_ME
+keyAlias=lior-upload
+keyPassword=CHANGE_ME
