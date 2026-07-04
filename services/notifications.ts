@@ -717,6 +717,32 @@ export const NotificationsService = {
       });
     } catch { /* fire-and-forget */ }
   },
+
+  /**
+   * Push the partner about the shared bonsai. Fire-and-forget.
+   *  - 'watered'   : I watered and they haven't → "the tree is waiting on you"
+   *  - 'bloomed'   : my watering completed today's pair → "a blossom opened"
+   *  - 'note_read' : I opened the note they sealed → "{me} opened your note"
+   *  - 'nudge'     : explicit gentle reminder (once per day, user-initiated)
+   */
+  async triggerBonsaiPush(subtype: 'watered' | 'bloomed' | 'note_read' | 'nudge', senderName: string): Promise<void> {
+    if (!SupabaseService.isConfigured() || !SupabaseService.client) return;
+    try {
+      const token = await SupabaseService.getAccessToken();
+      if (!token) return;
+      const { url } = SupabaseService.getProjectConfig();
+      if (!url) return;
+
+      await fetch(`${url}/functions/v1/send-partner-nudge`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'bonsai', subtype, senderName }),
+      });
+    } catch { /* fire-and-forget */ }
+  },
 };
 
 async function savePushToken(token: string, platform: 'fcm' | 'web', deviceId: string): Promise<void> {

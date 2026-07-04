@@ -1005,6 +1005,9 @@ const App = () => {
             if (initialView) {
               currentViewRef.current = initialView;
               setCurrentView(initialView);
+              // Non-tab views render in the overlay slot; without this the
+              // e2e `?view=` deep-link mounts nothing (blank main).
+              if (!ROOT_TABS.includes(initialView)) setOverlaySlotView(initialView);
             }
           }
           return;

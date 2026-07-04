@@ -679,8 +679,75 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
   }
 };
 
-let transitionTimer: number | null = null;
-const THEME_TRANSITION_MS = 600;
+let revealSafetyTimer: number | null = null;
+
+// ── CINEMATIC REVEAL ───────────────────────────────────────────────────────
+// The new background blooms from the tapped swatch as a circle that GROWS via
+// `transform: scale()` (REVEAL_GROW_MS) — a pure compositor transform with ZERO
+// per-frame repaint (clip-path re-rasterised the full-screen gradient every
+// frame → jank on mobile + the live WebGL layer). The disc is sized to its final
+// diameter and scaled 0→1 so it stays sharp. It then dissolves over
+// REVEAL_FADE_MS to hand off to the real (now-committed) background. The actual
+// animation lives in <ThemeRevealLayer> (mounted inside Layout's shell, strictly
+// BEHIND all content), which listens on `themeEventTarget`.
+export const REVEAL_GROW_MS = 900;
+export const REVEAL_FADE_MS = 280;
+export const themeEventTarget = new EventTarget();
+
+export interface ThemeRevealDetail {
+  /** A radial gradient (built from the incoming theme's own bg colours + a soft
+   *  white core) painted on the scaling disc so it blooms as the new palette. */
+  discBg: string;
+  /** Tap origin in viewport (clientX/clientY) coordinates. */
+  originX: number;
+  originY: number;
+}
+
+/**
+ * Build the disc's radial fill from the incoming theme's linear bg-main colours
+ * (lightest stop at the core → deepest at the rim). Uses the theme's OWN colours
+ * so the wipe reads as the new palette sweeping in, and stays in the right
+ * luminance family (dark for starry-night, light for the rest). Deliberately
+ * OPAQUE — the disc grows ABOVE content and must fully hide the app while the
+ * old→new commit happens beneath it, then dissolve to reveal the new theme.
+ */
+function buildDiscBackground(bgMain: string, fallback: string): string {
+  const hexes = bgMain.match(/#[0-9a-fA-F]{3,8}/g) || [fallback];
+  const inner = hexes[0];
+  const outer = hexes[hexes.length - 1];
+  const mid = hexes[Math.floor((hexes.length - 1) / 2)] || inner;
+  return `radial-gradient(circle at center, ${inner} 0%, ${inner} 14%, ${mid} 54%, ${outer} 100%)`;
+}
+
+/**
+ * "#e8365a" → "232 54 90" (space-separated RGB channels) for the Tailwind
+ * `rgb(var(--…-rgb) / <alpha-value>)` form so accent utilities stay theme-aware
+ * AND keep their opacity modifiers. Falls back to a mid-rose on a bad value.
+ */
+function hexToRgbChannels(hex: string): string {
+  const h = (hex || '').replace('#', '').trim();
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const int = parseInt(full.slice(0, 6), 16);
+  if (full.length < 6 || Number.isNaN(int)) return '244 63 94';
+  return `${(int >> 16) & 255} ${(int >> 8) & 255} ${int & 255}`;
+}
+
+// While a cinematic reveal plays we DEFER the ENTIRE visual commit (data-theme +
+// every token + body styles) so the OUTGOING theme stays fully rendered UNDER
+// the growing opaque disc. The reveal layer flushes it once the disc has covered
+// the screen (grow-finish), so the old→new swap is invisible; a safety timer +
+// cleanup() + the next applyTheme also flush it, so the theme is never stranded.
+let pendingThemeCommit: (() => void) | null = null;
+
+function commitPendingTheme(): void {
+  if (revealSafetyTimer !== null) {
+    window.clearTimeout(revealSafetyTimer);
+    revealSafetyTimer = null;
+  }
+  const commit = pendingThemeCommit;
+  pendingThemeCommit = null;
+  if (commit) commit();
+}
 
 interface ThemeApplyOptions {
   origin?: {
@@ -688,126 +755,158 @@ interface ThemeApplyOptions {
     y: number;
   };
   /**
-   * Apply tokens with NO entrance choreography — skip the radial reveal and the
-   * 600ms `theme-transitioning` crossfade. Used at boot so the saved theme is
-   * applied before first paint with no visible cross-fade on the loader.
+   * Apply tokens with NO entrance choreography — skip the radial reveal bloom.
+   * Used at boot so the saved theme is applied before first paint.
    */
   instant?: boolean;
 }
 
 export const ThemeService = {
+  /**
+   * Flush the deferred theme commit immediately. Called by the reveal layer once
+   * the disc has covered the screen (so the whole theme swaps beneath it), and as
+   * a safety/teardown path so the theme never gets stuck on the outgoing palette.
+   */
+  commitPendingTheme,
   applyTheme: (themeId: string, options: ThemeApplyOptions = {}) => {
     const validId = (THEMES[themeId as ThemeId] ? themeId : 'rose') as ThemeId;
     const { palette, tokens } = THEMES[validId];
     const root = document.documentElement;
 
-    root.setAttribute('data-theme', validId);
-    // Mirror to a synchronous store so the inline boot script + the pre-render
-    // apply in index.tsx can select the saved theme before first paint. The
-    // authoritative copy still lives in the IndexedDB couple profile.
+    // Persist immediately — this only mirrors the choice for the boot script and
+    // does NOT affect rendering. The VISUAL commit is deferred below so the
+    // OUTGOING theme stays fully rendered under the growing disc.
     try { localStorage.setItem('lior_theme', validId); } catch { /* private mode */ }
-    if (!options.instant) {
-      // Anchor the crossfade/radial reveal at the tapped control so CSS keyed off
-      // these vars (theme-transitioning) can ripple outward from the swatch. On an
-      // instant boot apply there is no origin and no reveal.
-      if (options.origin) {
-        root.style.setProperty('--theme-origin-x', `${options.origin.x}px`);
-        root.style.setProperty('--theme-origin-y', `${options.origin.y}px`);
-      }
-      root.classList.add('theme-transitioning');
+
+    // A new pick supersedes any in-flight reveal: DISCARD its pending commit
+    // without running it (the new pick applies its own theme; cleanup() still
+    // flushes on unmount so a mid-reveal navigation is never stranded).
+    if (revealSafetyTimer !== null) {
+      window.clearTimeout(revealSafetyTimer);
+      revealSafetyTimer = null;
     }
+    pendingThemeCommit = null;
 
-    if (transitionTimer !== null) {
-      window.clearTimeout(transitionTimer);
-      transitionTimer = null;
-    }
+    const reduceMotion = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // The cinematic wipe runs for any real, motion-allowed, origin-anchored pick
+    // when WAAPI is available. It works for EVERY theme (incl. light↔dark) because
+    // the old→new commit happens entirely hidden beneath the fully-grown opaque
+    // disc — no readability gap, no per-element transition (= no lag).
+    const cinematic = !options.instant
+      && !reduceMotion
+      && !!options.origin
+      && typeof document !== 'undefined'
+      && typeof Element !== 'undefined'
+      && typeof Element.prototype.animate === 'function';
 
-    root.style.setProperty('--color-lior-50', palette[50]);
-    root.style.setProperty('--color-lior-100', palette[100]);
-    root.style.setProperty('--color-lior-200', palette[200]);
-    root.style.setProperty('--color-lior-300', palette[300]);
-    root.style.setProperty('--color-lior-400', palette[400]);
-    root.style.setProperty('--color-lior-500', palette[500]);
-    root.style.setProperty('--color-lior-600', palette[600]);
+    // ── FULL visual commit — data-theme + every token + body styles, applied in
+    // ONE frame (a single repaint, no per-element transition). For the cinematic
+    // path this runs UNDER the fully-grown disc (invisible); otherwise it runs
+    // immediately (boot / reduced-motion / no-origin / no-WAAPI). ──
+    const commitTheme = () => {
+      root.setAttribute('data-theme', validId);
 
-    root.style.setProperty('--color-base', tokens.base);
-    root.style.setProperty('--color-surface', tokens.surface);
-    root.style.setProperty('--color-glass', tokens.glass);
-    root.style.setProperty('--color-text-primary', tokens.textPrimary);
-    root.style.setProperty('--color-text-secondary', tokens.textSecondary);
-    root.style.setProperty('--color-nav-active', tokens.navActive);
-    root.style.setProperty('--color-nav-inactive', tokens.navInactive);
+      // Accent ramp. Publish BOTH the hex (for inline `var(--color-lior-500)`
+      // reads) and space-separated RGB channels (`--color-lior-500-rgb`) so the
+      // Tailwind `lior` scale — `rgb(var(--color-lior-500-rgb) / <alpha-value>)` —
+      // is theme-aware AND still supports opacity modifiers like `bg-lior-500/15`.
+      ([50, 100, 200, 300, 400, 500, 600] as const).forEach((k) => {
+        const hex = palette[k];
+        root.style.setProperty(`--color-lior-${k}`, hex);
+        root.style.setProperty(`--color-lior-${k}-rgb`, hexToRgbChannels(hex));
+      });
 
-    root.style.setProperty('--theme-bg-main', tokens.bgMain);
-    root.style.setProperty('--theme-bg-overlay', tokens.bgOverlay);
-    root.style.setProperty('--theme-progress-gradient', tokens.progressGradient);
-    root.style.setProperty('--theme-vignette', tokens.vignette);
+      root.style.setProperty('--color-base', tokens.base);
+      root.style.setProperty('--color-surface', tokens.surface);
+      root.style.setProperty('--color-glass', tokens.glass);
+      root.style.setProperty('--color-text-primary', tokens.textPrimary);
+      root.style.setProperty('--color-text-secondary', tokens.textSecondary);
+      root.style.setProperty('--color-nav-active', tokens.navActive);
+      root.style.setProperty('--color-nav-inactive', tokens.navInactive);
 
-    root.style.setProperty('--theme-nav-glass-bg', tokens.navGlassBg);
-    root.style.setProperty('--theme-nav-glass-border', tokens.navGlassBorder);
-    root.style.setProperty('--theme-nav-glass-shadow', tokens.navGlassShadow);
-    root.style.setProperty('--theme-nav-glass-highlight', tokens.navGlassHighlight);
-    root.style.setProperty('--theme-nav-icon-active', tokens.navIconActive);
-    root.style.setProperty('--theme-nav-icon-inactive', tokens.navIconInactive);
-    root.style.setProperty('--theme-nav-label', tokens.navLabel);
-    root.style.setProperty('--theme-nav-pill-bg', tokens.navPillBg);
-    root.style.setProperty('--theme-nav-pill-border', tokens.navPillBorder);
-    root.style.setProperty('--theme-nav-pill-shadow', tokens.navPillShadow);
-    root.style.setProperty('--theme-nav-center-bg-active', tokens.navCenterBgActive);
-    root.style.setProperty('--theme-nav-center-bg-inactive', tokens.navCenterBgInactive);
-    root.style.setProperty('--theme-nav-center-shadow-active', tokens.navCenterShadowActive);
-    root.style.setProperty('--theme-nav-center-shadow-inactive', tokens.navCenterShadowInactive);
+      root.style.setProperty('--theme-progress-gradient', tokens.progressGradient);
+      root.style.setProperty('--theme-vignette', tokens.vignette);
 
-    root.style.setProperty('--theme-orb-1', tokens.orb1);
-    root.style.setProperty('--theme-orb-2', tokens.orb2);
-    root.style.setProperty('--theme-orb-3', tokens.orb3);
+      root.style.setProperty('--theme-nav-glass-bg', tokens.navGlassBg);
+      root.style.setProperty('--theme-nav-glass-border', tokens.navGlassBorder);
+      root.style.setProperty('--theme-nav-glass-shadow', tokens.navGlassShadow);
+      root.style.setProperty('--theme-nav-glass-highlight', tokens.navGlassHighlight);
+      root.style.setProperty('--theme-nav-icon-active', tokens.navIconActive);
+      root.style.setProperty('--theme-nav-icon-inactive', tokens.navIconInactive);
+      root.style.setProperty('--theme-nav-label', tokens.navLabel);
+      root.style.setProperty('--theme-nav-pill-bg', tokens.navPillBg);
+      root.style.setProperty('--theme-nav-pill-border', tokens.navPillBorder);
+      root.style.setProperty('--theme-nav-pill-shadow', tokens.navPillShadow);
+      root.style.setProperty('--theme-nav-center-bg-active', tokens.navCenterBgActive);
+      root.style.setProperty('--theme-nav-center-bg-inactive', tokens.navCenterBgInactive);
+      root.style.setProperty('--theme-nav-center-shadow-active', tokens.navCenterShadowActive);
+      root.style.setProperty('--theme-nav-center-shadow-inactive', tokens.navCenterShadowInactive);
 
-    root.style.setProperty('--theme-star-link-rgb', tokens.starLinkRgb);
-    root.style.setProperty('--theme-star-core-rgb', tokens.starCoreRgb);
-    root.style.setProperty('--theme-partner-a-rgb', tokens.partnerA);
-    root.style.setProperty('--theme-partner-b-rgb', tokens.partnerB);
+      root.style.setProperty('--theme-orb-1', tokens.orb1);
+      root.style.setProperty('--theme-orb-2', tokens.orb2);
+      root.style.setProperty('--theme-orb-3', tokens.orb3);
 
-    root.style.setProperty('--theme-particle-1-rgb', tokens.particle1);
-    root.style.setProperty('--theme-particle-2-rgb', tokens.particle2);
-    root.style.setProperty('--theme-particle-3-rgb', tokens.particle3);
-    root.style.setProperty('--theme-particle-4-rgb', tokens.particle4);
-    root.style.setProperty('--theme-particle-5-rgb', tokens.particle5);
+      root.style.setProperty('--theme-star-link-rgb', tokens.starLinkRgb);
+      root.style.setProperty('--theme-star-core-rgb', tokens.starCoreRgb);
+      root.style.setProperty('--theme-partner-a-rgb', tokens.partnerA);
+      root.style.setProperty('--theme-partner-b-rgb', tokens.partnerB);
 
-    root.style.setProperty('--theme-heart-a-rgb', tokens.heartA);
-    root.style.setProperty('--theme-heart-b-rgb', tokens.heartB);
-    root.style.setProperty('--theme-resonance-a-rgb', tokens.resonanceA);
-    root.style.setProperty('--theme-resonance-b-rgb', tokens.resonanceB);
+      root.style.setProperty('--theme-particle-1-rgb', tokens.particle1);
+      root.style.setProperty('--theme-particle-2-rgb', tokens.particle2);
+      root.style.setProperty('--theme-particle-3-rgb', tokens.particle3);
+      root.style.setProperty('--theme-particle-4-rgb', tokens.particle4);
+      root.style.setProperty('--theme-particle-5-rgb', tokens.particle5);
 
-    root.style.setProperty('--theme-live-3d-bokeh', tokens.live3DBokeh);
-    root.style.setProperty('--theme-live-3d-sparkle', tokens.live3DSparkle);
+      root.style.setProperty('--theme-heart-a-rgb', tokens.heartA);
+      root.style.setProperty('--theme-heart-b-rgb', tokens.heartB);
+      root.style.setProperty('--theme-resonance-a-rgb', tokens.resonanceA);
+      root.style.setProperty('--theme-resonance-b-rgb', tokens.resonanceB);
 
-    root.style.setProperty('--theme-floating-rim', tokens.floatingRim);
-    root.style.setProperty('--theme-floating-accent', tokens.floatingAccent);
-    root.style.setProperty('--theme-floating-dust', tokens.floatingDust);
-    root.style.setProperty('--theme-floating-light-a', tokens.floatingLightA);
-    root.style.setProperty('--theme-floating-light-b', tokens.floatingLightB);
+      root.style.setProperty('--theme-live-3d-bokeh', tokens.live3DBokeh);
+      root.style.setProperty('--theme-live-3d-sparkle', tokens.live3DSparkle);
 
-    root.style.setProperty('--shadow-xs', tokens.shadowXs);
-    root.style.setProperty('--shadow-sm', tokens.shadowSm);
-    root.style.setProperty('--shadow-md', tokens.shadowMd);
-    root.style.setProperty('--shadow-lg', tokens.shadowLg);
-    root.style.setProperty('--shadow-float', tokens.shadowFloat);
+      root.style.setProperty('--theme-floating-rim', tokens.floatingRim);
+      root.style.setProperty('--theme-floating-accent', tokens.floatingAccent);
+      root.style.setProperty('--theme-floating-dust', tokens.floatingDust);
+      root.style.setProperty('--theme-floating-light-a', tokens.floatingLightA);
+      root.style.setProperty('--theme-floating-light-b', tokens.floatingLightB);
 
-    document.body.style.background = tokens.bgMain;
-    document.body.style.color = tokens.textPrimary;
+      root.style.setProperty('--shadow-xs', tokens.shadowXs);
+      root.style.setProperty('--shadow-sm', tokens.shadowSm);
+      root.style.setProperty('--shadow-md', tokens.shadowMd);
+      root.style.setProperty('--shadow-lg', tokens.shadowLg);
+      root.style.setProperty('--shadow-float', tokens.shadowFloat);
 
-    if (!options.instant) {
-      transitionTimer = window.setTimeout(() => {
-        root.classList.remove('theme-transitioning');
-        transitionTimer = null;
-      }, THEME_TRANSITION_MS + 50);
+      root.style.setProperty('--theme-bg-main', tokens.bgMain);
+      root.style.setProperty('--theme-bg-overlay', tokens.bgOverlay);
+      document.body.style.background = tokens.bgMain;
+      document.body.style.color = tokens.textPrimary;
+    };
+
+    if (cinematic && options.origin) {
+      pendingThemeCommit = commitTheme;
+      themeEventTarget.dispatchEvent(new CustomEvent<ThemeRevealDetail>('theme-reveal', {
+        detail: {
+          discBg: buildDiscBackground(tokens.bgMain, tokens.base),
+          originX: options.origin.x,
+          originY: options.origin.y,
+        },
+      }));
+      // Safety net: if the layer is unmounted or the tab is hidden so the WAAPI
+      // animation never finishes, still land the theme.
+      revealSafetyTimer = window.setTimeout(
+        commitPendingTheme,
+        REVEAL_GROW_MS + REVEAL_FADE_MS + 150,
+      );
+    } else {
+      commitTheme();
     }
   },
   cleanup: () => {
-    if (transitionTimer !== null) {
-      window.clearTimeout(transitionTimer);
-      transitionTimer = null;
-    }
-    document.documentElement.classList.remove('theme-transitioning');
+    // Land any pending reveal theme so leaving Profile mid-wipe never strands the
+    // outgoing theme.
+    commitPendingTheme();
   }
 };

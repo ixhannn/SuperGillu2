@@ -122,8 +122,8 @@ export const COACHMARKS: CoachmarkDef[] = [
   },
   {
     key: 'bonsai',
-    title: 'Your shared Bonsai',
-    emoji: '🌱',
+    title: 'Our Bonsai',
+    emoji: '🌸',
     route: 'home',
     actionLabel: 'See the bonsai',
     actionView: 'bonsai-bloom',
@@ -132,9 +132,9 @@ export const COACHMARKS: CoachmarkDef[] = [
     gradient: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
     where: 'Home',
     preview: 'bonsai',
-    whatIs: 'A calm little tree that quietly grows the longer you’ve been together.',
-    whyItMatters: 'It’s a quiet place to glance at — nothing to tend, just your time together made visible.',
-    doThisNow: 'Open the bonsai whenever you’d like a calm look at how far you’ve come.',
+    whatIs: 'A living sakura you both water. One hold a day; when you both show up, a blossom opens.',
+    whyItMatters: 'It turns showing up for each other into something you can watch grow — streaks, blossoms, and little sealed notes.',
+    doThisNow: 'Open it and hold the water button — your first watering plants the seed.',
     fallbackToCard: true,
   },
   {

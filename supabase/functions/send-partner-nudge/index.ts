@@ -64,6 +64,7 @@ Deno.serve(async (req: Request) => {
   const type = reqBody.type === 'heartbeat' ? 'heartbeat'
     : reqBody.type === 'daily_answer' ? 'daily_answer'
     : reqBody.type === 'daily_drop' ? 'daily_drop'
+    : reqBody.type === 'bonsai' ? 'bonsai'
     : 'pulse_check';
   const subtype = (reqBody.subtype || '').toString();
   const senderName = (reqBody.senderName || '').toString().trim().slice(0, 40);
@@ -154,6 +155,22 @@ Deno.serve(async (req: Request) => {
       body  = "Open today's drop to answer back \u2014 it disappears at midnight.";
     }
     view = 'daily-drop';
+  } else if (type === 'bonsai') {
+    // The shared voxel sakura — the daily two-person watering ritual.
+    if (subtype === 'bloomed') {
+      title = `\u{1F338} A blossom opened`;
+      body  = `You and ${who} both showed up today. Go see it.`;
+    } else if (subtype === 'nudge') {
+      title = `\u{1F440} ${who} is waiting by the tree`;
+      body  = 'One hold each and today\'s blossom opens.';
+    } else if (subtype === 'note_read') {
+      title = `\u{1F338} ${who} opened your note`;
+      body  = 'The one you tucked into a blossom.';
+    } else {
+      title = `\u{1F4A7} ${who} watered your bonsai`;
+      body  = "It's waiting on you — water it together and a blossom opens.";
+    }
+    view = 'bonsai-bloom';
   } else {
     title = '\u{1F495} Your partner is thinking of you';
     body  = "They just checked in \u2014 take a moment to share how you're feeling too.";
