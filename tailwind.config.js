@@ -20,16 +20,21 @@ export default {
         extend: {
             colors: {
                 // `lior` is referenced by ~90 class usages across views/.
-                // It was only defined in the dead tailwind.config.cjs, so those
-                // classes silently produced no CSS until merged here.
+                // Wired to the per-theme accent ramp that ThemeService publishes
+                // (--color-lior-N-rgb, set in services/theme.ts) so every
+                // bg-lior-*/text-lior-*/border-lior-* class follows the active
+                // theme instead of staying hardcoded rose. The rgb-channel form
+                // keeps Tailwind opacity modifiers (bg-lior-500/15) working; the
+                // fallback channels (the rose default) keep classes valid before
+                // the JS bundle sets the vars.
                 lior: {
-                    50: '#fff1f2',
-                    100: '#ffe4e6',
-                    200: '#fecdd3',
-                    300: '#fda4af',
-                    400: '#fb7185',
-                    500: '#f43f5e',
-                    600: '#e11d48',
+                    50: 'rgb(var(--color-lior-50-rgb, 255 241 242) / <alpha-value>)',
+                    100: 'rgb(var(--color-lior-100-rgb, 255 228 230) / <alpha-value>)',
+                    200: 'rgb(var(--color-lior-200-rgb, 254 205 211) / <alpha-value>)',
+                    300: 'rgb(var(--color-lior-300-rgb, 253 164 175) / <alpha-value>)',
+                    400: 'rgb(var(--color-lior-400-rgb, 251 113 133) / <alpha-value>)',
+                    500: 'rgb(var(--color-lior-500-rgb, 244 63 94) / <alpha-value>)',
+                    600: 'rgb(var(--color-lior-600-rgb, 225 29 72) / <alpha-value>)',
                 },
                 tulika: {
                     50: '#fff1f2',
