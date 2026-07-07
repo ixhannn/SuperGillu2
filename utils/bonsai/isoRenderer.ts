@@ -71,6 +71,25 @@ const shade = (hex: string, amount: number, desat = 0): string => {
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 };
 
+/**
+ * Face lighting that PRESERVES SATURATION. The old approach lightened/darkened
+ * toward white/black which drained saturated greens into mud. Instead we scale
+ * brightness (`mult` = the face's light level) while gently pushing each
+ * channel away from its own grey (`sat`>1) so lit faces stay vivid and shaded
+ * faces read as a deeper version of the same hue, not a washed-out one.
+ * `desat` (resting mode only) is the one path that greys the colour out.
+ */
+const litFace = (hex: string, mult: number, sat: number, desat: number): string => {
+  const [r, g, b] = hexToRgb(hex);
+  const grey = (r + g + b) / 3;
+  if (desat > 0) {
+    const d = (c: number): number => clamp((c + (grey - c) * desat) * mult, 0, 255);
+    return `rgb(${Math.round(d(r))},${Math.round(d(g))},${Math.round(d(b))})`;
+  }
+  const ch = (c: number): number => clamp((grey + (c - grey) * sat) * mult, 0, 255);
+  return `rgb(${Math.round(ch(r))},${Math.round(ch(g))},${Math.round(ch(b))})`;
+};
+
 const cellKey = (x: number, y: number, z: number): string => `${x},${y},${z}`;
 
 const isGround = (v: Voxel): boolean =>
@@ -87,6 +106,9 @@ interface PreppedVoxel {
   jitter: number;
   /** Deterministic per-voxel roll shared by bloom/autumn/carpet/snow picks. */
   h: number;
+  /** Coarser 2×2×2-cell roll — blossoms pick shades per CLUMP, not per cube,
+   *  so the bloom reads as clustered flowers instead of per-voxel static. */
+  hCluster: number;
   snowTop: boolean;
 }
 
@@ -114,6 +136,7 @@ export class VoxelSceneRenderer {
         return {
           v,
           h,
+          hCluster: hashString(`c:${v.x >> 1},${v.y >> 1},${v.z >> 1}`),
           jitter: ((h % 9) - 4) / 100,
           snowTop: (v.kind === 'leaf' || v.kind === 'island') && (h >> 4) % 10 < 4,
         };
@@ -130,7 +153,9 @@ export class VoxelSceneRenderer {
     this.scale = Math.floor(
       Math.min((this.width * 0.92) / spanX, (this.height * 0.92) / spanY),
     );
-    this.scale = clamp(this.scale, 4, 14);
+    // Min 3: the finer-grained model must still fit small canvases (the Home
+    // card's mini tree renders at 180px internal width).
+    this.scale = clamp(this.scale, 3, 14);
     const v = this.vh();
     this.origin = {
       x: this.width / 2,
@@ -232,20 +257,22 @@ export class VoxelSceneRenderer {
     if (v.kind === 'decor') {
       return v.decorId != null && opts.decorations.has(v.decorId);
     }
-    if (v.kind === 'seed') return G < 0.04;
-    if (v.kind === 'sprout') return G >= v.threshold && G < 0.1;
+    // Longer seed/sprout windows: the first days are a tender sprout moment,
+    // not a blink — the trunk takes over from G≈0.16.
+    if (v.kind === 'seed') return G < 0.06;
+    if (v.kind === 'sprout') return G >= v.threshold && G < 0.16;
     return G >= v.threshold;
   }
 
   private colorFor(p: PreppedVoxel, bloomP: number, opts: SceneOptions): string {
-    const { v, h } = p;
+    const { v, h, hCluster } = p;
     if (v.kind === 'leaf' && v.bloomAt != null && bloomP >= v.bloomAt) {
       if (opts.golden && h % 41 === 0) return PALETTE.gold;
-      // ~1 in 3 blossoms is the bright/white variant — a fuller, real-sakura
-      // sprinkle rather than flat pink.
-      const bloom = h % 3 === 0
+      // Shade picked per 2×2×2 CLUMP (hCluster) so flowers read as clustered
+      // bunches, with a rare bright sparkle — never per-voxel pink static.
+      const bloom = h % 9 === 0
         ? this.model.palette.blossomBright
-        : this.model.palette.blossom[h % this.model.palette.blossom.length];
+        : this.model.palette.blossom[hCluster % this.model.palette.blossom.length];
       // Carry the pad-tier tint through the bloom (maple's fire gradient).
       return v.tint ? shade(bloom, v.tint) : bloom;
     }
@@ -258,11 +285,15 @@ export class VoxelSceneRenderer {
     if (v.kind === 'leaf' && opts.season === 'winter') {
       return shade(v.color, 0.06, 0.25);
     }
-    // Fallen-petal carpet: the island top slowly gathers colour as the tree
-    // blooms — a visible record of every petal that ever fell.
+    // Fallen-petal carpet: petals gather UNDER the canopy, densest near the
+    // trunk and fading to clean grass at the rim — a soft blush halo, never a
+    // full-island quilt.
     if (v.kind === 'island' && v.y === 0 && bloomP > 0.05) {
-      if (((h >> 3) % 100) / 100 < bloomP * 0.28) {
-        return shade(this.model.palette.blossom[h % this.model.palette.blossom.length], 0.1);
+      const nearness = 1 - Math.hypot(v.x, v.z) / 6.5;
+      if (nearness > 0 && ((h >> 3) % 100) / 100 < bloomP * 0.22 * nearness) {
+        // Heavily softened so the lawn blush whispers instead of competing
+        // with the pot and the canopy.
+        return shade(this.model.palette.blossom[h % this.model.palette.blossom.length], 0.12, 0.3);
       }
     }
     return v.color;
@@ -290,15 +321,18 @@ export class VoxelSceneRenderer {
         };
         this.drawCube(contexts[anchor.layer], rim, PALETTE.gold, desat, null, null);
       }
+      // Ordinary bloom-day blossoms are dusty pink; the white-bright variant
+      // is reserved for twin blooms so their gold rim reads as special.
+      const anchorColor = twin ? this.model.palette.blossomBright : this.model.palette.blossom[1];
       const cube: Voxel = {
         x: anchor.x, y: anchor.y, z: anchor.z,
-        color: this.model.palette.blossomBright,
+        color: anchorColor,
         kind: 'blossom',
         layer: anchor.layer,
         threshold: 0,
         size: twin ? 0.86 : 0.92,
       };
-      this.drawCube(contexts[anchor.layer], cube, this.model.palette.blossomBright, desat, null, null);
+      this.drawCube(contexts[anchor.layer], cube, anchorColor, desat, null, null);
     }
   }
 
@@ -407,14 +441,16 @@ export class VoxelSceneRenderer {
     const hideLeft = full && occ.has(cellKey(v.x, v.y, v.z + 1));
     if (hideTop && hideRight && hideLeft) return;
 
+    // Softer ambient occlusion so crevices read without muddying the colour.
     let aoTop = 0;
     let aoRight = 0;
     let aoLeft = 0;
     if (full) {
-      if (occ.has(cellKey(v.x + 1, v.y + 1, v.z))) { aoTop += 0.05; aoRight += 0.09; }
-      if (occ.has(cellKey(v.x, v.y + 1, v.z + 1))) { aoTop += 0.05; aoLeft += 0.09; }
-      if (occ.has(cellKey(v.x - 1, v.y + 1, v.z))) aoTop += 0.03;
-      if (occ.has(cellKey(v.x, v.y + 1, v.z - 1))) aoTop += 0.03;
+      // Deep enough that crevices carve visible form into the pads and pot.
+      if (occ.has(cellKey(v.x + 1, v.y + 1, v.z))) { aoTop += 0.08; aoRight += 0.12; }
+      if (occ.has(cellKey(v.x, v.y + 1, v.z + 1))) { aoTop += 0.08; aoLeft += 0.12; }
+      if (occ.has(cellKey(v.x - 1, v.y + 1, v.z))) aoTop += 0.05;
+      if (occ.has(cellKey(v.x, v.y + 1, v.z - 1))) aoTop += 0.05;
     }
 
     const s = this.scale * size;
@@ -424,7 +460,11 @@ export class VoxelSceneRenderer {
     const cy = p.y + (this.vh() - vh) * 0.5;
     const j = jitter;
     // Sun sits upper-right: lit right faces, shaded left, height catches light.
-    const lift = Math.min(0.08, Math.max(0, v.y) * 0.004);
+    const lift = Math.min(0.05, Math.max(0, v.y) * 0.0025);
+    // Wood reads as a darker, bolder silhouette against the foliage.
+    const wood = v.kind === 'trunk' || v.kind === 'branch' ? 0.9 : 1;
+    // Gentle, slightly-muted lighting — premium voxel, not blown-out cartoon.
+    const sat = 1.05;
 
     if (!hideTop) {
       ctx.beginPath();
@@ -433,7 +473,11 @@ export class VoxelSceneRenderer {
       ctx.lineTo(p.x, cy + s / 2);
       ctx.lineTo(p.x - s, cy);
       ctx.closePath();
-      ctx.fillStyle = topOverride ?? shade(baseColor, 0.16 + j + lift - aoTop, desat);
+      // Foliage/blossom tops never brighten past 1.0 — pale pinks must stay
+      // pink instead of blowing out to white caps.
+      const rawTop = 1.05 + j + lift - aoTop;
+      const topMult = v.kind === 'leaf' || v.kind === 'blossom' ? Math.min(1.0, rawTop) : rawTop;
+      ctx.fillStyle = topOverride ?? litFace(baseColor, topMult * wood, sat, desat);
       ctx.fill();
     }
 
@@ -444,7 +488,7 @@ export class VoxelSceneRenderer {
       ctx.lineTo(p.x, cy + s / 2 + vh);
       ctx.lineTo(p.x - s, cy + vh);
       ctx.closePath();
-      ctx.fillStyle = shade(baseColor, -0.26 + j * 0.5 - aoLeft, desat);
+      ctx.fillStyle = litFace(baseColor, (0.79 + j * 0.5 - aoLeft) * wood, sat, desat);
       ctx.fill();
     }
 
@@ -455,7 +499,7 @@ export class VoxelSceneRenderer {
       ctx.lineTo(p.x, cy + s / 2 + vh);
       ctx.lineTo(p.x + s, cy + vh);
       ctx.closePath();
-      ctx.fillStyle = shade(baseColor, -0.06 + j + lift - aoRight, desat);
+      ctx.fillStyle = litFace(baseColor, (0.92 + j + lift - aoRight) * wood, sat, desat);
       ctx.fill();
     }
   }

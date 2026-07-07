@@ -83,6 +83,7 @@ function DevAgePanel({ onSeed }: { onSeed: (events: BonsaiEvent[]) => void }) {
   };
   return (
     <div
+      className="bonsai-devpanel"
       style={{
         position: 'fixed', top: 70, left: 10, zIndex: 99,
         background: 'rgba(255,252,252,0.92)', borderRadius: 14, padding: '8px 12px',
