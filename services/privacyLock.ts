@@ -3,18 +3,23 @@
 // on a shared/unlocked phone — the data itself lives in local storage,
 // so it is an access gate, not encryption at rest.
 //
-// DURABILITY (fixes "the PIN resets on every launch"): localStorage alone
-// is NOT durable on the native Android WebView — the system can evict
-// web-storage between app launches while IndexedDB (the app's real vault)
-// survives. That is why only the PIN reset while memories/notes persisted.
-// The hashed PIN is now MIRRORED into IndexedDB (the same durable store the
-// rest of the app uses). localStorage stays as a synchronous fast-path cache
-// so hasPin()/isSessionUnlocked() remain sync; hydrate() reconciles the two
-// on boot — restoring the cache after an eviction and back-filling the
-// durable copy for users who set their PIN before this fix shipped.
+// DURABILITY — the PIN hash is kept in THREE places, weakest→strongest:
+//   1. localStorage (PIN_STORAGE_KEY)  — synchronous fast cache so hasPin()/
+//      isSessionUnlocked()/verifyPin() stay sync (used in useState initializers).
+//   2. IndexedDB mirror (rawStore)     — survives the native Android WebView
+//      evicting web-storage BETWEEN LAUNCHES (the "resets every launch" bug;
+//      IndexedDB is the app's real vault and is not evicted with localStorage).
+//   3. couple_profile.privateSpacePin  — rides the couple profile's Supabase
+//      `data` blob, so it survives a full app REINSTALL (restored on next login)
+//      and is shared across the couple's devices. Private Space is a couple-
+//      shared shelf, so one synced hash is correct — both partners' PIN.
+// hydrate() reconciles all three on boot: newest createdAt wins, then every
+// store is brought up to that winner (restore after eviction, adopt after a
+// reinstall's cloud pull, back-fill for pre-existing local-only PINs).
 
 import { readRaw, writeRaw, deleteRaw } from './storage/rawStore';
 import { STORES } from './storage/dbConfig';
+import { StorageService } from './storage';
 
 const PIN_STORAGE_KEY = 'lior_private_space_pin_v1';
 const ATTEMPT_STORAGE_KEY = 'lior_private_space_pin_attempts_v1';
@@ -117,15 +122,30 @@ const getAttempts = (): AttemptState =>
 
 const setAttempts = (state: AttemptState) => writeJson(localStorage, ATTEMPT_STORAGE_KEY, state);
 
-// ── Durable PIN mirror (IndexedDB) ──────────────────────────────────────────
-// localStorage is an evictable cache on the native WebView; IndexedDB is not.
-// A StoredPin holds only a random salt + a one-way hash, so mirroring it is no
-// weaker than the localStorage copy it shadows.
+// ── PIN copies: local cache + durable mirror + synced couple profile ────────
+// A StoredPin holds only a random salt + a one-way hash, so mirroring it into
+// IndexedDB and the couple profile is no weaker than the localStorage copy it
+// shadows.
 
 const isStoredPin = (value: unknown): value is StoredPin =>
   typeof value === 'object' && value !== null &&
   typeof (value as StoredPin).salt === 'string' &&
   typeof (value as StoredPin).hash === 'string';
+
+const pinsEqual = (a: StoredPin | null | undefined, b: StoredPin | null | undefined): boolean =>
+  !!a && !!b && a.salt === b.salt && a.hash === b.hash;
+
+// Newest createdAt wins — lets a PIN changed on one device (or restored from the
+// cloud after reinstall) supersede a stale local copy. createdAt is ISO, so
+// lexical comparison is chronological.
+const newestPin = (...pins: Array<StoredPin | null>): StoredPin | null => {
+  let best: StoredPin | null = null;
+  for (const p of pins) {
+    if (!isStoredPin(p)) continue;
+    if (!best || (p.createdAt || '') > (best.createdAt || '')) best = p;
+  }
+  return best;
+};
 
 const persistDurablePin = async (stored: StoredPin): Promise<void> => {
   try {
@@ -136,40 +156,76 @@ const persistDurablePin = async (stored: StoredPin): Promise<void> => {
   }
 };
 
+// ── Cloud copy: couple_profile.privateSpacePin (synced verbatim by Supabase) ──
+const readProfilePin = (): StoredPin | null => {
+  try {
+    const pin = StorageService.getCoupleProfile().privateSpacePin;
+    return isStoredPin(pin) ? pin : null;
+  } catch {
+    return null;
+  }
+};
+
+// Writing through saveCoupleProfile persists to localStorage + the IndexedDB
+// profile backup AND enqueues the couple_profile cloud push — one call covers
+// every layer. No-op when the profile already holds this exact hash, so hydrate
+// reconciliation can't churn the sync outbox.
+const writeProfilePin = (stored: StoredPin): void => {
+  try {
+    const profile = StorageService.getCoupleProfile();
+    if (pinsEqual(profile.privateSpacePin, stored)) return;
+    StorageService.saveCoupleProfile({ ...profile, privateSpacePin: stored });
+  } catch {
+    // Best-effort cloud mirror — the local + IndexedDB copies still gate access.
+  }
+};
+
+const clearProfilePin = (): void => {
+  try {
+    const profile = StorageService.getCoupleProfile();
+    if (!profile.privateSpacePin) return;
+    const next: typeof profile = { ...profile };
+    delete next.privateSpacePin;
+    StorageService.saveCoupleProfile(next);
+  } catch {
+    // Best-effort.
+  }
+};
+
 // Single-flight guard so concurrent callers share one reconciliation pass.
-// Deliberately NOT a permanent memo: a transient IndexedDB read failure (e.g.
-// the DB is mid-open/upgrade during app boot) must be retryable on the next
-// call, or one unlucky boot would poison every later hydrate() for the session.
+// Deliberately NOT a permanent memo: the cloud copy can arrive AFTER boot (a
+// reinstall pulls couple_profile mid-session), and a transient IndexedDB read
+// failure must be retryable — so every call re-reconciles, sharing only an
+// in-flight pass. The Private Space mount effect + a couple_profile storage
+// listener drive the re-runs.
 let hydrateInFlight: Promise<void> | null = null;
-// Once a pass has actually reconciled the durable copy into the cache we can
-// stop re-reading IndexedDB on every call.
-let hydrateSettled = false;
 
 const runHydrate = async (): Promise<void> => {
+  // Gather all three copies.
+  const cached = readJson<StoredPin>(localStorage, PIN_STORAGE_KEY);
   let durable: StoredPin | null = null;
-  let readOk = false;
+  let durableReadOk = false;
   try {
     const raw = await readRaw<StoredPin>(STORES.DATA, PIN_STORAGE_KEY);
-    readOk = true;
+    durableReadOk = true;
     if (isStoredPin(raw)) durable = raw;
   } catch {
-    // IndexedDB unavailable/busy — leave hydrateSettled false so the next
-    // hydrate() call retries rather than trusting this incomplete pass.
+    // IndexedDB busy/unavailable — skip the durable copy for this pass.
   }
+  const profilePin = readProfilePin();
 
-  const cached = readJson<StoredPin>(localStorage, PIN_STORAGE_KEY);
+  // Newest wins across cache / durable mirror / synced profile.
+  const winner = newestPin(isStoredPin(cached) ? cached : null, durable, profilePin);
+  // No PIN anywhere — nothing to reconcile. A clear is always explicit
+  // (clearPin), so absence must never be "healed" back into existence here.
+  if (!winner) return;
 
-  if (durable && !cached) {
-    // Cache was evicted (the reported bug) — restore it from the durable copy.
-    writeJson(localStorage, PIN_STORAGE_KEY, durable);
-  } else if (readOk && !durable && isStoredPin(cached)) {
-    // Existing user who set a PIN before this fix — back-fill the durable copy.
-    await persistDurablePin(cached);
-  }
-
-  // A pass counts as settled only when we truly read the durable store; a
-  // failed read stays retryable.
-  if (readOk) hydrateSettled = true;
+  // Bring every store up to the winner: restores the cache after an eviction,
+  // adopts the cloud copy after a reinstall, and back-fills the durable +
+  // profile copies for a pre-existing local-only PIN.
+  if (!pinsEqual(cached, winner)) writeJson(localStorage, PIN_STORAGE_KEY, winner);
+  if (durableReadOk && !pinsEqual(durable, winner)) await persistDurablePin(winner);
+  writeProfilePin(winner);
 };
 
 export const PrivacyLock = {
@@ -188,10 +244,13 @@ export const PrivacyLock = {
     const salt = randomSalt();
     const hash = await hashPin(pin, salt);
     const stored: StoredPin = { salt, hash, createdAt: new Date().toISOString() };
-    // Synchronous fast-path cache…
+    // 1. Synchronous fast-path cache…
     writeJson(localStorage, PIN_STORAGE_KEY, stored);
-    // …plus the durable copy so a WebView storage eviction can't wipe it.
+    // 2. …the durable IndexedDB mirror so a WebView eviction can't wipe it…
     await persistDurablePin(stored);
+    // 3. …and the couple profile, which syncs to the cloud so the PIN survives
+    //    a full reinstall (restored on next login) and reaches the partner.
+    writeProfilePin(stored);
     setAttempts({ count: 0, lockUntil: 0 });
     this.markUnlocked();
   },
@@ -241,32 +300,39 @@ export const PrivacyLock = {
     return { ok: false, remainingAttempts: MAX_ATTEMPTS - count };
   },
 
-  /** Removes the PIN so a new one can be set. Sealed items are untouched. */
+  /**
+   * Removes the PIN so a new one can be set. Sealed items are untouched.
+   * Clears ALL three copies — localStorage, the IndexedDB mirror AND the synced
+   * couple profile — or hydrate() would resurrect the old PIN from whichever
+   * copy survived. (The reset flow immediately calls setPin with a new PIN,
+   * whose newer createdAt then wins everywhere.)
+   */
   clearPin(): void {
     removeKey(localStorage, PIN_STORAGE_KEY);
     removeKey(localStorage, ATTEMPT_STORAGE_KEY);
-    // Drop the durable mirror too, or hydrate() would resurrect the old PIN.
     void deleteRaw(STORES.DATA, PIN_STORAGE_KEY).catch(() => {
       // Best-effort — a failed delete just leaves a stale durable copy that
       // hydrate() re-mirrors; the localStorage removal above already unlocks
       // the reset flow for this session.
     });
+    clearProfilePin();
     this.relock();
   },
 
   /**
-   * Reconcile the synchronous localStorage cache with the durable IndexedDB
-   * copy. Idempotent and safe to call repeatedly; the in-flight promise is
-   * shared so concurrent callers don't double-work. Call once early in app
-   * boot AND when Private Space mounts — after it resolves, hasPin() reflects
-   * the durable truth even if the WebView evicted localStorage since last run.
+   * Reconcile the three PIN copies — localStorage cache, IndexedDB mirror and
+   * the synced couple profile — bringing every store up to the newest one.
+   * Idempotent and safe to call repeatedly; concurrent callers share one
+   * in-flight pass. Call when Private Space mounts AND whenever the couple
+   * profile updates (a reinstall pulls the cloud copy mid-session), so hasPin()
+   * reflects the durable/synced truth even if the WebView evicted localStorage
+   * or the PIN only just arrived from the cloud.
    */
   hydrate(): Promise<void> {
-    if (hydrateSettled) return Promise.resolve();
     if (!hydrateInFlight) {
       hydrateInFlight = runHydrate().finally(() => {
-        // Release the in-flight slot so a boot-time failure can be retried by
-        // the next caller (e.g. the Private Space mount effect).
+        // Release the in-flight slot so the next caller re-reconciles (e.g. once
+        // the couple profile has synced down after a reinstall).
         hydrateInFlight = null;
       });
     }

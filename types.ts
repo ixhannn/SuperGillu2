@@ -202,6 +202,23 @@ export interface CoupleProfile {
   depthsState?: DepthsState;
   /** Premium: Heirlooms — which milestone artworks have been unsealed. */
   heirloomState?: HeirloomState;
+  /**
+   * Private Space lock — a salted, one-way hash of the couple's shared PIN
+   * (never the PIN itself). Lives on the couple profile so it rides the same
+   * durable+synced pipeline as everything else: localStorage cache, IndexedDB
+   * backup (survives WebView storage eviction between launches) and the Supabase
+   * `data` blob (survives a full app reinstall — restored on next login). See
+   * services/privacyLock.ts. Private Space is a couple-shared shelf, so a single
+   * synced hash is correct — both partners unlock it with the same PIN.
+   */
+  privateSpacePin?: PrivateSpacePinHash;
+}
+
+/** Salted SHA-256 (or FNV-1a fallback) of the Private Space PIN. No plaintext. */
+export interface PrivateSpacePinHash {
+  salt: string;
+  hash: string;
+  createdAt: string; // ISO — newest wins when two devices disagree
 }
 
 // ── Premium: Heirlooms (collectible milestone art) ──────────────────
