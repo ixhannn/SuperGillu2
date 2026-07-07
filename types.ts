@@ -203,22 +203,29 @@ export interface CoupleProfile {
   /** Premium: Heirlooms — which milestone artworks have been unsealed. */
   heirloomState?: HeirloomState;
   /**
-   * Private Space lock — a salted, one-way hash of the couple's shared PIN
-   * (never the PIN itself). Lives on the couple profile so it rides the same
-   * durable+synced pipeline as everything else: localStorage cache, IndexedDB
-   * backup (survives WebView storage eviction between launches) and the Supabase
-   * `data` blob (survives a full app reinstall — restored on next login). See
-   * services/privacyLock.ts. Private Space is a couple-shared shelf, so a single
-   * synced hash is correct — both partners unlock it with the same PIN.
+   * Private Space lock — PER-USER PINs for the couple's shared shelf, keyed by
+   * Supabase user id. Each partner sets and unlocks with their OWN PIN (either
+   * opens the same shelf), so no secret has to be passed between them. Each
+   * value is a salted one-way hash (never the PIN). Lives on the couple profile
+   * so it rides the same durable+synced pipeline as everything else: localStorage
+   * cache, IndexedDB backup (survives WebView eviction between launches) and the
+   * Supabase `data` blob (survives a full reinstall — restored on next login).
+   * See services/privacyLock.ts.
+   */
+  privateSpacePins?: Record<string, PrivateSpacePinHash>;
+  /**
+   * @deprecated Legacy SINGLE shared-PIN hash from the interim build. Migrated
+   * into `privateSpacePins` (per user) by PrivacyLock.hydrate(); read only as a
+   * fallback until then. Do not write new code against this field.
    */
   privateSpacePin?: PrivateSpacePinHash;
 }
 
-/** Salted SHA-256 (or FNV-1a fallback) of the Private Space PIN. No plaintext. */
+/** Salted SHA-256 (or FNV-1a fallback) of a Private Space PIN. No plaintext. */
 export interface PrivateSpacePinHash {
   salt: string;
   hash: string;
-  createdAt: string; // ISO — newest wins when two devices disagree
+  createdAt: string; // ISO
 }
 
 // ── Premium: Heirlooms (collectible milestone art) ──────────────────
