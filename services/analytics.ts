@@ -30,7 +30,10 @@ export type AnalyticsEvent =
   | 'pair_invite_sent'
   | 'pair_joined'
   | 'ritual_completed'
-  | 'premium_tap';
+  | 'premium_tap'
+  | 'screen_view'
+  | 'screen_leave'
+  | 'app_background';
 
 type EventProps = Record<string, unknown>;
 
@@ -96,8 +99,8 @@ function loadPostHog(apiKey: string, apiHost: string): void {
   posthog.init?.(apiKey, {
     api_host: apiHost,
     autocapture: false,
-    capture_pageview: false,
-    capture_pageleave: false,
+    capture_pageview: false, // we send $pageview manually per view (this is an SPA)
+    capture_pageleave: true, // enables time-on-page, bounce rate + a terminal $pageleave on hard exit
     disable_session_recording: true,
     persistence: 'localStorage',
     // Never create a person profile for an anonymous device; only if we ever
@@ -106,7 +109,7 @@ function loadPostHog(apiKey: string, apiHost: string): void {
   });
 }
 
-function posthogCapture(event: AnalyticsEvent, props?: EventProps): void {
+function posthogCapture(event: string, props?: EventProps): void {
   const ph = window.posthog;
   if (ph && typeof ph.capture === 'function') {
     try {
@@ -151,6 +154,15 @@ async function shipFirstParty(event: AnalyticsEvent, props?: EventProps): Promis
   });
 }
 
+/** First-party only (skips PostHog). Capped per session. Never throws. */
+function trackLocal(event: AnalyticsEvent, props?: EventProps): void {
+  if (sentThisSession >= MAX_PER_SESSION) return;
+  sentThisSession++;
+  void shipFirstParty(event, props).catch(() => {
+    /* best-effort: offline, missing table, RLS, signed-out — all fine */
+  });
+}
+
 export const Analytics = {
   /** Call once at app boot. Loads PostHog only if a key is configured. */
   init(): void {
@@ -165,15 +177,48 @@ export const Analytics = {
   },
 
   /**
-   * Record a product event. Forwards to PostHog (if loaded) and to the
-   * first-party app_events table (if signed in + migrated). Never throws.
+   * Record a product event to BOTH PostHog (if loaded) and the first-party
+   * app_events table (if signed in + migrated). Never throws.
    */
   track(event: AnalyticsEvent, props?: EventProps): void {
     posthogCapture(event, props);
-    if (sentThisSession >= MAX_PER_SESSION) return;
-    sentThisSession++;
-    void shipFirstParty(event, props).catch(() => {
-      /* best-effort: offline, missing table, RLS, signed-out — all fine */
+    trackLocal(event, props);
+  },
+
+  /**
+   * A screen/view was entered. Sends PostHog's `$pageview` (with a synthetic
+   * `/app/<view>` URL so PostHog Web Analytics, Paths and time-on-page light
+   * up) plus a first-party `screen_view`. The custom event is first-party only
+   * to avoid double-counting alongside `$pageview` in PostHog.
+   */
+  screenEnter(
+    view: string,
+    props?: { previous?: string | null; is_root_tab?: boolean; session_screen_index?: number },
+  ): void {
+    const url = `/app/${view}`;
+    posthogCapture('$pageview', { $current_url: url, $pathname: url, screen: view, is_root_tab: props?.is_root_tab });
+    trackLocal('screen_view', {
+      screen: view,
+      previous_screen: props?.previous ?? null,
+      is_root_tab: props?.is_root_tab,
+      session_screen_index: props?.session_screen_index,
+    });
+  },
+
+  /**
+   * A screen/view was left. Sends PostHog `$pageleave` (powers dwell + bounce)
+   * plus a first-party `screen_leave` carrying the dwell time.
+   */
+  screenLeave(
+    view: string,
+    props?: { next?: string | null; dwell_ms?: number; reason?: 'navigate' | 'background' },
+  ): void {
+    posthogCapture('$pageleave', { $current_url: `/app/${view}`, screen: view, dwell_ms: props?.dwell_ms });
+    trackLocal('screen_leave', {
+      screen: view,
+      next_screen: props?.next ?? null,
+      dwell_ms: props?.dwell_ms,
+      reason: props?.reason,
     });
   },
 };

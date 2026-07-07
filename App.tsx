@@ -284,6 +284,16 @@ const App = () => {
   // Must be updated BEFORE state changes so direction is resolved correctly.
   const currentViewRef = useRef<ViewState>(initialView);
 
+  // ── Behavioural-analytics session state (screen dwell + app lifecycle) ──
+  // All refs so the long-lived lifecycle listeners read live values without
+  // stale-closure capture. No-op unless analytics is configured.
+  const lastTrackedViewRef = useRef<ViewState | null>(null);
+  const screenEnteredAtRef = useRef<number>(0);
+  const sessionStartedAtRef = useRef<number>(0);
+  const sessionScreenCountRef = useRef<number>(0);
+  const lastBackgroundAtRef = useRef<number | null>(null);
+  const prevAppActiveRef = useRef<boolean>(true);
+
   // ── Keep-alive tab cache ────────────────────────────────────────────────
   // Every ROOT_TAB visited at least once stays mounted in the DOM. Switching
   // between cached tabs becomes a CSS visibility flip — no React unmount, no
@@ -491,6 +501,31 @@ const App = () => {
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.route = currentView;
     }
+  }, [currentView]);
+
+  // Behavioural analytics — every committed view change funnels through this
+  // effect exactly once (tab / push / pop / gesture-back / deep-link / auth
+  // overlay all set currentView), so it is the single source of truth for
+  // screen views + dwell time. recordNavigation() is NOT used: it misses the
+  // gesture-back and instant-nav paths. No-op unless analytics is configured.
+  useEffect(() => {
+    const now = performance.now();
+    const prev = lastTrackedViewRef.current;
+    if (prev && prev !== currentView) {
+      Analytics.screenLeave(prev, {
+        next: currentView,
+        dwell_ms: Math.round(now - screenEnteredAtRef.current),
+        reason: 'navigate',
+      });
+    }
+    sessionScreenCountRef.current += 1;
+    Analytics.screenEnter(currentView, {
+      previous: prev,
+      is_root_tab: ROOT_TABS.includes(currentView),
+      session_screen_index: sessionScreenCountRef.current,
+    });
+    lastTrackedViewRef.current = currentView;
+    screenEnteredAtRef.current = now;
   }, [currentView]);
 
   // ── Fast tab transition (CSS-only crossfade) ────────────────────────────
@@ -744,6 +779,7 @@ const App = () => {
     // monitoring (Sentry) + product analytics (PostHog + first-party app_events).
     initObservability();
     Analytics.init();
+    sessionStartedAtRef.current = performance.now();
     Analytics.track('app_open', { reason: 'launch' });
   }, []);
 
@@ -1177,7 +1213,20 @@ const App = () => {
     // the offline outbox. This is what keeps the app feeling live after reopen.
     removeResumeListener = NativeShellService.onResume(() => {
       const shell = NativeShellService.getState();
-      Analytics.track('app_open', { reason: 'resume' });
+      Analytics.track('app_open', {
+        reason: 'resume',
+        screen: currentViewRef.current,
+        away_ms: lastBackgroundAtRef.current ? Date.now() - lastBackgroundAtRef.current : null,
+      });
+      // New foreground window: reset session timers and re-enter the current
+      // screen so PostHog time-on-page restarts (doesn't count time backgrounded).
+      sessionStartedAtRef.current = performance.now();
+      screenEnteredAtRef.current = performance.now();
+      Analytics.screenEnter(currentViewRef.current, {
+        previous: null,
+        is_root_tab: ROOT_TABS.includes(currentViewRef.current),
+        session_screen_index: sessionScreenCountRef.current,
+      });
       if (shell.isOnline) {
         void SyncService.resume();
       }
@@ -1187,6 +1236,23 @@ const App = () => {
         void SyncService.resume();
       }
       wasOnline = shell.isOnline;
+      // App going to background (active → inactive): record which screen the
+      // user left on + session length. Foreground is handled by onResume above.
+      if (prevAppActiveRef.current && !shell.appActive) {
+        const now = performance.now();
+        Analytics.screenLeave(currentViewRef.current, {
+          next: null,
+          dwell_ms: Math.round(now - screenEnteredAtRef.current),
+          reason: 'background',
+        });
+        Analytics.track('app_background', {
+          screen: currentViewRef.current,
+          session_ms: Math.round(now - sessionStartedAtRef.current),
+          session_screen_count: sessionScreenCountRef.current,
+        });
+        lastBackgroundAtRef.current = Date.now();
+      }
+      prevAppActiveRef.current = shell.appActive;
     });
 
     return () => {
