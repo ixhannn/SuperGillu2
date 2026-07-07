@@ -42,6 +42,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:e2e", "--", "--port", "3047", "--strictPort"],
       "port": 3047
+    },
+    {
+      "name": "Romantic E2E Dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:e2e", "--", "--strictPort"],
+      "port": 3057,
+      "autoPort": true
     }
   ]
 }

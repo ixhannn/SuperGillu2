@@ -177,33 +177,14 @@
    600ms transition on EVERY element (background-color/color/border/fill/stroke/
    opacity) forced a full-tree restyle+repaint for 600ms on each theme change,
    which is what made applying a theme lag on device. Theme tokens now commit in
-   ONE frame (a single repaint); the cinematic feel comes from the GPU-only
-   background bloom disc (ThemeRevealLayer, transform/opacity only). */
+   ONE frame (a single repaint); the cinematic feel comes from a native View
+   Transition circular reveal (see html[data-vt-dir="theme"] in root-fixes.css). */
 /* ── CINEMATIC THEME REVEAL ───────────────────────────────────────────────── */
-/* The opaque disc of the incoming theme that wipes in from the tapped swatch. It
-   sits ABOVE all content (high z-index) so the reveal is actually visible — a
-   behind-content version was occluded by cards and read as an instant switch.
-   ThemeRevealLayer sizes/positions the circle and grows it via `transform:
-   scale()` (compositor-only, no per-frame repaint), then fades opacity — only
-   transform + opacity animate. Idle state is fully hidden + pointer-transparent,
-   so it never intercepts taps between theme changes. */
-.lior-theme-reveal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  z-index: 90;
-  pointer-events: none;
-  visibility: hidden;
-  opacity: 0;
-  contain: layout paint;
-}
-/* Reduced motion: no spatial wipe — ThemeService also skips the reveal event and
-   commits the theme in one frame. */
-@media (prefers-reduced-motion: reduce) {
-  .lior-theme-reveal { display: none; }
-} /* ── SELECTION COLOR — follows active theme ──────────────────────────────── */
+/* The theme change is a native View Transition (circular reveal of the re-themed
+   UI, anchored at the tapped swatch). Keyframes + scoping live with the other
+   view-transition rules in styles/root-fixes.css (html[data-vt-dir="theme"]);
+   ThemeService routes to them. Nothing needed here. */
+/* ── SELECTION COLOR — follows active theme ──────────────────────────────── */
 ::selection {
   background: rgba(var(--theme-particle-2-rgb), 0.28);
   color: var(--color-text-primary);

@@ -679,45 +679,21 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
   }
 };
 
-let revealSafetyTimer: number | null = null;
+// Monotonic id of the newest reveal — lets a superseded transition's teardown
+// recognise it is stale (see the rapid double-tap note in applyTheme).
+let revealSeq = 0;
 
-// ── CINEMATIC REVEAL ───────────────────────────────────────────────────────
-// The new background blooms from the tapped swatch as a circle that GROWS via
-// `transform: scale()` (REVEAL_GROW_MS) — a pure compositor transform with ZERO
-// per-frame repaint (clip-path re-rasterised the full-screen gradient every
-// frame → jank on mobile + the live WebGL layer). The disc is sized to its final
-// diameter and scaled 0→1 so it stays sharp. It then dissolves over
-// REVEAL_FADE_MS to hand off to the real (now-committed) background. The actual
-// animation lives in <ThemeRevealLayer> (mounted inside Layout's shell, strictly
-// BEHIND all content), which listens on `themeEventTarget`.
-export const REVEAL_GROW_MS = 900;
-export const REVEAL_FADE_MS = 280;
-export const themeEventTarget = new EventTarget();
-
-export interface ThemeRevealDetail {
-  /** A radial gradient (built from the incoming theme's own bg colours + a soft
-   *  white core) painted on the scaling disc so it blooms as the new palette. */
-  discBg: string;
-  /** Tap origin in viewport (clientX/clientY) coordinates. */
-  originX: number;
-  originY: number;
-}
-
-/**
- * Build the disc's radial fill from the incoming theme's linear bg-main colours
- * (lightest stop at the core → deepest at the rim). Uses the theme's OWN colours
- * so the wipe reads as the new palette sweeping in, and stays in the right
- * luminance family (dark for starry-night, light for the rest). Deliberately
- * OPAQUE — the disc grows ABOVE content and must fully hide the app while the
- * old→new commit happens beneath it, then dissolve to reveal the new theme.
- */
-function buildDiscBackground(bgMain: string, fallback: string): string {
-  const hexes = bgMain.match(/#[0-9a-fA-F]{3,8}/g) || [fallback];
-  const inner = hexes[0];
-  const outer = hexes[hexes.length - 1];
-  const mid = hexes[Math.floor((hexes.length - 1) / 2)] || inner;
-  return `radial-gradient(circle at center, ${inner} 0%, ${inner} 14%, ${mid} 54%, ${outer} 100%)`;
-}
+// ── CINEMATIC REVEAL — native View Transition ────────────────────────────────
+// The theme change is a Telegram-style circular reveal driven by the View
+// Transitions API (already proven in this WebView — TransitionEngine uses it for
+// every navigation). startViewTransition snapshots the OLD screen, the theme
+// commits in one frame under it, and the NEW screen's snapshot is revealed by a
+// growing clip-path circle anchored at the tapped swatch (CSS in root-fixes.css,
+// scoped html[data-vt-dir="theme"]). Because both sides are real UI snapshots,
+// text stays sharp and the palette lands exactly — no scaled gradient disc (the
+// previous approach: a 240px radial texture scaled ~10× read blurry/banded on
+// device). During the transition the live DOM doesn't repaint at all, so this is
+// also the cheapest possible animation. No View Transitions support → instant.
 
 /**
  * "#e8365a" → "232 54 90" (space-separated RGB channels) for the Tailwind
@@ -730,23 +706,6 @@ function hexToRgbChannels(hex: string): string {
   const int = parseInt(full.slice(0, 6), 16);
   if (full.length < 6 || Number.isNaN(int)) return '244 63 94';
   return `${(int >> 16) & 255} ${(int >> 8) & 255} ${int & 255}`;
-}
-
-// While a cinematic reveal plays we DEFER the ENTIRE visual commit (data-theme +
-// every token + body styles) so the OUTGOING theme stays fully rendered UNDER
-// the growing opaque disc. The reveal layer flushes it once the disc has covered
-// the screen (grow-finish), so the old→new swap is invisible; a safety timer +
-// cleanup() + the next applyTheme also flush it, so the theme is never stranded.
-let pendingThemeCommit: (() => void) | null = null;
-
-function commitPendingTheme(): void {
-  if (revealSafetyTimer !== null) {
-    window.clearTimeout(revealSafetyTimer);
-    revealSafetyTimer = null;
-  }
-  const commit = pendingThemeCommit;
-  pendingThemeCommit = null;
-  if (commit) commit();
 }
 
 interface ThemeApplyOptions {
@@ -762,49 +721,35 @@ interface ThemeApplyOptions {
 }
 
 export const ThemeService = {
-  /**
-   * Flush the deferred theme commit immediately. Called by the reveal layer once
-   * the disc has covered the screen (so the whole theme swaps beneath it), and as
-   * a safety/teardown path so the theme never gets stuck on the outgoing palette.
-   */
-  commitPendingTheme,
   applyTheme: (themeId: string, options: ThemeApplyOptions = {}) => {
     const validId = (THEMES[themeId as ThemeId] ? themeId : 'rose') as ThemeId;
     const { palette, tokens } = THEMES[validId];
     const root = document.documentElement;
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { finished: Promise<void> };
+    };
 
     // Persist immediately — this only mirrors the choice for the boot script and
-    // does NOT affect rendering. The VISUAL commit is deferred below so the
-    // OUTGOING theme stays fully rendered under the growing disc.
+    // does NOT affect rendering (the visual commit happens below).
     try { localStorage.setItem('lior_theme', validId); } catch { /* private mode */ }
-
-    // A new pick supersedes any in-flight reveal: DISCARD its pending commit
-    // without running it (the new pick applies its own theme; cleanup() still
-    // flushes on unmount so a mid-reveal navigation is never stranded).
-    if (revealSafetyTimer !== null) {
-      window.clearTimeout(revealSafetyTimer);
-      revealSafetyTimer = null;
-    }
-    pendingThemeCommit = null;
 
     const reduceMotion = typeof window !== 'undefined'
       && typeof window.matchMedia === 'function'
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // The cinematic wipe runs for any real, motion-allowed, origin-anchored pick
-    // when WAAPI is available. It works for EVERY theme (incl. light↔dark) because
-    // the old→new commit happens entirely hidden beneath the fully-grown opaque
-    // disc — no readability gap, no per-element transition (= no lag).
+    // The cinematic circular reveal runs for any real, motion-allowed,
+    // origin-anchored pick when the View Transitions API is available. It works
+    // for EVERY theme (incl. light↔dark) because both sides are full-UI
+    // snapshots — text is always readable on both sides of the travelling edge.
     const cinematic = !options.instant
       && !reduceMotion
       && !!options.origin
-      && typeof document !== 'undefined'
-      && typeof Element !== 'undefined'
-      && typeof Element.prototype.animate === 'function';
+      && typeof doc.startViewTransition === 'function';
 
     // ── FULL visual commit — data-theme + every token + body styles, applied in
-    // ONE frame (a single repaint, no per-element transition). For the cinematic
-    // path this runs UNDER the fully-grown disc (invisible); otherwise it runs
-    // immediately (boot / reduced-motion / no-origin / no-WAAPI). ──
+    // ONE frame (a single repaint, no per-element transition). The cinematic path
+    // runs this inside startViewTransition's callback (between the old/new
+    // snapshots); otherwise it runs immediately (boot / reduced-motion /
+    // no-origin / no View Transitions support). ──
     const commitTheme = () => {
       root.setAttribute('data-theme', validId);
 
@@ -885,28 +830,46 @@ export const ThemeService = {
       document.body.style.color = tokens.textPrimary;
     };
 
-    if (cinematic && options.origin) {
-      pendingThemeCommit = commitTheme;
-      themeEventTarget.dispatchEvent(new CustomEvent<ThemeRevealDetail>('theme-reveal', {
-        detail: {
-          discBg: buildDiscBackground(tokens.bgMain, tokens.base),
-          originX: options.origin.x,
-          originY: options.origin.y,
-        },
-      }));
-      // Safety net: if the layer is unmounted or the tab is hidden so the WAAPI
-      // animation never finishes, still land the theme.
-      revealSafetyTimer = window.setTimeout(
-        commitPendingTheme,
-        REVEAL_GROW_MS + REVEAL_FADE_MS + 150,
-      );
+    if (cinematic && options.origin && doc.startViewTransition) {
+      // Anchor the circular reveal at the tapped swatch and pre-compute the
+      // farthest-corner radius so the circle always covers the viewport.
+      const { x, y } = options.origin;
+      const radius = Math.hypot(
+        Math.max(x, window.innerWidth - x),
+        Math.max(y, window.innerHeight - y),
+      ) * 1.02;
+      root.style.setProperty('--theme-origin-x', `${x}px`);
+      root.style.setProperty('--theme-origin-y', `${y}px`);
+      root.style.setProperty('--theme-reveal-r', `${Math.ceil(radius)}px`);
+      // Route to the theme keyframes in root-fixes.css. TransitionEngine drives
+      // nav through the same attribute, so only clear it if it is still ours —
+      // and only from the LATEST reveal: a rapid second pick skips the first
+      // transition, whose teardown must not strip the attribute mid-flight from
+      // the newer one (that would degrade its circle to a plain crossfade).
+      revealSeq += 1;
+      const seq = revealSeq;
+      root.setAttribute('data-vt-dir', 'theme');
+      const transition = doc.startViewTransition(() => {
+        commitTheme();
+      });
+      transition.finished
+        .finally(() => {
+          if (seq === revealSeq && root.getAttribute('data-vt-dir') === 'theme') {
+            root.removeAttribute('data-vt-dir');
+          }
+        })
+        .catch(() => { /* transition skipped/interrupted — theme is committed */ });
     } else {
       commitTheme();
     }
   },
   cleanup: () => {
-    // Land any pending reveal theme so leaving Profile mid-wipe never strands the
-    // outgoing theme.
-    commitPendingTheme();
+    // The theme commits synchronously inside the view-transition callback, so
+    // nothing is ever left pending. Just drop our routing attribute if Profile
+    // unmounts while a reveal is still in flight.
+    const root = document.documentElement;
+    if (root.getAttribute('data-vt-dir') === 'theme') {
+      root.removeAttribute('data-vt-dir');
+    }
   }
 };

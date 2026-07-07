@@ -35,12 +35,6 @@ function commitFiniteAnimations(): void {
         if (!timing) continue;
         if (timing.iterations === Infinity) continue;
         if (anim.playState === 'finished' || anim.playState === 'idle') continue;
-        // The cinematic theme-reveal disc drives a finite clip-path bloom; it
-        // owns its own safety net (a timer + a cancel-on-new-pick path in
-        // ThemeService). Force-finishing it here would cut the ~620ms bloom to an
-        // instant on a focus/visibilitychange event mid-transition. Skip it.
-        const target = (anim.effect as KeyframeEffect | null)?.target;
-        if (target instanceof Element && target.classList.contains('lior-theme-reveal')) continue;
         anim.finish();
       } catch {
         /* paused/cancelled/non-finishable — ignore */
