@@ -630,6 +630,29 @@ html[data-vt-dir="expand"]::view-transition-old(root) {
   animation: var(--lior-motion-push) var(--lior-ease-soft) lior-vt-expand-out;
 }
 
+/* Theme — cinematic theme-change reveal (ThemeService sets the origin px +
+   farthest-corner radius per tap). The re-themed NEW snapshot is unveiled by a
+   circle growing from the tapped swatch while the OLD snapshot holds perfectly
+   still beneath — no slide, no fade, no scaling (so neither side ever blurs;
+   see the resample warning at the top of this section). Both sides are real UI
+   snapshots, so text stays sharp and readable on either side of the edge.
+   Animating clip-path here is cheap: during a view transition the live DOM does
+   not repaint — the browser is clipping one composited snapshot texture. */
+@keyframes lior-vt-theme-in {
+  from {
+    clip-path: circle(0px at var(--theme-origin-x, 50%) var(--theme-origin-y, 40%));
+  }
+  to {
+    clip-path: circle(var(--theme-reveal-r, 140vmax) at var(--theme-origin-x, 50%) var(--theme-origin-y, 40%));
+  }
+}
+html[data-vt-dir="theme"]::view-transition-old(root) {
+  animation: none; /* the outgoing world just sits there until swept over */
+}
+html[data-vt-dir="theme"]::view-transition-new(root) {
+  animation: 650ms cubic-bezier(0.4, 0, 0.2, 1) both lior-vt-theme-in;
+}
+
 /* Stacking control — for "back" motions (pop, sheet dismiss) the OUTGOING
    snapshot must paint ABOVE the incoming one so it slides off and REVEALS the
    screen underneath (true iOS reveal). Push & modal-open keep the default
