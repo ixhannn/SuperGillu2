@@ -221,14 +221,35 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     const deleteTimerRef = useRef<number | null>(null);
     const pendingDeleteRef = useRef<PrivateSpaceItem | null>(null);
 
+    // Reconcile the PIN cache with its durable IndexedDB copy on mount. On the
+    // native WebView the synchronous localStorage check at mount can miss a PIN
+    // that was evicted between launches (the "asks for a new password every
+    // time" bug); once hydrate() restores it we flip the pad from setup→enter
+    // instead of letting the user silently overwrite their real PIN.
+    useEffect(() => {
+        let cancelled = false;
+        void PrivacyLock.hydrate().then(() => {
+            if (cancelled) return;
+            if (PrivacyLock.hasPin()) {
+                setLockMode((mode) => (mode === 'setup' ? 'enter' : mode));
+                setLocked(!PrivacyLock.isSessionUnlocked());
+                setFirstPin('');
+                setPinEntry('');
+            }
+        });
+        return () => { cancelled = true; };
+    }, []);
+
     // Re-lock the vault whenever the app is backgrounded, so returning to it always
     // requires the PIN. sessionStorage (the unlock token) survives a Capacitor
     // WebView background, so without this an open vault stays visible to whoever
     // reopens the phone. The 5-minute unlock TTL remains a secondary fallback.
     useEffect(() => {
-        if (!PrivacyLock.hasPin()) return;
+        // hasPin() is checked at event time, not mount time: after a WebView
+        // eviction the PIN is absent at mount and only restored by hydrate(),
+        // so an early bail here would leave the re-lock disarmed for the session.
         const onVisibility = () => {
-            if (document.hidden) {
+            if (document.hidden && PrivacyLock.hasPin()) {
                 PrivacyLock.relock();
                 setLocked(true);
             }

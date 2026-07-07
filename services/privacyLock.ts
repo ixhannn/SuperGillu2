@@ -2,6 +2,19 @@
 // SHA-256 hash (never plaintext). This guards against casual snooping
 // on a shared/unlocked phone — the data itself lives in local storage,
 // so it is an access gate, not encryption at rest.
+//
+// DURABILITY (fixes "the PIN resets on every launch"): localStorage alone
+// is NOT durable on the native Android WebView — the system can evict
+// web-storage between app launches while IndexedDB (the app's real vault)
+// survives. That is why only the PIN reset while memories/notes persisted.
+// The hashed PIN is now MIRRORED into IndexedDB (the same durable store the
+// rest of the app uses). localStorage stays as a synchronous fast-path cache
+// so hasPin()/isSessionUnlocked() remain sync; hydrate() reconciles the two
+// on boot — restoring the cache after an eviction and back-filling the
+// durable copy for users who set their PIN before this fix shipped.
+
+import { readRaw, writeRaw, deleteRaw } from './storage/rawStore';
+import { STORES } from './storage/dbConfig';
 
 const PIN_STORAGE_KEY = 'lior_private_space_pin_v1';
 const ATTEMPT_STORAGE_KEY = 'lior_private_space_pin_attempts_v1';
@@ -104,6 +117,61 @@ const getAttempts = (): AttemptState =>
 
 const setAttempts = (state: AttemptState) => writeJson(localStorage, ATTEMPT_STORAGE_KEY, state);
 
+// ── Durable PIN mirror (IndexedDB) ──────────────────────────────────────────
+// localStorage is an evictable cache on the native WebView; IndexedDB is not.
+// A StoredPin holds only a random salt + a one-way hash, so mirroring it is no
+// weaker than the localStorage copy it shadows.
+
+const isStoredPin = (value: unknown): value is StoredPin =>
+  typeof value === 'object' && value !== null &&
+  typeof (value as StoredPin).salt === 'string' &&
+  typeof (value as StoredPin).hash === 'string';
+
+const persistDurablePin = async (stored: StoredPin): Promise<void> => {
+  try {
+    await writeRaw(STORES.DATA, PIN_STORAGE_KEY, stored);
+  } catch {
+    // Best-effort: the localStorage cache still gates this session; hydrate()
+    // will retry the mirror on the next boot from the surviving cache.
+  }
+};
+
+// Single-flight guard so concurrent callers share one reconciliation pass.
+// Deliberately NOT a permanent memo: a transient IndexedDB read failure (e.g.
+// the DB is mid-open/upgrade during app boot) must be retryable on the next
+// call, or one unlucky boot would poison every later hydrate() for the session.
+let hydrateInFlight: Promise<void> | null = null;
+// Once a pass has actually reconciled the durable copy into the cache we can
+// stop re-reading IndexedDB on every call.
+let hydrateSettled = false;
+
+const runHydrate = async (): Promise<void> => {
+  let durable: StoredPin | null = null;
+  let readOk = false;
+  try {
+    const raw = await readRaw<StoredPin>(STORES.DATA, PIN_STORAGE_KEY);
+    readOk = true;
+    if (isStoredPin(raw)) durable = raw;
+  } catch {
+    // IndexedDB unavailable/busy — leave hydrateSettled false so the next
+    // hydrate() call retries rather than trusting this incomplete pass.
+  }
+
+  const cached = readJson<StoredPin>(localStorage, PIN_STORAGE_KEY);
+
+  if (durable && !cached) {
+    // Cache was evicted (the reported bug) — restore it from the durable copy.
+    writeJson(localStorage, PIN_STORAGE_KEY, durable);
+  } else if (readOk && !durable && isStoredPin(cached)) {
+    // Existing user who set a PIN before this fix — back-fill the durable copy.
+    await persistDurablePin(cached);
+  }
+
+  // A pass counts as settled only when we truly read the durable store; a
+  // failed read stays retryable.
+  if (readOk) hydrateSettled = true;
+};
+
 export const PrivacyLock = {
   isPinValidFormat(pin: string): boolean {
     return new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin);
@@ -119,11 +187,11 @@ export const PrivacyLock = {
     }
     const salt = randomSalt();
     const hash = await hashPin(pin, salt);
-    writeJson(localStorage, PIN_STORAGE_KEY, {
-      salt,
-      hash,
-      createdAt: new Date().toISOString(),
-    } satisfies StoredPin);
+    const stored: StoredPin = { salt, hash, createdAt: new Date().toISOString() };
+    // Synchronous fast-path cache…
+    writeJson(localStorage, PIN_STORAGE_KEY, stored);
+    // …plus the durable copy so a WebView storage eviction can't wipe it.
+    await persistDurablePin(stored);
     setAttempts({ count: 0, lockUntil: 0 });
     this.markUnlocked();
   },
@@ -177,7 +245,32 @@ export const PrivacyLock = {
   clearPin(): void {
     removeKey(localStorage, PIN_STORAGE_KEY);
     removeKey(localStorage, ATTEMPT_STORAGE_KEY);
+    // Drop the durable mirror too, or hydrate() would resurrect the old PIN.
+    void deleteRaw(STORES.DATA, PIN_STORAGE_KEY).catch(() => {
+      // Best-effort — a failed delete just leaves a stale durable copy that
+      // hydrate() re-mirrors; the localStorage removal above already unlocks
+      // the reset flow for this session.
+    });
     this.relock();
+  },
+
+  /**
+   * Reconcile the synchronous localStorage cache with the durable IndexedDB
+   * copy. Idempotent and safe to call repeatedly; the in-flight promise is
+   * shared so concurrent callers don't double-work. Call once early in app
+   * boot AND when Private Space mounts — after it resolves, hasPin() reflects
+   * the durable truth even if the WebView evicted localStorage since last run.
+   */
+  hydrate(): Promise<void> {
+    if (hydrateSettled) return Promise.resolve();
+    if (!hydrateInFlight) {
+      hydrateInFlight = runHydrate().finally(() => {
+        // Release the in-flight slot so a boot-time failure can be retried by
+        // the next caller (e.g. the Private Space mount effect).
+        hydrateInFlight = null;
+      });
+    }
+    return hydrateInFlight;
   },
 
   isSessionUnlocked(): boolean {
