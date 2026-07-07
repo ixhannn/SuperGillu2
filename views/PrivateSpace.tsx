@@ -221,23 +221,38 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     const deleteTimerRef = useRef<number | null>(null);
     const pendingDeleteRef = useRef<PrivateSpaceItem | null>(null);
 
-    // Reconcile the PIN cache with its durable IndexedDB copy on mount. On the
-    // native WebView the synchronous localStorage check at mount can miss a PIN
-    // that was evicted between launches (the "asks for a new password every
-    // time" bug); once hydrate() restores it we flip the pad from setup→enter
-    // instead of letting the user silently overwrite their real PIN.
+    // Reconcile the PIN across its three copies (localStorage cache, IndexedDB
+    // mirror, synced couple profile) on mount AND whenever the couple profile
+    // updates. Two cases this heals:
+    //   • WebView eviction between launches — the sync localStorage check at
+    //     mount misses a PIN the IndexedDB mirror still holds.
+    //   • Full reinstall — the PIN arrives later from the cloud when
+    //     couple_profile syncs down after login (fires a storage-update).
+    // Once hydrate() restores it we flip the pad setup→enter so the user is
+    // asked to ENTER their existing PIN, never to silently overwrite it.
     useEffect(() => {
         let cancelled = false;
-        void PrivacyLock.hydrate().then(() => {
-            if (cancelled) return;
-            if (PrivacyLock.hasPin()) {
-                setLockMode((mode) => (mode === 'setup' ? 'enter' : mode));
-                setLocked(!PrivacyLock.isSessionUnlocked());
-                setFirstPin('');
-                setPinEntry('');
-            }
-        });
-        return () => { cancelled = true; };
+        const reconcile = () => {
+            void PrivacyLock.hydrate().then(() => {
+                if (cancelled) return;
+                if (PrivacyLock.hasPin()) {
+                    setLockMode((mode) => (mode === 'setup' ? 'enter' : mode));
+                    setLocked((wasLocked) => wasLocked && !PrivacyLock.isSessionUnlocked());
+                    setFirstPin('');
+                    setPinEntry('');
+                }
+            });
+        };
+        reconcile();
+        const onStorage = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            if (!detail || ['couple_profile', 'init'].includes(detail.table)) reconcile();
+        };
+        storageEventTarget.addEventListener('storage-update', onStorage);
+        return () => {
+            cancelled = true;
+            storageEventTarget.removeEventListener('storage-update', onStorage);
+        };
     }, []);
 
     // Re-lock the vault whenever the app is backgrounded, so returning to it always
