@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, ChevronRight } from 'lucide-react';
+import { Heart, Sparkles, Mail, Moon, RefreshCw, Utensils, Calendar, X, Clock, Zap, Sun, Map, TreeDeciduous, Cloud, Mic, Crown, Lock, PawPrint, Headphones, ChevronRight, Lamp } from 'lucide-react';
 import { motion, useInView } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ViewState, UserStatus, CoupleProfile, Memory, Note, SpecialDate } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
+import { describeHomeCard, HomeCardPresence } from '../components/our-home/homeCardState';
 import { SyncService, syncEventTarget } from '../services/sync';
 import { AmbientService } from '../services/ambient';
 import { getYear, intervalToDuration } from 'date-fns';
@@ -104,6 +105,18 @@ interface HomeProps {
 const getDisplayName = (value: string | undefined, fallback: string) => {
     const trimmed = value?.trim();
     return trimmed ? trimmed : fallback;
+};
+
+/** The Our Home card's one-line presence — same derivation the room renders. */
+const computeHomeCard = (): HomeCardPresence => {
+    const prof = StorageService.getCoupleProfile();
+    return describeHomeCard(
+        StorageService.getCoupleRoomState(),
+        StorageService.getMyUserId() || prof.myName || 'me',
+        prof.partnerUserId || prof.partnerName || null,
+        getDisplayName(prof.partnerName, 'Partner'),
+        new Date(),
+    );
 };
 
 const DAYS_TOGETHER_LEGACY_FONT_STYLE: React.CSSProperties = {
@@ -441,6 +454,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
     const [memories, setMemories] = useState<Memory[]>(() => StorageService.getMemories());
     const [notes, setNotes] = useState<Note[]>(() => StorageService.getNotes());
     const [privateItemCount, setPrivateItemCount] = useState(() => StorageService.getPrivateSpaceItems().length);
+    const [homePresence, setHomePresence] = useState<HomeCardPresence>(() => computeHomeCard());
     const [showHeartbeat, setShowHeartbeat] = useState(false);
     const [receivedHeartbeat, setReceivedHeartbeat] = useState(false);
     const [isDissolving, setIsDissolving] = useState(false);
@@ -508,6 +522,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
         setMemories(mems);
         setNotes(nts);
         setPrivateItemCount(StorageService.getPrivateSpaceItems().length);
+        setHomePresence(computeHomeCard());
         setStreak(calculateStreak(mems));
         setNextEvent(getNextEvent(sds, prof.anniversaryDate));
         const throwback = mems.find(m => {
@@ -1274,6 +1289,63 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                     />
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Our Home — the live doorway: what's waiting in the room right now */}
+                <div className="home-reveal-item col-span-2 mt-3">
+                    <div
+                        onClick={(e) => open(e, () => setView('our-room'))}
+                        className="w-full cursor-pointer"
+                    >
+                        <div
+                            className="relative overflow-hidden rounded-[1.5rem] px-4 py-3.5 spring-press"
+                            style={{
+                                background: 'linear-gradient(145deg, #fdf5ec 0%, #f7e6d5 100%)',
+                                boxShadow: '0 6px 16px rgba(122, 69, 58, 0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
+                                border: '1px solid rgba(255,255,255,0.75)',
+                            }}
+                        >
+                            {homePresence.tone === 'lamp' && (
+                                <div
+                                    className="absolute -top-10 -right-8 h-32 w-32 rounded-full pointer-events-none"
+                                    style={{ background: 'radial-gradient(circle, rgba(242,195,123,0.5) 0%, transparent 70%)' }}
+                                />
+                            )}
+                            <div className="relative flex items-center gap-3.5">
+                                <div
+                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                                    style={
+                                        homePresence.tone === 'lamp' || homePresence.tone === 'night'
+                                            ? {
+                                                background: 'linear-gradient(145deg, #f7cb7c, #eaa94e)',
+                                                boxShadow: '0 4px 14px rgba(234,169,78,0.4), inset 0 1px 0 rgba(255,246,224,0.8)',
+                                            }
+                                            : {
+                                                background: 'linear-gradient(145deg, #ffffff, #f7e9dc)',
+                                                boxShadow: '0 4px 10px rgba(122,69,58,0.08), inset 0 1px 0 rgba(255,255,255,0.95)',
+                                            }
+                                    }
+                                >
+                                    <Lamp
+                                        size={17}
+                                        strokeWidth={2.2}
+                                        style={{ color: homePresence.tone === 'lamp' || homePresence.tone === 'night' ? '#5c3410' : '#b06a4a' }}
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-0 text-left">
+                                    <p className="font-serif text-[1.02rem] font-semibold leading-tight" style={{ color: '#5d3a37' }}>Our Home</p>
+                                    <p className="mt-0.5 text-[0.72rem]" style={{ color: '#a4766a' }}>{homePresence.line}</p>
+                                </div>
+                                {(homePresence.tone === 'note' || homePresence.tone === 'candle') && (
+                                    <span
+                                        className="h-2 w-2 shrink-0 rounded-full"
+                                        style={{ background: '#ef5c7d', boxShadow: '0 0 0 3px rgba(239,92,125,0.16)' }}
+                                    />
+                                )}
+                                <ChevronRight size={16} style={{ color: '#cfa28e' }} />
+                            </div>
                         </div>
                     </div>
                 </div>
