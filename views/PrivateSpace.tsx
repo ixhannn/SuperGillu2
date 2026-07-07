@@ -535,7 +535,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
     if (locked) {
         const lockedOut = lockoutMs > 0;
         const lockCopy: Record<LockMode, { title: string; sub: string }> = {
-            setup: { title: 'Create a PIN', sub: `Set a ${PIN_LENGTH}-digit PIN to keep this shelf just for you two.` },
+            setup: { title: 'Create your PIN', sub: `Set your own ${PIN_LENGTH}-digit PIN. ${profile.partnerName || 'Your partner'} uses theirs — either one opens your shared shelf.` },
             confirm: { title: 'Confirm your PIN', sub: 'Type the same digits once more.' },
             enter: { title: 'Only you two.', sub: 'Enter your PIN to open the shelf.' },
         };

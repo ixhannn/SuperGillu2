@@ -1,26 +1,31 @@
-// PIN protection for Private Space. The PIN is stored as a salted
-// SHA-256 hash (never plaintext). This guards against casual snooping
-// on a shared/unlocked phone — the data itself lives in local storage,
-// so it is an access gate, not encryption at rest.
+// PIN protection for Private Space — a couple-SHARED shelf that each partner
+// unlocks with their OWN PIN. The PIN is stored only as a salted, one-way hash
+// (never plaintext); this is an access gate against casual snooping, not
+// encryption at rest.
 //
-// DURABILITY — the PIN hash is kept in THREE places, weakest→strongest:
-//   1. localStorage (PIN_STORAGE_KEY)  — synchronous fast cache so hasPin()/
-//      isSessionUnlocked()/verifyPin() stay sync (used in useState initializers).
-//   2. IndexedDB mirror (rawStore)     — survives the native Android WebView
-//      evicting web-storage BETWEEN LAUNCHES (the "resets every launch" bug;
-//      IndexedDB is the app's real vault and is not evicted with localStorage).
-//   3. couple_profile.privateSpacePin  — rides the couple profile's Supabase
-//      `data` blob, so it survives a full app REINSTALL (restored on next login)
-//      and is shared across the couple's devices. Private Space is a couple-
-//      shared shelf, so one synced hash is correct — both partners' PIN.
-// hydrate() reconciles all three on boot: newest createdAt wins, then every
-// store is brought up to that winner (restore after eviction, adopt after a
-// reinstall's cloud pull, back-fill for pre-existing local-only PINs).
+// PER-USER MODEL: we keep one hash PER USER in couple_profile.privateSpacePins,
+// keyed by Supabase user id. On this device you set/verify only YOUR entry — no
+// secret is ever passed between partners; your partner sets and uses theirs, and
+// either PIN opens the same shelf. Storing the PINs on the couple profile means
+// each one inherits the app's full durability pipeline with no migration:
+//   • localStorage cache of SHARED_PROFILE — synchronous reads (hasPin()/
+//     verifyPin()/isSessionUnlocked() stay sync for useState initializers);
+//   • IndexedDB profile backup (restoreLocalBackup on boot) — survives the
+//     native Android WebView evicting web-storage BETWEEN LAUNCHES;
+//   • the couple_profile Supabase `data` blob — survives a full app REINSTALL
+//     (restored on next login).
+// hydrate() migrates any legacy single PIN (an older localStorage-only hash or
+// the interim couple-shared field) into the per-user map and re-keys a solo
+// 'local' entry onto the real id once sign-in provides it. The failed-attempt
+// lockout and the unlock session stay device-local (not synced).
 
-import { readRaw, writeRaw, deleteRaw } from './storage/rawStore';
+import { readRaw, deleteRaw } from './storage/rawStore';
 import { STORES } from './storage/dbConfig';
 import { StorageService } from './storage';
+import { SupabaseService } from './supabase';
 
+// Pre-per-user device-local single-hash key (localStorage + IndexedDB). Retained
+// only as a migration source; hydrate() folds it into the per-user map.
 const PIN_STORAGE_KEY = 'lior_private_space_pin_v1';
 const ATTEMPT_STORAGE_KEY = 'lior_private_space_pin_attempts_v1';
 const SESSION_UNLOCK_KEY = 'lior_private_space_unlocked_v1';
@@ -122,110 +127,126 @@ const getAttempts = (): AttemptState =>
 
 const setAttempts = (state: AttemptState) => writeJson(localStorage, ATTEMPT_STORAGE_KEY, state);
 
-// ── PIN copies: local cache + durable mirror + synced couple profile ────────
-// A StoredPin holds only a random salt + a one-way hash, so mirroring it into
-// IndexedDB and the couple profile is no weaker than the localStorage copy it
-// shadows.
+// ── Per-user PIN storage on the couple profile ──────────────────────────────
+// Each partner owns one entry in couple_profile.privateSpacePins, keyed by their
+// Supabase user id. A StoredPin is only a salt + one-way hash, so syncing it to
+// the partner's device is no weaker than a local copy.
+
+const LEGACY_LOCAL_PIN_KEY = PIN_STORAGE_KEY; // pre-per-user device-local hash
+const LOCAL_OWNER = 'local';                   // fallback id for a solo/pre-sign-in user
 
 const isStoredPin = (value: unknown): value is StoredPin =>
   typeof value === 'object' && value !== null &&
   typeof (value as StoredPin).salt === 'string' &&
   typeof (value as StoredPin).hash === 'string';
 
-const pinsEqual = (a: StoredPin | null | undefined, b: StoredPin | null | undefined): boolean =>
-  !!a && !!b && a.salt === b.salt && a.hash === b.hash;
-
-// Newest createdAt wins — lets a PIN changed on one device (or restored from the
-// cloud after reinstall) supersede a stale local copy. createdAt is ISO, so
-// lexical comparison is chronological.
-const newestPin = (...pins: Array<StoredPin | null>): StoredPin | null => {
-  let best: StoredPin | null = null;
-  for (const p of pins) {
-    if (!isStoredPin(p)) continue;
-    if (!best || (p.createdAt || '') > (best.createdAt || '')) best = p;
-  }
-  return best;
+const safeProfile = () => {
+  try { return StorageService.getCoupleProfile(); } catch { return null; }
 };
 
-const persistDurablePin = async (stored: StoredPin): Promise<void> => {
+// Which partner is on this device. Prefer the in-memory cached user id (it
+// survives a localStorage eviction mid-session); fall back to the persisted id,
+// then a device-local constant for a solo / not-yet-signed-in user. hydrate()
+// re-keys a 'local' entry onto the real id once sign-in provides one.
+const ownerId = (): string => {
   try {
-    await writeRaw(STORES.DATA, PIN_STORAGE_KEY, stored);
-  } catch {
-    // Best-effort: the localStorage cache still gates this session; hydrate()
-    // will retry the mirror on the next boot from the surviving cache.
-  }
+    const cached = SupabaseService.getCachedUserId();
+    if (cached) return cached;
+  } catch { /* supabase not ready */ }
+  let persisted: string | null = null;
+  try { persisted = localStorage.getItem('lior_my_user_id'); } catch { /* unavailable */ }
+  return persisted || LOCAL_OWNER;
 };
 
-// ── Cloud copy: couple_profile.privateSpacePin (synced verbatim by Supabase) ──
-const readProfilePin = (): StoredPin | null => {
+const readPins = (profile = safeProfile()): Record<string, StoredPin> => {
+  const pins = profile?.privateSpacePins;
+  return pins && typeof pins === 'object' ? (pins as Record<string, StoredPin>) : {};
+};
+
+const readLegacyLocalPin = (): StoredPin | null => {
+  const p = readJson<StoredPin>(localStorage, LEGACY_LOCAL_PIN_KEY);
+  return isStoredPin(p) ? p : null;
+};
+
+// This device's active PIN, from SYNCHRONOUS sources only (so hasPin/verifyPin
+// stay sync). Falls back to a legacy single hash until hydrate() folds it in.
+const mySyncPin = (): StoredPin | null => {
+  const profile = safeProfile();
+  const mine = readPins(profile)[ownerId()];
+  if (isStoredPin(mine)) return mine;
+  // Legacy fallbacks — used only until hydrate() migrates them into the map.
+  if (isStoredPin(profile?.privateSpacePin)) return profile!.privateSpacePin!;
+  return readLegacyLocalPin();
+};
+
+// Persist (stored) or remove (null) MY entry via saveCoupleProfile, which covers
+// localStorage + the IndexedDB profile backup AND the couple_profile cloud push.
+const writeMyProfilePin = (stored: StoredPin | null): void => {
+  const profile = safeProfile();
+  if (!profile) return;
+  const pins = { ...readPins(profile) };
+  if (stored) pins[ownerId()] = stored;
+  else delete pins[ownerId()];
   try {
-    const pin = StorageService.getCoupleProfile().privateSpacePin;
-    return isStoredPin(pin) ? pin : null;
+    StorageService.saveCoupleProfile({ ...profile, privateSpacePins: pins });
   } catch {
-    return null;
+    // Best-effort — a failed profile write just leaves the prior state.
   }
 };
 
-// Writing through saveCoupleProfile persists to localStorage + the IndexedDB
-// profile backup AND enqueues the couple_profile cloud push — one call covers
-// every layer. No-op when the profile already holds this exact hash, so hydrate
-// reconciliation can't churn the sync outbox.
-const writeProfilePin = (stored: StoredPin): void => {
-  try {
-    const profile = StorageService.getCoupleProfile();
-    if (pinsEqual(profile.privateSpacePin, stored)) return;
-    StorageService.saveCoupleProfile({ ...profile, privateSpacePin: stored });
-  } catch {
-    // Best-effort cloud mirror — the local + IndexedDB copies still gate access.
-  }
+// The device-local legacy key is per-device; safe to drop once claimed.
+const clearDeviceLegacy = (): void => {
+  removeKey(localStorage, LEGACY_LOCAL_PIN_KEY);
+  void deleteRaw(STORES.DATA, LEGACY_LOCAL_PIN_KEY).catch(() => {});
 };
 
-const clearProfilePin = (): void => {
-  try {
-    const profile = StorageService.getCoupleProfile();
-    if (!profile.privateSpacePin) return;
-    const next: typeof profile = { ...profile };
-    delete next.privateSpacePin;
-    StorageService.saveCoupleProfile(next);
-  } catch {
-    // Best-effort.
-  }
-};
-
-// Single-flight guard so concurrent callers share one reconciliation pass.
-// Deliberately NOT a permanent memo: the cloud copy can arrive AFTER boot (a
-// reinstall pulls couple_profile mid-session), and a transient IndexedDB read
-// failure must be retryable — so every call re-reconciles, sharing only an
-// in-flight pass. The Private Space mount effect + a couple_profile storage
-// listener drive the re-runs.
+// Single-flight guard so concurrent callers share one migration pass. NOT a
+// permanent memo: the profile can sync down AFTER boot (a reinstall pulls it
+// mid-session), so every call re-runs, sharing only an in-flight pass. The
+// Private Space mount effect + a couple_profile storage listener drive re-runs.
 let hydrateInFlight: Promise<void> | null = null;
 
+// Fold any legacy single PIN into the per-user map and re-key a solo 'local'
+// entry onto the real user id. Idempotent; only writes the profile on a change.
 const runHydrate = async (): Promise<void> => {
-  // Gather all three copies.
-  const cached = readJson<StoredPin>(localStorage, PIN_STORAGE_KEY);
-  let durable: StoredPin | null = null;
-  let durableReadOk = false;
-  try {
-    const raw = await readRaw<StoredPin>(STORES.DATA, PIN_STORAGE_KEY);
-    durableReadOk = true;
-    if (isStoredPin(raw)) durable = raw;
-  } catch {
-    // IndexedDB busy/unavailable — skip the durable copy for this pass.
+  const profile = safeProfile();
+  if (!profile) return;
+  const id = ownerId();
+  const pins = { ...readPins(profile) };
+  let changed = false;
+
+  // Source a legacy single hash: interim couple-shared field → device-local
+  // localStorage → device-local IndexedDB (the original reinstall mirror).
+  let legacy: StoredPin | null = isStoredPin(profile.privateSpacePin) ? profile.privateSpacePin! : null;
+  if (!legacy) legacy = readLegacyLocalPin();
+  if (!legacy) {
+    try {
+      const idb = await readRaw<StoredPin>(STORES.DATA, LEGACY_LOCAL_PIN_KEY);
+      if (isStoredPin(idb)) legacy = idb;
+    } catch { /* IndexedDB busy — retried next call */ }
   }
-  const profilePin = readProfilePin();
 
-  // Newest wins across cache / durable mirror / synced profile.
-  const winner = newestPin(isStoredPin(cached) ? cached : null, durable, profilePin);
-  // No PIN anywhere — nothing to reconcile. A clear is always explicit
-  // (clearPin), so absence must never be "healed" back into existence here.
-  if (!winner) return;
+  if (legacy && !isStoredPin(pins[id])) { pins[id] = legacy; changed = true; }
+  // Claim for the partner too, so dropping the shared legacy field below can't
+  // lock an un-migrated partner out; each can change their own copy later.
+  const partnerId = profile.partnerUserId;
+  if (legacy && partnerId && partnerId !== id && !isStoredPin(pins[partnerId])) {
+    pins[partnerId] = legacy; changed = true;
+  }
+  // Re-key a solo 'local' entry (set before sign-in) onto the real id.
+  if (id !== LOCAL_OWNER && isStoredPin(pins[LOCAL_OWNER]) && !isStoredPin(pins[id])) {
+    pins[id] = pins[LOCAL_OWNER];
+    delete pins[LOCAL_OWNER];
+    changed = true;
+  }
 
-  // Bring every store up to the winner: restores the cache after an eviction,
-  // adopts the cloud copy after a reinstall, and back-fills the durable +
-  // profile copies for a pre-existing local-only PIN.
-  if (!pinsEqual(cached, winner)) writeJson(localStorage, PIN_STORAGE_KEY, winner);
-  if (durableReadOk && !pinsEqual(durable, winner)) await persistDurablePin(winner);
-  writeProfilePin(winner);
+  const next = { ...profile, privateSpacePins: pins };
+  let profileChanged = changed;
+  if (isStoredPin(profile.privateSpacePin)) { delete next.privateSpacePin; profileChanged = true; }
+  if (profileChanged) {
+    try { StorageService.saveCoupleProfile(next); } catch { /* best-effort */ }
+  }
+  if (legacy) clearDeviceLegacy();
 };
 
 export const PrivacyLock = {
@@ -233,8 +254,9 @@ export const PrivacyLock = {
     return new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin);
   },
 
+  /** Whether THIS device's user has set their own PIN. */
   hasPin(): boolean {
-    return readJson<StoredPin>(localStorage, PIN_STORAGE_KEY) !== null;
+    return mySyncPin() !== null;
   },
 
   async setPin(pin: string): Promise<void> {
@@ -244,13 +266,12 @@ export const PrivacyLock = {
     const salt = randomSalt();
     const hash = await hashPin(pin, salt);
     const stored: StoredPin = { salt, hash, createdAt: new Date().toISOString() };
-    // 1. Synchronous fast-path cache…
-    writeJson(localStorage, PIN_STORAGE_KEY, stored);
-    // 2. …the durable IndexedDB mirror so a WebView eviction can't wipe it…
-    await persistDurablePin(stored);
-    // 3. …and the couple profile, which syncs to the cloud so the PIN survives
-    //    a full reinstall (restored on next login) and reaches the partner.
-    writeProfilePin(stored);
+    // Persist MY entry on the couple profile — one write covers the localStorage
+    // cache, the IndexedDB backup (survives eviction) and the cloud push
+    // (survives reinstall, reaches the partner's device as their read-only copy).
+    writeMyProfilePin(stored);
+    // Drop any pre-per-user device-local hash so it can't shadow the new PIN.
+    clearDeviceLegacy();
     setAttempts({ count: 0, lockUntil: 0 });
     this.markUnlocked();
   },
@@ -267,7 +288,7 @@ export const PrivacyLock = {
       return { ok: false, lockedForMs };
     }
 
-    const stored = readJson<StoredPin>(localStorage, PIN_STORAGE_KEY);
+    const stored = mySyncPin();
     if (!stored) {
       return { ok: false, remainingAttempts: MAX_ATTEMPTS };
     }
@@ -301,32 +322,32 @@ export const PrivacyLock = {
   },
 
   /**
-   * Removes the PIN so a new one can be set. Sealed items are untouched.
-   * Clears ALL three copies — localStorage, the IndexedDB mirror AND the synced
-   * couple profile — or hydrate() would resurrect the old PIN from whichever
-   * copy survived. (The reset flow immediately calls setPin with a new PIN,
-   * whose newer createdAt then wins everywhere.)
+   * Removes only THIS user's PIN so they can set a new one — the partner's PIN
+   * is untouched, and the sealed items stay. Also drops the interim shared
+   * legacy field (so it can't resurrect this user as "has PIN" via the fallback)
+   * and any device-local legacy hash.
    */
   clearPin(): void {
-    removeKey(localStorage, PIN_STORAGE_KEY);
+    const profile = safeProfile();
+    if (profile) {
+      const pins = { ...readPins(profile) };
+      delete pins[ownerId()];
+      const next = { ...profile, privateSpacePins: pins };
+      if (isStoredPin(profile.privateSpacePin)) delete next.privateSpacePin;
+      try { StorageService.saveCoupleProfile(next); } catch { /* best-effort */ }
+    }
     removeKey(localStorage, ATTEMPT_STORAGE_KEY);
-    void deleteRaw(STORES.DATA, PIN_STORAGE_KEY).catch(() => {
-      // Best-effort — a failed delete just leaves a stale durable copy that
-      // hydrate() re-mirrors; the localStorage removal above already unlocks
-      // the reset flow for this session.
-    });
-    clearProfilePin();
+    clearDeviceLegacy();
     this.relock();
   },
 
   /**
-   * Reconcile the three PIN copies — localStorage cache, IndexedDB mirror and
-   * the synced couple profile — bringing every store up to the newest one.
-   * Idempotent and safe to call repeatedly; concurrent callers share one
-   * in-flight pass. Call when Private Space mounts AND whenever the couple
-   * profile updates (a reinstall pulls the cloud copy mid-session), so hasPin()
-   * reflects the durable/synced truth even if the WebView evicted localStorage
-   * or the PIN only just arrived from the cloud.
+   * Migrate any legacy single PIN into the per-user map and re-key a solo
+   * 'local' entry onto the real user id. Idempotent and safe to call repeatedly;
+   * concurrent callers share one in-flight pass. Call when Private Space mounts
+   * AND whenever the couple profile updates (a reinstall pulls the profile down
+   * mid-session), so hasPin() reflects the synced truth even if the WebView
+   * evicted localStorage or the PIN only just arrived from the cloud.
    */
   hydrate(): Promise<void> {
     if (!hydrateInFlight) {
