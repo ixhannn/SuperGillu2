@@ -5,6 +5,7 @@ import { CalendarHeart, ChevronRight, Clapperboard, Crown, Flame, Gem, Gift, Hea
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
 import { StorageService } from '../services/storage';
+import { Analytics } from '../services/analytics';
 import { useNavigation } from '../App';
 import '../styles/premium-hub.css';
 
@@ -74,6 +75,7 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, fea
         // synchronous profile read/serialize is deferred past the next paint
         // so it can't stall the exit spring.
         feedback.celebrate();
+        Analytics.track('premium_tap');
         onClose();
         requestAnimationFrame(() => {
             const profile = StorageService.getCoupleProfile();
