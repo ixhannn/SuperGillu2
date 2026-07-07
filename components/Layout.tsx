@@ -37,7 +37,7 @@ interface LayoutProps {
 // Views that hide the bottom tab bar. (Pulse keeps the nav — its dock orb is
 // lifted clear of it and the dark canvas bleeds behind it; hiding it left a
 // black gutter band and the bar abruptly vanishing.)
-const HIDE_NAV_VIEWS = new Set<ViewState>([]);
+const HIDE_NAV_VIEWS = new Set<ViewState>(['our-room']);
 
 export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number) => void }>({
   trigger: () => {},

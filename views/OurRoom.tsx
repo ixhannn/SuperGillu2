@@ -1,1340 +1,981 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import {
-  ArrowLeft,
-  Gift,
-  Lock,
-  Palette,
-  PenLine,
-  RotateCw,
-  Send,
-  Share2,
-  Sparkles,
-  Trash2,
-  X,
-} from 'lucide-react';
-import { CoupleRoomState, ViewState } from '../types';
+/**
+ * OUR HOME — the place where the relationship lives.
+ *
+ * One hand-drawn room two partners keep alive across distance. Everything on
+ * screen is either the world itself or one of two quiet verbs; the home never
+ * narrates, never counts, never guilts. See docs/OUR_HOME_VISION.md.
+ */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Armchair, PenLine, Flame, Lamp, Sunrise } from 'lucide-react';
+import { ViewState } from '../types';
 import { StorageService, storageEventTarget } from '../services/storage';
-import { syncEventTarget } from '../services/sync';
-import { toast as appToast } from '../utils/toast';
-import { ROOM_SHOP_BY_ID, RoomCatalogItem } from '../components/room/roomCatalog3D';
+import { ViewHeader } from '../components/ViewHeader';
+import { feedback } from '../utils/feedback';
 import { daysTogetherFrom } from '../shared/dateOnly.js';
-import { shouldGateHeavyView } from '../utils/runtimeProfile';
 import {
-  normalizeCoupleRoom,
-  placeItem,
-  removeItem,
-  rotateItem,
-  moveItem,
-  addNote,
-  removeNote,
-  addGift,
-  openGift,
-  GIFT_EMOJIS,
-  getShopItems,
-  isItemMilestoneLocked,
-  getMilestoneForItem,
-  checkMilestoneUnlocks,
-  canPlaceItem,
-  MAX_PLACED_ITEMS,
-  WALLPAPER_OPTIONS,
-  FLOOR_OPTIONS,
-  AMBIENT_OPTIONS,
-  CATEGORY_LABELS,
-  MILESTONE_UNLOCK_RULES,
-  RoomCategory,
-  MilestoneUnlockRule,
-} from '../components/room/roomSoul';
+  CoarsePhrase, HomeLane, HomeObject, HomeTrace, OurHomeState, SCENE_H, SCENE_W,
+} from '../components/our-home/homeTypes';
+import {
+  addInscription, addNote, advanceParcel, assignInks, archUnlocks, attachPhoto,
+  commitMove, computeDueParcels, cocoSpot, deriveTraces, dimForNight, flutterNote,
+  hearthStage, isQuietHours, lampWarmthFor, leaveLampOn, lightCandle, markNoteRead,
+  nameObject, noticeMove, openCurtains, peelNote, placeNewObject, plantSpot,
+  potGrowth, recordVisit, seeCandle, stepFacing, storeObject, TraceContext,
+} from '../components/our-home/homeSoul';
+import { HomeFurnishDrawer } from '../components/our-home/HomeFurnishDrawer';
+import {
+  airTintForHour, clockLabelForOffset, coarsePhrase, hoursSince, isEveningHour,
+  localDayKey, localHourForOffset, myTzOffsetMin, provenancePhrase, skyForHour,
+} from '../components/our-home/homeSky';
+import { skuOf } from '../components/our-home/homeCatalog';
+import { HomeScene } from '../components/our-home/HomeScene';
+import { HomePlaque, PlaqueMemoryChoice } from '../components/our-home/HomePlaque';
+import { HomeNoteComposer, HomeNoteReader } from '../components/our-home/HomeNoteLayer';
+import { useHomePlacement } from '../components/our-home/useHomePlacement';
+import { gatherSeats, resolveDrop } from '../components/our-home/homeSeats';
+import '../styles/our-home.css';
 
 interface OurRoomProps {
   setView: (view: ViewState) => void;
 }
 
-type ModalId = 'decorate' | 'note' | 'gift' | 'style' | null;
-type ToolbarAction = {
-  id: string;
-  label: string;
-  icon: React.ReactElement<{ size?: number; strokeWidth?: number }>;
-  accent: string;
-  modal?: Exclude<ModalId, null>;
-  onClick?: () => void | Promise<void>;
+const CAPTION_MS = 3400;
+
+/** What kind of presence the arrival glow should carry. */
+type PresenceTone = 'lamp' | 'warm' | 'note' | 'candle' | 'fresh' | 'quiet' | 'still' | 'new';
+
+interface PresenceSummary {
+  tone: PresenceTone;
+  eyebrow: string;
+  headline: string;
+  kicker?: string;
+}
+
+/**
+ * The single most important thing to FEEL on arrival, in priority order:
+ * a light left on › their cooling lamp › a note › a candle › a fresh trace ›
+ * the held breath of a long-empty home › plain quiet. Presence first — the
+ * room is the backdrop, the other person is the point.
+ */
+const describePresence = (
+  traces: HomeTrace[],
+  opts: {
+    partnerKey: string | null;
+    partnerName: string;
+    seenPhrase: CoarsePhrase | undefined;
+    quiet: boolean;
+  },
+): PresenceSummary => {
+  const { partnerKey, partnerName, seenPhrase, quiet } = opts;
+  if (!partnerKey) {
+    return { tone: 'new', eyebrow: 'our home', headline: 'This is where we’ll live.', kicker: 'two sets of keys, one room' };
+  }
+  if (traces.some((t) => t.kind === 'lamp-left-on')) {
+    return { tone: 'lamp', eyebrow: 'welcome home', headline: `${partnerName} left a light on for you`, kicker: 'still burning for your morning' };
+  }
+  if (traces.some((t) => t.kind === 'note')) {
+    return { tone: 'note', eyebrow: 'welcome home', headline: `${partnerName} left you a note`, kicker: 'unread, in their hand' };
+  }
+  if (traces.some((t) => t.kind === 'lamp-warmth')) {
+    return { tone: 'warm', eyebrow: 'welcome home', headline: `${partnerName} was here`, kicker: seenPhrase ?? 'a little while ago' };
+  }
+  if (traces.some((t) => t.kind === 'candle')) {
+    return { tone: 'candle', eyebrow: 'welcome home', headline: `${partnerName} is thinking of you`, kicker: 'a candle, still lit' };
+  }
+  if (traces.some((t) => t.kind === 'noticing' || t.kind === 'halo' || t.kind === 'cup' || t.kind === 'ghost')) {
+    return { tone: 'fresh', eyebrow: 'welcome home', headline: `${partnerName} was just here`, kicker: 'the room’s still warm' };
+  }
+  if (quiet) {
+    return { tone: 'quiet', eyebrow: 'our home', headline: 'The home is holding its breath', kicker: 'waiting for you both' };
+  }
+  return { tone: 'still', eyebrow: 'our home', headline: 'All quiet here', kicker: 'you’re the first one home' };
 };
 
-const loadRoom = (): CoupleRoomState => StorageService.getCoupleRoomState();
-const saveRoom = (room: CoupleRoomState): void => StorageService.saveCoupleRoomState(room);
-
-const strongText = '#1c2750';
-const softText = '#8a8a9a';
-
-/* ─── Pixel toolbar constants ─── */
-const PIXEL_BORDER = '2px solid #5c3d2e';
-const PIXEL_SHADOW = '4px 4px 0px #3a2518';
-const NAV_CLEARANCE = 96; // BottomNav = 76px + padding buffer
-
-const categoryAccent: Record<RoomCategory, string> = {
-  romantic: '#ef5da8',
-  cozy: '#f59e0b',
-  aesthetic: '#8b5cf6',
-  fun: '#14b8a6',
-  memories: '#3b82f6',
-  seasonal: '#10b981',
+/** Local demo dressing for dev previews — never persisted decisions, only paint. */
+const dressForDemo = (state: OurHomeState, partnerKey: string, scene?: string | null): OurHomeState => {
+  const now = Date.now();
+  const ago = (min: number) => new Date(now - min * 60000).toISOString();
+  // dev-only: `scene=lamp` seeds a lamp the partner left burning for your morning
+  const leftOnLamp = scene === 'lamp'
+    ? [{
+        uid: 'demo-lamp', sku: 'lamp-a', rev: 1,
+        x: 150, y: 340, lane: 1 as HomeLane, seatId: 'tile:1,3', facing: 0,
+        stored: false, placedBy: partnerKey, placedAt: ago(600),
+        touchedBy: partnerKey, touchedAt: ago(400),
+        provenance: { kind: 'trousseau' as const, label: 'the lamp we leave on for each other', at: ago(600) },
+      }]
+    : [];
+  return {
+    ...state,
+    lampOn: scene === 'lamp' ? { uid: 'demo-lamp', by: partnerKey, at: ago(400) } : state.lampOn,
+    objects: [
+      ...state.objects,
+      {
+        uid: 'demo-armchair', sku: 'armchair', rev: 2,
+        x: 215, y: 358, lane: 1 as HomeLane, seatId: 'tile:4,3', facing: 0,
+        stored: false, placedBy: partnerKey, placedAt: ago(300),
+        touchedBy: partnerKey, touchedAt: ago(48),
+        prev: { x: 135, y: 338, lane: 1 as HomeLane, at: ago(48) },
+        provenance: { kind: 'trousseau' as const, label: 'the first place to sit down together', at: ago(300) },
+      },
+      {
+        uid: 'demo-window', sku: 'window', rev: 1,
+        x: 235, y: 244, lane: 2 as HomeLane, seatId: 'wallR:2.0,44', facing: 1,
+        stored: false, placedBy: partnerKey, placedAt: ago(300),
+        touchedBy: partnerKey, touchedAt: ago(300),
+        provenance: { kind: 'trousseau' as const, label: 'left wall shows your sky, right shows theirs', at: ago(300) },
+      },
+      {
+        uid: 'demo-window-l', sku: 'window', rev: 1,
+        x: 140, y: 272, lane: 0 as HomeLane, seatId: 'wallL:4.0,44', facing: 0,
+        stored: false, placedBy: partnerKey, placedAt: ago(300),
+        touchedBy: partnerKey, touchedAt: ago(300),
+        provenance: { kind: 'trousseau' as const, label: 'your sky lives on this wall', at: ago(300) },
+      },
+      {
+        uid: 'demo-door', sku: 'front-door', rev: 1,
+        x: 335, y: 338, lane: 2 as HomeLane, seatId: 'wallR:7.0,0', facing: 1,
+        stored: false, placedBy: partnerKey, placedAt: ago(300),
+        touchedBy: partnerKey, touchedAt: ago(300),
+        provenance: { kind: 'trousseau' as const, label: 'every home starts with a door', at: ago(300) },
+      },
+      ...leftOnLamp,
+    ],
+    visits: {
+      ...state.visits,
+      [partnerKey]: { lastSeenAt: ago(52), tzOffsetMin: myTzOffsetMin() + 330 },
+    },
+    candle: { litBy: partnerKey, litAt: ago(70) },
+    notes: [...state.notes, {
+      id: 'demo-note', by: partnerKey, ink: 'gold' as const, at: ago(55),
+      strokes: [
+        [12, 38, 20, 22, 28, 40, 34, 26, 40, 42],
+        [52, 30, 60, 22, 68, 30, 60, 44, 52, 36],
+        [78, 26, 84, 40, 90, 26],
+      ],
+      x: 96, y: 302, lane: 0 as HomeLane, tilt: -4,
+    }],
+  };
 };
 
-const giftOptionMeta: Record<string, { label: string; tint: string }> = {
-  '🎁': { label: 'Ribbon box', tint: '#f9a8d4' },
-  '💝': { label: 'Love box', tint: '#f472b6' },
-  '🌹': { label: 'Rose', tint: '#fb7185' },
-  '💌': { label: 'Letter', tint: '#c084fc' },
-  '🧸': { label: 'Plush', tint: '#f59e0b' },
-  '🍫': { label: 'Treat', tint: '#8b5e34' },
-  '🌸': { label: 'Blossom', tint: '#f9a8d4' },
-  '✨': { label: 'Sparkle', tint: '#60a5fa' },
-  '🎀': { label: 'Ribbon', tint: '#fb7185' },
-  '💎': { label: 'Charm', tint: '#22c55e' },
-};
-
-const formatRelativeTime = (iso?: string): string => {
-  if (!iso) return 'just now';
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.max(0, Math.floor(diff / 60_000));
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
-};
-
-const getDaysTogether = (anniversaryDate?: string): number => {
-  if (!anniversaryDate) return 0;
-  return daysTogetherFrom(anniversaryDate);
-};
-
-const isMilestoneMet = (rule: MilestoneUnlockRule, room: CoupleRoomState, profile: ReturnType<typeof StorageService.getCoupleProfile>) => {
-  switch (rule.milestoneType) {
-    case 'streak':
-      return (profile.streakData?.count || 0) >= rule.threshold;
-    case 'date-set':
-      return Boolean(profile.anniversaryDate);
-    case 'days-together':
-      return getDaysTogether(profile.anniversaryDate) >= rule.threshold;
-    case 'item-count':
-      return room.placedItems.length >= rule.threshold;
-    case 'questions-shared':
-      return (profile.questions?.length || 0) >= rule.threshold;
-    case 'nightlights-shared':
-      return ((profile.nightlights?.length || 0) + (profile.presenceTraces?.length || 0)) >= rule.threshold;
-    default:
+export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
+  const demo = useMemo(() => {
+    if (!import.meta.env.DEV) return false;
+    try {
+      return new URLSearchParams(window.location.search).get('homedemo') === '1';
+    } catch {
       return false;
-  }
-};
+    }
+  }, []);
+  // dev-only preview seams: force a presence scene / dock verb the real clock
+  // can't produce on demand (`&scene=lamp`, `&dock=light|reveal`).
+  const demoScene = useMemo(() => {
+    if (!demo) return null;
+    try { return new URLSearchParams(window.location.search).get('scene'); } catch { return null; }
+  }, [demo]);
+  const demoDock = useMemo(() => {
+    if (!demo) return null;
+    try { return new URLSearchParams(window.location.search).get('dock'); } catch { return null; }
+  }, [demo]);
 
-const getMilestoneProgress = (rule: MilestoneUnlockRule, room: CoupleRoomState, profile: ReturnType<typeof StorageService.getCoupleProfile>) => {
-  let current = 0;
-  switch (rule.milestoneType) {
-    case 'streak':
-      current = profile.streakData?.count || 0;
-      break;
-    case 'date-set':
-      current = profile.anniversaryDate ? 1 : 0;
-      break;
-    case 'days-together':
-      current = getDaysTogether(profile.anniversaryDate);
-      break;
-    case 'item-count':
-      current = room.placedItems.length;
-      break;
-    case 'questions-shared':
-      current = profile.questions?.length || 0;
-      break;
-    case 'nightlights-shared':
-      current = (profile.nightlights?.length || 0) + (profile.presenceTraces?.length || 0);
-      break;
-  }
-  return `${Math.min(current, rule.threshold)}/${rule.threshold}`;
-};
-
-const getMilestoneSubtitle = (rule: MilestoneUnlockRule, room: CoupleRoomState, profile: ReturnType<typeof StorageService.getCoupleProfile>) => {
-  if (isMilestoneMet(rule, room, profile)) return 'Ready to unlock';
-  if (rule.milestoneType === 'days-together') {
-    const remaining = Math.max(0, rule.threshold - getDaysTogether(profile.anniversaryDate));
-    return remaining === 0 ? 'Ready to unlock' : `${remaining} day${remaining === 1 ? '' : 's'} to go`;
-  }
-  return `${getMilestoneProgress(rule, room, profile)} progress`;
-};
-
-const presenceFromState = (presenceState: any, partnerNames: readonly string[]): boolean => {
-  if (!presenceState) return false;
-  return Object.values(presenceState).some((entries: any) =>
-    Array.isArray(entries) && entries.some((entry) => partnerNames.includes(entry?.user)),
+  const profile = useMemo(() => StorageService.getCoupleProfile(), []);
+  const myKey = useMemo(
+    () => StorageService.getMyUserId() || profile.myName || 'me',
+    [profile.myName],
   );
-};
-
-const CatalogArtwork: React.FC<{ item: RoomCatalogItem }> = ({ item }) => {
-  const outline = '#362848';
-  const deep = `${item.color}33`;
-  const shine = 'rgba(255,255,255,0.45)';
-
-  const base = (() => {
-    if (['desk', 'tv', 'bookshelf', 'fridge'].includes(item.kind)) {
-      return (
-        <>
-          <polygon points="48,22 70,32 48,42 26,32" fill={shine} />
-          <polygon points="26,32 48,42 48,58 26,48" fill={item.color} />
-          <polygon points="48,42 70,32 70,48 48,58" fill="#8f6b58" opacity="0.32" />
-          <rect x="32" y="18" width="20" height="12" rx="4" fill={item.kind === 'tv' ? '#26314f' : item.color} stroke={outline} strokeWidth="2.5" />
-          {item.kind === 'tv' && <rect x="36" y="22" width="12" height="6" rx="2" fill="#8ad8ff" />}
-        </>
-      );
-    }
-    if (['couch', 'bed', 'pillows', 'beanbag'].includes(item.kind)) {
-      return (
-        <>
-          <polygon points="24,34 48,24 72,34 48,44" fill={shine} />
-          <polygon points="24,34 48,44 48,56 24,46" fill={item.color} />
-          <polygon points="48,44 72,34 72,46 48,56" fill="#5f4661" opacity="0.28" />
-          <rect x="28" y="18" width="16" height="12" rx="5" fill="#f7dbe8" stroke={outline} strokeWidth="2.5" />
-          <rect x="46" y="16" width="18" height="14" rx="5" fill={item.color} stroke={outline} strokeWidth="2.5" />
-        </>
-      );
-    }
-    if (['lamp', 'lantern', 'candles', 'disco'].includes(item.kind)) {
-      return (
-        <>
-          <rect x="45" y="18" width="6" height="28" rx="2" fill="#72809e" />
-          <circle cx="48" cy="18" r="10" fill={item.color} stroke={outline} strokeWidth="2.5" />
-          <rect x="36" y="46" width="24" height="6" rx="3" fill="#605673" />
-        </>
-      );
-    }
-    if (['plant', 'bonsai', 'flower', 'sunflower', 'cactus'].includes(item.kind)) {
-      return (
-        <>
-          <rect x="36" y="40" width="24" height="14" rx="4" fill="#9b6344" stroke={outline} strokeWidth="2.5" />
-          <ellipse cx="48" cy="28" rx="18" ry="14" fill={item.color} stroke={outline} strokeWidth="2.5" />
-          <rect x="46" y="22" width="4" height="18" rx="2" fill="#4e8b56" />
-        </>
-      );
-    }
-    if (['frame', 'window', 'neon', 'portal', 'projector'].includes(item.kind)) {
-      return (
-        <>
-          <rect x="28" y="10" width="40" height="40" rx="5" fill="#5b445d" stroke={outline} strokeWidth="2.5" />
-          <rect x="34" y="16" width="28" height="28" rx="3" fill={item.color} opacity="0.9" />
-          {item.kind === 'window' && (
-            <>
-              <rect x="47" y="16" width="2" height="28" fill="#e8f4ff" />
-              <rect x="34" y="29" width="28" height="2" fill="#e8f4ff" />
-            </>
-          )}
-        </>
-      );
-    }
-    return (
-      <>
-        <polygon points="24,36 48,26 72,36 48,46" fill={shine} />
-        <polygon points="24,36 48,46 48,58 24,48" fill={item.color} />
-        <polygon points="48,46 72,36 72,48 48,58" fill="#5f4661" opacity="0.28" />
-      </>
-    );
-  })();
-
-  return (
-    <div className="relative h-full w-full">
-      <svg viewBox="0 0 96 72" className="h-full w-full">
-        <polygon points="48,66 84,52 48,38 12,52" fill={deep} />
-        <polygon points="48,60 82,48 48,34 14,48" fill="rgba(255,255,255,0.78)" stroke={outline} strokeWidth="2.5" />
-        {base}
-      </svg>
-    </div>
+  const partnerKey = useMemo(
+    () => profile.partnerUserId || profile.partnerName || null,
+    [profile.partnerUserId, profile.partnerName],
   );
-};
+  const partnerName = profile.partnerName || 'your person';
+  const nameplate = `${profile.myName || 'you'} & ${partnerName}`;
+  const inks = useMemo(() => assignInks(myKey, partnerKey), [myKey, partnerKey]);
 
-const LazyRoomScene3D = React.lazy(() =>
-  import('../components/room/RoomScene3D').then((module) => ({
-    default: module.RoomScene3D,
-  })),
-);
+  const [home, setHome] = useState<OurHomeState>(() => {
+    const base = StorageService.getCoupleRoomState();
+    return demo && partnerKey ? dressForDemo(base, partnerKey, demoScene) : base;
+  });
+  // synchronous truth for commit(): persistence must never live inside a
+  // React state updater (StrictMode double-invokes them).
+  const homeRef = useRef(home);
+  homeRef.current = home;
+  const visitRecorded = useRef(false);
+  const myPrevSeenAt = useRef(home.visits[myKey]?.lastSeenAt).current;
 
-function RoomSceneFallback() {
-  return (
-    <div
-      className="absolute inset-0"
-      style={{
-        background: 'radial-gradient(circle at 50% 24%, rgba(255,208,154,0.16), transparent 34%), linear-gradient(180deg, #121827 0%, #0f1219 100%)',
-      }}
-    >
-      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent 32%)' }} />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-2 text-[0.72rem] font-extrabold uppercase tracking-[0.16em]" style={{ color: 'rgba(255,244,224,0.88)' }}>
-        Loading room scene
-      </div>
-    </div>
-  );
-}
+  const [now, setNow] = useState(() => new Date());
+  const [caption, setCaptionState] = useState<{ text: string; key: number } | null>(null);
+  const [plaqueUid, setPlaqueUid] = useState<string | null>(null);
+  const [readerNoteId, setReaderNoteId] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [pendingStrokes, setPendingStrokes] = useState<number[][] | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [chooseLamp, setChooseLamp] = useState(false);
+  const [quietVisit, setQuietVisit] = useState(false);
+  const quietRef = useRef(false);
+  quietRef.current = quietVisit;
+  const [wakeFx, setWakeFx] = useState<{ x: number; y: number; key: number } | null>(null);
+  const [replay, setReplay] = useState<{ uid: string; fromX: number; fromY: number; key: number } | null>(null);
+  const [potSteamUntil, setPotSteamUntil] = useState(0);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const knobTimer = useRef<number | undefined>(undefined);
+  const captionTimer = useRef<number | undefined>(undefined);
+  const visitTimer = useRef<number | undefined>(undefined);
+  const replayTimer = useRef<number | undefined>(undefined);
+  const bookTimer = useRef<number | undefined>(undefined);
+  const swipe = useRef<{ x: number; y: number } | null>(null);
 
-function RoomSceneGate({
-  room,
-  profileLabel,
-  onOpen,
-}: {
-  room: CoupleRoomState;
-  profileLabel: string;
-  onOpen: () => void;
-}) {
-  return (
-    <div
-      className="absolute inset-0"
-      style={{
-        background: 'radial-gradient(circle at 50% 22%, rgba(255,208,154,0.2), transparent 34%), linear-gradient(180deg, #161d2b 0%, #0f1219 100%)',
-      }}
-    >
-      <div className="absolute inset-x-5 top-[26%] rounded-[28px] border border-white/10 px-5 py-5 backdrop-blur-sm" style={{ background: 'rgba(22,28,40,0.72)' }}>
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'rgba(255,240,215,0.72)' }}>
-          Room Lobby
-        </p>
-        <h2 className="mt-3 text-[1.28rem] font-semibold leading-tight" style={{ color: '#fff4e0' }}>
-          Open room scene
-        </h2>
-        <p className="mt-2 text-[0.83rem] leading-6" style={{ color: 'rgba(255,240,215,0.78)' }}>
-          The 3D room stays on-demand on mobile-class devices so the shared space boots faster inside the app.
-        </p>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {[
-            { label: 'Placed', value: room.placedItems.length },
-            { label: 'Notes', value: room.notes.length },
-            { label: 'Gifts', value: room.gifts.length },
-          ].map((entry) => (
-            <div key={entry.label} className="rounded-2xl px-3 py-2 text-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
-              <p className="text-lg font-semibold" style={{ color: '#fff4e0' }}>{entry.value}</p>
-              <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'rgba(255,240,215,0.62)' }}>{entry.label}</p>
-            </div>
-          ))}
-        </div>
-        <p className="mt-4 text-[0.72rem]" style={{ color: 'rgba(255,240,215,0.56)' }}>
-          {profileLabel}
-        </p>
-        <button
-          onClick={onOpen}
-          className="mt-5 inline-flex items-center justify-center rounded-2xl px-4 py-3 text-[0.8rem] font-extrabold uppercase tracking-[0.16em]"
-          style={{
-            background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
-            color: '#5c3d2e',
-            border: PIXEL_BORDER,
-            boxShadow: '2px 2px 0 #3a2518',
-          }}
-        >
-          Open room scene
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Actions rendered via floating pill + slide-up sheet
-
-export const OurRoom: React.FC<OurRoomProps> = ({ setView }) => {
-  const [profile, setProfile] = useState(() => StorageService.getCoupleProfile());
-  const [room, setRoom] = useState<CoupleRoomState>(loadRoom);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeModal, setActiveModal] = useState<ModalId>(null);
-  const [toast, setToast] = useState('');
-  const [category, setCategory] = useState<RoomCategory>('romantic');
-  const [noteText, setNoteText] = useState('');
-  const [giftEmoji, setGiftEmoji] = useState(GIFT_EMOJIS[0]);
-  const [giftMsg, setGiftMsg] = useState('');
-  const [editingName, setEditingName] = useState(false);
-  const [draftRoomName, setDraftRoomName] = useState(room.roomName);
-  const [partnerPresent, setPartnerPresent] = useState(false);
-  const [knownSelfNames, setKnownSelfNames] = useState<string[]>(() => (profile.myName ? [profile.myName] : []));
-  const [knownPartnerNames, setKnownPartnerNames] = useState<string[]>(() => (profile.partnerName ? [profile.partnerName] : []));
-  // Mobile-only app: the 3D room IS the feature on this view, so we always
-  // enable it. The previous gate disabled the scene on phones (the only
-  // target!) leaving an empty placeholder.
-  const [sceneEnabled, setSceneEnabled] = useState(true);
-  // Deferred-commit deletes: items/notes hidden while their undo toast is
-  // open. Nothing is persisted (or synced to the partner) until onExpire.
-  const [pendingItemDeletes, setPendingItemDeletes] = useState<Set<string>>(new Set());
-  const [pendingNoteDeletes, setPendingNoteDeletes] = useState<Set<string>>(new Set());
-  const stateRef = useRef(room);
-  const presenceSnapshotRef = useRef<any>(null);
-  const toastTimer = useRef<number | undefined>(undefined);
-
-  const pushToast = useCallback((message: string) => {
-    setToast(message);
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(''), 2200);
+  /* the overlay is pruned shortly after back-navigation — no timer may
+     outlive the room (a stray haptic or forced setView would fight the user) */
+  useEffect(() => () => {
+    [knobTimer, captionTimer, visitTimer, replayTimer, bookTimer].forEach((t) => {
+      window.clearTimeout(t.current);
+    });
   }, []);
 
-  const isMyKnownName = useCallback((name?: string | null) => {
-    return Boolean(name && knownSelfNames.includes(name));
-  }, [knownSelfNames]);
+  const setCaption = useCallback((text: string) => {
+    setCaptionState({ text, key: Date.now() });
+    window.clearTimeout(captionTimer.current);
+    captionTimer.current = window.setTimeout(() => setCaptionState(null), CAPTION_MS);
+  }, []);
 
-  const persist = useCallback((next: CoupleRoomState, actionText?: string) => {
-    const stamped = actionText
-      ? {
-          ...next,
-          lastActorName: profile.myName,
-          lastActionText: actionText,
-          lastTouchedAt: new Date().toISOString(),
-        }
-      : next;
-    const normalized = normalizeCoupleRoom(stamped);
-    stateRef.current = normalized;
-    setRoom(normalized);
-    saveRoom(normalized);
-  }, [profile.myName]);
-
-  useEffect(() => {
-    stateRef.current = room;
-    if (!editingName) {
-      setDraftRoomName(room.roomName);
+  const commit = useCallback((
+    updater: (prev: OurHomeState) => OurHomeState,
+    opts?: { act?: boolean },
+  ) => {
+    const prev = homeRef.current;
+    let next = updater(prev);
+    if (next === prev) return;
+    // any deliberate act means you're home — presence is never anonymous.
+    // System-minted writes (parcel arrivals) pass act:false: they are the
+    // home's doing, not yours, and must not spend your quiet entrance.
+    if ((opts?.act ?? true) && !visitRecorded.current && !quietRef.current) {
+      visitRecorded.current = true;
+      next = recordVisit(next, myKey, new Date(), false, myTzOffsetMin());
     }
-  }, [editingName, room]);
+    homeRef.current = next;
+    setHome(next);
+    if (!demo) StorageService.saveCoupleRoomState(next, 'user');
+  }, [demo, myKey]);
 
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-
-  // Leaving the room commits any pending deferred delete right away.
-  useEffect(() => () => appToast.hide(), []);
-
+  /* ── the clock the room lives by ─────────────────────────── */
   useEffect(() => {
-    if (activeModal && !sceneEnabled) {
-      setSceneEnabled(true);
-    }
-  }, [activeModal, sceneEnabled]);
+    const id = window.setInterval(() => setNow(new Date()), 60000);
+    return () => window.clearInterval(id);
+  }, []);
 
+  /* ── partner changes arrive as final states ───────────────── */
   useEffect(() => {
-    const onStorage = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      let nextKnownSelfNames = knownSelfNames;
-      if (detail?.table === 'couple_profile' || detail?.table === 'init') {
-        const nextProfile = StorageService.getCoupleProfile();
-        setProfile(nextProfile);
-        if (nextProfile.myName) {
-          nextKnownSelfNames = nextKnownSelfNames.includes(nextProfile.myName)
-            ? nextKnownSelfNames
-            : [...nextKnownSelfNames, nextProfile.myName];
-          setKnownSelfNames(nextKnownSelfNames);
-        }
-        if (nextProfile.partnerName) {
-          setKnownPartnerNames((current) => (current.includes(nextProfile.partnerName) ? current : [...current, nextProfile.partnerName]));
-        }
-      }
-      if (detail?.table !== 'our_room_state' && detail?.table !== 'init') return;
-      const previous = stateRef.current;
-      const synced = loadRoom();
-      stateRef.current = synced;
-      setRoom(synced);
-      if (
-        synced.lastTouchedAt &&
-        synced.lastTouchedAt !== previous.lastTouchedAt &&
-        synced.lastActorName &&
-        !nextKnownSelfNames.includes(synced.lastActorName)
-      ) {
-        const activity = `${synced.lastActorName} ${synced.lastActionText || 'updated the room'}`;
-        pushToast(activity);
-      }
+    const onStorage = (e: Event) => {
+      const detail = (e as CustomEvent<{ table: string; source: string }>).detail;
+      if (detail?.table !== 'our_room_state' || detail.source !== 'sync') return;
+      const fresh = StorageService.getCoupleRoomState();
+      homeRef.current = fresh;
+      setHome(fresh);
     };
     storageEventTarget.addEventListener('storage-update', onStorage);
     return () => storageEventTarget.removeEventListener('storage-update', onStorage);
-  }, [knownSelfNames, pushToast]);
-
-  useEffect(() => {
-    const onPresence = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      presenceSnapshotRef.current = detail;
-      setPartnerPresent(presenceFromState(detail, knownPartnerNames));
-    };
-    syncEventTarget.addEventListener('presence-update', onPresence);
-    return () => syncEventTarget.removeEventListener('presence-update', onPresence);
-  }, [knownPartnerNames]);
-
-  useEffect(() => {
-    if (!presenceSnapshotRef.current) return;
-    setPartnerPresent(presenceFromState(presenceSnapshotRef.current, knownPartnerNames));
-  }, [knownPartnerNames]);
-
-  useEffect(() => {
-    if (selectedId && !room.placedItems.some((item) => item.uid === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [room.placedItems, selectedId]);
-
-  useEffect(() => {
-    const unlocks = checkMilestoneUnlocks(room, profile);
-    if (!unlocks.length) return;
-    const current = stateRef.current;
-    const nextMilestones = [
-      ...current.milestoneItems,
-      ...unlocks.map((itemId) => ({
-        milestoneId: itemId,
-        unlockedAt: new Date().toISOString(),
-        itemId,
-      })),
-    ];
-    persist({ ...current, milestoneItems: nextMilestones }, 'unlocked something special');
-    const names = unlocks.map((itemId) => ROOM_SHOP_BY_ID[itemId]?.name || itemId).join(', ');
-    pushToast(`Unlocked: ${names}`);
-  }, [
-    room.placedItems.length,
-    room.milestoneItems.length,
-    profile.anniversaryDate,
-    profile.questions?.length,
-    profile.nightlights?.length,
-    profile.presenceTraces?.length,
-    profile.streakData?.count,
-    persist,
-    pushToast,
-  ]);
-
-  const selectedItem = useMemo(
-    () => room.placedItems.find((item) => item.uid === selectedId) || null,
-    [room.placedItems, selectedId],
-  );
-
-  const selectedItemName = selectedItem ? ROOM_SHOP_BY_ID[selectedItem.itemId]?.name || 'Item' : null;
-  const unopenedGifts = useMemo(
-    () => room.gifts.filter((gift) => !gift.opened && !isMyKnownName(gift.from)),
-    [isMyKnownName, room.gifts],
-  );
-  const shopItems = useMemo(() => getShopItems(room, category), [room, category]);
-  const roomSceneState = useMemo(() => ({
-    placedItems: room.placedItems.filter((item) => !pendingItemDeletes.has(item.uid)),
-    coins: 0,
-    roomName: room.roomName,
-    wallpaper: room.wallpaper as any,
-    floor: room.floor as any,
-    ambient: room.ambient as any,
-  }), [room, pendingItemDeletes]);
-
-  const visibleRoomNotes = useMemo(
-    () => room.notes.filter((note) => !pendingNoteDeletes.has(note.id)),
-    [room.notes, pendingNoteDeletes],
-  );
-
-  const upcomingMilestones = useMemo(
-    () =>
-      MILESTONE_UNLOCK_RULES
-        .filter((rule) => !room.milestoneItems.some((milestone) => milestone.itemId === rule.itemId))
-        .slice(0, 3),
-    [room.milestoneItems],
-  );
-  const incomingSignals = unopenedGifts.length;
-
-
-  const handlePlace = (itemId: string) => {
-    const current = stateRef.current;
-    const item = ROOM_SHOP_BY_ID[itemId];
-    if (!item) return;
-    if (isItemMilestoneLocked(item, current)) {
-      const rule = getMilestoneForItem(itemId);
-      pushToast(rule ? `Unlocks with ${rule.title.toLowerCase()}` : 'This unlocks later');
-      return;
-    }
-    const next = placeItem(current, item, profile.myName);
-    if ('error' in next) {
-      pushToast(next.error);
-      return;
-    }
-    persist(next, `placed ${item.name}`);
-    const placed = next.placedItems[next.placedItems.length - 1];
-    setSelectedId(placed.uid);
-    setActiveModal(null);
-  };
-
-  const clearPendingItemDelete = (uid: string) => setPendingItemDeletes((prev) => {
-    const next = new Set(prev);
-    next.delete(uid);
-    return next;
-  });
-
-  const clearPendingNoteDelete = (id: string) => setPendingNoteDeletes((prev) => {
-    const next = new Set(prev);
-    next.delete(id);
-    return next;
-  });
-
-  const handleRemove = () => {
-    if (!selectedId || !selectedItem) return;
-    const uid = selectedId;
-    if (pendingItemDeletes.has(uid)) return;
-    // Capture the full item now — the commit/undo closures must not rely on
-    // component state read after the delete was scheduled.
-    const item = selectedItem;
-    const itemName = selectedItemName || 'an item';
-    setSelectedId(null);
-    setPendingItemDeletes((prev) => new Set([...prev, uid]));
-    appToast.showUndo(`Deleted "${itemName}"`, {
-      onUndo: () => {
-        clearPendingItemDelete(uid);
-        // The item normally still lives in room state (it was only hidden).
-        // If a sync replaced the state meanwhile, restore the exact item.
-        const current = stateRef.current;
-        if (!current.placedItems.some((placed) => placed.uid === item.uid)) {
-          const restored = normalizeCoupleRoom({ ...current, placedItems: [...current.placedItems, item] });
-          stateRef.current = restored;
-          setRoom(restored);
-        }
-      },
-      onExpire: () => {
-        try {
-          persist(removeItem(stateRef.current, uid), `removed ${itemName}`);
-          clearPendingItemDelete(uid);
-        } catch {
-          clearPendingItemDelete(uid);
-          appToast.show("Couldn't delete — it's back", 'error');
-        }
-      },
-    });
-  };
-
-  const handleRemoveNote = (noteId: string) => {
-    if (pendingNoteDeletes.has(noteId)) return;
-    setPendingNoteDeletes((prev) => new Set([...prev, noteId]));
-    appToast.showUndo('Deleted note', {
-      onUndo: () => clearPendingNoteDelete(noteId),
-      onExpire: () => {
-        try {
-          persist(removeNote(stateRef.current, noteId), 'cleared a note');
-          clearPendingNoteDelete(noteId);
-        } catch {
-          clearPendingNoteDelete(noteId);
-          appToast.show("Couldn't delete — it's back", 'error');
-        }
-      },
-    });
-  };
-
-  const handleRotate = () => {
-    if (!selectedId) return;
-    persist(rotateItem(stateRef.current, selectedId), `rotated ${selectedItemName || 'an item'}`);
-  };
-
-  const onMoveItemGrid = useCallback((id: string, gx: number, gy: number) => {
-    setRoom((previous) => {
-      const moved = normalizeCoupleRoom(moveItem(previous, id, gx, gy));
-      stateRef.current = moved;
-      return moved;
-    });
   }, []);
 
-  const onDragCommit = useCallback(() => {
-    const current = stateRef.current;
-    const movedItem = current.placedItems.find((item) => item.uid === selectedId);
-    const movedName = movedItem ? ROOM_SHOP_BY_ID[movedItem.itemId]?.name || 'an item' : 'an item';
-    const stamped = normalizeCoupleRoom({
-      ...current,
-      lastActorName: profile.myName,
-      lastActionText: `moved ${movedName}`,
-      lastTouchedAt: new Date().toISOString(),
-    });
-    stateRef.current = stamped;
-    setRoom(stamped);
-    saveRoom(stamped);
-  }, [profile.myName, selectedId]);
+  /* ── growth: the relationship builds the house ────────────── */
+  const daysTogether = useMemo(
+    () => (profile.anniversaryDate ? daysTogetherFrom(profile.anniversaryDate) : 0),
+    [profile.anniversaryDate],
+  );
+  const memoryCount = useMemo(() => StorageService.getMemories().length, []);
+  const revealedQuestions = useMemo(
+    () => (profile.questions ?? []).filter((q) => q.revealedAt).length,
+    [profile.questions],
+  );
+  // Question entries are keyed by UTC day (that's how the store writes them) —
+  // matching on the device-local day broke the ember for anyone west of UTC.
+  const utcToday = now.toISOString().slice(0, 10);
+  const todaysEntry = useMemo(
+    () => (profile.questions ?? []).find((q) => q.date === utcToday),
+    [profile.questions, utcToday],
+  );
+  const answeredTodayBoth = !!todaysEntry?.revealedAt;
 
-  const handleAddNote = () => {
-    if (!noteText.trim()) return;
-    persist(addNote(stateRef.current, noteText, profile.myName), 'left a note');
-    setNoteText('');
-    setActiveModal(null);
-    pushToast('Note left in your room');
-  };
+  useEffect(() => {
+    // an untouched canvas stays untouched — the home starts sending parcels
+    // only once the couple has placed their first piece
+    const touched = homeRef.current.objects.some((o) => !o.removed)
+      || homeRef.current.parcels.length > 0;
+    if (!touched) return;
+    const due = computeDueParcels(home, {
+      daysTogether, memoryCount, revealedQuestions, answeredTodayBoth,
+    }, new Date());
+    if (due.length > 0) {
+      commit((prev) => {
+        const have = new Set(prev.parcels.map((p) => p.id));
+        const fresh = due.filter((p) => !have.has(p.id));
+        return fresh.length ? { ...prev, parcels: [...prev.parcels, ...fresh] } : prev;
+      }, { act: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daysTogether, memoryCount, revealedQuestions, home.objects.length, home.parcels.length]);
 
-  const handleSendGift = () => {
-    if (!giftMsg.trim()) return;
-    persist(addGift(stateRef.current, profile.myName, giftEmoji, giftMsg), 'left a gift');
-    setGiftMsg('');
-    setGiftEmoji(GIFT_EMOJIS[0]);
-    setActiveModal(null);
-    pushToast('Gift waiting in the room');
-  };
+  /* ── arrival: record the visit (unless you came in quietly).
+     The dwell window is long enough to actually reach the doorknob; any
+     deliberate act (commit) records the visit immediately instead. ── */
+  useEffect(() => {
+    visitTimer.current = window.setTimeout(() => {
+      if (quietRef.current || visitRecorded.current) return;
+      visitRecorded.current = true;
+      commit((prev) => {
+        let next = recordVisit(prev, myKey, new Date(), false, myTzOffsetMin());
+        // a candle burning for you gutters once truly seen
+        if (next.candle.litBy && next.candle.litBy !== myKey && !next.candle.seenAt) {
+          next = seeCandle(next, new Date());
+        }
+        return next;
+      });
+    }, 8000);
+    return () => window.clearTimeout(visitTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleOpenGift = (giftId: string) => {
-    persist(openGift(stateRef.current, giftId), 'opened a gift');
-    pushToast('Gift opened');
-  };
+  /* ── derived atmosphere (memoized on the minute tick, so drags
+     and captions never re-render the whole architecture) ─────── */
+  const myTz = myTzOffsetMin(now);
+  const partnerTz = (partnerKey ? home.visits[partnerKey]?.tzOffsetMin : undefined) ?? myTz;
+  const myHour = localHourForOffset(myTz, now);
+  const mySky = useMemo(() => skyForHour(myHour), [myHour]);
+  const theirSky = useMemo(
+    () => skyForHour(localHourForOffset(partnerTz, now)),
+    [partnerTz, now],
+  );
+  const airTint = useMemo(() => airTintForHour(myHour), [myHour]);
 
-  const applyTheme = (kind: 'wallpaper' | 'floor' | 'ambient', value: string) => {
-    const actionLabel = kind === 'wallpaper' ? 'changed the walls' : kind === 'floor' ? 'changed the floor' : 'changed the lighting';
-    persist({ ...stateRef.current, [kind]: value }, actionLabel);
-  };
+  const ctx: TraceContext = useMemo(() => ({
+    myKey, partnerKey, partnerName, myPrevSeenAt, now,
+  }), [myKey, partnerKey, partnerName, myPrevSeenAt, now]);
 
-  const commitRoomName = () => {
-    const current = stateRef.current;
-    const nextName = draftRoomName.trim();
-    setEditingName(false);
-    if (!nextName || nextName === current.roomName) {
-      setDraftRoomName(current.roomName);
+  const traces = useMemo(() => deriveTraces(home, ctx), [home, ctx]);
+  const quiet = isQuietHours(home, ctx) && !wakeFx;
+  const arch = useMemo(() => archUnlocks(daysTogether), [daysTogether]);
+  const hearth = hearthStage(revealedQuestions);
+  const pot = potGrowth(revealedQuestions);
+  const today = localDayKey(now);
+  // MY curtains, MY night — the rituals are each partner's own, on their own
+  // clock. A late-afternoon fallback opens the room for whoever never swiped.
+  const curtainsOpen = home.curtains[myKey]?.lastOpenedDay === today
+    || myHour < 5 || myHour >= 15;
+  const nightTucked = home.night[myKey]?.dimmedDay === today;
+  const partnerSeen = partnerKey ? home.visits[partnerKey]?.lastSeenAt : undefined;
+  const coco = useMemo(() => cocoSpot(home, ctx), [home, ctx]);
+  const parcel = useMemo(() => {
+    const open = home.parcels.filter((p) => p.stage < 3);
+    open.sort((a, b) => a.earnedAt.localeCompare(b.earnedAt));
+    return open[0] ?? null;
+  }, [home.parcels]);
+
+  /* ── visual state resolution (budget-aware: partner-trace pixels
+     only render when their trace survived the ≤3 cap) ─────────── */
+  const tracedUids = useMemo(() => new Set(
+    traces.filter((t) => t.uid && (t.kind === 'cup' || t.kind === 'candle')).map((t) => t.uid),
+  ), [traces]);
+  const candleTraced = useMemo(() => traces.some((t) => t.kind === 'candle'), [traces]);
+
+  const resolveVState = useCallback((o: HomeObject): string | undefined => {
+    if (o.sku === 'lamp-a' || o.sku === 'lamp-b') {
+      const isPartnerLamp = o.sku === inks.partnerLampSku && !!partnerKey;
+      if (home.lampOn.uid === o.uid && hoursSince(home.lampOn.at, now) < 18) return 'lit';
+      if (isPartnerLamp) return lampWarmthFor(partnerSeen, now);
+      // after tuck-in the house goes dark — only the chosen lamp burns
+      if (nightTucked) return 'out';
+      if (!quietVisit && isEveningHour(myHour)) return 'lit';
+      return 'out';
+    }
+    if (o.sku === 'candle') {
+      const mine = home.candle.litBy === myKey;
+      const lit = home.candle.litAt && !home.candle.seenAt && hoursSince(home.candle.litAt, now) < 24;
+      return lit && (mine || candleTraced) ? 'lit' : 'out';
+    }
+    if (o.sku === 'mug-wine' || o.sku === 'mug-gold') {
+      const mine = o.touchedBy === myKey;
+      if (hoursSince(o.touchedAt, now) < 0.5 && (mine || tracedUids.has(o.uid))) return 'steam';
+      if (o.touchedBy === partnerKey && tracedUids.has(o.uid)) return 'ring';
+      return 'plain';
+    }
+    if (o.sku === 'coffee-pot') return Date.now() < potSteamUntil ? 'steam' : 'plain';
+    if (o.sku === 'window') {
+      // left wall holds this device's sky; the right wall, the partner's
+      const sky = o.lane === 2 ? theirSky : mySky;
+      return `${sky.top}|${sky.horizon}|${curtainsOpen ? 'o' : 'c'}`;
+    }
+    if (o.sku === 'front-door') return nameplate;
+    if (o.sku === 'hearth') return answeredTodayBoth ? 'lit' : 'out';
+    // every other light in the house simply follows the evening — and goes
+    // dark after tuck-in, so the one chosen lamp is unmistakably the light
+    if (skuOf(o.sku)?.emitsLight && o.sku !== 'candle') {
+      return !quietVisit && !nightTucked && isEveningHour(myHour) ? 'lit' : 'out';
+    }
+    if (o.sku === 'book') {
+      const partnerAnswered = todaysEntry
+        && Object.keys(todaysEntry.answers ?? {}).some((k) => k !== profile.myName);
+      const iAnswered = todaysEntry && profile.myName in (todaysEntry.answers ?? {});
+      return partnerAnswered && !iAnswered ? 'ribbon' : 'closed';
+    }
+    if (o.sku === 'two-times-clock') {
+      return `${clockLabelForOffset(myTz, now)}|${clockLabelForOffset(partnerTz, now)}`;
+    }
+    if (o.sku === 'vase') return 'fresh';
+    if (o.sku === 'shoebox') return 'closed';
+    return o.vState;
+  }, [
+    inks.partnerLampSku, partnerKey, home.lampOn, home.candle, partnerSeen, now,
+    quietVisit, myHour, nightTucked, potSteamUntil, profile.myName, todaysEntry,
+    myTz, partnerTz, myKey, tracedUids, candleTraced,
+    mySky, theirSky, curtainsOpen, nameplate, answeredTodayBoth,
+  ]);
+
+  const resolveDetail = useCallback((o: HomeObject): number | undefined => {
+    if (o.sku === 'bookcase') return Math.min(memoryCount, 14);
+    if (o.sku === 'bookshelf-tall') return Math.min(memoryCount, 24);
+    if (o.sku === 'sill-pot') return pot.stage;
+    if (o.sku === 'cookie-plate') return o.detail ?? 5;
+    if (o.sku === 'front-door') return arch.yearTicks;
+    if (o.sku === 'hearth') return hearth;
+    return o.detail;
+  }, [memoryCount, pot.stage, arch.yearTicks, hearth]);
+
+  const memories = useMemo(() => StorageService.getMemories(), []);
+  const photoHrefFor = useCallback((memoryId?: string): string | undefined => {
+    if (!memoryId) return undefined;
+    const m = memories.find((mm) => mm.id === memoryId);
+    return m?.image && m.image.startsWith('data:') ? m.image : undefined;
+  }, [memories]);
+  const photoChoices: PlaqueMemoryChoice[] = useMemo(() => memories
+    .slice(0, 18)
+    .map((m) => ({
+      id: m.id,
+      label: (m.text || m.mood || 'a memory').slice(0, 24),
+      href: m.image?.startsWith('data:') ? m.image : undefined,
+    })), [memories]);
+
+  /* ── placement ────────────────────────────────────────────── */
+  const placement = useHomePlacement({
+    svgRef,
+    objects: home.objects,
+    resolveSku: skuOf,
+    enabled: !plaqueUid && !composing && !readerNoteId && !pendingStrokes,
+    callbacks: {
+      onCommit: (uid, spot) => commit((prev) => commitMove(prev, uid, spot, myKey, new Date())),
+      onPlaceNew: (skuId, spot) => {
+        const sku = skuOf(skuId);
+        if (!sku) return;
+        commit((prev) => placeNewObject(prev, skuId, sku.provenanceLabel, spot, myKey, new Date()));
+        setCaption(`${sku.name} came home`);
+      },
+      onFacing: (uid) => {
+        const sku = skuOf(home.objects.find((o) => o.uid === uid)?.sku ?? '');
+        if (sku && sku.facings > 1) {
+          commit((prev) => stepFacing(prev, uid, sku.facings, myKey, new Date()));
+        }
+      },
+      onPlaque: (uid) => {
+        feedback.light();
+        setPlaqueUid(uid);
+      },
+      onTap: (uid) => {
+        const o = homeRef.current.objects.find((x) => x.uid === uid);
+        if (!o) return true;
+        if (chooseLamp && (o.sku === 'lamp-a' || o.sku === 'lamp-b')) {
+          commit((prev) => leaveLampOn(prev, uid, myKey, new Date()));
+          setChooseLamp(false);
+          setCaption(`it will burn until ${partnerName}'s morning`);
+          feedback.confirm();
+          return true;
+        }
+        if (chooseLamp) {
+          // mid-ritual, a stray tap must never derail the choice (no book
+          // navigation, no replays) — the home just re-offers the question
+          setCaption(`a lamp for ${partnerName} — or not tonight`);
+          return true;
+        }
+        const rim = traces.find((t) => t.kind === 'noticing' && t.uid === uid);
+        if (rim && o.prev) {
+          setReplay({ uid, fromX: o.prev.x, fromY: o.prev.y, key: Date.now() });
+          window.clearTimeout(replayTimer.current);
+          replayTimer.current = window.setTimeout(() => setReplay(null), 760);
+          commit((prev) => noticeMove(prev, uid, myKey, new Date()));
+          feedback.light();
+          return true;
+        }
+        const lampTrace = traces.find((t) => t.kind === 'lamp-warmth' && t.phrase);
+        if (o.sku === inks.partnerLampSku && lampTrace?.phrase) {
+          setCaption(lampTrace.phrase);
+          feedback.light();
+          return true;
+        }
+        if (o.sku === 'coffee-pot') {
+          setPotSteamUntil(Date.now() + 40000);
+          const myMug = homeRef.current.objects.find(
+            (m) => m.sku === (inks.myInk === 'wine' ? 'mug-wine' : 'mug-gold'),
+          );
+          if (myMug) {
+            const mugSku = skuOf(myMug.sku);
+            if (mugSku) {
+              const field = gatherSeats(mugSku, homeRef.current.objects, skuOf, myMug.uid);
+              const drop = resolveDrop(mugSku, o.x + 20, o.y - 6, field, homeRef.current.objects, skuOf, myMug.uid);
+              commit((prev) => commitMove(prev, myMug.uid, {
+                x: drop.x, y: drop.y, lane: drop.lane, seatId: drop.seatId, surfaceUid: drop.surfaceUid,
+              }, myKey, new Date()));
+            }
+          }
+          setCaption('the kettle is on');
+          feedback.light();
+          return true;
+        }
+        if (o.sku === 'book') {
+          setCaption('today’s question lives in the book');
+          window.clearTimeout(bookTimer.current);
+          bookTimer.current = window.setTimeout(() => setView('home'), 650);
+          return true;
+        }
+        // a plain tap on a plain object: wake the fine-nudge window
+        return false;
+      },
+      onPlantSpot: (uid, spot) => {
+        commit((prev) => storeObject(plantSpot(prev, uid, spot, undefined, myKey, new Date()), uid, myKey, new Date()));
+        setCaption(`saved a spot for ${partnerName}`);
+        feedback.confirm();
+      },
+      onStore: (uid) => {
+        commit((prev) => storeObject(prev, uid, myKey, new Date()));
+        setCaption('back on its shelf, story intact');
+      },
+      haptic: (kind) => {
+        if (kind === 'lift' || kind === 'tick') feedback.light();
+        else if (kind === 'click') feedback.medium();
+        else feedback.interact();
+      },
+    },
+  });
+
+  /* ── rituals: doorknob, curtains, nightfall ───────────────── */
+  const onDoorknobDown = useCallback(() => {
+    knobTimer.current = window.setTimeout(() => {
+      // never confirm invisibility that no longer exists — once the visit is
+      // recorded, the hold simply does nothing (honest silence)
+      if (visitRecorded.current) return;
+      setQuietVisit(true);
+      window.clearTimeout(visitTimer.current);
+      setCaption('came in quietly');
+      feedback.light();
+    }, 900);
+  }, [setCaption]);
+  const onDoorknobUp = useCallback(() => window.clearTimeout(knobTimer.current), []);
+
+  const onCurtainSwipe = useCallback(() => {
+    commit((prev) => openCurtains(prev, myKey, new Date()));
+    feedback.interact();
+  }, [commit, myKey]);
+
+  /* The night's one deliberate act — leave a single lamp burning until their
+     morning. Reachable as a downward swipe OR the dock's evening verb. */
+  const startNightRitual = useCallback(() => {
+    // the dev seam lets previews rehearse the night outside real evenings
+    if (nightTucked || !(isEveningHour(myHour) || demoDock === 'light')) return;
+    commit((prev) => dimForNight(prev, myKey, new Date()));
+    setChooseLamp(true);
+    setCaption(`tap the lamp to leave on for ${partnerName}`);
+    feedback.light();
+  }, [nightTucked, myHour, demoDock, commit, myKey, partnerName, setCaption]);
+
+  const onStagePointerDown = useCallback((e: React.PointerEvent) => {
+    swipe.current = { x: e.clientX, y: e.clientY };
+    if (quiet) {
+      const svg = svgRef.current?.getBoundingClientRect();
+      if (svg && svg.width > 0) {
+        setWakeFx({
+          x: (e.clientX - svg.left) * (SCENE_W / svg.width),
+          y: (e.clientY - svg.top) * (SCENE_W / svg.width),
+          key: Date.now(),
+        });
+      }
+    }
+  }, [quiet]);
+
+  const onStagePointerUp = useCallback((e: React.PointerEvent) => {
+    const s = swipe.current;
+    swipe.current = null;
+    if (!s || placement.carry || placement.nudgeUid) return;
+    const dy = e.clientY - s.y;
+    const dx = Math.abs(e.clientX - s.x);
+    if (dy > 74 && dx < 60 && isEveningHour(myHour) && !nightTucked) {
+      startNightRitual();
+    }
+  }, [placement.carry, placement.nudgeUid, myHour, nightTucked, startNightRitual]);
+
+  /* ── notes ────────────────────────────────────────────────── */
+  const onNoteDone = useCallback((strokes: number[][]) => {
+    setComposing(false);
+    setPendingStrokes(strokes);
+    setCaption('tap where to leave it');
+  }, [setCaption]);
+
+  const onPlaceNote = useCallback((e: React.PointerEvent) => {
+    if (!pendingStrokes) return;
+    const svg = svgRef.current?.getBoundingClientRect();
+    if (!svg || svg.width === 0) return;
+    const scale = SCENE_W / svg.width;
+    const x = (e.clientX - svg.left) * scale;
+    const y = (e.clientY - svg.top) * scale;
+    if (x < 0 || x > SCENE_W || y < 0 || y > SCENE_H) return;
+    const lane: HomeLane = 1;
+    commit((prev) => addNote(prev, { strokes: pendingStrokes, x, y, lane }, myKey, inks.myInk, new Date()));
+    setPendingStrokes(null);
+    setCaption(`left for ${partnerName}`);
+    feedback.confirm();
+  }, [pendingStrokes, commit, myKey, inks.myInk, partnerName, setCaption]);
+
+  const readerNote = readerNoteId ? home.notes.find((n) => n.id === readerNoteId) ?? null : null;
+  const onNoteTap = useCallback((id: string) => {
+    if (chooseLamp) {
+      // the night's one question stays the only thing on the table
+      setCaption(`a lamp for ${partnerName} — or not tonight`);
       return;
     }
-    persist({ ...current, roomName: nextName }, 'renamed the room');
-  };
-
-  const handleShare = async () => {
-    const current = stateRef.current;
-    const shareText = `${current.roomName} is where ${profile.myName} and ${profile.partnerName} keep leaving notes, little gifts, and new memories for each other.`;
-    try {
-      if (typeof navigator !== 'undefined' && navigator.share) {
-        await navigator.share({
-          title: current.roomName,
-          text: shareText,
-        });
-      } else if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(shareText);
-        pushToast('Room story copied');
-      } else {
-        pushToast('Sharing is not available here');
-        return;
-      }
-      pushToast('Shared');
-    } catch {
-      pushToast('Share cancelled');
+    setReaderNoteId(id);
+    const n = home.notes.find((nn) => nn.id === id);
+    if (n && n.by !== myKey && !n.readAt) {
+      commit((prev) => markNoteRead(prev, id, new Date()));
     }
-  };
+  }, [chooseLamp, partnerName, setCaption, home.notes, myKey, commit]);
 
-  const actions: ToolbarAction[] = [
-    { id: 'decorate', label: 'Build', icon: <Sparkles size={18} />, accent: '#ff8c42', modal: 'decorate' as const },
-    { id: 'note', label: 'Notes', icon: <PenLine size={18} />, accent: '#ef5da8', modal: 'note' as const },
-    { id: 'gift', label: 'Gifts', icon: <Gift size={18} />, accent: '#4cc98b', modal: 'gift' as const },
-    { id: 'style', label: 'Style', icon: <Palette size={18} />, accent: '#8b5cf6', modal: 'style' as const },
-    { id: 'share', label: 'Share', icon: <Share2 size={18} />, accent: '#ffd54f', onClick: handleShare },
-  ];
+  /* ── candle: thinking of you ──────────────────────────────── */
+  const onCandle = useCallback(() => {
+    commit((prev) => {
+      let next = prev;
+      const placed = next.objects.some((o) => o.sku === 'candle' && !o.stored && !o.removed);
+      if (!placed) {
+        // the home keeps one chamberstick — it appears on the nearest surface,
+        // or waits on the floor by the walls if there isn't one yet
+        const candleSku = skuOf('candle');
+        if (candleSku) {
+          const field = gatherSeats(candleSku, next.objects, skuOf);
+          const drop = resolveDrop(candleSku, 195, 300, field, next.objects, skuOf);
+          next = placeNewObject(
+            next, 'candle', 'lit when one of us is thinking of the other',
+            { x: drop.x, y: drop.y, lane: drop.lane, seatId: drop.seatId, surfaceUid: drop.surfaceUid },
+            myKey, new Date(),
+          );
+        }
+      }
+      return lightCandle(next, myKey, new Date());
+    });
+    setCaption(`a small flame for ${partnerName}`);
+    feedback.confirm();
+  }, [commit, myKey, partnerName, setCaption]);
+
+  /* ── furnishing ───────────────────────────────────────────── */
+  const keptItems = useMemo(
+    () => home.objects.filter((o) => o.stored && !o.removed),
+    [home.objects],
+  );
+  const placedCount = useMemo(
+    () => home.objects.filter((o) => !o.stored && !o.removed).length,
+    [home.objects],
+  );
+  const onDragNew = useCallback((e: React.PointerEvent, skuId: string) => {
+    setDrawerOpen(false);
+    placement.handlers.beginFromDrawer(e, skuId);
+  }, [placement.handlers]);
+  const onTapNew = useCallback((skuId: string) => {
+    const sku = skuOf(skuId);
+    if (!sku) return;
+    const field = gatherSeats(sku, homeRef.current.objects, skuOf);
+    const drop = resolveDrop(sku, 195, 358, field, homeRef.current.objects, skuOf);
+    commit((prev) => placeNewObject(prev, skuId, sku.provenanceLabel, {
+      x: drop.x, y: drop.y, lane: drop.lane, seatId: drop.seatId, surfaceUid: drop.surfaceUid,
+    }, myKey, new Date()));
+    setDrawerOpen(false);
+    setCaption(`${sku.name} came home — drag it where it belongs`);
+    feedback.confirm();
+  }, [commit, myKey, setCaption]);
+  const onDragKept = useCallback((e: React.PointerEvent, uid: string) => {
+    setDrawerOpen(false);
+    placement.handlers.beginFromCupboard(e, uid);
+  }, [placement.handlers]);
+  const onTapKept = useCallback((uid: string) => {
+    const o = homeRef.current.objects.find((x) => x.uid === uid);
+    const sku = o ? skuOf(o.sku) : undefined;
+    if (!o || !sku) return;
+    const field = gatherSeats(sku, homeRef.current.objects, skuOf, uid);
+    const drop = resolveDrop(sku, 195, 358, field, homeRef.current.objects, skuOf);
+    commit((prev) => commitMove(prev, uid, {
+      x: drop.x, y: drop.y, lane: drop.lane, seatId: drop.seatId, surfaceUid: drop.surfaceUid,
+    }, myKey, new Date()));
+    setDrawerOpen(false);
+    setCaption('back where it belongs');
+    feedback.confirm();
+  }, [commit, myKey, setCaption]);
+
+  /* ── parcels ──────────────────────────────────────────────── */
+  const onParcelTap = useCallback(() => {
+    if (!parcel) return;
+    commit((prev) => advanceParcel(prev, parcel.id, myKey, new Date()));
+    if (parcel.stage === 0) feedback.light();
+    else {
+      feedback.confirm();
+      setCaption('something arrived');
+    }
+  }, [parcel, commit, myKey, setCaption]);
+  const onSweepTap = useCallback(() => {
+    if (!parcel) return;
+    commit((prev) => advanceParcel(prev, parcel.id, myKey, new Date()));
+    setCaption(`“${parcel.tag}”`);
+    feedback.light();
+  }, [parcel, commit, myKey, setCaption]);
+
+  /* ── plaque wiring ────────────────────────────────────────── */
+  const plaqueObject = plaqueUid ? home.objects.find((o) => o.uid === plaqueUid) ?? null : null;
+  const plaqueSku = plaqueObject ? skuOf(plaqueObject.sku) : undefined;
+  const nameFor = useCallback((key: string) => {
+    if (key === myKey) return profile.myName || 'me';
+    if (partnerKey && key === partnerKey) return partnerName;
+    return key === 'home' ? 'the home' : key;
+  }, [myKey, partnerKey, profile.myName, partnerName]);
+
+  const dockHidden = !!placement.carry || !!plaqueUid || composing || !!readerNoteId || !!pendingStrokes;
+
+  const seenPhrase = useMemo(() => coarsePhrase(partnerSeen, now), [partnerSeen, now]);
+  const presence = useMemo<PresenceSummary>(
+    () => describePresence(traces, { partnerKey, partnerName, seenPhrase, quiet }),
+    [traces, partnerKey, partnerName, seenPhrase, quiet],
+  );
+  const windowsPlaced = useMemo(
+    () => home.objects.some((o) => o.sku === 'window' && !o.stored && !o.removed),
+    [home.objects],
+  );
+  const hasLamp = useMemo(
+    () => home.objects.some((o) => (o.sku === 'lamp-a' || o.sku === 'lamp-b') && !o.stored && !o.removed),
+    [home.objects],
+  );
+
+  // each window pours daylight only while ITS sky is in daylight — the left
+  // wall lives on my clock, the right wall on theirs
+  const shaftLanes = useMemo<HomeLane[]>(() => {
+    if (!curtainsOpen || nightTucked || quiet) return [];
+    const theirHour = localHourForOffset(partnerTz, now);
+    const lanes: HomeLane[] = [];
+    if (myHour >= 7 && myHour < 17) lanes.push(0 as HomeLane);
+    if (theirHour >= 7 && theirHour < 17) lanes.push(2 as HomeLane);
+    return lanes;
+  }, [curtainsOpen, nightTucked, quiet, partnerTz, now, myHour]);
+
+  // The dock leads with presence: the night's light, then the morning reveal,
+  // and only falls back to furnishing when there's no ritual waiting.
+  const nightReady = !!partnerKey && isEveningHour(myHour) && !nightTucked && hasLamp;
+  const revealReady = windowsPlaced && !curtainsOpen && traces.length > 0;
+  const dockKind: 'light' | 'reveal' | 'furnish' = demoDock === 'light' && !nightTucked
+    ? 'light'
+    : demoDock === 'reveal' && !curtainsOpen ? 'reveal'
+    : nightReady ? 'light' : revealReady ? 'reveal' : 'furnish';
 
   return (
-    <div className="relative" style={{ height: '100dvh', overflow: 'hidden', background: '#0f1219' }}>
-      {/* ─── Room Scene (full viewport) ─── */}
-      <div className="absolute inset-0">
-        {sceneEnabled ? (
-          <Suspense fallback={<RoomSceneFallback />}>
-            <LazyRoomScene3D
-              room={roomSceneState}
-              catalogById={ROOM_SHOP_BY_ID}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onMoveItemGrid={onMoveItemGrid}
-              onDragCommit={onDragCommit}
-            />
-          </Suspense>
-        ) : (
-          <RoomSceneGate
-            room={room}
-            profileLabel={`${profile.myName} & ${profile.partnerName}`}
-            onOpen={() => setSceneEnabled(true)}
-          />
-        )}
-      </div>
-
-      {/* Soft vignette edge */}
+    <div className={`oh-view ${nightTucked ? 'is-night' : ''}`}>
+      <ViewHeader title="" variant="transparent" onBack={() => setView('us')} />
       <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(ellipse at 50% 30%, transparent 55%, rgba(10,12,20,0.3) 100%)' }}
-      />
-
-      {/* ─── Floating Header ─── */}
-      <div
-        className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3"
-        style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
+        ref={stageRef}
+        className={`oh-stage ${pendingStrokes ? 'oh-placing-note' : ''}`}
+        onPointerDown={onStagePointerDown}
+        onPointerUp={onStagePointerUp}
       >
-        <motion.button
-          whileTap={{ scale: 0.92 }}
-          onClick={() => setView('us')}
-          className="flex h-9 w-9 shrink-0 items-center justify-center"
-          style={{
-            background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
-            border: PIXEL_BORDER,
-            boxShadow: '2px 2px 0 #3a2518',
-          }}
-        >
-          <ArrowLeft size={15} color="#5c3d2e" strokeWidth={2.5} />
-        </motion.button>
+        {/* the stage itself dips to dusk while the house is tucked in */}
+        <div className={`oh-dusk ${nightTucked ? 'is-on' : ''}`} />
+        <div key={presence.headline} className={`oh-hero oh-hero--${presence.tone}`}>
+          <span className="oh-hero-eyebrow">{presence.eyebrow}</span>
+          <h1 className="oh-hero-line">{presence.headline}</h1>
+          {presence.kicker && <span className="oh-hero-kicker">{presence.kicker}</span>}
+        </div>
+        <HomeScene
+          svgRef={svgRef}
+          state={home}
+          traces={traces}
+          airTint={airTint}
+          nightTucked={nightTucked}
+          curtainsOpen={curtainsOpen}
+          revealTraces={curtainsOpen || !windowsPlaced}
+          chooseLamp={chooseLamp}
+          shaftLanes={shaftLanes}
+          quiet={quiet}
+          wakeFx={wakeFx}
+          placement={placement}
+          cocoAt={placedCount > 0 ? coco : null}
+          parcel={parcel}
+          replay={replay}
+          resolveVState={resolveVState}
+          resolveDetail={resolveDetail}
+          photoHrefFor={photoHrefFor}
+          onDoorknobDown={onDoorknobDown}
+          onDoorknobUp={onDoorknobUp}
+          onCurtainSwipe={onCurtainSwipe}
+          onParcelTap={onParcelTap}
+          onSweepTap={onSweepTap}
+          onNoteTap={onNoteTap}
+        />
 
-        {editingName ? (
-          <input
-            value={draftRoomName}
-            onChange={(event) => setDraftRoomName(event.target.value)}
-            onBlur={commitRoomName}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) commitRoomName();
-              if (event.key === 'Escape') {
-                setDraftRoomName(room.roomName);
-                setEditingName(false);
-              }
-            }}
-            autoFocus
-            inputMode="text"
-            enterKeyHint="done"
-            autoCapitalize="words"
-            autoCorrect="off"
-            className="px-3 py-1.5 text-sm font-extrabold outline-none"
-            style={{
-              color: '#5c3d2e',
-              background: '#faf6f0',
-              border: PIXEL_BORDER,
-              borderRadius: 0,
-            }}
-          />
-        ) : (
-          <button
-            onClick={() => setEditingName(true)}
-            className="flex items-center gap-2 px-3 py-1.5"
-            style={{
-              background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
-              border: PIXEL_BORDER,
-              boxShadow: '2px 2px 0 #3a2518',
-            }}
-          >
-            <h1 className="text-[0.82rem] font-extrabold" style={{ color: '#5c3d2e' }}>{room.roomName}</h1>
-            <span className="text-[0.6rem] font-bold" style={{ color: '#8a6d4a' }}>{profile.myName} & {profile.partnerName}</span>
-          </button>
+        {/* note placement catcher */}
+        {pendingStrokes && (
+          <div className="oh-plaque-scrim" onPointerDown={onPlaceNote} />
         )}
 
-        <div className="flex-1" />
+        {/* the home's only voice */}
+        {caption && (
+          <div key={caption.key} className="oh-caption">{caption.text}</div>
+        )}
 
-        {partnerPresent && (
-          <div
-            className="flex items-center gap-1.5 px-2.5 py-1.5"
-            style={{
-              background: 'linear-gradient(180deg, #a8e6c0, #78d4a0)',
-              border: '2px solid #2d7a4e',
-              boxShadow: '2px 2px 0 #1a5535',
+        {/* the dock: one bold verb, two quiet ones */}
+        <div className={`oh-dock ${dockHidden ? 'is-hidden' : ''}`}>
+          <button
+            type="button"
+            className="oh-fab oh-fab-quiet"
+            aria-label="leave a note"
+            onClick={() => {
+              feedback.light();
+              setComposing(true);
             }}
           >
-            <span className="h-2 w-2" style={{ background: '#2d7a4e' }} />
-            <span className="text-[0.68rem] font-extrabold" style={{ color: '#1a5535' }}>{profile.partnerName}</span>
+            <PenLine size={18} strokeWidth={1.9} />
+          </button>
+          {chooseLamp ? (
+            <button
+              type="button"
+              className="oh-fab oh-fab-main oh-fab-cancel"
+              onClick={() => {
+                setChooseLamp(false);
+                setCaption('maybe tomorrow');
+              }}
+            >
+              <span>Not tonight</span>
+            </button>
+          ) : dockKind === 'light' ? (
+            <button
+              type="button"
+              className="oh-fab oh-fab-main oh-fab-light"
+              onClick={() => {
+                feedback.light();
+                startNightRitual();
+              }}
+            >
+              <Lamp size={19} strokeWidth={2} />
+              <span>Leave a light on</span>
+            </button>
+          ) : dockKind === 'reveal' ? (
+            <button
+              type="button"
+              className="oh-fab oh-fab-main oh-fab-reveal"
+              onClick={() => {
+                feedback.interact();
+                onCurtainSwipe();
+                setCaption('the morning came in');
+              }}
+            >
+              <Sunrise size={19} strokeWidth={2} />
+              <span>See what they left</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="oh-fab oh-fab-main"
+              onClick={() => {
+                feedback.light();
+                setDrawerOpen(true);
+              }}
+            >
+              <Armchair size={19} strokeWidth={2} />
+              <span>Furnish</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="oh-fab oh-fab-quiet"
+            aria-label="thinking of you"
+            onClick={onCandle}
+          >
+            <Flame size={18} strokeWidth={1.9} />
+          </button>
+        </div>
+
+        {/* an empty room is an invitation, not a lack — begin with the lamp */}
+        {placedCount === 0 && !drawerOpen && !dockHidden && (
+          <div className="oh-empty-hint">
+            <span className="oh-empty-eyebrow">two sets of keys · one room</span>
+            <h2>Start with a&nbsp;lamp.</h2>
+            <p>It’s the light you’ll leave on for each other — the reason to come home.</p>
+            <span className="oh-empty-cue">tap <b>Furnish</b> and place your first one</span>
           </div>
         )}
-      </div>
 
-      {/* ─── Incoming Signals Badge ─── */}
-      {incomingSignals > 0 && (
-        <motion.button
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={() => setActiveModal('gift')}
-          className="absolute right-3 z-10 flex items-center gap-1.5 rounded-full px-2.5 py-1.5"
-          style={{ top: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', background: 'rgba(244,63,94,0.85)', backdropFilter: 'blur(12px)' }}
-        >
-          <Gift size={12} color="#fff" />
-          <span className="text-[0.68rem] font-bold text-white">{incomingSignals}</span>
-        </motion.button>
-      )}
+        {/* the furnishing drawer */}
+        <HomeFurnishDrawer
+          open={drawerOpen}
+          keptItems={keptItems}
+          onClose={() => setDrawerOpen(false)}
+          onDragNew={onDragNew}
+          onTapNew={onTapNew}
+          onDragKept={onDragKept}
+          onTapKept={onTapKept}
+        />
 
-      {/* ─── Empty Room Hint ─── */}
-      <AnimatePresence>
-        {room.placedItems.length === 0 && !activeModal && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-x-6 bottom-24 z-10 px-4 py-3 text-center"
-            style={{
-              background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
-              border: PIXEL_BORDER,
-              boxShadow: PIXEL_SHADOW,
+        {/* plaque */}
+        {plaqueObject && plaqueSku && (
+          <HomePlaque
+            object={plaqueObject}
+            sku={plaqueSku}
+            anchor={{
+              leftPct: (plaqueObject.x / SCENE_W) * 100,
+              topPct: ((plaqueObject.y - plaqueSku.h) / SCENE_H) * 100,
             }}
-          >
-            <p className="text-[0.85rem] font-extrabold" style={{ color: '#5c3d2e' }}>Your room is empty</p>
-            <p className="mt-1 text-[0.72rem] font-bold" style={{ color: '#8a6d4a' }}>Tap ✨ below to start building together</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ─── Selected Item Controls ─── */}
-      <AnimatePresence>
-        {selectedItem && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            className="absolute inset-x-3 z-10 flex items-center gap-2"
-            style={{ bottom: `calc(${NAV_CLEARANCE + 62}px + env(safe-area-inset-bottom, 0px))` }}
-          >
-            <div
-              className="min-w-0 flex-1 px-4 py-2"
-              style={{
-                background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
-                border: PIXEL_BORDER,
-                boxShadow: '2px 2px 0 #3a2518',
-              }}
-            >
-              <p className="truncate text-[0.78rem] font-extrabold" style={{ color: '#5c3d2e' }}>{selectedItemName}</p>
-            </div>
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={handleRotate}
-              className="flex h-10 w-10 items-center justify-center"
-              style={{
-                background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
-                border: PIXEL_BORDER,
-                boxShadow: '2px 2px 0 #3a2518',
-              }}
-            >
-              <RotateCw size={14} color="#5c3d2e" strokeWidth={2.5} />
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={handleRemove}
-              className="flex h-10 w-10 items-center justify-center"
-              style={{
-                background: 'linear-gradient(180deg, #f0a0a0, #d47070)',
-                border: '2px solid #7a2020',
-                boxShadow: '2px 2px 0 #5a1515',
-              }}
-            >
-              <Trash2 size={14} color="#5a1515" strokeWidth={2.5} />
-            </motion.button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ─── Backdrop (when sheet open) ─── */}
-      <AnimatePresence>
-        {activeModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-20"
-            style={{ background: 'rgba(0,0,0,0.3)' }}
-            onClick={() => setActiveModal(null)}
+            whenPhrase={provenancePhrase(plaqueObject.provenance.at, home.createdAt, now)}
+            myInk={inks.myInk}
+            nameFor={nameFor}
+            photoChoices={photoChoices}
+            onName={(nick) => commit((prev) => nameObject(prev, plaqueObject.uid, nick, myKey, new Date()))}
+            onInscribe={(text) => {
+              commit((prev) => addInscription(prev, plaqueObject.uid, text, myKey, inks.myInk, new Date()));
+              feedback.light();
+            }}
+            onPickPhoto={(memoryId) => commit((prev) => attachPhoto(prev, plaqueObject.uid, memoryId, myKey, new Date()))}
+            onStore={() => {
+              commit((prev) => storeObject(prev, plaqueObject.uid, myKey, new Date()));
+              setPlaqueUid(null);
+              setCaption('back on its shelf, story intact');
+            }}
+            onClose={() => setPlaqueUid(null)}
           />
         )}
-      </AnimatePresence>
 
-      {/* ─── Action Sheet ─── */}
-      <AnimatePresence>
-        {activeModal && (
-          <motion.div
-            key={activeModal}
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', stiffness: 420, damping: 38 }}
-            className="absolute inset-x-0 bottom-0 z-30 flex flex-col"
-            style={{
-              maxHeight: '55vh',
-              paddingBottom: `calc(${NAV_CLEARANCE + 58}px + env(safe-area-inset-bottom, 0px))`,
-            }}
-          >
-            <div
-              className="flex flex-col overflow-hidden"
-              style={{
-                background: 'linear-gradient(180deg, #faf6f0 0%, #f0e8d8 100%)',
-                flex: '1 1 auto',
-                maxHeight: '100%',
-                borderTop: PIXEL_BORDER,
-                borderLeft: PIXEL_BORDER,
-                borderRight: PIXEL_BORDER,
-                boxShadow: '0 -4px 0 #3a2518',
-              }}
-            >
-              {/* Drag handle — pixel style */}
-              <div className="flex justify-center pb-1 pt-2.5">
-                <div style={{ width: 24, height: 4, background: '#c9a06a', border: '1px solid #5c3d2e' }} />
-              </div>
-
-              {/* Tab row — pixel buttons */}
-              <div className="flex gap-1.5 px-3 pb-2">
-                {([
-                  { id: 'decorate' as const, label: 'Build' },
-                  { id: 'note' as const, label: 'Notes' },
-                  { id: 'gift' as const, label: 'Gifts' },
-                  { id: 'style' as const, label: 'Style' },
-                ] as const).map((tab) => {
-                  const isTabActive = activeModal === tab.id;
-                  const accent = actions.find(a => a.id === tab.id)?.accent || '#ff8c42';
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveModal(tab.id)}
-                      className="px-3 py-1.5 text-[0.7rem] font-extrabold uppercase tracking-wider transition-colors"
-                      style={{
-                        background: isTabActive ? accent : 'rgba(0,0,0,0.04)',
-                        color: isTabActive ? '#fff' : '#5c3d2e',
-                        border: isTabActive ? '2px solid #3a2518' : '2px solid transparent',
-                        borderRadius: 0,
-                        boxShadow: isTabActive ? '2px 2px 0 #3a2518' : 'none',
-                      }}
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Scrollable content */}
-              <div data-lenis-prevent className="lenis-inner flex-1 overflow-y-auto px-3 pb-3" style={{ scrollbarWidth: 'none' }}>
-
-                {activeModal === 'decorate' && (
-                  <div className="space-y-3">
-                    {/* Category chips */}
-                    <div data-lenis-prevent className="lenis-inner flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                      {(Object.keys(CATEGORY_LABELS) as RoomCategory[]).map((cat) => (
-                        <button
-                          key={cat}
-                          onClick={() => setCategory(cat)}
-                          className="shrink-0 px-3 py-1.5 text-[0.65rem] font-extrabold uppercase tracking-wider transition-colors"
-                          style={{
-                            background: category === cat ? categoryAccent[cat] : 'rgba(0,0,0,0.04)',
-                            color: category === cat ? '#fff' : '#5c3d2e',
-                            border: category === cat ? '2px solid #3a2518' : '2px solid transparent',
-                            borderRadius: 0,
-                            boxShadow: category === cat ? '2px 2px 0 #3a2518' : 'none',
-                          }}
-                        >
-                          {CATEGORY_LABELS[cat]}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Stats + milestone hint */}
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-[0.68rem]" style={{ color: softText }}>
-                        {room.placedItems.length}/{MAX_PLACED_ITEMS} placed
-                      </span>
-                      {upcomingMilestones[0] && (
-                        <span className="text-[0.68rem]" style={{ color: softText }}>
-                          Next: {ROOM_SHOP_BY_ID[upcomingMilestones[0].itemId]?.name || upcomingMilestones[0].title}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Item grid. (Removed content-visibility:auto with a 0-width
-                        contain-intrinsic-size — a 0 axis collapses the grid to zero
-                        then snaps back on scroll = "the grid disappears for a
-                        second". The shop list is small, so always-rendering it is
-                        cheap.) */}
-                    <div
-                      className="grid grid-cols-3 gap-2 sm:grid-cols-4"
-                    >
-                      {shopItems.map(({ item, locked }) => (
-                        <motion.button
-                          key={item.id}
-                          whileTap={{ scale: locked ? 1 : 0.96 }}
-                          onClick={() => !locked && handlePlace(item.id)}
-                          disabled={locked || !canPlaceItem(room)}
-                          className="relative overflow-hidden rounded-2xl p-2 text-left"
-                          style={{
-                            background: locked ? 'rgba(0,0,0,0.02)' : '#fff',
-                            border: '1.5px solid rgba(0,0,0,0.06)',
-                            opacity: locked ? 0.5 : 1,
-                          }}
-                        >
-                          <div className="rounded-xl p-1" style={{ background: `${item.color}12` }}>
-                            <div className="h-14">
-                              <CatalogArtwork item={item} />
-                            </div>
-                          </div>
-                          <p className="mt-1 truncate text-[0.68rem] font-bold" style={{ color: strongText }}>
-                            {item.name}
-                          </p>
-                          {locked && <Lock size={10} className="absolute right-1.5 top-1.5" color={softText} />}
-                        </motion.button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeModal === 'note' && (
-                  <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <textarea
-                        value={noteText}
-                        onChange={(event) => setNoteText(event.target.value)}
-                        placeholder={`A note for ${profile.partnerName}...`}
-                        maxLength={200}
-                        rows={2}
-                        inputMode="text"
-                        enterKeyHint="send"
-                        autoCapitalize="sentences"
-                        autoCorrect="on"
-                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[16px] outline-none"
-                        style={{ color: strongText, border: '1.5px solid rgba(0,0,0,0.08)' }}
-                      />
-                      <motion.button
-                        whileTap={{ scale: 0.92 }}
-                        onClick={handleAddNote}
-                        disabled={!noteText.trim()}
-                        className="self-end rounded-xl p-2.5"
-                        style={{ background: noteText.trim() ? '#ef5da8' : '#e0d8d0', color: '#fff' }}
-                      >
-                        <Send size={14} />
-                      </motion.button>
-                    </div>
-
-                    {visibleRoomNotes.length === 0 && (
-                      <p className="px-1 text-[0.72rem]" style={{ color: softText }}>
-                        Notes appear here. Leave something warm.
-                      </p>
-                    )}
-
-                    {visibleRoomNotes.map((note) => (
-                      <div key={note.id} className="rounded-xl px-3 py-2.5" style={{ background: note.color || '#fff5e6', border: '1.5px solid rgba(0,0,0,0.05)' }}>
-                        <p className="text-[0.78rem] leading-relaxed" style={{ color: strongText }}>{note.text}</p>
-                        <div className="mt-1.5 flex items-center justify-between">
-                          <span className="text-[0.65rem]" style={{ color: softText }}>
-                            {note.author} • {formatRelativeTime(note.createdAt)}
-                          </span>
-                          <button
-                            onClick={() => handleRemoveNote(note.id)}
-                            className="p-1 opacity-40 hover:opacity-100"
-                          >
-                            <X size={11} color={softText} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {activeModal === 'gift' && (
-                  <div className="space-y-3">
-                    {/* Unopened gifts */}
-                    {unopenedGifts.map((gift) => (
-                      <div
-                        key={gift.id}
-                        className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                        style={{ background: 'rgba(16,185,129,0.08)', border: '1.5px solid rgba(16,185,129,0.15)' }}
-                      >
-                        <span className="text-xl">{gift.emoji}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[0.78rem] font-bold" style={{ color: strongText }}>From {gift.from}</p>
-                          <p className="truncate text-[0.7rem]" style={{ color: softText }}>{gift.message}</p>
-                        </div>
-                        <button
-                          onClick={() => handleOpenGift(gift.id)}
-                          className="shrink-0 rounded-full bg-emerald-500 px-3 py-1 text-[0.68rem] font-bold text-white"
-                        >
-                          Open
-                        </button>
-                      </div>
-                    ))}
-
-                    {/* Emoji picker row */}
-                    <div data-lenis-prevent className="lenis-inner flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                      {GIFT_EMOJIS.map((emoji) => {
-                        const active = giftEmoji === emoji;
-                        return (
-                          <button
-                            key={emoji}
-                            onClick={() => setGiftEmoji(emoji)}
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg transition-transform"
-                            style={{
-                              background: active ? (giftOptionMeta[emoji]?.tint || '#f9a8d4') : 'rgba(0,0,0,0.04)',
-                              border: active ? '2px solid rgba(0,0,0,0.08)' : '2px solid transparent',
-                              transform: active ? 'scale(1.15)' : 'scale(1)',
-                            }}
-                          >
-                            {emoji}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Message + send */}
-                    <div className="flex gap-2">
-                      <textarea
-                        value={giftMsg}
-                        onChange={(event) => setGiftMsg(event.target.value)}
-                        placeholder={`Message for ${profile.partnerName}...`}
-                        maxLength={200}
-                        rows={2}
-                        inputMode="text"
-                        enterKeyHint="send"
-                        autoCapitalize="sentences"
-                        autoCorrect="on"
-                        className="flex-1 resize-none rounded-xl bg-white px-3 py-2 text-[16px] outline-none"
-                        style={{ color: strongText, border: '1.5px solid rgba(0,0,0,0.08)' }}
-                      />
-                      <motion.button
-                        whileTap={{ scale: 0.92 }}
-                        onClick={handleSendGift}
-                        disabled={!giftMsg.trim()}
-                        className="self-end rounded-xl p-2.5"
-                        style={{ background: giftMsg.trim() ? '#4cc98b' : '#e0d8d0', color: '#fff' }}
-                      >
-                        <Gift size={14} />
-                      </motion.button>
-                    </div>
-                  </div>
-                )}
-
-                {activeModal === 'style' && (
-                  <div className="space-y-4">
-                    {/* Walls */}
-                    <div>
-                      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-wider" style={{ color: softText }}>Walls</p>
-                      <div data-lenis-prevent className="lenis-inner flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                        {WALLPAPER_OPTIONS.map((opt) => {
-                          const active = room.wallpaper === opt.value;
-                          return (
-                            <button key={opt.value} onClick={() => applyTheme('wallpaper', opt.value)} className="shrink-0">
-                              <div
-                                className="h-14 w-14 rounded-xl transition-transform"
-                                style={{
-                                  background: opt.swatch,
-                                  border: active ? '3px solid #ef5da8' : '2px solid rgba(0,0,0,0.06)',
-                                  transform: active ? 'scale(1.12)' : 'scale(1)',
-                                }}
-                              />
-                              <p className="mt-1 text-center text-[0.58rem] font-semibold" style={{ color: active ? strongText : softText }}>
-                                {opt.label}
-                              </p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Floor */}
-                    <div>
-                      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-wider" style={{ color: softText }}>Floor</p>
-                      <div data-lenis-prevent className="lenis-inner flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                        {FLOOR_OPTIONS.map((opt) => {
-                          const active = room.floor === opt.value;
-                          return (
-                            <button key={opt.value} onClick={() => applyTheme('floor', opt.value)} className="shrink-0">
-                              <div
-                                className="h-14 w-14 rounded-xl transition-transform"
-                                style={{
-                                  background: opt.swatch,
-                                  border: active ? '3px solid #3b82f6' : '2px solid rgba(0,0,0,0.06)',
-                                  transform: active ? 'scale(1.12)' : 'scale(1)',
-                                }}
-                              />
-                              <p className="mt-1 text-center text-[0.58rem] font-semibold" style={{ color: active ? strongText : softText }}>
-                                {opt.label}
-                              </p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Lighting */}
-                    <div>
-                      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-wider" style={{ color: softText }}>Lighting</p>
-                      <div data-lenis-prevent className="lenis-inner flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                        {AMBIENT_OPTIONS.map((opt) => {
-                          const active = room.ambient === opt.value;
-                          return (
-                            <button key={opt.value} onClick={() => applyTheme('ambient', opt.value)} className="shrink-0">
-                              <div
-                                className="h-14 w-14 rounded-full transition-transform"
-                                style={{
-                                  background: opt.color,
-                                  border: active ? `3px solid ${opt.color}` : '2px solid rgba(0,0,0,0.06)',
-                                  boxShadow: active ? `0 0 16px ${opt.color}55` : 'none',
-                                  transform: active ? 'scale(1.12)' : 'scale(1)',
-                                }}
-                              />
-                              <p className="mt-1 text-center text-[0.58rem] font-semibold" style={{ color: active ? strongText : softText }}>
-                                {opt.label}
-                              </p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
+        {/* note composer / reader */}
+        {composing && (
+          <HomeNoteComposer
+            ink={inks.myInk}
+            onDone={onNoteDone}
+            onCancel={() => setComposing(false)}
+          />
         )}
-      </AnimatePresence>
-
-      {/* ─── Pixel Action Toolbar ─── */}
-      <div
-        className="fixed inset-x-0 z-[55] flex justify-center pointer-events-none"
-        style={{ bottom: `calc(${NAV_CLEARANCE}px + env(safe-area-inset-bottom, 0px))` }}
-      >
-        <div
-          className="pointer-events-auto flex items-stretch"
-          style={{
-            background: 'linear-gradient(180deg, #f2d4a0 0%, #dbb580 60%, #c9a06a 100%)',
-            border: PIXEL_BORDER,
-            boxShadow: PIXEL_SHADOW,
-            borderRadius: 0,
-            imageRendering: 'pixelated',
-          }}
-        >
-          {actions.map((action, i) => {
-            const isActive = action.modal ? activeModal === action.modal : false;
-            return (
-              <motion.button
-                key={action.id}
-                whileTap={{ scale: 0.92 }}
-                onClick={() => {
-                  if (action.modal) {
-                    setActiveModal(activeModal === action.modal ? null : action.modal);
-                  } else {
-                    action.onClick?.();
-                  }
-                }}
-                className="relative flex flex-col items-center justify-center gap-0.5 outline-none touch-manipulation select-none"
-                style={{
-                  width: 56,
-                  height: 52,
-                  background: isActive
-                    ? 'linear-gradient(180deg, #ffe8c2 0%, #f5d09a 100%)'
-                    : 'transparent',
-                  borderRight: i < actions.length - 1 ? '2px solid #5c3d2e' : 'none',
-                  boxShadow: isActive ? 'inset 0 -3px 0 #b8883e' : 'inset 0 -2px 0 #c9a06a',
-                }}
-              >
-                <div style={{ color: isActive ? action.accent : '#5c3d2e' }}>
-                  {React.cloneElement(action.icon, { size: 18, strokeWidth: 2.5 })}
-                </div>
-                <span
-                  style={{
-                    fontSize: '0.55rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase' as const,
-                    color: isActive ? action.accent : '#5c3d2e',
-                    lineHeight: 1,
-                  }}
-                >
-                  {action.label}
-                </span>
-                {isActive && (
-                  <div
-                    className="absolute -top-1 left-1/2 -translate-x-1/2"
-                    style={{
-                      width: 6, height: 6,
-                      background: action.accent,
-                      border: '1px solid #5c3d2e',
-                    }}
-                  />
-                )}
-              </motion.button>
-            );
-          })}
-        </div>
+        {readerNote && (
+          <HomeNoteReader
+            note={readerNote}
+            fromLine={`from ${nameFor(readerNote.by)} · ${coarsePhrase(readerNote.at, now) ?? 'a while ago'}`}
+            mine={readerNote.by === myKey}
+            onKeep={() => {
+              commit((prev) => peelNote(prev, readerNote.id, new Date()));
+              setReaderNoteId(null);
+              setCaption('kept — it lives in the shoebox now');
+              feedback.confirm();
+            }}
+            onFlutter={() => {
+              commit((prev) => flutterNote(prev, readerNote.id, new Date()));
+              setReaderNoteId(null);
+            }}
+            onClose={() => setReaderNoteId(null)}
+          />
+        )}
       </div>
-
-      {/* ─── Toast ─── */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -14 }}
-            className="absolute left-1/2 z-[90] -translate-x-1/2 px-4 py-2"
-            style={{
-              top: 'calc(max(12px, env(safe-area-inset-top)) + 48px)',
-              background: 'linear-gradient(180deg, #f2d4a0, #dbb580)',
-              border: PIXEL_BORDER,
-              boxShadow: '2px 2px 0 #3a2518',
-            }}
-          >
-            <span className="text-[0.72rem] font-extrabold" style={{ color: '#5c3d2e' }}>{toast}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

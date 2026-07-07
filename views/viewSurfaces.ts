@@ -38,8 +38,10 @@ export const VIEW_SURFACES: Partial<Record<ViewState, string>> = {
   premium: '#0a0712',
   // Quiet Mode's full-screen dialog base.
   'quiet-mode': '#050308',
-  // OUR HOME's night-room base (views/OurRoom.tsx root).
-  'our-room': '#0f1219',
+  // OUR HOME's ivory-blush sky — same stops as .oh-view (styles/our-home.css)
+  // so the safe-area gutters continue the room's light seamlessly.
+  'our-room':
+    'radial-gradient(120% 80% at 50% 34%, #fdf5eb 0%, #f7e7d9 46%, #eed5c3 78%, #e4c4ac 100%)',
   // Bonsai's dawn gradient — same stops as the view root so the top/bottom
   // gutters continue the page's sky instead of snapping to pink.
   'bonsai-bloom':

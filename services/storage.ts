@@ -1,10 +1,10 @@
-import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, CoupleRoomState, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem, DailyDrop, DropResponse, DropType } from '../types';
+import { Memory, Note, SpecialDate, Envelope, UserStatus, DailyPhoto, DinnerOption, CoupleProfile, PetStats, Keepsake, Comment, MoodEntry, StreakData, QuestionEntry, RoomState, UsBucketItem, UsWishlistItem, UsMilestone, TimeCapsule, Surprise, VoiceNote, PrivateSpaceItem, DailyDrop, DropResponse, DropType } from '../types';
 import { buildDailyDrop, nextLocalMidnightIso, isDropComplete, DROP_META, type DropBuildContext } from '../utils/dropEngine';
 import { LruStringCache } from '../utils/lruCache';
 import { SupabaseService } from './supabase';
 import { MediaStorageService, compressImage } from './mediaStorage';
-import { DEFAULT_ROOM_STATE, normalizeRoomState } from '../components/room/roomGameplay';
-import { normalizeCoupleRoom, migrateFromOldRoom } from '../components/room/roomSoul';
+import { normalizeOurHome, mergeOurHome, defaultOurHome } from '../components/our-home/homeSoulCore';
+import type { OurHomeState } from '../components/our-home/homeTypes';
 import { isDailyMomentExpired } from '../shared/mediaRetention.js';
 import { daysTogetherFrom, parseStoredDateOnly } from '../shared/dateOnly.js';
 import { DAILY_POOL } from '../content/dailyPrompts';
@@ -554,9 +554,6 @@ const SANITIZED_TEXT_KEYS = new Set([
     'name'
 ]);
 
-const ROOM_WALLPAPERS = new Set(['plain', 'stripes', 'polka', 'hearts', 'stars', 'wood']);
-const ROOM_FLOORS = new Set(['hardwood', 'carpet', 'tiles', 'cloud', 'grass', 'marble']);
-const ROOM_AMBIENTS = new Set(['warm', 'cool', 'rainbow']);
 const COUPLE_ROOM_KEY = 'lior_couple_room_v2';
 // sessionStorage key for a pair-invite code captured from a deep link before
 // the receiver has signed in. Consumed on the next authenticated session.
@@ -589,36 +586,8 @@ const CONTENT_SINGLETON_KEYS = [
     COUPLE_ROOM_KEY,
 ];
 const CONTENT_LEGACY_MIRROR_KEYS = ['lior_bucket', 'lior_wishlist', 'lior_milestones', 'lior_room_state'];
-const LEGACY_ROOM_ITEM_MAP: Record<string, string> = {
-    frame: 'photo_frames',
-    candle: 'candle_cluster',
-    sofa: 'fluffy_couch',
-    lamp: 'floor_lamp',
-    plant: 'succulent_set',
-    table: 'coffee_table_round',
-    tv: 'tv_stand_screen',
-    books: 'book_stack',
-    rug: 'throw_blanket',
-    bed: 'double_bed',
-    piano: 'record_player',
-    blossom: 'flower_bouquet',
-    crystal: 'portal_door',
-    cat: 'cute_robot',
-};
-
-const toLegacyRoomState = (room: Partial<CoupleRoomState>): RoomState => normalizeRoomState({
-    placedItems: Array.isArray(room?.placedItems)
-        ? room.placedItems.map((item: any) => ({
-            ...item,
-            itemId: LEGACY_ROOM_ITEM_MAP[item.itemId] || item.itemId || 'fluffy_couch'
-        }))
-        : [],
-    coins: 500,
-    roomName: room.roomName || 'Our Room',
-    wallpaper: ROOM_WALLPAPERS.has(String(room.wallpaper)) ? room.wallpaper as any : 'plain',
-    floor: ROOM_FLOORS.has(String(room.floor)) ? room.floor as any : 'carpet',
-    ambient: ROOM_AMBIENTS.has(String(room.ambient)) ? room.ambient as any : 'warm',
-});
+// The v3 Our Home state shares nothing with the v1 room decorator; the legacy
+// mirror keys are no longer written (nothing reads them).
 
 const backupCurrentContentForAccount = (userId: string | null) => {
     if (!userId) return;
@@ -2336,19 +2305,28 @@ export const StorageService = {
                 notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton' });
             }
         } else if (table === 'our_room_state') {
-            const sanitized = sanitizeUserContent(item);
-            const nextCoupleRoom = Array.isArray((sanitized as any)?.notes) || Array.isArray((sanitized as any)?.gifts)
-                ? normalizeCoupleRoom(sanitized as Partial<CoupleRoomState>)
-                : migrateFromOldRoom(sanitized);
-            const legacyMirror = toLegacyRoomState(nextCoupleRoom);
+            // Two hands, one room: NEVER accept the cloud snapshot wholesale.
+            // Merge per-item (latest-touch wins, tombstones honoured) so a
+            // partner's concurrent rearranging can't clobber local changes.
+            const incoming = normalizeOurHome(sanitizeUserContent(item));
+            const local = StorageService.getCoupleRoomState();
+            const merged = mergeOurHome(local, incoming);
 
-            localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(nextCoupleRoom));
-            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
-            localStorage.setItem('lior_room_state', JSON.stringify(legacyMirror));
-            await writeRaw(STORES.DATA, COUPLE_ROOM_KEY, nextCoupleRoom);
-            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
+            try {
+                localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(merged));
+            } catch {
+                // quota — IndexedDB below remains the durable copy
+            }
+            await writeRaw(STORES.DATA, COUPLE_ROOM_KEY, merged);
 
-            notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton', item: nextCoupleRoom });
+            notifyUpdate({ source: 'sync', action: 'save', table, id: 'singleton', item: merged });
+
+            // Converge: if we held changes the incoming snapshot lacked
+            // (cross-device offline edits), push the merged superset back.
+            // The merge is idempotent, so this ping-pong settles in one round.
+            if (JSON.stringify(merged) !== JSON.stringify(incoming)) {
+                StorageService.saveCoupleRoomState(merged, 'user');
+            }
         }
     },
 
@@ -2393,13 +2371,13 @@ export const StorageService = {
             localStorage.removeItem(CACHE_KEYS.TOGETHER_MUSIC_META);
             notifyUpdate({ source: 'sync', action: 'delete', table, id });
         } else if (table === 'our_room_state') {
-            const defaultCoupleRoom = normalizeCoupleRoom();
-            const legacyMirror = toLegacyRoomState(defaultCoupleRoom);
-            localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(defaultCoupleRoom));
-            localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
-            localStorage.setItem('lior_room_state', JSON.stringify(legacyMirror));
+            const defaultCoupleRoom = normalizeOurHome(defaultOurHome());
+            try {
+                localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(defaultCoupleRoom));
+            } catch {
+                // quota — IndexedDB below remains the durable copy
+            }
             await writeRaw(STORES.DATA, COUPLE_ROOM_KEY, defaultCoupleRoom);
-            await writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
             notifyUpdate({ source: 'sync', action: 'delete', table, id: 'singleton' });
         }
     },
@@ -3040,86 +3018,29 @@ export const StorageService = {
         StorageService.saveCoupleProfile(profile);
     },
 
-    getRoomState: (): RoomState => {
-        const fallback: RoomState = DEFAULT_ROOM_STATE;
-        try {
-            const raw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('lior_room_state');
-            if (!raw) {
-                const coupleRaw = localStorage.getItem(COUPLE_ROOM_KEY);
-                if (!coupleRaw) return fallback;
-                return toLegacyRoomState(JSON.parse(coupleRaw));
-            }
-            const parsed = JSON.parse(raw) as Partial<RoomState> & { furniture?: any[] };
-            const legacyFurniture = Array.isArray(parsed.furniture) ? parsed.furniture : [];
-            const migratedPlaced = legacyFurniture.map((f: any, idx: number) => ({
-                uid: f.uid || crypto.randomUUID(),
-                itemId: LEGACY_ROOM_ITEM_MAP[f.itemId] || f.itemId || 'fluffy_couch',
-                x: Math.max(8, Math.min(92, 18 + ((f.gx ?? 0) * 12))),
-                y: Math.max(12, Math.min(90, 20 + ((f.gy ?? 0) * 10))),
-                z: idx,
-                placedBy: f.placedBy || '',
-            }));
-            return normalizeRoomState({
-                placedItems: Array.isArray(parsed.placedItems)
-                    ? parsed.placedItems.map((it: any) => ({ ...it, itemId: LEGACY_ROOM_ITEM_MAP[it.itemId] || it.itemId || 'fluffy_couch' }))
-                    : migratedPlaced,
-                coins: Number.isFinite(parsed.coins) ? Number(parsed.coins) : 500,
-                love: Number.isFinite((parsed as any).love) ? Number((parsed as any).love) : fallback.love,
-                stars: Number.isFinite((parsed as any).stars) ? Number((parsed as any).stars) : fallback.stars,
-                xp: Number.isFinite((parsed as any).xp) ? Number((parsed as any).xp) : fallback.xp,
-                roomXp: Number.isFinite((parsed as any).roomXp) ? Number((parsed as any).roomXp) : fallback.roomXp,
-                bondXp: Number.isFinite((parsed as any).bondXp) ? Number((parsed as any).bondXp) : fallback.bondXp,
-                roomName: parsed.roomName || 'P1 Room',
-                wallpaper: ROOM_WALLPAPERS.has(String(parsed.wallpaper)) ? parsed.wallpaper : 'plain',
-                floor: ROOM_FLOORS.has(String(parsed.floor)) ? parsed.floor : 'carpet',
-                ambient: ROOM_AMBIENTS.has(String(parsed.ambient)) ? parsed.ambient : 'warm',
-                lastActiveAt: (parsed as any).lastActiveAt,
-                lastIdleClaimAt: (parsed as any).lastIdleClaimAt,
-                purchaseCounts: (parsed as any).purchaseCounts,
-                upgrades: (parsed as any).upgrades,
-                daily: (parsed as any).daily,
-                stats: (parsed as any).stats,
-                unlockedThemes: (parsed as any).unlockedThemes,
-            });
-        } catch {
-            return fallback;
-        }
-    },
+    // getRoomState/saveRoomState (the v1 coins-era room) had no callers left;
+    // they were removed with the Our Home rebuild so the old catalog no longer
+    // rides in the hot storage chunk.
 
-    saveRoomState: (state: RoomState, source: 'user' | 'sync' = 'user'): void => {
-        const nextState = sanitizeUserContent(normalizeRoomState(state));
-        localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(nextState));
-        localStorage.setItem('lior_room_state', JSON.stringify(nextState)); // legacy key mirror
-        writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, nextState);
-        notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
-    },
-
-    getCoupleRoomState: (): CoupleRoomState => {
+    getCoupleRoomState: (): OurHomeState => {
         try {
             const raw = localStorage.getItem(COUPLE_ROOM_KEY);
-            if (raw) return normalizeCoupleRoom(JSON.parse(raw));
-
-            // Legacy Migration: If v2 doesn't exist, try to migrate from v1
-            const oldRaw = localStorage.getItem(CACHE_KEYS.OUR_ROOM_STATE) || localStorage.getItem('lior_room_state');
-            if (oldRaw) {
-                const migrated = migrateFromOldRoom(JSON.parse(oldRaw));
-                localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(migrated));
-                writeRaw(STORES.DATA, COUPLE_ROOM_KEY, migrated);
-                return migrated;
-            }
+            // normalizeOurHome migrates v2 (placedItems/gifts era) in place;
+            // typed notes survive into the shoebox, history is never deleted.
+            if (raw) return normalizeOurHome(JSON.parse(raw));
         } catch {}
-        return normalizeCoupleRoom();
+        return normalizeOurHome();
     },
 
 
-    saveCoupleRoomState: (state: CoupleRoomState, source: 'user' | 'sync' = 'user'): void => {
-        const nextState = sanitizeUserContent(normalizeCoupleRoom(state));
-        const legacyMirror = toLegacyRoomState(nextState);
-        localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(nextState));
-        localStorage.setItem(CACHE_KEYS.OUR_ROOM_STATE, JSON.stringify(legacyMirror));
-        localStorage.setItem('lior_room_state', JSON.stringify(legacyMirror));
+    saveCoupleRoomState: (state: OurHomeState, source: 'user' | 'sync' = 'user'): void => {
+        const nextState = normalizeOurHome(sanitizeUserContent(state));
+        try {
+            localStorage.setItem(COUPLE_ROOM_KEY, JSON.stringify(nextState));
+        } catch {
+            // quota — IndexedDB below remains the durable copy
+        }
         writeRaw(STORES.DATA, COUPLE_ROOM_KEY, nextState);
-        writeRaw(STORES.DATA, CACHE_KEYS.OUR_ROOM_STATE, legacyMirror);
         notifyUpdate({ source, action: 'save', table: 'our_room_state', id: 'singleton', item: nextState });
     },
 
