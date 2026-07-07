@@ -7,6 +7,7 @@ import {
 import { StorageService } from '../services/storage';
 import { NotificationsService } from '../services/notifications';
 import { Haptics } from '../services/haptics';
+import { Analytics } from '../services/analytics';
 import { dateInputValueToStoredDate, daysTogetherFrom, parseStoredDateOnly, todayInputValue } from '../shared/dateOnly.js';
 import '../styles/onboarding.css';
 
@@ -451,6 +452,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onPairNow })
         }
 
         StorageService.markOnboardingComplete();
+        Analytics.track('onboarding_complete');
     };
 
     // Resolve today's ritual question only when reaching that step, so the text

@@ -44,6 +44,8 @@ import { Haptics } from './services/haptics';
 import { Audio } from './services/audio';
 import { DiagnosticsService } from './services/diagnostics';
 import { remoteErrorSink } from './services/errorSink';
+import { Analytics } from './services/analytics';
+import { initObservability } from './services/observability';
 import { FrameHealthService } from './services/frameHealth';
 import { NotificationsService } from './services/notifications';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'; // Added for AuraSignalReceiver
@@ -738,6 +740,11 @@ const App = () => {
     DiagnosticsService.setRemoteSink(remoteErrorSink);
     DiagnosticsService.start();
     FrameHealthService.start();
+    // Telemetry (all no-op unless the relevant env keys are set): crash
+    // monitoring (Sentry) + product analytics (PostHog + first-party app_events).
+    initObservability();
+    Analytics.init();
+    Analytics.track('app_open', { reason: 'launch' });
   }, []);
 
   useEffect(() => {
@@ -1170,6 +1177,7 @@ const App = () => {
     // the offline outbox. This is what keeps the app feeling live after reopen.
     removeResumeListener = NativeShellService.onResume(() => {
       const shell = NativeShellService.getState();
+      Analytics.track('app_open', { reason: 'resume' });
       if (shell.isOnline) {
         void SyncService.resume();
       }

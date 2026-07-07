@@ -5,6 +5,7 @@ import { CoupleProfile } from '../types';
 import { StorageService } from '../services/storage';
 import { NotificationsService } from '../services/notifications';
 import { getRitualStreak, getTodayPair, getTodayPairLocal, submitAnswer, type DailyPair } from '../services/dailyRitual';
+import { Analytics } from '../services/analytics';
 import { syncEventTarget } from '../services/sync';
 import { Haptics } from '../services/haptics';
 import { Audio } from '../services/audio';
@@ -199,6 +200,7 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({ profile, onUpdate 
         void (async () => {
             const res = await submitAnswer(answer, ctx);
             if (res.usedCloud) StorageService.setRitualCloudActive(true);
+            Analytics.track('ritual_completed');
             // Re-fetch the canonical pair so `revealed`/`partnerAnswer` reflect
             // the sealed-reveal outcome (server-side in cloud mode, local
             // otherwise). Setting `pair` to a revealed state drives the

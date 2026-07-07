@@ -17,8 +17,14 @@
   <!-- Theme-color blends Android Chrome address bar + nav bar with the app background -->
   <meta name="theme-color" content="#F8E7EC" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1A0F14" media="(prefers-color-scheme: dark)">
+  <!-- Analytics/crash hosts (PostHog + Sentry) are allowlisted so the optional,
+       env-gated loaders in services/analytics.ts + services/observability.ts can
+       fetch their SDKs and send events. They are inert unless VITE_POSTHOG_KEY /
+       VITE_SENTRY_DSN are set at build time — no traffic goes anywhere without a
+       key. Tighten `script-src` back to 'self' if you reverse-proxy PostHog and
+       switch Sentry to the bundled @sentry/capacitor SDK. -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com https://lior-media.joinlior.workers.dev; media-src 'self' data: blob: https://*.supabase.co https://lior-media.joinlior.workers.dev; worker-src 'self' blob:;">
+    content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://*.posthog.com https://*.i.posthog.com https://*.sentry-cdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com https://lior-media.joinlior.workers.dev https://*.posthog.com https://*.i.posthog.com https://*.sentry.io; media-src 'self' data: blob: https://*.supabase.co https://lior-media.joinlior.workers.dev; worker-src 'self' blob:;">
   <link rel="manifest" href="/manifest.json">
 
   <!-- E2E only: hidden windows freeze requestAnimationFrame, which stalls

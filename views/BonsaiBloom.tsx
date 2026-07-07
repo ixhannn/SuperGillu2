@@ -7,7 +7,8 @@ import { BonsaiShareService } from '../services/bonsaiShare';
 import { NotificationsService } from '../services/notifications';
 import { StorageService } from '../services/storage';
 import { syncEventTarget } from '../services/sync';
-import { canPlantNext, computeGarden, computeTreeState, daysBetween, seasonFor } from '../utils/bonsai/growth';
+import { canPlantNext, computeGarden, computeTreeState, seasonFor } from '../utils/bonsai/growth';
+import { daysTogetherFrom } from '../shared/dateOnly.js';
 import { createBonsaiShareCard } from '../utils/bonsai/shareCard';
 import { BONSAI_SPECIES, type BonsaiSpeciesId } from '../utils/bonsai/voxelModel';
 import type { BlossomNote, BonsaiEvent } from '../utils/bonsai/types';
@@ -323,7 +324,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
   const segment = garden.currentEvents;
   const firstDay = segment.length > 0 ? segment.reduce((min, e) => (e.day < min ? e.day : min), segment[0].day) : null;
-  const treeAge = firstDay ? daysBetween(firstDay, today) + 1 : 0;
+  const treeAge = firstDay ? daysTogetherFrom(firstDay, today) + 1 : 0;
   const sky = skyPhaseFor(hour);
   const night = sky === 'night';
 
@@ -380,7 +381,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
   const bloomedToday = tree.wateredTodayByMe && tree.wateredTodayByPartner;
   const rainedYesterday = tree.rainDays.length > 0
     && tree.streak > 0
-    && daysBetween(tree.rainDays[tree.rainDays.length - 1], today) <= 2;
+    && daysTogetherFrom(tree.rainDays[tree.rainDays.length - 1], today) <= 2;
 
   return (
     <div

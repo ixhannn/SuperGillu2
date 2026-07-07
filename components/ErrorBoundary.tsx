@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Heart, RefreshCw } from 'lucide-react';
 import { DiagnosticsService } from '../services/diagnostics';
+import { captureException } from '../services/observability';
 
 interface Props {
     children: ReactNode;
@@ -26,6 +27,10 @@ export class ErrorBoundary extends Component<Props, State> {
         DiagnosticsService.recordError('react.boundary', error, {
             componentStack: info.componentStack,
         });
+        // Forward to Sentry too (no-op unless VITE_SENTRY_DSN is set). React
+        // render errors don't reach window.onerror, so Sentry misses them
+        // without this explicit capture.
+        captureException(error, { componentStack: info.componentStack });
     }
 
     private handleReset = () => {

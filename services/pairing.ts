@@ -7,6 +7,7 @@
 
 import { SupabaseService } from './supabase';
 import { StorageService } from './storage';
+import { Analytics } from './analytics';
 
 export interface PairInvite {
   code: string;
@@ -87,7 +88,9 @@ export const PairingService = {
       forceRotate: options?.forceRotate,
       displayName: profile.myName,
     });
-    return toInvite(row);
+    const invite = toInvite(row);
+    if (invite) Analytics.track('pair_invite_sent');
+    return invite;
   },
 
   async claimInvite(raw: string): Promise<ClaimResult> {
@@ -116,6 +119,7 @@ export const PairingService = {
     }
 
     if (!row.couple_id || !row.partner_user_id) return { ok: false, error: 'network' };
+    Analytics.track('pair_joined');
     return {
       ok: true,
       coupleId: row.couple_id,
