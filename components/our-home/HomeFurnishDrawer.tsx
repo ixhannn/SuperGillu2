@@ -58,7 +58,15 @@ interface CardPointerHandlers {
   onPointerCancel: () => void;
 }
 
-/** Tap = place mid-room; a real drag hands the piece to the scene. */
+/** Tap = place mid-room; a real drag hands the piece to the scene.
+ *
+ *  TOUCH: the cards live inside the drawer's vertical scroller, so a finger
+ *  moving mostly UP/DOWN must mean "scroll the list" — the cards' CSS
+ *  `touch-action: pan-y` lets the browser own that gesture natively (our
+ *  handler then receives pointercancel). Only a clearly SIDEWAYS pull lifts
+ *  the piece out of the drawer; once the gesture starts horizontal, the
+ *  browser stays out of it and the whole carry belongs to us. Without this
+ *  split, every scroll attempt on a phone grabbed furniture instead. */
 const useCardGesture = (
   onDrag: (e: React.PointerEvent) => void,
   onTap: () => void,
@@ -71,7 +79,21 @@ const useCardGesture = (
     onPointerMove: (e) => {
       const s = start.current;
       if (!s || e.pointerId !== s.id) return;
-      if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > DRAG_SLOP) {
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      if (e.pointerType === 'touch') {
+        // vertical intent → the list scroll (native, via touch-action: pan-y)
+        if (Math.abs(dy) > DRAG_SLOP && Math.abs(dy) >= Math.abs(dx)) {
+          start.current = null;
+          return;
+        }
+        if (Math.abs(dx) > DRAG_SLOP && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          start.current = null;
+          onDrag(e);
+        }
+        return;
+      }
+      if (Math.hypot(dx, dy) > DRAG_SLOP) {
         start.current = null;
         onDrag(e);
       }

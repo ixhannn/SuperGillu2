@@ -40,7 +40,13 @@ const NUDGE_MS = 4000;
 const NUDGE_COMMIT_MS = 220;
 const NUDGE_START_REACH = 110;
 const SLOP = 8;
+/** Fingers jitter far more than mice — on touch, taps and holds get extra
+ *  room before they're read as movement, or the room feels twitchy. */
+const TOUCH_SLOP = 15;
 const CARRY_RISE = 56;
+
+const slopFor = (pointerType: string): number =>
+  (pointerType === 'touch' ? TOUCH_SLOP : SLOP);
 
 export interface PlacementCallbacks {
   onCommit: (uid: string, spot: CommitSpot) => void;
@@ -99,6 +105,8 @@ interface PressTracking {
   fromCupboard: boolean;
   lastSeatId: string | null;
   vx: number;
+  /** Movement tolerance for tap/hold decisions — wider for touch. */
+  slop: number;
 }
 
 export const useHomePlacement = ({
@@ -220,6 +228,7 @@ export const useHomePlacement = ({
       fromCupboard: false,
       lastSeatId: obj.seatId ?? null,
       vx: 0,
+      slop: slopFor(e.pointerType),
     };
     clearAllTimers();
     timers.current.lift = window.setTimeout(() => {
@@ -235,7 +244,7 @@ export const useHomePlacement = ({
       timers.current.plaque = window.setTimeout(() => {
         const pp = press.current;
         if (!pp || pp.uid !== uid) return;
-        if (Math.hypot(pp.lastX - pp.liftX, pp.lastY - pp.liftY) < SLOP) {
+        if (Math.hypot(pp.lastX - pp.liftX, pp.lastY - pp.liftY) < pp.slop) {
           press.current = null;
           setCarry(null);
           clearAllTimers();
@@ -275,6 +284,7 @@ export const useHomePlacement = ({
       fromCupboard: true,
       lastSeatId: null,
       vx: 0,
+      slop: slopFor(e.pointerType),
     };
     // one continuous gesture: it scales up along the drag, already held
     beginCarry(uid, sku, x, y, true);
@@ -310,6 +320,7 @@ export const useHomePlacement = ({
       fromCupboard: true,
       lastSeatId: null,
       vx: 0,
+      slop: slopFor(e.pointerType),
     };
     beginCarry(phantom, sku, x, y, true);
   }, [resolveSku, toScene, beginCarry, captureOnSvg, clearNudge]);
@@ -330,7 +341,7 @@ export const useHomePlacement = ({
       p.lastY = y;
       p.lastMoveAt = now;
       // moved before the lift finished → this was a scroll, not a press
-      if (movedFromStart > SLOP) {
+      if (movedFromStart > p.slop) {
         clearAllTimers();
         press.current = null;
       }
@@ -350,7 +361,7 @@ export const useHomePlacement = ({
       p.detached = true;
     }
 
-    if (movedFromLift > SLOP) clearTimer('plaque');
+    if (movedFromLift > p.slop) clearTimer('plaque');
 
     // stationary mid-carry arms Saved-You-a-Spot
     if (Math.hypot(x - p.lastX, y - p.lastY) > 6) {
@@ -402,7 +413,7 @@ export const useHomePlacement = ({
 
     if (!p.lifted) {
       // a simple tap — the view decides; un-consumed taps wake the nudge window
-      if (moved < SLOP) {
+      if (moved < p.slop) {
         const consumed = cb.current.onTap(p.uid);
         if (!consumed) {
           setNudgeUid(p.uid);
@@ -412,7 +423,7 @@ export const useHomePlacement = ({
       return;
     }
 
-    if (moved < SLOP && !p.fromCupboard) {
+    if (moved < p.slop && !p.fromCupboard) {
       // lifted, never carried: turning something heavy on a wooden floor
       setCarry(null);
       if (heldFor < PLAQUE_MS - LIFT_MS) {

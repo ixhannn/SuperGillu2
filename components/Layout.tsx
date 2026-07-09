@@ -38,6 +38,12 @@ interface LayoutProps {
 // black gutter band and the bar abruptly vanishing.)
 const HIDE_NAV_VIEWS = new Set<ViewState>(['our-room']);
 
+// Fixed 100dvh scenes: the wrapper's pt-safe/pb-32 gutters leave ~150px of
+// scroll range that native touch happily grabs, so every in-scene gesture
+// (dragging furniture, swiping curtains) also jiggled the whole page on
+// device. These views pin the page: no scroll range, gestures stay diegetic.
+const LOCK_SCROLL_VIEWS = new Set<ViewState>(['our-room']);
+
 export const ConfettiContext = createContext<{ trigger: (x?: number, y?: number) => void }>({
   trigger: () => {},
 });
@@ -48,6 +54,13 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
   const wrapperRef  = useRef<HTMLElement>(null);
   const confettiRef = useRef<ConfettiHandle>(null);
   const viewSurface = getViewSurface(currentView);
+  const scrollLocked = LOCK_SCROLL_VIEWS.has(currentView);
+
+  // Entering a pinned scene mid-scroll would freeze the page half-scrolled —
+  // settle it to the top the moment the lock engages.
+  useLayoutEffect(() => {
+    if (scrollLocked && wrapperRef.current) wrapperRef.current.scrollTop = 0;
+  }, [scrollLocked]);
 
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
@@ -181,6 +194,7 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
             background: viewSurface,
             overflowAnchor: 'none',
             overscrollBehaviorY: 'none',
+            ...(scrollLocked ? { overflowY: 'hidden' as const } : null),
             scrollPaddingBottom: 'calc(8rem + var(--lior-keyboard-height, 0px))',
             // NOTE: do NOT set transform/translateZ/backfaceVisibility here.
             // On iOS WKWebView those promote the scroll container to a
@@ -191,7 +205,10 @@ export const Layout: React.FC<LayoutProps> = memo(({ children, currentView, setV
           }}
         >
           <div
-            className="lenis-content pt-safe pb-32"
+            // Pinned scenes drop the safe-area/nav gutters entirely: they are
+            // exactly 100dvh tall and pad for notch + gesture bar themselves —
+            // keeping pt-safe here pushed their bottom dock below the fold.
+            className={scrollLocked ? 'lenis-content' : 'lenis-content pt-safe pb-32'}
             style={{
               minHeight: '100%',
               background: viewSurface,
