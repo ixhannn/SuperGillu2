@@ -9,10 +9,10 @@
 import type { OurHomeState } from './homeTypes';
 import { deriveTraces } from './homeSoul';
 import {
-  coarsePhrase, isEveningHour, localDayKey, localHourForOffset, myTzOffsetMin,
+  coarsePhrase, hoursSince, isEveningHour, localDayKey, localHourForOffset, myTzOffsetMin,
 } from './homeSky';
 
-export type HomeCardTone = 'lamp' | 'note' | 'warm' | 'candle' | 'night' | 'still' | 'new';
+export type HomeCardTone = 'lamp' | 'fog' | 'note' | 'warm' | 'candle' | 'night' | 'still' | 'new';
 
 export interface HomeCardPresence {
   tone: HomeCardTone;
@@ -41,6 +41,10 @@ export const describeHomeCard = (
   });
   if (traces.some((t) => t.kind === 'lamp-left-on')) {
     return { tone: 'lamp', line: 'A light is on for you' };
+  }
+  if (home.fog.by === partnerKey && home.fog.at && !home.fog.seenAt
+    && hoursSince(home.fog.at, now) < 20) {
+    return { tone: 'fog', line: `${partnerName} wrote on your window` };
   }
   if (traces.some((t) => t.kind === 'note')) {
     return { tone: 'note', line: `${partnerName} left you something` };

@@ -41,6 +41,8 @@ export interface HomeSceneProps {
   /** Wall lanes whose sky is in daylight — those windows pour a soft sun
       shaft (left wall follows my hour, right wall the partner's). */
   shaftLanes: readonly HomeLane[];
+  /** Their breathed word, revealed on this window at the morning draw. */
+  fogWord: { strokes: number[][]; windowUid: string } | null;
   quiet: boolean;
   wakeFx: { x: number; y: number; key: number } | null;
   placement: Placement;
@@ -168,7 +170,7 @@ const ROOM_SILHOUETTE = 'M 195 118 L 375 208 L 375 384 L 195 474 L 15 384 L 15 2
 
 export const HomeScene = ({
   state, traces, airTint, nightTucked, curtainsOpen, revealTraces, chooseLamp,
-  shaftLanes, quiet, wakeFx,
+  shaftLanes, fogWord, quiet, wakeFx,
   placement, cocoAt, parcel, replay, resolveVState, resolveDetail, photoHrefFor,
   onDoorknobDown, onDoorknobUp, onCurtainSwipe, onParcelTap,
   onSweepTap, onNoteTap, svgRef,
@@ -470,6 +472,43 @@ export const HomeScene = ({
           </g>
         );
       })}
+
+      {/* 10a · the Window That Writes Back: their breathed word appears in
+             the morning mist, holds a few seconds, and the sun burns it off */}
+      {fogWord && (() => {
+        const w = state.objects.find((o) => o.uid === fogWord.windowUid);
+        const sku = w ? skuOf(w.sku) : undefined;
+        if (!w || !sku) return null;
+        const boxW = sku.w * 0.6;
+        const boxH = boxW * 0.72;
+        const cx = w.x;
+        const cy = w.y - sku.h * 0.54;
+        const k = boxW / 100;
+        return (
+          <g className="oh-fog-word" pointerEvents="none">
+            <rect
+              x={cx - boxW / 2 - 3} y={cy - boxH / 2 - 3}
+              width={boxW + 6} height={boxH + 6} rx={5}
+              fill="#ffffff" opacity={0.16}
+            />
+            {fogWord.strokes.map((stroke, i) => {
+              const pts: string[] = [];
+              for (let j = 0; j + 1 < stroke.length; j += 2) {
+                pts.push(`${(cx - boxW / 2 + stroke[j] * k).toFixed(1)},${(cy - boxH / 2 + stroke[j + 1] * (boxH / 100)).toFixed(1)}`);
+              }
+              if (pts.length < 2) return null;
+              return (
+                <polyline
+                  key={i}
+                  points={pts.join(' ')}
+                  fill="none" stroke="#ffffff" strokeWidth={1.7} opacity={0.85}
+                  strokeLinecap="round" strokeLinejoin="round"
+                />
+              );
+            })}
+          </g>
+        );
+      })()}
 
       {/* 10b · choose-lamp: every candidate glows until the one tap lands */}
       {chooseLamp && visible.filter((o) => o.sku === 'lamp-a' || o.sku === 'lamp-b').map((o) => {

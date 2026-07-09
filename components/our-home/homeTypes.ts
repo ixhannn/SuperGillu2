@@ -149,6 +149,16 @@ export interface HomeCandle {
   seenAt?: string; // gutters to a smoke curl once seen
 }
 
+/** One word breathed onto the night glass — it waits on the other partner's
+ *  window until their morning reveal, then the sun burns it off. The latest
+ *  breath wins; seenAt belongs to THIS breath only (candle rules). */
+export interface HomeFog {
+  strokes?: number[][]; // composer space (0–100), same as notes
+  by?: string;
+  at?: string;
+  seenAt?: string;
+}
+
 export interface HomeGlint {
   uid: string; // object whose move was noticed
   by: string; // who noticed
@@ -178,6 +188,7 @@ export interface OurHomeState {
   visits: Record<string, HomeVisit>;
   lampOn: HomeLampChoice;
   candle: HomeCandle;
+  fog: HomeFog;
   glints: HomeGlint[];
   curtains: Record<string, HomeCurtains>;
   night: Record<string, HomeNight>;

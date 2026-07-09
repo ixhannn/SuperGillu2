@@ -130,16 +130,19 @@ const normalizeObject = (raw: unknown): HomeObject | null => {
   return obj;
 };
 
+/** Finger strokes, validated + capped — shared by notes and the fog word. */
+const normalizeStrokes = (raw: unknown): number[][] => (Array.isArray(raw)
+  ? raw
+    .filter((s): s is number[] => Array.isArray(s) && s.every((v) => Number.isFinite(v)))
+    .slice(0, NOTE_STROKE_CAP)
+    .map((s) => s.slice(0, NOTE_POINT_CAP).map((v) => Math.round(v)))
+  : []);
+
 const normalizeNote = (raw: unknown): HomeNote | null => {
   if (!raw || typeof raw !== 'object') return null;
   const n = raw as Record<string, unknown>;
   if (typeof n.id !== 'string' || !isIso(n.at)) return null;
-  const strokes = Array.isArray(n.strokes)
-    ? n.strokes
-      .filter((s): s is number[] => Array.isArray(s) && s.every((v) => Number.isFinite(v)))
-      .slice(0, NOTE_STROKE_CAP)
-      .map((s) => s.slice(0, NOTE_POINT_CAP).map((v) => Math.round(v)))
-    : [];
+  const strokes = normalizeStrokes(n.strokes);
   const note: HomeNote = {
     id: n.id,
     by: asString(n.by, 'home'),
@@ -245,6 +248,7 @@ export const defaultOurHome = (createdAt?: string): OurHomeState => {
     visits: {},
     lampOn: {},
     candle: {},
+    fog: {},
     glints: [],
     curtains: {},
     night: {},
@@ -315,6 +319,21 @@ export const normalizeOurHome = (raw?: unknown): OurHomeState => {
   const lampOn = r.lampOn as Record<string, unknown> | undefined;
   const candle = r.candle as Record<string, unknown> | undefined;
 
+  // the fog word is whole or absent — a breath without strokes/author/time is {}
+  const rawFog = r.fog as Record<string, unknown> | undefined;
+  const fogStrokes = normalizeStrokes(rawFog?.strokes);
+  const fog: OurHomeState['fog'] = fogStrokes.length
+    && typeof rawFog?.by === 'string' && isIso(rawFog?.at)
+    ? {
+      strokes: fogStrokes,
+      by: rawFog.by,
+      at: rawFog.at as string,
+      seenAt: isIso(rawFog?.seenAt) && ts(rawFog.seenAt as string) >= ts(rawFog.at as string)
+        ? (rawFog.seenAt as string)
+        : undefined,
+    }
+    : {};
+
   const curtains = normalizeDayRecord<HomeCurtains>(r.curtains, (rec) => (
     typeof rec.lastOpenedDay === 'string'
       ? { lastOpenedDay: rec.lastOpenedDay, at: isIso(rec.at) ? rec.at : undefined }
@@ -342,6 +361,7 @@ export const normalizeOurHome = (raw?: unknown): OurHomeState => {
       litAt: isIso(candle?.litAt) ? (candle?.litAt as string) : undefined,
       seenAt: isIso(candle?.seenAt) ? (candle?.seenAt as string) : undefined,
     },
+    fog,
     glints: (Array.isArray(r.glints) ? r.glints : [])
       .filter((g): g is Record<string, unknown> => !!g && typeof g === 'object')
       .filter((g) => typeof g.uid === 'string' && typeof g.by === 'string' && isIso(g.at))
@@ -471,12 +491,28 @@ export const mergeOurHome = (a: OurHomeState, b: OurHomeState): OurHomeState => 
     return out;
   };
 
-  // a candle's seenAt belongs to one burn — never resurrect a previous one
+  // a candle's seenAt belongs to one burn — never resurrect a previous one,
+  // and never let an OLDER burn's seenAt bleed onto a newer burn (a seenAt is
+  // only trusted from a side that holds the SAME burn: identical litAt+litBy)
   const candleWinner = ts(a.candle.litAt) >= ts(b.candle.litAt) ? a.candle : b.candle;
-  const candleSeen = laterIso(a.candle.seenAt, b.candle.seenAt);
+  const candleSeenSides = [a.candle, b.candle]
+    .filter((c) => c.litAt === candleWinner.litAt && c.litBy === candleWinner.litBy);
+  const candleSeen = laterIso(candleSeenSides[0]?.seenAt, candleSeenSides[1]?.seenAt);
   const candle = {
     ...candleWinner,
     seenAt: candleSeen && ts(candleSeen) >= ts(candleWinner.litAt) ? candleSeen : undefined,
+  };
+
+  // the fog word follows candle rules — the latest breath wins, and a seenAt
+  // may only ever belong to the breath it saw (same at+by), so a re-breath
+  // can never arrive pre-seen and burn off unread
+  const fogWinner = ts(a.fog.at) >= ts(b.fog.at) ? a.fog : b.fog;
+  const fogSeenSides = [a.fog, b.fog]
+    .filter((f) => f.at === fogWinner.at && f.by === fogWinner.by);
+  const fogSeen = laterIso(fogSeenSides[0]?.seenAt, fogSeenSides[1]?.seenAt);
+  const fog = {
+    ...fogWinner,
+    seenAt: fogSeen && fogWinner.at && ts(fogSeen) >= ts(fogWinner.at) ? fogSeen : undefined,
   };
 
   return canonicalize({
@@ -487,6 +523,7 @@ export const mergeOurHome = (a: OurHomeState, b: OurHomeState): OurHomeState => 
     visits,
     lampOn: ts(a.lampOn.at) >= ts(b.lampOn.at) ? a.lampOn : b.lampOn,
     candle,
+    fog,
     // sort BEFORE capping — both merge directions must keep the same newest set
     glints: [...glints.values()]
       .sort((x, y) => x.at.localeCompare(y.at) || x.uid.localeCompare(y.uid) || x.by.localeCompare(y.by))

@@ -123,6 +123,31 @@ assert.match(
   "A candle's seenAt belongs to one burn — merges must not resurrect a previous burn's seenAt.",
 );
 assert.match(
+  soulCoreSource,
+  /ts\(fogSeen\)\s*>=\s*ts\(fogWinner\.at\)/,
+  "The fog word follows candle rules — a merge must never carry a seenAt onto a newer breath.",
+);
+assert.match(
+  soulCoreSource,
+  /f\.at === fogWinner\.at && f\.by === fogWinner\.by/,
+  'A fog seenAt is only trusted from a side holding the SAME breath — wall-clock comparison alone lets an old seenAt mark a newer breath as read (silent loss).',
+);
+assert.match(
+  soulCoreSource,
+  /c\.litAt === candleWinner\.litAt && c\.litBy === candleWinner\.litBy/,
+  "A candle seenAt is identity-bound to its burn for the same reason.",
+);
+assert.match(
+  soulCoreSource,
+  /const fogStrokes = normalizeStrokes\(rawFog\?\.strokes\)/,
+  'Fog strokes must pass the same validation/caps as note strokes (untrusted cloud data).',
+);
+assert.match(
+  soulCoreSource,
+  /fog:\s*\{\},/,
+  'defaultOurHome must include an empty fog so legacy/blank states normalize identically.',
+);
+assert.match(
   soulSource,
   /rev:\s*bump\(o\)/,
   'Every mutating object op must advance the monotonic rev counter (coarse time is display-only).',

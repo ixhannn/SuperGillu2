@@ -277,6 +277,28 @@ export const seeCandle = (state: OurHomeState, now: Date): OurHomeState => ({
     : state.candle,
 });
 
+/** Breathe a word onto the night glass — it waits for their morning. */
+export const breatheFog = (
+  state: OurHomeState, strokes: number[][], byKey: string, now: Date,
+): OurHomeState => (strokes.length === 0 ? state : {
+  ...state,
+  fog: {
+    strokes: strokes
+      .slice(0, NOTE_STROKE_CAP)
+      .map((s) => s.slice(0, NOTE_POINT_CAP).map((v) => Math.round(v))),
+    by: byKey,
+    at: now.toISOString(),
+  },
+});
+
+/** The morning sun starts burning the word off once it has been read. */
+export const seeFog = (state: OurHomeState, now: Date): OurHomeState => ({
+  ...state,
+  fog: state.fog.at && !state.fog.seenAt
+    ? { ...state.fog, seenAt: now.toISOString() }
+    : state.fog,
+});
+
 /** Curtains are per-partner: your morning is yours, on your clock. */
 export const openCurtains = (state: OurHomeState, byKey: string, now: Date): OurHomeState => ({
   ...state,

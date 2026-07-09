@@ -163,6 +163,7 @@
 
 /* tone → the accent + the glow that answers what they left (light ground) */
 .oh-hero--lamp   { --oh-hero-glow: rgba(242, 190, 110, 0.4);  --oh-hero-accent: #ab6d17; }
+.oh-hero--fog    { --oh-hero-glow: rgba(157, 177, 224, 0.3);  --oh-hero-accent: #5d6d99; }
 .oh-hero--warm   { --oh-hero-glow: rgba(230, 168, 104, 0.3);  --oh-hero-accent: #a86f2c; }
 .oh-hero--note   { --oh-hero-glow: rgba(239, 120, 150, 0.24); --oh-hero-accent: var(--oh-wine); }
 .oh-hero--candle { --oh-hero-glow: rgba(245, 175, 120, 0.32); --oh-hero-accent: #ab6528; }
@@ -280,6 +281,16 @@
 @keyframes oh-trace-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* the breathed word: mists in, holds while you read, the sun burns it off —
+   one-shot, opacity only, timed to the 8s seen-window */
+.oh-fog-word { animation: oh-fog-word 8s var(--oh-silk) both; }
+@keyframes oh-fog-word {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  74% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .oh-ghost { transition: opacity 400ms var(--oh-silk); }
@@ -636,6 +647,93 @@
   animation: oh-plaque-unfurl 280ms var(--oh-silk);
   transform-origin: 50% 30%;
 }
+
+/* ── the shoebox: kept notes, re-read ─────────────────────────── */
+
+.oh-shoebox-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(86vw, 348px);
+  max-height: min(72dvh, 560px);
+  background: var(--oh-cream);
+  border-radius: 18px;
+  padding: 1.1rem 1rem 0.9rem;
+  box-shadow: 0 24px 60px rgba(59, 40, 30, 0.3);
+  animation: oh-plaque-unfurl 280ms var(--oh-silk);
+  transform-origin: 50% 30%;
+}
+.oh-shoebox-head { flex: 0 0 auto; text-align: center; }
+.oh-shoebox-title {
+  margin: 0;
+  font-family: 'Fraunces', var(--oh-font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.2rem;
+  color: var(--oh-ink);
+}
+.oh-shoebox-sub {
+  margin: 2px 0 0;
+  font-family: var(--oh-font-body);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  color: var(--oh-ink-soft);
+}
+.oh-shoebox-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 2px 2px 8px;
+}
+.oh-shoebox-empty {
+  grid-column: 1 / -1;
+  margin: 1.4rem 0.6rem;
+  font-family: var(--oh-font-body);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--oh-ink-soft);
+}
+.oh-shoebox-empty b { color: var(--oh-wine); }
+.oh-kept-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fdf7ea;
+  border: 1px solid rgba(91, 68, 55, 0.13);
+  border-radius: 6px;
+  padding: 8px 8px 7px;
+  box-shadow: 0 3px 10px rgba(90, 58, 40, 0.1);
+}
+.oh-kept-strokes {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+}
+.oh-kept-text {
+  margin: 0;
+  min-height: 3.4rem;
+  font-family: var(--oh-font-body);
+  font-style: italic;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.oh-kept-from {
+  font-family: var(--oh-font-body);
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  color: var(--oh-ink-soft);
+}
+.oh-shoebox-close {
+  flex: 0 0 auto;
+  margin-top: 0.6rem;
+  align-self: center;
+}
 .oh-note-paper {
   width: 100%;
   aspect-ratio: 1;
@@ -647,6 +745,16 @@
 }
 .oh-note-paper svg { width: 100%; height: 100%; display: block; }
 .oh-note-paper-read { pointer-events: none; }
+/* the fogged night pane — dusk glass, a hint of moon, breath-white strokes */
+.oh-note-paper--fog {
+  background:
+    radial-gradient(60% 45% at 72% 22%, rgba(214, 226, 255, 0.16) 0%, transparent 70%),
+    linear-gradient(168deg, #46405c 0%, #363150 52%, #2b2740 100%);
+  border-color: rgba(233, 214, 182, 0.22);
+  box-shadow:
+    inset 0 0 30px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
 .oh-sheet-hint {
   font-family: var(--oh-font-body);
   font-size: 0.82rem;

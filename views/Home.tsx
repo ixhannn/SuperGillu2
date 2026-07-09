@@ -1338,7 +1338,7 @@ const HomeView: React.FC<HomeProps> = ({ setView }) => {
                                     <p className="font-serif text-[1.02rem] font-semibold leading-tight" style={{ color: '#5d3a37' }}>Our Home</p>
                                     <p className="mt-0.5 text-[0.72rem]" style={{ color: '#a4766a' }}>{homePresence.line}</p>
                                 </div>
-                                {(homePresence.tone === 'note' || homePresence.tone === 'candle') && (
+                                {(homePresence.tone === 'note' || homePresence.tone === 'candle' || homePresence.tone === 'fog') && (
                                     <span
                                         className="h-2 w-2 shrink-0 rounded-full"
                                         style={{ background: '#ef5c7d', boxShadow: '0 0 0 3px rgba(239,92,125,0.16)' }}

@@ -17,9 +17,15 @@ export interface NoteComposerProps {
   ink: HomeInk;
   onDone: (strokes: number[][]) => void;
   onCancel: () => void;
+  /** 'fog' = the night window: dusk glass, breath-white strokes. */
+  variant?: 'note' | 'fog';
+  hint?: string;
+  doneLabel?: string;
 }
 
-export const HomeNoteComposer = ({ ink, onDone, onCancel }: NoteComposerProps): React.JSX.Element => {
+export const HomeNoteComposer = ({
+  ink, onDone, onCancel, variant = 'note', hint, doneLabel,
+}: NoteComposerProps): React.JSX.Element => {
   const [strokes, setStrokes] = useState<number[][]>([]);
   const live = useRef<number[] | null>(null);
   const drawing = useRef(false);
@@ -35,13 +41,14 @@ export const HomeNoteComposer = ({ ink, onDone, onCancel }: NoteComposerProps): 
     return [Math.max(0, Math.min(100, x)), Math.max(0, Math.min(100, y))];
   }, []);
 
+  const strokeColor = variant === 'fog' ? 'rgba(255, 255, 255, 0.92)' : INK_CSS[ink];
   return (
     <div className="oh-sheet-scrim">
       <div className="oh-note-sheet">
-        <p className="oh-sheet-hint">write something — your hand, not a font</p>
+        <p className="oh-sheet-hint">{hint ?? 'write something — your hand, not a font'}</p>
         <div
           ref={boxRef}
-          className="oh-note-paper"
+          className={variant === 'fog' ? 'oh-note-paper oh-note-paper--fog' : 'oh-note-paper'}
           onPointerDown={(e) => {
             const p = toNote(e);
             if (!p) return;
@@ -84,7 +91,7 @@ export const HomeNoteComposer = ({ ink, onDone, onCancel }: NoteComposerProps): 
               const pts: string[] = [];
               for (let j = 0; j + 1 < s.length; j += 2) pts.push(`${s[j]},${s[j + 1]}`);
               return pts.length >= 2
-                ? <polyline key={i} points={pts.join(' ')} fill="none" stroke={INK_CSS[ink]} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+                ? <polyline key={i} points={pts.join(' ')} fill="none" stroke={strokeColor} strokeWidth={variant === 'fog' ? 2.8 : 2.2} strokeLinecap="round" strokeLinejoin="round" />
                 : null;
             })}
           </svg>
@@ -100,7 +107,7 @@ export const HomeNoteComposer = ({ ink, onDone, onCancel }: NoteComposerProps): 
             disabled={strokes.length === 0}
             onClick={() => onDone(strokes)}
           >
-            leave it somewhere
+            {doneLabel ?? 'leave it somewhere'}
           </button>
         </div>
       </div>

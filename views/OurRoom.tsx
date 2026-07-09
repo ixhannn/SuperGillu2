@@ -18,10 +18,11 @@ import {
 } from '../components/our-home/homeTypes';
 import {
   addInscription, addNote, advanceParcel, assignInks, archUnlocks, attachPhoto,
-  commitMove, computeDueParcels, cocoSpot, deriveTraces, dimForNight, flutterNote,
-  hearthStage, isQuietHours, lampWarmthFor, leaveLampOn, lightCandle, markNoteRead,
-  nameObject, noticeMove, openCurtains, peelNote, placeNewObject, plantSpot,
-  potGrowth, recordVisit, seeCandle, stepFacing, storeObject, TraceContext,
+  breatheFog, commitMove, computeDueParcels, cocoSpot, deriveTraces, dimForNight,
+  flutterNote, hearthStage, isQuietHours, lampWarmthFor, leaveLampOn, lightCandle,
+  markNoteRead, nameObject, noticeMove, openCurtains, peelNote, placeNewObject,
+  plantSpot, potGrowth, recordVisit, seeCandle, seeFog, stepFacing, storeObject,
+  TraceContext,
 } from '../components/our-home/homeSoul';
 import { HomeFurnishDrawer } from '../components/our-home/HomeFurnishDrawer';
 import {
@@ -32,6 +33,7 @@ import { skuOf } from '../components/our-home/homeCatalog';
 import { HomeScene } from '../components/our-home/HomeScene';
 import { HomePlaque, PlaqueMemoryChoice } from '../components/our-home/HomePlaque';
 import { HomeNoteComposer, HomeNoteReader } from '../components/our-home/HomeNoteLayer';
+import { HomeShoebox } from '../components/our-home/HomeShoebox';
 import { useHomePlacement } from '../components/our-home/useHomePlacement';
 import { gatherSeats, resolveDrop } from '../components/our-home/homeSeats';
 import '../styles/our-home.css';
@@ -43,7 +45,7 @@ interface OurRoomProps {
 const CAPTION_MS = 3400;
 
 /** What kind of presence the arrival glow should carry. */
-type PresenceTone = 'lamp' | 'warm' | 'note' | 'candle' | 'fresh' | 'quiet' | 'still' | 'new';
+type PresenceTone = 'lamp' | 'fog' | 'warm' | 'note' | 'candle' | 'fresh' | 'quiet' | 'still' | 'new';
 
 interface PresenceSummary {
   tone: PresenceTone;
@@ -65,14 +67,19 @@ const describePresence = (
     partnerName: string;
     seenPhrase: CoarsePhrase | undefined;
     quiet: boolean;
+    /** A fog word from them is waiting, unread, on the glass. */
+    fogWaiting: boolean;
   },
 ): PresenceSummary => {
-  const { partnerKey, partnerName, seenPhrase, quiet } = opts;
+  const { partnerKey, partnerName, seenPhrase, quiet, fogWaiting } = opts;
   if (!partnerKey) {
     return { tone: 'new', eyebrow: 'our home', headline: 'This is where we’ll live.', kicker: 'two sets of keys, one room' };
   }
   if (traces.some((t) => t.kind === 'lamp-left-on')) {
     return { tone: 'lamp', eyebrow: 'welcome home', headline: `${partnerName} left a light on for you`, kicker: 'still burning for your morning' };
+  }
+  if (fogWaiting) {
+    return { tone: 'fog', eyebrow: 'welcome home', headline: `${partnerName} breathed a word on your window`, kicker: 'draw the curtains in the morning' };
   }
   if (traces.some((t) => t.kind === 'note')) {
     return { tone: 'note', eyebrow: 'welcome home', headline: `${partnerName} left you a note`, kicker: 'unread, in their hand' };
@@ -109,6 +116,14 @@ const dressForDemo = (state: OurHomeState, partnerKey: string, scene?: string | 
   return {
     ...state,
     lampOn: scene === 'lamp' ? { uid: 'demo-lamp', by: partnerKey, at: ago(400) } : state.lampOn,
+    // dev-only: `scene=fog` — they breathed a heart on the glass last night
+    fog: scene === 'fog'
+      ? {
+        strokes: [[50, 70, 34, 48, 36, 32, 50, 40, 64, 32, 66, 48, 50, 70]],
+        by: partnerKey,
+        at: ago(420),
+      }
+      : state.fog,
     objects: [
       ...state.objects,
       {
@@ -140,6 +155,13 @@ const dressForDemo = (state: OurHomeState, partnerKey: string, scene?: string | 
         touchedBy: partnerKey, touchedAt: ago(300),
         provenance: { kind: 'trousseau' as const, label: 'every home starts with a door', at: ago(300) },
       },
+      {
+        uid: 'demo-shoebox', sku: 'shoebox', rev: 1,
+        x: 290, y: 418, lane: 1 as HomeLane, seatId: 'tile:6,6', facing: 0,
+        stored: false, placedBy: partnerKey, placedAt: ago(300),
+        touchedBy: partnerKey, touchedAt: ago(300),
+        provenance: { kind: 'trousseau' as const, label: 'where the kept things live', at: ago(300) },
+      },
       ...leftOnLamp,
     ],
     visits: {
@@ -155,13 +177,24 @@ const dressForDemo = (state: OurHomeState, partnerKey: string, scene?: string | 
         [78, 26, 84, 40, 90, 26],
       ],
       x: 96, y: 302, lane: 0 as HomeLane, tilt: -4,
+    }, {
+      id: 'demo-kept-1', by: partnerKey, ink: 'gold' as const, at: ago(4000),
+      strokes: [[16, 60, 30, 30, 44, 60], [24, 48, 37, 48], [56, 30, 56, 60, 74, 60]],
+      x: 0, y: 0, lane: 1 as HomeLane, tilt: 3,
+      readAt: ago(3900), peeled: true, peeledAt: ago(3900),
+    }, {
+      id: 'demo-kept-2', by: 'me', ink: 'wine' as const, at: ago(9000),
+      strokes: [[20, 40, 30, 26, 40, 40, 40, 64], [58, 30, 52, 44, 62, 58, 74, 44, 66, 30]],
+      x: 0, y: 0, lane: 1 as HomeLane, tilt: -3,
+      readAt: ago(8800), peeled: true, peeledAt: ago(8800),
     }],
   };
 };
 
 export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
   const demo = useMemo(() => {
-    if (!import.meta.env.DEV) return false;
+    // dev servers AND e2e test builds — never a real (plain `vite build`) APK
+    if (!import.meta.env.DEV && import.meta.env.VITE_E2E !== '1') return false;
     try {
       return new URLSearchParams(window.location.search).get('homedemo') === '1';
     } catch {
@@ -208,6 +241,8 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
   const [plaqueUid, setPlaqueUid] = useState<string | null>(null);
   const [readerNoteId, setReaderNoteId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const [fogComposing, setFogComposing] = useState(false);
+  const [shoeboxOpen, setShoeboxOpen] = useState(false);
   const [pendingStrokes, setPendingStrokes] = useState<number[][] | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [chooseLamp, setChooseLamp] = useState(false);
@@ -224,14 +259,18 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
   const visitTimer = useRef<number | undefined>(undefined);
   const replayTimer = useRef<number | undefined>(undefined);
   const bookTimer = useRef<number | undefined>(undefined);
+  const fogHintTimer = useRef<number | undefined>(undefined);
+  const fogSeenTimer = useRef<number | undefined>(undefined);
+  const murmurTimers = useRef<number[]>([]);
   const swipe = useRef<{ x: number; y: number } | null>(null);
 
   /* the overlay is pruned shortly after back-navigation — no timer may
      outlive the room (a stray haptic or forced setView would fight the user) */
   useEffect(() => () => {
-    [knobTimer, captionTimer, visitTimer, replayTimer, bookTimer].forEach((t) => {
+    [knobTimer, captionTimer, visitTimer, replayTimer, bookTimer, fogHintTimer, fogSeenTimer].forEach((t) => {
       window.clearTimeout(t.current);
     });
+    murmurTimers.current.forEach((t) => window.clearTimeout(t));
   }, []);
 
   const setCaption = useCallback((text: string) => {
@@ -354,6 +393,12 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
 
   const traces = useMemo(() => deriveTraces(home, ctx), [home, ctx]);
   const quiet = isQuietHours(home, ctx) && !wakeFx;
+  // an unread fog word from them, still fresh enough to survive the day
+  const fogWaiting = !!partnerKey
+    && home.fog.by === partnerKey
+    && !!home.fog.at
+    && !home.fog.seenAt
+    && hoursSince(home.fog.at, now) < 20;
   const arch = useMemo(() => archUnlocks(daysTogether), [daysTogether]);
   const hearth = hearthStage(revealedQuestions);
   const pot = potGrowth(revealedQuestions);
@@ -460,7 +505,7 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
     svgRef,
     objects: home.objects,
     resolveSku: skuOf,
-    enabled: !plaqueUid && !composing && !readerNoteId && !pendingStrokes,
+    enabled: !plaqueUid && !composing && !fogComposing && !shoeboxOpen && !readerNoteId && !pendingStrokes,
     callbacks: {
       onCommit: (uid, spot) => commit((prev) => commitMove(prev, uid, spot, myKey, new Date())),
       onPlaceNew: (skuId, spot) => {
@@ -488,12 +533,35 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
           setChooseLamp(false);
           setCaption(`it will burn until ${partnerName}'s morning`);
           feedback.confirm();
+          // the night's second, quieter invitation — a word on the glass
+          const fogged = homeRef.current.objects.some(
+            (w) => w.sku === 'window' && !w.stored && !w.removed,
+          );
+          if (fogged && partnerKey) {
+            window.clearTimeout(fogHintTimer.current);
+            fogHintTimer.current = window.setTimeout(
+              () => setCaption('the window has fogged over — breathe a word on it'),
+              3800,
+            );
+          }
           return true;
         }
         if (chooseLamp) {
           // mid-ritual, a stray tap must never derail the choice (no book
           // navigation, no replays) — the home just re-offers the question
           setCaption(`a lamp for ${partnerName} — or not tonight`);
+          return true;
+        }
+        // the tucked-in window fogs over — breathe a word for their morning
+        if (o.sku === 'window' && nightTucked && partnerKey) {
+          setFogComposing(true);
+          feedback.light();
+          return true;
+        }
+        // the shoebox opens: every note either of you chose to keep
+        if (o.sku === 'shoebox') {
+          setShoeboxOpen(true);
+          feedback.light();
           return true;
         }
         const rim = traces.find((t) => t.kind === 'noticing' && t.uid === uid);
@@ -573,7 +641,20 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
   const onCurtainSwipe = useCallback(() => {
     commit((prev) => openCurtains(prev, myKey, new Date()));
     feedback.interact();
-  }, [commit, myKey]);
+    // the home murmurs the overnight news — two quiet lines at most
+    murmurTimers.current.forEach((t) => window.clearTimeout(t));
+    murmurTimers.current = [];
+    const lines: string[] = [];
+    if (fogWaiting) lines.push('a word is waiting on the glass');
+    if (traces.some((t) => t.kind === 'note')) lines.push('a note, in their hand');
+    if (traces.some((t) => t.kind === 'noticing')) lines.push('something moved while you slept');
+    if (traces.some((t) => t.kind === 'cup')) lines.push('the coffee is still warm');
+    if (traces.some((t) => t.kind === 'candle')) lines.push('a candle is burning for you');
+    setCaption('the morning came in');
+    lines.slice(0, 2).forEach((line, i) => {
+      murmurTimers.current.push(window.setTimeout(() => setCaption(line), 2700 * (i + 1)));
+    });
+  }, [commit, myKey, fogWaiting, traces, setCaption]);
 
   /* The night's one deliberate act — leave a single lamp burning until their
      morning. Reachable as a downward swipe OR the dock's evening verb. */
@@ -741,12 +822,21 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
     return key === 'home' ? 'the home' : key;
   }, [myKey, partnerKey, profile.myName, partnerName]);
 
-  const dockHidden = !!placement.carry || !!plaqueUid || composing || !!readerNoteId || !!pendingStrokes;
+  // the shoebox holds every kept note, newest memory first
+  const keptNotes = useMemo(
+    () => home.notes
+      .filter((n) => n.peeled && !n.removed)
+      .sort((a, b) => (b.peeledAt ?? b.at).localeCompare(a.peeledAt ?? a.at)),
+    [home.notes],
+  );
+
+  const dockHidden = !!placement.carry || !!plaqueUid || composing || fogComposing
+    || shoeboxOpen || !!readerNoteId || !!pendingStrokes;
 
   const seenPhrase = useMemo(() => coarsePhrase(partnerSeen, now), [partnerSeen, now]);
   const presence = useMemo<PresenceSummary>(
-    () => describePresence(traces, { partnerKey, partnerName, seenPhrase, quiet }),
-    [traces, partnerKey, partnerName, seenPhrase, quiet],
+    () => describePresence(traces, { partnerKey, partnerName, seenPhrase, quiet, fogWaiting }),
+    [traces, partnerKey, partnerName, seenPhrase, quiet, fogWaiting],
   );
   const windowsPlaced = useMemo(
     () => home.objects.some((o) => o.sku === 'window' && !o.stored && !o.removed),
@@ -756,6 +846,25 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
     () => home.objects.some((o) => (o.sku === 'lamp-a' || o.sku === 'lamp-b') && !o.stored && !o.removed),
     [home.objects],
   );
+
+  // the fog word appears on MY side of the glass (left wall), else any window
+  const fogWindowUid = useMemo(() => {
+    const wins = home.objects.filter((o) => o.sku === 'window' && !o.stored && !o.removed);
+    return (wins.find((o) => o.lane === 0) ?? wins[0])?.uid ?? null;
+  }, [home.objects]);
+  // the word reveals ONLY on a deliberate same-day curtain draw — the
+  // late-day auto-open fallback must never passively consume it
+  const curtainsDrawnToday = home.curtains[myKey]?.lastOpenedDay === today;
+  const fogVisible = fogWaiting && curtainsDrawnToday && !!fogWindowUid;
+
+  // reading it starts the sun on it — one gentle window, then it burns off
+  useEffect(() => {
+    if (!fogVisible) return undefined;
+    fogSeenTimer.current = window.setTimeout(() => {
+      commit((prev) => seeFog(prev, new Date()));
+    }, 8000);
+    return () => window.clearTimeout(fogSeenTimer.current);
+  }, [fogVisible, commit]);
 
   // each window pours daylight only while ITS sky is in daylight — the left
   // wall lives on my clock, the right wall on theirs
@@ -771,7 +880,7 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
   // The dock leads with presence: the night's light, then the morning reveal,
   // and only falls back to furnishing when there's no ritual waiting.
   const nightReady = !!partnerKey && isEveningHour(myHour) && !nightTucked && hasLamp;
-  const revealReady = windowsPlaced && !curtainsOpen && traces.length > 0;
+  const revealReady = windowsPlaced && !curtainsOpen && (traces.length > 0 || fogWaiting);
   const dockKind: 'light' | 'reveal' | 'furnish' = demoDock === 'light' && !nightTucked
     ? 'light'
     : demoDock === 'reveal' && !curtainsOpen ? 'reveal'
@@ -803,6 +912,9 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
           revealTraces={curtainsOpen || !windowsPlaced}
           chooseLamp={chooseLamp}
           shaftLanes={shaftLanes}
+          fogWord={fogVisible && fogWindowUid
+            ? { strokes: home.fog.strokes ?? [], windowUid: fogWindowUid }
+            : null}
           quiet={quiet}
           wakeFx={wakeFx}
           placement={placement}
@@ -873,7 +985,6 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
               onClick={() => {
                 feedback.interact();
                 onCurtainSwipe();
-                setCaption('the morning came in');
               }}
             >
               <Sunrise size={19} strokeWidth={2} />
@@ -957,6 +1068,32 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
             ink={inks.myInk}
             onDone={onNoteDone}
             onCancel={() => setComposing(false)}
+          />
+        )}
+
+        {/* the fogged night window — breathe a word for their morning */}
+        {fogComposing && (
+          <HomeNoteComposer
+            ink={inks.myInk}
+            variant="fog"
+            hint={`breathe a word for ${partnerName} — it waits on their glass`}
+            doneLabel="leave it on the glass"
+            onDone={(strokes) => {
+              setFogComposing(false);
+              commit((prev) => breatheFog(prev, strokes, myKey, new Date()));
+              setCaption(`it will be on ${partnerName}'s window in the morning`);
+              feedback.confirm();
+            }}
+            onCancel={() => setFogComposing(false)}
+          />
+        )}
+
+        {/* the shoebox — every note either of you chose to keep */}
+        {shoeboxOpen && (
+          <HomeShoebox
+            notes={keptNotes}
+            fromLineFor={(n) => `from ${nameFor(n.by)} · ${coarsePhrase(n.peeledAt ?? n.at, now) ?? 'a while ago'}`}
+            onClose={() => setShoeboxOpen(false)}
           />
         )}
         {readerNote && (
