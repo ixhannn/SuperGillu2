@@ -41,10 +41,11 @@ import {
   AdminMediaSection,
   AdminUsersSnapshot,
   AdminUserSummary,
+  AnalyticsSummary,
 } from './adminApi';
 import './admin.css';
 
-type AdminView = 'pulse' | 'library' | 'issues' | 'system';
+type AdminView = 'pulse' | 'library' | 'analytics' | 'issues' | 'system';
 type LibraryTab = 'media' | 'users' | 'couples';
 type UserSort = 'activity' | 'storage' | 'media' | 'rows' | 'issues' | 'email';
 
@@ -92,6 +93,7 @@ const NAV_ITEMS: Array<{
 }> = [
   { id: 'pulse', label: 'Pulse', icon: LayoutDashboard, kicker: 'Health & capacity' },
   { id: 'library', label: 'Library', icon: Eye, kicker: 'Media · Users · Couples' },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3, kicker: 'Usage · Funnel · Errors' },
   { id: 'issues', label: 'Issues', icon: AlertTriangle, kicker: 'Alerts · Jobs · Integrity' },
   { id: 'system', label: 'System', icon: Server, kicker: 'Activity & access' },
 ];
@@ -118,6 +120,34 @@ const formatDateTime = (value?: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+};
+
+const fmtNum = (n: number): string => {
+  if (!Number.isFinite(n)) return '0';
+  if (n >= 1_000_000) return `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}m`;
+  if (n >= 1_000) return `${(n / 1e3).toFixed(n % 1e3 ? 1 : 0)}k`;
+  return String(n);
+};
+
+const fmtSecs = (ms: number): string => {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s';
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.round((ms % 60_000) / 1000);
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+};
+
+const fmtAgo = (iso: string): string => {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const mins = Math.floor((Date.now() - t) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
 };
 
 const shortId = (value?: string | null) => {
@@ -255,6 +285,10 @@ export const AdminApp: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [usersError, setUsersError] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastAdminResult, setLastAdminResult] = useState<Record<string, unknown> | null>(null);
 
@@ -473,6 +507,24 @@ export const AdminApp: React.FC = () => {
     }
   };
 
+  const loadAnalytics = async (dashboardConfig = config, days = analyticsDays) => {
+    if (!connectionReady && dashboardConfig === config) return;
+    setAnalyticsLoading(true);
+    setAnalyticsError(null);
+    try {
+      setAnalytics(await AdminDashboardApi.fetchAnalytics(dashboardConfig, days));
+    } catch (nextError: any) {
+      setAnalyticsError(nextError?.message || 'Admin analytics request failed.');
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const changeAnalyticsRange = (days: number) => {
+    setAnalyticsDays(days);
+    void loadAnalytics(config, days);
+  };
+
   const loadOverview = async (
     source: 'refresh' | 'audit' | 'cleanup' | 'repair' = 'refresh',
     dashboardConfig = config,
@@ -498,6 +550,7 @@ export const AdminApp: React.FC = () => {
       await Promise.all([
         loadMediaGallery(dashboardConfig),
         loadUsers(dashboardConfig),
+        loadAnalytics(dashboardConfig, analyticsDays),
       ]);
       if (source === 'audit') setNotice('Audit completed and the dashboard data was refreshed.');
       if (source === 'cleanup') setNotice('Cleanup finished and the dashboard data was refreshed.');
@@ -1903,6 +1956,7 @@ export const AdminApp: React.FC = () => {
     }
 
     if (activeView === 'library') return renderLibrary();
+    if (activeView === 'analytics') return renderAnalytics();
     if (activeView === 'issues') return renderIssues();
     if (activeView === 'system') return renderSystem();
     return renderPulse();
@@ -1911,6 +1965,237 @@ export const AdminApp: React.FC = () => {
   // ── Composed views — wrap the original section renderers so the old
   // logic keeps working unchanged, but the dashboard is presented as a
   // small set of object-centric workspaces instead of 10 sibling tabs.
+
+  const renderAnalytics = () => {
+    const a = analytics;
+
+    // Activity area path (daily events)
+    const daily = a?.daily ?? [];
+    const series = daily.map((d) => d.events);
+    const n = series.length;
+    const maxEvt = Math.max(1, ...series);
+    const W = 720; const H = 200; const padX = 8; const padTop = 16; const padB = 24;
+    const plotW = W - padX * 2; const plotH = H - padTop - padB;
+    const px = (i: number) => padX + (n <= 1 ? plotW / 2 : (i * plotW) / (n - 1));
+    const py = (v: number) => padTop + (1 - v / maxEvt) * plotH;
+    const linePath = series.map((v, i) => `${i === 0 ? 'M' : 'L'} ${px(i).toFixed(1)} ${py(v).toFixed(1)}`).join(' ');
+    const areaPath = n > 0 ? `${linePath} L ${px(n - 1).toFixed(1)} ${padTop + plotH} L ${px(0).toFixed(1)} ${padTop + plotH} Z` : '';
+    const hasActivity = series.some((v) => v > 0);
+    const shortDay = (iso?: string) => (iso ? iso.slice(5).replace('-', '/') : '');
+
+    const barRows = (rows: Array<{ label: string; value: number; display: string }>) => {
+      const max = Math.max(1, ...rows.map((r) => r.value));
+      return rows.map((r, i) => (
+        <div className="an-bar-row" key={r.label}>
+          <span className="an-bar-label" title={r.label}>{r.label}</span>
+          <div className="an-bar-track" role="img" aria-label={`${r.label}: ${r.display}`}>
+            <div
+              className="an-bar-fill"
+              style={{ '--w': `${Math.round((r.value / max) * 100)}%`, '--i': i } as React.CSSProperties}
+            />
+          </div>
+          <span className="an-bar-val">{r.display}</span>
+        </div>
+      ));
+    };
+
+    const f = a?.funnel;
+    const funnelSteps = f
+      ? [
+          { key: 'app_open', label: 'App opened', value: f.app_open, c: 'var(--an-c1)' },
+          { key: 'onboarding_complete', label: 'Finished onboarding', value: f.onboarding_complete, c: 'var(--an-c2)' },
+          { key: 'pair_joined', label: 'Paired with partner', value: f.pair_joined, c: 'var(--an-c3)' },
+          { key: 'ritual_completed', label: 'Completed a ritual', value: f.ritual_completed, c: 'var(--an-c4)' },
+        ]
+      : [];
+    const funnelTop = Math.max(1, funnelSteps[0]?.value ?? 1);
+
+    return (
+      <div className="view-grid analytics-view">
+        <section className="content-hero">
+          <div>
+            <p className="section-kicker">Analytics</p>
+            <h2>How the app is actually used</h2>
+            <p>First-party product analytics from your own data — pages, features, active users, the core funnel, and recent errors. No third-party tools needed.</p>
+          </div>
+          <div className="content-hero-actions">
+            <div className="an-range" role="tablist" aria-label="Date range">
+              {[7, 30, 90].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={analyticsDays === d ? 'active' : ''}
+                  onClick={() => changeAnalyticsRange(d)}
+                  disabled={analyticsLoading}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+            <button className="toolbar-button compact" onClick={() => loadAnalytics()} disabled={!connectionReady || analyticsLoading}>
+              <RefreshCw size={15} className={analyticsLoading ? 'spin' : ''} /> Refresh
+            </button>
+          </div>
+        </section>
+
+        {analyticsError && <div className="banner error">{analyticsError}</div>}
+        {analyticsLoading && !a && (
+          <EmptyState title="Loading analytics" copy="Aggregating events and errors from your database." icon={<RefreshCw size={28} className="spin" />} />
+        )}
+
+        {a && (
+          <>
+            <section className="an-kpi-grid">
+              <article className="an-stat tone-good">
+                <div className="an-stat-top"><span>Daily active</span><Users size={16} /></div>
+                <strong>{fmtNum(a.dau)}</strong>
+                <small>people used the app today</small>
+              </article>
+              <article className="an-stat">
+                <div className="an-stat-top"><span>Weekly active</span><Users size={16} /></div>
+                <strong>{fmtNum(a.wau)}</strong>
+                <small>in the last 7 days</small>
+              </article>
+              <article className="an-stat">
+                <div className="an-stat-top"><span>Events</span><Zap size={16} /></div>
+                <strong>{fmtNum(a.totals.events)}</strong>
+                <small>last {a.range_days} days</small>
+              </article>
+              <article className="an-stat">
+                <div className="an-stat-top"><span>Active couples</span><Activity size={16} /></div>
+                <strong>{fmtNum(a.totals.couples)}</strong>
+                <small>with any activity</small>
+              </article>
+              <article className={`an-stat tone-${statTone(a.error_count_24h, 1, 10)}`}>
+                <div className="an-stat-top"><span>Errors (24h)</span><ShieldAlert size={16} /></div>
+                <strong>{fmtNum(a.error_count_24h)}</strong>
+                <small>{fmtNum(a.error_count_window)} in {a.range_days}d</small>
+              </article>
+            </section>
+
+            <section className="an-split wide">
+              <article className="admin-panel section-card">
+                <div className="section-head"><div><p className="section-kicker">Engagement</p><h2>Activity over time</h2></div><Activity size={18} /></div>
+                {hasActivity ? (
+                  <svg className="an-area" viewBox="0 0 720 200" preserveAspectRatio="none" role="img" aria-label="Daily events over time">
+                    <defs>
+                      <linearGradient id="anFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.28" />
+                        <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    {[0, 0.5, 1].map((g) => (
+                      <line key={g} x1={padX} x2={W - padX} y1={padTop + plotH * g} y2={padTop + plotH * g} stroke="var(--an-grid)" strokeWidth="1" />
+                    ))}
+                    <path d={areaPath} fill="url(#anFill)" />
+                    <path
+                      className="an-line"
+                      d={linePath}
+                      fill="none"
+                      stroke="var(--an-accent)"
+                      strokeWidth="2.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      style={{ strokeDasharray: 2000, strokeDashoffset: 2000 }}
+                    />
+                    <circle cx={px(n - 1)} cy={py(series[n - 1] ?? 0)} r="8" fill="var(--an-accent)" opacity="0.18" />
+                    <circle cx={px(n - 1)} cy={py(series[n - 1] ?? 0)} r="4" fill="var(--an-accent)" />
+                    <text x={padX} y={H - 6} fontSize="11" fill="var(--admin-muted)" textAnchor="start">{shortDay(daily[0]?.day)}</text>
+                    <text x={W / 2} y={H - 6} fontSize="11" fill="var(--admin-muted)" textAnchor="middle">{shortDay(daily[Math.floor(n / 2)]?.day)}</text>
+                    <text x={W - padX} y={H - 6} fontSize="11" fill="var(--admin-muted)" textAnchor="end">{shortDay(daily[n - 1]?.day)}</text>
+                  </svg>
+                ) : (
+                  <EmptyState title="No activity yet" copy="A line appears here once people start opening the app." icon={<Activity size={26} />} />
+                )}
+                <p className="an-note">Events per day · peak {fmtNum(maxEvt)}</p>
+              </article>
+
+              <article className="admin-panel section-card">
+                <div className="section-head"><div><p className="section-kicker">Core funnel</p><h2>Open → Pair → Ritual</h2></div><Filter size={18} /></div>
+                {funnelSteps.some((s) => s.value > 0) ? (
+                  <div className="an-funnel">
+                    {funnelSteps.map((s, i) => {
+                      const pct = Math.round((s.value / funnelTop) * 100);
+                      const prev = i > 0 ? funnelSteps[i - 1].value : s.value;
+                      const conv = prev > 0 ? Math.round((s.value / prev) * 100) : 0;
+                      return (
+                        <div key={s.key}>
+                          <div className="an-funnel-head"><span>{s.label}</span><b>{fmtNum(s.value)}</b></div>
+                          <div className="an-funnel-bar">
+                            <div className="an-funnel-fill" style={{ '--w': `${pct}%`, '--c': s.c, '--i': i } as React.CSSProperties} />
+                          </div>
+                          <div className="an-funnel-rate">
+                            {i === 0 ? `${pct}% of app opens` : `↓ ${conv}% kept · ${fmtNum(Math.max(0, prev - s.value))} dropped`}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <EmptyState title="Funnel is empty" copy="This builds as people open, onboard, pair, and complete their first ritual." icon={<Filter size={26} />} />
+                )}
+              </article>
+            </section>
+
+            <section className="an-split">
+              <article className="admin-panel section-card">
+                <div className="section-head"><div><p className="section-kicker">Pages</p><h2>Most-visited screens</h2></div><LayoutDashboard size={18} /></div>
+                {a.top_pages.length ? (
+                  <div className="an-bars">{barRows(a.top_pages.map((p) => ({ label: p.screen, value: p.count, display: fmtNum(p.count) })))}</div>
+                ) : (
+                  <EmptyState title="No page data yet" copy="Fills in once people move through the app." icon={<LayoutDashboard size={26} />} />
+                )}
+              </article>
+              <article className="admin-panel section-card">
+                <div className="section-head"><div><p className="section-kicker">Features</p><h2>Most-used features</h2></div><Zap size={18} /></div>
+                {a.top_features.length ? (
+                  <div className="an-bars">{barRows(a.top_features.map((p) => ({ label: p.feature, value: p.count, display: fmtNum(p.count) })))}</div>
+                ) : (
+                  <EmptyState title="No feature data yet" copy="Fills in as people use features like watering the bonsai or sending a note." icon={<Zap size={26} />} />
+                )}
+              </article>
+            </section>
+
+            <section className="an-split">
+              <article className="admin-panel section-card">
+                <div className="section-head"><div><p className="section-kicker">Attention</p><h2>Time spent per screen</h2></div><Clock3 size={18} /></div>
+                <p className="an-note">Average time before leaving a screen</p>
+                {a.dwell_by_screen.length ? (
+                  <div className="an-bars">{barRows(a.dwell_by_screen.map((d) => ({ label: d.screen, value: d.avg_ms, display: fmtSecs(d.avg_ms) })))}</div>
+                ) : (
+                  <EmptyState title="No timing data yet" copy="Needs a few screen visits before averages appear." icon={<Clock3 size={26} />} />
+                )}
+              </article>
+              <article className="admin-panel section-card">
+                <div className="section-head"><div><p className="section-kicker">Stability</p><h2>Recent errors</h2></div><ShieldAlert size={18} /></div>
+                {a.recent_errors.length ? (
+                  <div className="an-errors">
+                    {a.recent_errors.map((e, i) => (
+                      <div className="an-error-row" key={i}>
+                        <span className="an-error-dot" />
+                        <div className="an-error-body">
+                          <div className="an-error-top">
+                            <strong title={e.message}>{e.message || 'Unknown error'}</strong>
+                            <time>{fmtAgo(e.created_at)}</time>
+                          </div>
+                          <div className="an-error-meta">
+                            {e.source ? <span className="an-tag">{e.source}</span> : null}
+                            <span className="an-error-ver">{e.app_version || 'n/a'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState title="All quiet" copy="No errors reported recently — that's a good sign." icon={<ShieldCheck size={28} />} />
+                )}
+              </article>
+            </section>
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderPulse = () => (
     <>

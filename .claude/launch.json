@@ -49,6 +49,12 @@
       "runtimeArgs": ["run", "dev:e2e", "--", "--strictPort"],
       "port": 3057,
       "autoPort": true
+    },
+    {
+      "name": "Admin Dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "admin-dashboard", "run", "dev", "--", "--port", "3061", "--strictPort"],
+      "port": 3061
     }
   ]
 }

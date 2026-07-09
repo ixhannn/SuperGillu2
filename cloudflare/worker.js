@@ -56,6 +56,7 @@ const ADMIN_ROUTE_PREFIX = '/__admin';
 const ADMIN_OVERVIEW_ROUTE = '/__admin/overview';
 const ADMIN_MEDIA_ROUTE = '/__admin/media';
 const ADMIN_USERS_ROUTE = '/__admin/users';
+const ADMIN_ANALYTICS_ROUTE = '/__admin/analytics';
 const ADMIN_AUDIT_ROUTE = '/__admin/actions/audit';
 const ADMIN_CLEANUP_ROUTE = '/__admin/actions/cleanup';
 const ADMIN_REPAIR_ROUTE = '/__admin/actions/repair';
@@ -2715,6 +2716,16 @@ export default {
         try {
           const users = await fetchAdminUsers(env, url.searchParams.get('limit'));
           return jsonResponse({ ok: true, ...users }, 200, cors);
+        } catch (error) {
+          return jsonResponse({ ok: false, error: String(error) }, 500, cors);
+        }
+      }
+
+      if (request.method === 'GET' && url.pathname === ADMIN_ANALYTICS_ROUTE) {
+        try {
+          const days = parsePositiveInteger(url.searchParams.get('days'), 30);
+          const summary = await runRpc(env, 'admin_analytics_summary', { days });
+          return jsonResponse({ ok: true, ...(summary || {}) }, 200, cors);
         } catch (error) {
           return jsonResponse({ ok: false, error: String(error) }, 500, cors);
         }

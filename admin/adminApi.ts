@@ -231,6 +231,43 @@ export type AdminUsersSnapshot = {
   users: AdminUserSummary[];
 };
 
+// ── First-party product analytics (from app_events + client_error_logs) ──
+// Shape mirrors the admin_analytics_summary() Postgres RPC exactly (snake_case).
+export type AnalyticsPage = { screen: string; count: number };
+export type AnalyticsFeature = { feature: string; count: number };
+export type AnalyticsDwell = { screen: string; avg_ms: number; samples: number };
+export type AnalyticsDay = { day: string; events: number; users: number };
+export type AnalyticsError = {
+  message: string;
+  source: string | null;
+  app_version: string | null;
+  created_at: string;
+};
+
+export type AnalyticsSummary = {
+  ok: boolean;
+  range_days: number;
+  top_pages: AnalyticsPage[];
+  top_features: AnalyticsFeature[];
+  dwell_by_screen: AnalyticsDwell[];
+  daily: AnalyticsDay[];
+  dau: number;
+  wau: number;
+  totals: { events: number; signed_in_users: number; couples: number; app_opens: number };
+  funnel: {
+    app_open: number;
+    onboarding_complete: number;
+    pair_invite_sent: number;
+    pair_joined: number;
+    ritual_completed: number;
+  };
+  premium_taps: number;
+  recent_errors: AnalyticsError[];
+  error_count_24h: number;
+  error_count_window: number;
+  generated_at: string;
+};
+
 export type AdminAppDataRow = {
   table: string;
   row_id: string | null;
@@ -402,6 +439,12 @@ export const AdminDashboardApi = {
     return this.request(config, '/__admin/users?limit=500', {
       method: 'GET',
     }) as Promise<AdminUsersSnapshot>;
+  },
+
+  fetchAnalytics(config: AdminDashboardConfig, days = 30) {
+    return this.request(config, `/__admin/analytics?days=${days}`, {
+      method: 'GET',
+    }) as Promise<AnalyticsSummary>;
   },
 
   async runAudit(config: AdminDashboardConfig) {
