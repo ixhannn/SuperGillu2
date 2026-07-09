@@ -36,8 +36,11 @@ assert.match(
   'Layout should derive the active view surface from currentView via the shared registry helper.',
 );
 
+// `lenis-content`'s className is conditional (scrollLocked ? … : …), so match
+// the class name in either a string literal or an expression — the invariant
+// under test is that BOTH scroll layers paint `background: viewSurface`.
 assert.match(
   layoutSource,
-  /className="lenis-wrapper[\s\S]*background: viewSurface[\s\S]*className="lenis-content[\s\S]*background: viewSurface/,
+  /lenis-wrapper[\s\S]*background: viewSurface[\s\S]*lenis-content[\s\S]*background: viewSurface/,
   'The active view surface must cover both the scroll viewport and its bottom safe-area padding.',
 );
