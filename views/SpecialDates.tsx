@@ -3,6 +3,7 @@ import { Plus, Trash2, Heart, Calendar } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, SpecialDate } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useThrottledReload } from '../hooks/useThrottledReload';
 import { feedback } from '../utils/feedback';
@@ -63,6 +64,7 @@ export const SpecialDates: React.FC<SpecialDatesProps> = ({ setView }) => {
       type: 'other'
     };
     StorageService.saveSpecialDate(item);
+    Analytics.feature('special_date_add');
     feedback.celebrate();
     setDates(prev => [...prev, item]);
     setNewTitle('');

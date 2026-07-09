@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Armchair, PenLine, Flame, Lamp, Sunrise } from 'lucide-react';
 import { ViewState } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { ViewHeader } from '../components/ViewHeader';
 import { feedback } from '../utils/feedback';
@@ -466,6 +467,7 @@ export const OurRoom = ({ setView }: OurRoomProps): React.JSX.Element => {
         const sku = skuOf(skuId);
         if (!sku) return;
         commit((prev) => placeNewObject(prev, skuId, sku.provenanceLabel, spot, myKey, new Date()));
+        Analytics.feature('room_place_item');
         setCaption(`${sku.name} came home`);
       },
       onFacing: (uid) => {

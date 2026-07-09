@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion';
 import { Bell, BookOpen, Check, CloudRain, Droplets, Feather, Flower2, Share2, Sparkles, Sprout, TreePine, UserPlus } from 'lucide-react';
 import { ViewState } from '../types';
+import { Analytics } from '../services/analytics';
 import { BonsaiService } from '../services/bonsai';
 import { BonsaiShareService } from '../services/bonsaiShare';
 import { NotificationsService } from '../services/notifications';
@@ -301,6 +302,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
 
   const handleWatered = () => {
     feedback.confirm();
+    Analytics.feature('bonsai_water');
     if (tree.resting) toast.show('The tree stirs awake — it missed you', 'info');
     const completesBloom = tree.wateredTodayByPartner && !tree.wateredTodayByMe;
     void BonsaiService.water(undefined, garden.currentIndex).then(() => {
@@ -314,6 +316,7 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
   const handleSaveNote = (text: string) => {
     feedback.confirm();
     void BonsaiService.setTodayNote(text, garden.currentIndex);
+    Analytics.feature('bonsai_note');
     toast.show(`Sealed until ${partnerName} waters the tree`, 'heart');
   };
 
@@ -335,12 +338,14 @@ export const BonsaiBloom: React.FC<BonsaiBloomProps> = ({ setView }) => {
       localStorage.setItem('lior_bonsai_nudge_day', today);
     } catch { /* non-fatal */ }
     void NotificationsService.triggerBonsaiPush('nudge', myName);
+    Analytics.feature('bonsai_nudge');
     toast.show(`A gentle reminder is on its way to ${partnerName}`, 'heart');
   };
 
   const handlePlant = (species: BonsaiSpeciesId) => {
     feedback.milestone();
     void BonsaiService.plantTree(species, garden.currentIndex + 1);
+    Analytics.feature('bonsai_plant');
     toast.show(`A ${BONSAI_SPECIES[species].name.toLowerCase()} seed is in the soil`, 'success', 4000);
   };
 

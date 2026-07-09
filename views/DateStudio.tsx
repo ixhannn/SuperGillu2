@@ -15,6 +15,7 @@ import { DateDeck } from '../components/premium/date-studio/DateDeck';
 import { PlannerSection } from '../components/premium/date-studio/PlannerSection';
 import { PremiumModal } from '../components/PremiumModal';
 import { DATE_CATEGORIES, DATE_IDEAS, type DateCategory, type DateIdea } from '../content/dateIdeas';
+import { Analytics } from '../services/analytics';
 import { PremiumFeaturesStore } from '../services/premiumFeatures';
 import { feedback } from '../utils/feedback';
 import { toast } from '../utils/toast';
@@ -216,6 +217,7 @@ export const DateStudioView: React.FC<Props> = ({ setView }) => {
     const handleComplete = useCallback((id: string) => {
         feedback.celebrate();
         savePlans(PremiumFeaturesStore.getDatePlans().map((p) => (p.id === id ? { ...p, completedAt: new Date().toISOString() } : p)));
+        Analytics.feature('date_studio_complete');
         setJustCompletedId(id);
         toast.show('One for the books 💫', 'success');
     }, [plans, savePlans]);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
 import { ViewState } from '../types';
+import { Analytics } from '../services/analytics';
 import { SyncService } from '../services/sync';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, Check, Send } from 'lucide-react';
@@ -344,6 +345,7 @@ export const AuraSignal: React.FC<AuraSignalProps> = ({ setView }) => {
             message: activeSignal.message,
             afterglow: activeSignal.afterglow,
         });
+        Analytics.feature('aura_send');
         deliveredRef.current = ok;
         sentTitleRef.current = activeSignal.title;
         setDelivered(ok);

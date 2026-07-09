@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DailyDrop, DropResponse } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { NotificationsService } from '../services/notifications';
 import {
@@ -118,6 +119,7 @@ export function useDailyDrop(): UseDailyDrop {
     setSubmitting(true);
     try {
       StorageService.submitDropResponse(value, guess);
+      Analytics.feature('daily_drop_send');
       // Tell the partner: either "they dropped something" or "it just unsealed".
       const subtype: 'dropped' | 'unsealed' = partnerAlreadyIn ? 'unsealed' : 'dropped';
       void NotificationsService.triggerDropPush(subtype, profile.myName);
@@ -135,6 +137,7 @@ export function useDailyDrop(): UseDailyDrop {
 
   const markSeen = useCallback(() => {
     if (drop) markRevealSeen(drop.id);
+    Analytics.feature('daily_drop_reveal');
     refresh();
   }, [drop, refresh]);
 

@@ -15,6 +15,7 @@ import {
 } from '../components/premium/GoldKit';
 import { PremiumModal } from '../components/PremiumModal';
 import type { ViewState, VoiceNote } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
@@ -504,6 +505,7 @@ export const VoiceNotesView: React.FC<VoiceNotesViewProps> = ({ setView }) => {
             if (audioResult.storagePath) newNote.audioStoragePath = audioResult.storagePath;
 
             await StorageService.saveVoiceNote(newNote);
+            Analytics.feature('voice_note_send');
             setNotes(StorageService.getVoiceNotes());
 
             setPendingAudio(null);

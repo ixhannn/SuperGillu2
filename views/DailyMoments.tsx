@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Camera, Clock, Plus, Trash2, X, Sparkles, Loader2, RefreshCw, ArrowLeft, Video, PlayCircle, Send, Reply, MessageCircle, Heart } from 'lucide-react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ViewState, DailyPhoto, Comment } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { useNativeShell } from '../hooks/useNativeShell';
@@ -783,6 +784,7 @@ const DailyMomentsView: React.FC<DailyMomentsProps> = ({ setView }) => {
 
         try {
             await StorageService.saveDailyPhoto(photo);
+            Analytics.feature('moment_add');
             setIsUploading(false);
             setNewImage(null);
             setNewVideo(null);

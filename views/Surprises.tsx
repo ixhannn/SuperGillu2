@@ -14,6 +14,7 @@ import {
 } from '../components/premium/GoldKit';
 import { PremiumModal } from '../components/PremiumModal';
 import type { Surprise, ViewState } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService } from '../services/storage';
 import { toast } from '../utils/toast';
 import { generateId } from '../utils/ids';
@@ -836,6 +837,7 @@ export const SurprisesView: React.FC<SurprisesViewProps> = ({ setView }) => {
         };
 
         await StorageService.saveSurprise(newSurprise);
+        Analytics.feature('surprise_send');
         setSurprises(StorageService.getSurprises());
 
         setTitle(''); setMessage(''); setScheduledFor(''); setSelectedEmoji('🎁');

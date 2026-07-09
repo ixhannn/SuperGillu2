@@ -7,6 +7,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from '../utils/toast';
 import { SectionDivider } from './Home';
 import { ViewState, CoupleProfile } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { ThemeService, THEMES, ThemeId } from '../services/theme';
 import { SupabaseService } from '../services/supabase';
@@ -286,6 +287,7 @@ const ProfileView: React.FC<ProfileProps> = ({ setView }) => {
                 y: rect.top + rect.height / 2,
             },
         } : undefined);
+        Analytics.feature('theme_change');
         Haptics.select();
         Audio.play('select');
     };

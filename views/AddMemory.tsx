@@ -4,6 +4,7 @@ import { ArrowLeft, Camera, X, Video, Mic, Square, Play, Pause, Trash2, Sparkles
 import { ViewHeader } from '../components/ViewHeader';
 import { PremiumModal, type PremiumFeatureContext } from '../components/PremiumModal';
 import { ViewState, Memory } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService } from '../services/storage';
 import { NativeMediaService } from '../services/nativeMedia';
 import { toast } from '../utils/toast';
@@ -462,6 +463,7 @@ export const AddMemory: React.FC<AddMemoryProps> = ({ setView }) => {
 
     try {
       await StorageService.saveMemory(newMemory);
+      Analytics.feature('memory_add');
     } catch (e: any) {
       setIsSaving(false);
       toast.show(e?.message || 'Memory could not be saved.', 'error');

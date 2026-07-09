@@ -17,6 +17,7 @@ import {
 import { ViewHeader } from '../components/ViewHeader';
 import { PinPad } from '../components/PinPad';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useLiorMedia } from '../hooks/useLiorImage';
 import { PrivacyLock, PIN_LENGTH } from '../services/privacyLock';
@@ -354,6 +355,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
             }
 
             await StorageService.savePrivateSpaceItem(base);
+            Analytics.feature('private_space_add');
             setItems(StorageService.getPrivateSpaceItems());
             setShowComposer(false);
             resetComposer();
@@ -468,6 +470,7 @@ export const PrivateSpace: React.FC<PrivateSpaceProps> = ({ setView }) => {
             const result = await PrivacyLock.verifyPin(pin);
             if (result.ok) {
                 feedback.tap();
+                Analytics.feature('private_space_unlock');
                 setPinEntry('');
                 setPinError('');
                 setLocked(false);

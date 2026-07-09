@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { ViewState, Memory } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService } from '../services/storage';
 import { BreathingGuide } from '../components/quiet/BreathingGuide';
 import { AmbientBackdrop } from '../components/quiet/AmbientBackdrop';
@@ -291,6 +292,7 @@ export const QuietMode: React.FC<QuietModeProps> = ({ setView }) => {
       engine.setScene(scene);
     }
     setPhase('playing');
+    Analytics.feature('quiet_mode_start');
     const mems = memoriesRef.current;
     currentIndexRef.current = 0;
     const mem = mems[0];

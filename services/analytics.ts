@@ -33,7 +33,8 @@ export type AnalyticsEvent =
   | 'premium_tap'
   | 'screen_view'
   | 'screen_leave'
-  | 'app_background';
+  | 'app_background'
+  | 'feature_used';
 
 type EventProps = Record<string, unknown>;
 
@@ -183,6 +184,19 @@ export const Analytics = {
   track(event: AnalyticsEvent, props?: EventProps): void {
     posthogCapture(event, props);
     trackLocal(event, props);
+  },
+
+  /**
+   * A discrete feature/action was used (not a navigation — screen opens are
+   * covered by screenEnter). Emits ONE `feature_used` event carrying a
+   * `feature` property, so a single PostHog insight (break down by `feature`)
+   * ranks every feature. Add `Analytics.feature('<name>')` at any new action
+   * and it appears in the usage ranking automatically. Never throws.
+   */
+  feature(name: string, props?: EventProps): void {
+    const payload = { feature: name, ...(props ?? {}) };
+    posthogCapture('feature_used', payload);
+    trackLocal('feature_used', payload);
   },
 
   /**

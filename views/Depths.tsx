@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion, type PanInfo } from 'framer-motion';
 import { Heart, Lock, X } from 'lucide-react';
 import type { DepthsState, ViewState } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService } from '../services/storage';
 import { PremiumFeaturesStore } from '../services/premiumFeatures';
 import { DEPTHS_DECKS, type DepthsDeck, type DepthsQuestion } from '../content/depthsDecks';
@@ -474,6 +475,7 @@ export const DepthsView: React.FC<DepthsViewProps> = ({ setView }) => {
             lastDeckId: deckId,
         };
         PremiumFeaturesStore.saveDepthsState(next);
+        Analytics.feature('depths_complete');
         setDepthsState(next);
     }, []);
 

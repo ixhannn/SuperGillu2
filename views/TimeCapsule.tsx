@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { AnimatePresence, animate, motion, useMotionValue, type PanInfo } from 'framer-motion';
 import { Camera, Feather, Heart, Plus, X } from 'lucide-react';
 import type { TimeCapsule, ViewState } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget } from '../services/storage';
 import { useThrottledReload } from '../hooks/useThrottledReload';
 import { GoldShell } from '../components/premium/GoldShell';
@@ -158,6 +159,7 @@ export const TimeCapsuleView: React.FC<TimeCapsuleViewProps> = ({ setView }) => 
                 createdAt: new Date().toISOString(),
                 isUnlocked: false,
             });
+            Analytics.feature('capsule_seal');
             setCapsules(StorageService.getTimeCapsules());
             resetForm();
             setShowForm(false);

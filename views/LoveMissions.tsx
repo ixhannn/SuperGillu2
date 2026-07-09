@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Check, Heart, Sparkles } from 'lucide-react';
 import type { CoupleProfile, LoveLanguageType, MissionRecord, MissionState, ViewState } from '../types';
+import { Analytics } from '../services/analytics';
 import { StorageService, storageEventTarget, type StorageUpdateDetail } from '../services/storage';
 import { PremiumFeaturesStore, mondayOf, seededIndex } from '../services/premiumFeatures';
 import { RelationshipModelService } from '../services/relationshipModel';
@@ -468,6 +469,7 @@ export const LoveMissionsView: React.FC<LoveMissionsProps> = ({ setView }) => {
             lastCompletedWeek: record.weekStart,
         };
         PremiumFeaturesStore.saveMissionState(next);
+        Analytics.feature('mission_complete');
         setMissionState(next);
         setBurstId(record.id);
         if (burstTimerRef.current) clearTimeout(burstTimerRef.current);
